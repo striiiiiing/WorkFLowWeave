@@ -216,3 +216,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+.mindfs/
+.agents/
+/BaseChannel模块解读.md
+/ChannelManager模块解读.md
+/CommandRegistry模块解读.md
+/UnifiedQueueManager模块解读.md
+/通道注册表模块解读.md
+.idea/
