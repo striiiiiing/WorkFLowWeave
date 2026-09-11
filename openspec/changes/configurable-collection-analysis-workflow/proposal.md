@@ -181,3 +181,22 @@
 |ChannelManager|负责发现、注册、配置、管理和调用多个 channel 实例的管理模块。|
 |BaseChannel|channel 的通用基类，约束公共生命周期和能力边界，具体平台行为由插件实现。|
 |简易 Agent|面向后续对话的轻量执行者，可复用 AI 配置、工具及 Workflow session；本期不实现完整的双向 Agent 功能。|
+
+## 6. 能力与实施批次
+
+本节为 task0.md 要求的持续实施补充索引，§2 的本期范围仍对应 v0.1；后继能力在首版通过测试并提交之后按批次实施，不能用后继实现替代首版验收。
+
+| Capabilities | 对应职责 | 首次验收版本 |
+| --- | --- | --- |
+| `configuration` | 系统配置、资源复用、严格校验、运行快照 | v0.1 |
+| `archive` | session、阶段备份、历史查询与恢复材料 | v0.1 |
+| `collectors` | 插件发现、Setter、Mock、运行日志与历史 | v0.1 |
+| `ai` | 可复用模型、系统提示词、工具接口与结果 | v0.1 |
+| `channels` | 能力注册、文件和邮件通知、部分投递失败 | v0.1 |
+| `workflow` | 调度、输入编排、fan-out/fan-in、取消和恢复 | v0.1 |
+| `interaction` | FastAPI、HTTP CLI、配置与运行查询 | v0.1 |
+| `extensions` | §4 的来源子集、Agent、健康监听、YAML Toolset、指令，以及 §2 延后的 Webhook/双向会话 | v0.2 |
+| `evaluation` | §4 的移除 LangGraph 与流程/提示词/模型效果评估 | v0.3 |
+| `canvas-ui` | §4 的浏览器前端与画布式配置 | v0.4 |
+
+各版本以 `design.md` §3.8 和 `versions/` 下的设计、任务、测试记录为交付依据。十分钟稳定性测试实际运行后记录结果；24 小时验证单独保留真实状态。图片输入仅为远期方向，没有列为本次四个版本的交付能力。
