@@ -11,6 +11,7 @@
 | --- | --- | --- |
 | 公共模型 | 配置结构、结果状态、错误及快照类型 | 全部模块 |
 | 系统配置读取 | JSON 解析、结构校验、相对路径归一 | 服务启动入口 |
+| 插件配置读取 | 单个可选 JSON 文件的读取与错误分类 | Collector / Channel 插件发现 |
 | `ResourceStore` | 五类资源的原子存取和引用检查 | 业务服务、API |
 | 快照装配 | 从一致资源视图生成独立配置副本 | Workflow |
 
@@ -22,10 +23,12 @@
 系统配置是独立 JSON 文件，`SystemConfig` 字段以总体设计为准。
 `data_dir`、`plugin_dir`、`log_file` 的相对路径都以系统配置文件目录为基准。
 解析路径不触发插件加载、模型请求、邮件发送或 Workflow 运行。
-`ResourceStore(root)` 的根目录由启动入口传入，建议为 `data_dir/resources`。
+`ResourceStore(root, *, base_dir=None)` 的根目录由启动入口传入，建议为 `data_dir/resources`。
+服务装配时传入 `base_dir=config.base_dir`，使内置 file Channel 的 `options.path` 以系统配置文件目录为基准；独立使用 Store 时默认以 root 为基准。该字段在资源文件中保留用户填写的路径，快照才展开为绝对路径。未知插件 options 中的 `path`、`*_path` 可能是 JSONPath、远程路径或来源相对路径，必须原样保留，由所属业务模块按声明解释。
 每个资源保存为 `<root>/<kind>/<id>.json`，`kind` 只允许五个固定种类。
 系统配置错误应阻止半配置服务启动；单个插件配置错误由插件管理器隔离。
 插件级同名 JSON 的读取归发现模块，配置内容经 `registry.plugin_config` 注入 `register(registry)`。
+发现模块调用公共协程 `load_plugin_config(json_path) -> dict` 读取单个文件；文件不存在返回空对象，不创建文件。非对象、非法 JSON 或非有限数值返回 `PLUGIN_CONFIG_INVALID`，磁盘读取失败返回 `PLUGIN_CONFIG_UNAVAILABLE`，错误 details 只带文件名，不回显配置内容。发现、逐文件隔离与插件 schema 校验仍由插件管理器负责；此入口不修改系统配置。
 
 ### 1.3 校验分层
 
@@ -48,6 +51,7 @@
 所有公共输入模型采用严格结构，`extra="forbid"`，错误保留字段路径。
 ID 为 1–80 位 ASCII 字母、数字、下划线或短横线；不接受路径分隔符。
 超时与 `interval_seconds` 为正数；并发上限至少为 1；`retries` 为非负整数。
+数值不接受字符串或布尔值转换；开关只接受 JSON 布尔值。
 日期时间使用带时区的 UTC；不使用无时区字符串表达 session 或快照时间。
 
 | 模型 | 本模块必须固定的约束 |
@@ -86,6 +90,7 @@ session 状态沿用总体设计；`source_statuses/analysis_statuses` 是状态
 同一服务只装配一个管理资源根目录的 Store，操作共享一把异步锁。
 锁内内部读写使用不重复获取同一锁的辅助函数，避免嵌套 get/list 造成死锁。
 列表发现损坏资源时报告资源 ID 与原因，不默默当作不存在。
+损坏原因区分 `invalid_json`、`invalid_schema` 与 `id_mismatch`；结构校验错误保留字段路径，不回显输入值。
 资源不存在映射为 404，引用冲突为 409，输入配置错误为 422。
 内部磁盘不可用返回结构化服务错误；错误不带绝对秘密内容或任意堆栈。
 
@@ -116,6 +121,7 @@ fan-in order 的未知分支和重复 `$input` 必须在启动前拒绝。
 展开后的 SourceConfig 不再需要读取模板才能执行；保留 template ID 仅用于来源追踪。
 任何缺失资源或模板 Collector 不匹配都使整个快照失败，不返回半成品。
 快照为独立深拷贝；原资源修改、返回对象修改与已有快照彼此隔离。
+构造或反序列化快照时，资源映射必须恰好覆盖 Workflow 引用的资源，映射键必须与资源内的 ID 一致，缺失、额外或错配资源均被拒绝。
 快照保留 `api_key_env` 等凭据引用，不保存环境变量解析结果。
 Workflow 在触发时对快照完成业务语义验证，再交给 `ArchiveStore.create` 持久化。
 恢复只使用存档中的此类型配置，不重新调用 `snapshot(workflow_id)` 获取最新版。
