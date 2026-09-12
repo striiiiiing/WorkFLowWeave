@@ -126,7 +126,7 @@ Workflow 定义描述可重复执行的配置，Workflow session 描述其中一
 | `FanInConfig` | `order`、`separator`、可选 `ai`、`prompt`、`mark_incomplete`；`order` 是分析 ID 与至多一个 `$input` 的有序列表，共享输入不可拆开移动。空列表默认采用所有分支的声明顺序。 |
 | `BackupPolicy` | `enabled`、`stages`（`snapshot/collection/analysis/final`）、`on_failure`（`stop/continue`）、可选 `retention_days`。运行状态与内容备份独立。 |
 | `WorkflowDefinition` | `id`、`name`、有序 `sources`、有序 `analyses`、可选 `fan_in`、有序 `channels`、`input_separator`、`include_counts`、`collection_concurrency`、`analysis_concurrency`、`on_all_empty`（`stop/skip`）、`analysis_failure`（`stop/continue`）、`send_partial`、`backup`、可选 `interval_seconds`、`enabled`。 |
-| `CollectionResult` | `source_id`、`status`、`items`、`text`、原始 `count`、处理后 `selected_count`、`error`；状态为 `success/empty/filtered_empty/missing/failed/timeout`，不能互相伪装。 |
+| `CollectionResult` | `source_id`、`status`、`items`、`text`、原始 `count`、处理后 `selected_count`、`error`、`metadata`；metadata 保存历史读取的计数算法、截取事实等诊断信息。状态为 `success/empty/filtered_empty/missing/failed/timeout`，不能互相伪装。 |
 | `AnalysisResult` | `task_id`、`status`、`text`、`error`、`usage`、`elapsed_ms`，允许保留独立分支的失败信息。 |
 | `Notification` / `DeliveryResult` | 通知包含 `session_id/output_id/title/text/metadata`；投递结果包含 `channel_id/output_id/status/attempts/error`。 |
 | `SessionRecord` | `id/workflow_id/status/created_at/updated_at/stage`、`source_statuses`、`analysis_statuses`、`deliveries`、`errors`、`artifacts`、`recoverable`、`missing_artifacts`、`output_frozen`；状态为 `created/running/completed/partial/failed/cancelled/interrupted`。管理记录不保存阶段正文。 |
@@ -137,7 +137,7 @@ Workflow 定义描述可重复执行的配置，Workflow session 描述其中一
 
 ### 3.2 配置与资源管理
 
-`ResourceStore(root)` 提供 `save(kind, model, *, mode="upsert")`、`get(kind, id)`、`list(kind)`、`delete(kind, id)`、`resolve(definition)` 和 `snapshot(workflow_id)`；接口为协程，磁盘读写通过工作线程执行。`mode` 可为 `create/replace/upsert`，存在性检查和写入共用同一操作锁；`resolve()` 为尚未保存的定义生成快照供业务校验，不写入资源。资源种类为 `sources/setters/ai/channels/workflows`。每次写入使用同目录临时文件加原子替换；读取返回独立对象，调用方不能修改共享缓存。
+`ResourceStore(root, *, base_dir=None)` 提供 `save(kind, model, *, mode="upsert")`、`get(kind, id)`、`list(kind)`、`delete(kind, id)`、`resolve(definition)` 和 `snapshot(workflow_id)`；接口为协程，磁盘读写通过工作线程执行。服务装配时使用系统配置文件目录作为 `base_dir`，独立 Store 默认以 root 为路径基准。`mode` 可为 `create/replace/upsert`，存在性检查和写入共用同一操作锁；`resolve()` 为尚未保存的定义生成快照供业务校验，不写入资源。资源种类为 `sources/setters/ai/channels/workflows`。每次写入使用同目录临时文件加原子替换；读取返回独立对象，调用方不能修改共享缓存。
 
 `snapshot()` 返回 Workflow 及其引用来源、展开后的 Setter、AI 与 Channel 的完整配置副本。运行开始后不可再解析最新配置替换快照。业务模块执行来源 schema、模型参数、通知能力等语义校验，Workflow 统一验证所有引用。删除被引用资源返回明确冲突。
 
