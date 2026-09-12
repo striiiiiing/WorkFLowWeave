@@ -1,6 +1,6 @@
 # 数据采集模块设计（v0.1）
 
-本文细化 [proposal.md](../../proposal.md) §2.1「数据采集模块」及 [根 design.md](../../design.md) §3.1、§3.3。公共数据模型统一位于 `logagent/models.py`；本文不另定义同名的来源或结果模型。
+本文细化 [proposal.md](../../proposal.md) §2.1「数据采集模块」及 [根 design.md](../../design.md) §4.1–§4.2。公共数据模型统一位于 `logagent/models.py`；本文不另定义同名的来源或结果模型。
 
 ## 1. 职责与边界
 

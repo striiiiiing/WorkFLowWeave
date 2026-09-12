@@ -1,6 +1,6 @@
 # 配置与资源管理模块：设计
 
-依据 [模块提案](./proposal.md) 与 [总体设计](../../design.md) §3.1–§3.2。
+依据 [模块提案](./proposal.md) 与 [总体设计](../../design.md) §4.1–§4.2。
 实现文件为 `logagent/models.py`、`logagent/config.py`，本模块不调用具体采集、模型或投递实现。
 
 ## 1. 系统架构

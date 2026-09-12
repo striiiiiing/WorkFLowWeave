@@ -1,6 +1,6 @@
 # 交互模块设计（v0.1）
 
-依据：[模块 proposal](./proposal.md)、[根 proposal](../../proposal.md) §2.1、§3，以及[根设计](../../design.md) §3.1–§3.7、§4。首版使用 FastAPI、Typer 与 uvicorn，外部资源以 JSON 表达。
+依据：[模块 proposal](./proposal.md)、[根 proposal](../../proposal.md) §2.1、§3，以及[根设计](../../design.md) §4.1–§4.2、§5。首版使用 FastAPI、Typer 与 uvicorn，外部资源以 JSON 表达。
 
 ## 1. 职责与结构
 
@@ -56,7 +56,7 @@ API 接收配置、触发和查询请求，完成传输层解析后交给业务�
 | `GET /api/sessions/{id}/artifacts/{name}` | 读取 `snapshot/collection/analysis/final` 之一。 | 200，对应 JSON 存档。 |
 | `POST /api/sessions/{id}/resume` | 校验原快照与材料后恢复原 session。 | 202，SessionRecord。 |
 | `POST /api/sessions/{id}/cancel` | 取消并等待取消状态写回。 | 200，SessionRecord。 |
-| `GET /api/health` | 查询服务是否就绪及启动诊断摘要。 | 200，健康状态；不可用时 503。 |
+| `GET /api/health` | 查询服务是否就绪及启动诊断摘要。 | 200，HealthReport（ready/degraded）；必要能力不可用时 503（unavailable）。 |
 
 接受触发/恢复时设置 `Location: /api/sessions/{id}`。API 不在请求生命周期内等待模型执行完成，也不把分析失败改成触发请求的 500；后续业务错误属于 session。
 

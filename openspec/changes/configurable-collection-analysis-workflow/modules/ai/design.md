@@ -1,6 +1,6 @@
 # AI 模块设计（v0.1）
 
-依据：[模块 proposal](./proposal.md)、[根 proposal](../../proposal.md) §2.1、§3，以及[根设计](../../design.md) §3.1、§3.4、§4。本文件细化首版可复用分析能力，公共模型仍定义在 `logagent/models.py`。
+依据：[模块 proposal](./proposal.md)、[根 proposal](../../proposal.md) §2.1、§3，以及[根设计](../../design.md) §4.1–§4.2、§5。本文件细化首版可复用分析能力，公共模型仍定义在 `logagent/models.py`。
 
 ## 1. 职责与结构
 

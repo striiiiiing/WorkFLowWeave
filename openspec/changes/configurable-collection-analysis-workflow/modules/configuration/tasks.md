@@ -16,9 +16,9 @@
 
 ### Task 1：建立公共模型与可运行工程
 
-描述：定义根设计 §3.1 的严格配置、结果、session 和快照模型，配置 Python、依赖、可导入包与测试运行环境。CLI 命令入口在交互模块实现时注册。
+描述：定义根设计 §4.1 的严格配置、结果、session 和快照模型，配置 Python、依赖、可导入包与测试运行环境。CLI 命令入口在交互模块实现时注册。
 
-输入：根 design.md §3.1；本模块 proposal.md/design.md
+输入：根 design.md §4.1；本模块 proposal.md/design.md
 
 输出：公共模型、错误与工程配置
 

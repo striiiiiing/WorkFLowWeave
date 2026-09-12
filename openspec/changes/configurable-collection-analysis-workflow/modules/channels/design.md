@@ -1,6 +1,6 @@
 # Channel 网关模块设计（v0.1）
 
-本文细化 [proposal.md](../../proposal.md) §2.1「channel 网关模块」及 [根 design.md](../../design.md) §3.1、§3.5。公共 `ChannelConfig`、`Notification`、`DeliveryResult` 使用 `logagent/models.py`，不在平台实现中复制模型。
+本文细化 [proposal.md](../../proposal.md) §2.1「channel 网关模块」及 [根 design.md](../../design.md) §4.1–§4.2。公共 `ChannelConfig`、`Notification`、`DeliveryResult` 使用 `logagent/models.py`，不在平台实现中复制模型。
 
 ## 1. 职责与边界
 

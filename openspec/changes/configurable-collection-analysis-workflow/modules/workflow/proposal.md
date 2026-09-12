@@ -1,6 +1,6 @@
 # Workflow 模块提案（v0.1）
 
-关联：[根 proposal](../../proposal.md) §2.1「WorkFlow 模块」、§3 验收标准 3–6/8，[根设计](../../design.md) §3.6，[模块设计](./design.md)。
+关联：[根 proposal](../../proposal.md) §2.1「WorkFlow 模块」、§3 验收标准 3–6/8，[根设计](../../design.md) §4.2，[模块设计](./design.md)。
 
 ## 1. 背景与目标
 

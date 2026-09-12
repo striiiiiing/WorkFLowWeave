@@ -1,6 +1,6 @@
 # AI 模块提案（v0.1）
 
-关联：[根 proposal](../../proposal.md) §2.1「简易 Agent 模块」、§3 验收标准 4/8，[根设计](../../design.md) §3.4，[模块设计](./design.md)。
+关联：[根 proposal](../../proposal.md) §2.1「简易 Agent 模块」、§3 验收标准 4/8，[根设计](../../design.md) §4.2，[模块设计](./design.md)。
 
 ## 1. 背景与目标
 
