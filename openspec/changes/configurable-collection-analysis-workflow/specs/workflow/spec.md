@@ -69,3 +69,17 @@ Workflow SHALL 使用原 session 配置与保存内容恢复，跳过成功采�
 
 - **WHEN** 恢复所需内容备份被关闭、过期或损坏
 - **THEN** 返回明确不可恢复原因，不静默重新采集
+
+### Requirement: 调度配置更新
+
+Workflow SHALL 在有效配置更新后调整未来触发计划，禁用阻止新的手动和定时触发；已经受理的 session 保持原快照并通过显式取消入口停止。
+
+#### Scenario: 禁用时已有运行
+
+- **WHEN** Workflow 已有排队或活动 session，用户将 enabled 改为 false
+- **THEN** 后续新触发被拒绝，已有 session 不因该变更被隐式取消
+
+#### Scenario: 修改定时间隔
+
+- **WHEN** 用户保存有效的新 interval_seconds
+- **THEN** 后续调度使用新间隔，遵守单 Workflow 定时不重叠规则，不集中补发此前错过的触发

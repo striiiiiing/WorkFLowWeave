@@ -1,6 +1,6 @@
 # Workflow 模块设计（v0.1）
 
-依据：[模块 proposal](./proposal.md)、[根 proposal](../../proposal.md) §2.1、§3，以及[根设计](../../design.md) §3.1–§3.7、§4。公共配置及结果对象使用 `logagent/models.py`，本模块统一负责流程推进和恢复策略。
+依据：[模块 proposal](./proposal.md)、[根 proposal](../../proposal.md) §2.1、§3，以及[根设计](../../design.md) §4.1–§4.2、§5。公共配置及结果对象使用 `logagent/models.py`，本模块统一负责流程推进和恢复策略。
 
 ## 1. 职责与结构
 
@@ -67,7 +67,7 @@ Collector 管理自己的来源内部处理；AI 管理模型和工具；网关�
 ```python
 class WorkflowService:
     async def validate(self, definition: WorkflowDefinition) -> None: ...
-    async def save(self, definition: WorkflowDefinition) -> WorkflowDefinition: ...
+    async def save(self, definition: WorkflowDefinition, *, mode="upsert") -> WorkflowDefinition: ...
     async def trigger(self, workflow_id: str) -> SessionRecord: ...
     async def wait(self, session_id: str) -> SessionRecord: ...
     async def resume(self, session_id: str) -> SessionRecord: ...
@@ -75,7 +75,7 @@ class WorkflowService:
     async def shutdown(self) -> None: ...
 ```
 
-`save()` 在完整语义校验后调用 `ResourceStore.save()`；`trigger()` 读取并校验 `ResourceStore.snapshot()`，创建存档管理记录，然后提交受控执行任务。返回 session 只代表请求已接受，业务成败通过查询或 `wait()` 得到。
+`save()` 在完整语义校验后以同一 `mode` 调用 `ResourceStore.save()`，使 create/replace/upsert 的存在性约束在提交边界生效；`trigger()` 读取并校验 `ResourceStore.snapshot()`，创建存档管理记录，然后提交受控执行任务。返回 session 只代表请求已接受，业务成败通过查询或 `wait()` 得到。
 
 `snapshot()` 返回公共 `WorkflowSnapshot`，其中 `workflow: WorkflowDefinition`、`sources: dict[str, SourceConfig]`、`ai: dict[str, AIConfig]`、`channels: dict[str, ChannelConfig]` 和 `created_at` 均为本次确定的副本。来源的 Setter 已展开；图通过快照属性和资源 ID 取配置，后续阶段不重新读取 ResourceStore。`ArchiveStore.create()` 接收该完整快照。
 

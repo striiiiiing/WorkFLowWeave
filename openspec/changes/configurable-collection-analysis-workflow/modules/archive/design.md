@@ -1,6 +1,6 @@
 # 运行记录与存档模块：设计
 
-依据 [模块提案](./proposal.md)、[总体设计](../../design.md) §1.6、§3.6 和 [配置模块设计](../configuration/design.md)。
+依据 [模块提案](./proposal.md)、[总体设计](../../design.md) §1.6、§4.1–§4.2 和 [配置模块设计](../configuration/design.md)。
 实现位于 `logagent/archive.py`，公共模型复用 `logagent/models.py`。
 
 ## 1. 系统架构
@@ -28,7 +28,7 @@ Workflow 写入阶段产出并决定执行与恢复；历史 Collector 和 API �
 `snapshot_sha256` 是创建时规范化快照 JSON 的 SHA-256，阻止同一 session 换用最新配置；即使关闭快照备份也只保存摘要，不复制快照正文。
 备份策略独立于 snapshot 保存，关闭配置备份后仍能判断范围与保留期限。
 管理记录保存摘要、错误、投递记录和索引，不复制被关闭备份的正文或凭据。
-四个阶段的 JSON 正文严格使用总体设计 §3.6 的固定字段；snapshot 是 WorkflowSnapshot，collection 使用 shared_input/results，analysis 使用 order/results/events，final 使用 outputs/fan_in。正文不另套执行器专用对象。
+四个阶段的 JSON 正文严格使用[数据模型](../../contracts/data-models.md) §5 的固定字段；snapshot 是 WorkflowSnapshot，collection 使用 shared_input/results，analysis 使用 order/results/events，final 使用 outputs/fan_in。正文不另套执行器专用对象。
 写入与读取都验证必填字段并拒绝未知字段。collection 的来源 ID 唯一；analysis 的 order 和结果任务 ID 各自唯一，结果必须属于 order，允许只保存已完成分支；final 的 output ID 唯一，每条通知必须属于当前 session。
 
 ## 2. 技术选型（ADR）

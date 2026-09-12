@@ -1,6 +1,6 @@
 # 数据采集模块提案（v0.1）
 
-本模块依据 [根 proposal.md](../../proposal.md) §2.1「数据采集模块」、§3「验收标准」及 [根 design.md](../../design.md) §1.3、§3.3。详细契约与测试场景见 [design.md](./design.md)。
+本模块依据 [根 proposal.md](../../proposal.md) §2.1「数据采集模块」、§3「验收标准」及 [根 design.md](../../design.md) §1.3、§4.2。详细契约与测试场景见 [design.md](./design.md)。
 
 ## 1. 要解决的问题
 
