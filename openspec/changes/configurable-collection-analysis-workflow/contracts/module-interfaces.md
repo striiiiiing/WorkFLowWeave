@@ -13,7 +13,7 @@
 | 原因可识别 | 无效输入、不存在、冲突、容量不足、基础设施不可用和执行失败有不同语义。 |
 | 状态如实表达 | 正常空、过滤后空、失败、超时、取消和投递不确定性不能互相替代。 |
 | 运行事实关联 | 结果携带来源、任务、输出或 session 标识，调用方能关联完整运行。 |
-| 有界等待与取消 | 采集、模型、工具和通知不无限等待；取消生效后不启动新的下游工作。 |
+| 有界等待与取消 | 采集、模型和通知不无限等待；取消生效后不启动新的下游工作。 |
 
 ## 2. 配置与资源管理
 
@@ -23,6 +23,11 @@
 class ConfigurationReader:
     async def load_system(self, location: str) -> SystemConfig: ...
     async def load_plugin_config(self, location: str) -> JSONObject: ...
+
+class CredentialManager:
+    async def initialize(self, config: SystemConfig) -> None: ...
+    async def protect(self, plaintext: str) -> EncryptedCredential: ...
+    async def resolve(self, credential: Credential) -> str: ...
 
 class ResourceStore:
     async def save(self, kind: ResourceKind, model: Resource,
@@ -45,9 +50,11 @@ Resource = SourceConfig | SetterTemplate | AIConfig | ChannelConfig | WorkflowDe
 | `get/list` | 返回独立资源视图；列表按 ID 稳定排序。损坏资源明确报错，不默认为不存在。 |
 | `delete` | 被引用时返回冲突，不连带删除引用方。与并发保存协调，保证提交后的引用有效。 |
 | `resolve` | 为尚未保存的定义装配完整快照，供业务验证；没有资源写入副作用。 |
-| `snapshot` | 从一致资源视图取得已保存 Workflow 的完整有效配置；缺失或错配引用使整体失败。 |
+| `snapshot` | 从一致资源视图取得已保存 Workflow 的完整配置；资源记录缺失或错配仍报告错误，但不重新验证插件可用性，Collector 缺失或加载失败不阻止生成快照。 |
 
 Source/Setter 交由采集模块校验，AI 交由 AI 模块校验，Channel 交由网关校验；Workflow 保存由其服务统一组织。被引用资源的更新必须重新验证受影响关系，不能留下“单个资源合法、引用它的 Workflow 已无效”的状态。具体协调机制由实现选择。
+
+`CredentialManager.initialize` 按数据模型 §2.5 的优先级读取主密钥，仅满足首次初始化条件时生成；已有密文缺少原主密钥时报告原因并保留密文。`protect` 返回认证加密封套，不保存或回显明文；供本地配置准备和受控导入流程使用，不新增返回明文的 HTTP 路由。`resolve` 仅向运行时调用模块返回解析值；环境变量缺失、密钥不可用或解密失败均明确报错。资源及存档只保存 Credential，诊断和日志独立脱敏。
 
 资源保存成功后，新运行可取得新配置；已有 session 的快照保持不变。文件布局、缓存及一致性实现不属于本契约。
 
@@ -71,20 +78,18 @@ class Collector:
     setters_schema: JSONSchema      # 允许使用的 Setter 约束
 
     async def collect(self, options: JSONObject, setters: JSONObject,
-                      context: CollectionContext) -> list[JSONObject]: ...
-    def count(self, items: list[JSONObject]) -> int: ...
-    def format(self, items: list[JSONObject]) -> str: ...
+                      context: CollectionContext) -> CollectorOutput: ...
 ```
 
-`Collector.collect` 提供本次范围内的原始记录，默认计数单位为记录条数；覆盖计数或格式化时必须声明含义。Manager 对 Workflow 提供处理后的统一 `CollectionResult`。插件可把 Setter 用于来源查询，但不能提前丢弃记录后伪装处理前计数。
+`Collector.collect` 负责来源内部的字段选择、过滤、排序、分组、计数和格式化，返回包含处理后 items、text、count、状态及诊断的 CollectorOutput；计数方式和处理顺序由插件公开声明。只返回过滤处理后的数量，不返回或使用过滤前数量。Manager 校验返回结构、补充来源实例关联，形成统一 CollectionResult，不重复处理插件的记录。
 
-`validate` 检查 Collector、选项、已展开 Setter 和能力边界。`collect` 返回事实，不执行 Workflow 的 `stop/skip`。来源内处理采用过滤、稳定排序、字段选择、移除无内容项、分组及格式化的语义顺序，原始与处理后计数使用同一单位；跨来源排列由 Workflow 负责。
+`validate` 用于提交配置时检查 Collector、选项、已展开 Setter 和能力边界，不作为已保存 Workflow 触发时的重新校验门槛。运行时 Collector 未注册或加载失败，Manager 返回 missing 并保留发现错误；执行时参数或结构错误返回 failed。插件用 empty/filtered_empty 区分原本无数据和处理后无内容，无须返回过滤前数量。`collect` 返回事实，不执行 Workflow 的 stop/skip；跨来源排列和 on_missing/on_error 等策略由 Workflow 负责。
 
 `discover` 使一个插件的有效声明整体可见；导入、配置或名称冲突使该插件的声明整体失败，其他插件继续可用。这里保证注册可见性，不承诺隔离插件代码的任意外部副作用。
 
 内置来源包括 `mock`、`logs`、`history`。历史选择支持 Workflow、最近次数、时间和 token 预算，明确计数算法与 `truncate/error` 策略，只按完整记录截取；正常无匹配为 `empty`，必要内容缺失为 `missing`，损坏为 `failed`。日志读取有界，不能为取尾部日志无上限读取全部内容。
 
-## 4. AI 与工具
+## 4. AI
 
 **调用方：** Workflow 分支、可选汇总和后续 Agent。调用者显式提供任务和配置，不要求创建 Workflow session 才能调用 AI。
 
@@ -94,26 +99,13 @@ class AIService:
     async def execute(self, config: AIConfig, prompt: str, input_text: str,
                       *, task_id: ID,
                       context: ExecutionContext | None = None) -> AnalysisResult: ...
-
-class ToolRegistry:
-    def register(self, definition: ToolDefinition, handler: "ToolHandler") -> None: ...
-    def describe(self) -> list[ToolDefinition]: ...
-
-class ToolHandler:
-    async def execute(self, arguments: JSONObject,
-                      context: ExecutionContext | None) -> JSONValue: ...
-
-class EventSink:
-    async def emit(self, event: JSONObject) -> None: ...
 ```
 
 `execute` 将每个字面 `{input}` 替换为完整输入；没有占位符时在提示词末尾附加输入。系统提示词和用户任务保持角色隔离，JSON 花括号等普通文本不能触发任意模板执行。
 
-工具先验证已注册、被 `AIConfig.tools` 允许且参数满足 schema，再调用 handler。结果保留原调用 ID、耗时与错误；必要事件交给调用者提供的 `EventSink`。Workflow 将可序列化事件纳入分析存档，AI 不直接管理 session。
+`execute` 只从 AIConfig 读取 timeout 和 retries，最多尝试 `1 + retries` 次；timeout 覆盖整次执行的所有请求和重试等待，到期返回 timeout，不因重试重置预算。只重试可重试且确认未成功的暂态失败；配置、认证及不可重试协议错误立即失败，取消后不启动新的请求或重试。Workflow 分支和可选汇总使用其引用的 AI 配置，无额外覆盖优先级。
 
-模型与工具共用总时限，工具轮次、次数和返回大小有界，取消后不启动下一步。首版不提供隐式无限 Agent 循环或任意 shell 执行。具体工具预算默认值和提供方协议细节由模块方案规定，不成为跨模块固定实现。
-
-Mock 和真实模型使用相同结果语义。配置错误在执行前报告；网络、模型协议及工具故障保留明确原因，不能把错误响应当作成功分析文本。
+Mock 和真实模型使用相同结果语义。配置错误在执行前报告；网络及模型协议故障保留明确原因，不能把错误响应当作成功分析文本。
 
 ## 5. Channel 网关
 
@@ -208,12 +200,14 @@ class WorkflowService:
 
 | 接口 | 前置条件与结果 |
 | --- | --- |
-| `validate/save` | 校验来源、展开模板、AI、工具、目标、fan-in 顺序及策略；保存失败不发布半有效定义。 |
-| `trigger` | Workflow 存在、启用且配置有效，容量允许；固定快照并建档，返回已受理的 session。不能接受临时业务配置覆盖。 |
+| `validate/save` | 校验来源、展开模板、AI、目标、fan-in 顺序及策略；保存失败不发布半有效定义。 |
+| `trigger` | Workflow 存在且启用，容量允许；固定快照并建档，返回已受理的 session。不能接受临时业务配置覆盖。 |
 | `wait` | 等待一次运行结束并返回最新记录；取消等待不等于取消 Workflow。 |
 | `resume` | 仅恢复有待办的 failed/partial/cancelled/interrupted 记录，保持原 ID、快照及创建时间；活动或已完成无待办记录拒绝恢复。 |
 | `cancel` | 取消排队或运行中的工作，状态写回后返回；已取消时幂等，其余不可取消终态返回冲突。 |
 | `shutdown` | 停止新准入，结束或取消活动工作，回收所属后台任务；可重复调用。 |
+
+触发不重新校验插件可用性；已保存 Workflow 引用的 Collector 缺失或加载失败时，进入采集阶段，由 Manager 返回 missing，Workflow 按来源的 on_missing 停止或跳过并记录原因。新提交配置的校验规则仍由 validate/save 执行。
 
 执行阶段为 `collect → analyze → aggregate → notify → finish`，是业务状态顺序，不要求特定图执行器。每完成阶段保存事实，分析分支结果可增量保存，最终排列仍采用配置顺序。
 

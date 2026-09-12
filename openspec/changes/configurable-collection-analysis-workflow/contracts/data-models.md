@@ -16,7 +16,7 @@ UTCDateTime = datetime            # 带时区的 UTC 时间；对外表示为 IS
 Seconds = float                  # 正的有限秒数，不接受布尔值或数字字符串
 JSONValue = str | int | float | bool | None | list["JSONValue"] | dict[str, "JSONValue"]
 JSONObject = dict[str, JSONValue]  # JSON 对象；数值必须有限
-JSONSchema = JSONObject           # 对扩展字段或工具参数的结构化约束描述
+JSONSchema = JSONObject           # 对扩展字段的结构化约束描述
 
 ResourceKind = Literal["sources", "setters", "ai", "channels", "workflows"]
 SaveMode = Literal["create", "replace", "upsert"]  # 仅创建、仅替换、存在则替换否则创建
@@ -46,6 +46,8 @@ class SystemConfig:
     port: int                    # 服务监听端口，1–65535；默认 8000
     max_concurrent_runs: int     # 同时活动的运行上限，至少 1；默认 4
     log_file: str | None         # 可选日志输出位置；None 不表示禁止诊断日志
+    master_key_env: EnvironmentName # 主密钥环境变量名；默认 LOGAGENT_MASTER_KEY
+    master_key_file: str          # 主密钥文件位置；默认 master.key
 ```
 
 系统相对路径以系统配置文件所在位置为基准。来源和插件自己的路径含义必须由其能力声明解释，不能仅凭字段叫 `path` 就统一改写。运行快照应固定执行所需的有效位置，避免工作目录改变其含义。
@@ -55,13 +57,13 @@ class SystemConfig:
 ```python
 class SourceConfig:
     id: ID                          # 数据源实例 ID，同一种 Collector 可以有多个实例
-    collector: ID                   # 已注册 Collector 的能力名称
+    collector: ID                   # Collector 能力名称；运行时不可用按 on_missing 处理
     options: JSONObject             # 连接、范围等来源选项；默认空对象
     setters: JSONObject             # 实例指定的字段、过滤、排序、分组等设置；默认空对象
     template: ID | None             # 引用 SetterTemplate；默认 None
     timeout: Seconds                # 单来源整体执行时限；默认 30 秒
     on_error: SourcePolicy          # failed/timeout 的处理；默认 stop
-    on_missing: SourcePolicy        # 缺失来源或必要历史内容的处理；默认 stop
+    on_missing: SourcePolicy        # Collector 缺失/加载失败、来源或必要历史内容缺失的处理；默认 stop
     on_empty: SourcePolicy          # 原始范围无记录的处理；默认 skip
     on_filtered_empty: SourcePolicy # 原始有记录但处理后无内容的处理；默认 skip
 
@@ -81,14 +83,14 @@ class AIConfig:
     provider: ID                    # 已支持的提供方；首版 mock/http，默认 mock
     model: str                      # 非空模型名称；默认 mock
     base_url: str | None            # 提供方访问地址；离线模式可为空
-    api_key_env: EnvironmentName | None  # 凭据环境变量名；不保存解析后的值
+    api_key: Credential | None      # 环境变量引用或主密钥保护的密文；默认 None
     system_prompt: str              # 独立系统提示词；默认空字符串
     model_options: JSONObject       # 经提供方验证的模型参数；默认空对象
-    tools: list[ID]                 # 本次配置允许使用的已注册工具名称；默认空列表
-    timeout: Seconds                # 模型和工具的总执行时限；默认 60 秒
+    timeout: Seconds                # 本次分析总时限，含所有尝试和重试等待；默认 60 秒
+    retries: int                    # 首次失败后的额外尝试上限，非负；默认 0
 ```
 
-顶层和模型扩展参数都拒绝 `temperature`、`top_k`。扩展参数不得覆盖服务管理的消息、工具、模型标识、认证、地址或执行预算。工具名称唯一且已注册。快照固定凭据引用，不承诺永久保留某一秘密值；恢复时所引用凭据不可用则明确报错。
+顶层和模型扩展参数都拒绝 `temperature`、`top_k`。扩展参数不得覆盖服务管理的消息、模型标识、认证、地址或执行预算，仅接收本期声明支持的模型参数。timeout 和 retries 可通过 JSON 配置导入或 AI 资源 API 保存；分支与汇总引用相应 AIConfig，不提供 Workflow 或 AnalysisTask 层的覆盖值。最多尝试 `1 + retries` 次，总时限不随重试重置，耗尽后返回 timeout。凭据保存和恢复遵循 §2.5。
 
 ### 2.4 Channel 配置
 
@@ -96,13 +98,35 @@ class AIConfig:
 class ChannelConfig:
     id: ID                          # 具体通知目标的实例 ID
     channel: ID                     # 已注册的 Channel 类型名称
-    options: JSONObject             # 路径、收件人、连接与凭据引用等；由类型校验
+    options: JSONObject             # 路径、收件人、连接与 Credential 等；由类型校验
     timeout: Seconds                # 单次投递尝试时限；默认 30 秒
     retries: int                    # 首次失败后的额外尝试上限，非负；默认 0
     enabled: bool                   # 是否允许投递；默认 True
 ```
 
-目标地址由配置确定，通知正文不能修改目标。邮件等插件通过声明的环境变量引用字段获取凭据，`options` 不能绕过凭据管理要求。未知插件的选项字段以能力 schema 为准，不在公共模型中猜测或穷举。
+目标地址由配置确定，通知正文不能修改目标。邮件等插件的凭据字段使用 §2.5 的 Credential，由配置模块按需解析，`options` 不能绕过凭据管理要求。未知插件的选项字段以能力 schema 为准，不在公共模型中猜测或穷举。
+
+### 2.5 受保护凭据
+
+```python
+class EnvironmentCredential:
+    kind: Literal["env"]           # 环境变量引用
+    name: EnvironmentName          # 保存变量名，不保存解析后的值
+
+class EncryptedCredential:
+    kind: Literal["encrypted"]     # 主密钥保护的凭据
+    format_version: int            # 密文封套格式版本；首版为 1
+    key_id: str                    # 加密使用的主密钥标识，不包含密钥本身
+    ciphertext: str                # 认证加密封套，含算法标识、nonce、密文及认证标签
+
+Credential = EnvironmentCredential | EncryptedCredential
+```
+
+需要持久化的凭据通过配置模块的 `protect` 能力加密，JSON 导入、资源 API、插件配置和快照仅接受环境变量引用或加密后的 Credential，不保存明文。运行时 `resolve` 按需读取环境变量或解密，解析值仅交给实际调用模块，不进入资源返回值、日志、错误响应或存档。
+
+主密钥优先读取 `master_key_env` 指定的环境变量，变量未设置时读取 `master_key_file`；已提供的密钥格式错误或文件不可读时明确报错，不静默切换到新密钥。仅在首次初始化、两处都不存在主密钥且没有既有密文时生成并安全写入指定文件。存在既有密文时必须恢复原主密钥，无法确认是否存在密文时不自动生成。密文损坏、密钥不匹配或认证失败均报错，不覆盖密文。
+
+快照固定环境变量引用或加密封套，不保留解密值；恢复依赖相应环境变量或原主密钥。凭据不可用时报告明确原因，不能改用最新资源中的凭据。备份迁移需同时保留原密文及独立保管的原主密钥。运行时日志脱敏独立于存储加密。
 
 ## 3. Workflow 配置
 
@@ -133,7 +157,7 @@ class WorkflowDefinition:
     fan_in: FanInConfig | None      # 可选汇聚配置；None 表示成功分支分别输出
     channels: list[ID]              # 有序通知目标 ID，不重复；可为空
     input_separator: str            # 来源文本之间的分隔符；默认两个换行
-    include_counts: bool            # 是否附带各来源原始/处理后计数及状态；默认 False
+    include_counts: bool            # 是否附带各来源处理后计数及状态；默认 False
     collection_concurrency: int     # 同一运行的来源并发上限，至少 1；默认 4
     analysis_concurrency: int       # 同一运行的分析并发上限，至少 1；默认 4
     on_all_empty: SourcePolicy      # 全部来源无有效内容时 stop 或 skip；默认 stop
@@ -180,25 +204,28 @@ class ErrorResponse:
 ### 4.2 采集结果
 
 ```python
-class CollectionResult:
-    source_id: ID                  # 对应来源实例 ID
+class CollectorOutput:
     status: CollectionStatus       # 真实采集状态
     items: list[JSONObject]        # 可消费的处理后记录；默认空列表
     text: str                      # 对应可消费文本；默认空字符串
-    count: int                     # 本次范围内处理前计数，非负；未知时不能据 0 推断正常空
-    selected_count: int            # 处理后有效记录计数，非负；与 count 使用同一单位
+    count: int                     # 过滤处理后的有效内容数量，非负；单位由插件声明
     error: ErrorInfo | None        # 失败、超时或缺失原因；正常空与成功为 None
     metadata: JSONObject           # 计数方法、历史截取事实等诊断；默认空对象
+
+class CollectionResult(CollectorOutput):
+    source_id: ID                  # Manager 补充的来源实例 ID；其余字段与插件输出一致
 ```
 
 | 状态 | 数据含义 |
 | --- | --- |
 | `success` | 存在可消费内容，文本不只含空白。 |
-| `empty` | 原始范围没有记录，两项计数为零。 |
-| `filtered_empty` | 原始记录存在，但过滤或内容投影后无内容；保留原始计数。 |
-| `missing` | 指定来源或必要历史正文不存在、未保存或已过期。 |
+| `empty` | 插件确认原始范围没有记录，count 为零。 |
+| `filtered_empty` | 插件确认过滤或内容投影后无内容，count 为零；不返回过滤前数量。 |
+| `missing` | Collector 不存在或加载失败、指定来源或必要历史正文不存在、未保存或已过期。 |
 | `failed` | 来源异常、权限或结构错误、正文损坏等；错误中保留原因。 |
 | `timeout` | 本来源整体时限耗尽，不把未完成数据作为成功输入。 |
+
+只使用处理后 count 进行编排和展示，不采集或推算过滤前数量。empty 与 filtered_empty 由插件状态区分；失败、超时或缺失不能根据 count 为零改判为正常空，未完成的内容不作为成功输入。
 
 ### 4.3 分析结果和投递回执
 
@@ -260,7 +287,6 @@ class CollectionArtifact:
 class AnalysisArtifact:
     order: list[ID]                # fan-out 的声明顺序
     results: list[AnalysisResult]  # 已有分支结果，可增量保存成功和失败项
-    events: list[JSONObject]       # 可序列化工具事件等，不含回调或执行器对象
 
 class FinalArtifact:
     outputs: list[Notification]    # 有序、稳定输出 ID 及确定正文
@@ -301,9 +327,9 @@ class SessionArchiveEnvelope:
 | `cancelled` | 取消已生效，后续阶段不再启动。 |
 | `interrupted` | 生命周期检查发现先前运行未正常结束。 |
 
-## 6. 能力描述、工具和上下文
+## 6. 能力描述和上下文
 
-下列辅助对象补齐发现、工具和上下文接口的语义返回形状；不表示这些类型已经实现。插件的专属选项由 `options_schema`、`setters_schema` 描述，插件自己的每个可配置字段都必须在 schema 中有类型和说明。
+下列辅助对象补齐发现和上下文接口的语义返回形状；不表示这些类型已经实现。插件的专属选项由 `options_schema`、`setters_schema` 描述，插件自己的每个可配置字段都必须在 schema 中有类型和说明。
 
 ```python
 class CapabilityDescription:
@@ -320,28 +346,10 @@ class DiscoveryReport:
     registered: list[CapabilityDescription] # 已生效的有效声明
     errors: list[ErrorInfo]         # 逐插件隔离的发现错误
 
-class ToolDefinition:
-    name: ID                       # 工具注册名称
-    description: str               # 供选择与模型调用使用的说明
-    parameters: JSONSchema         # 工具输入参数的全部字段约束
-
-class ToolCall:
-    call_id: str                   # 一次工具调用的关联 ID
-    name: ID                       # 请求的已注册且已允许工具
-    arguments: JSONObject          # 已解析参数，执行前必须校验
-
-class ToolResult:
-    call_id: str                   # 与原请求一致的调用 ID
-    name: ID                       # 对应工具名称
-    result: JSONValue              # 可序列化返回内容；出错时可为 None
-    error: ErrorInfo | None        # 保留工具错误；成功时为空
-    elapsed_ms: float              # 工具调用耗时，非负有限毫秒数
-
 class ExecutionContext:
     workflow_id: ID | None         # 可选关联 Workflow；独立 AI 调用可为空
     session_id: ID | None          # 可选关联运行；不要求 AI 绑定 Workflow
     stage: WorkflowStage | None    # 可选关联阶段
-    event_sink: "EventSink | None" # 可选事件接收能力，仅运行时传递
 
 class CollectionContext:
     workflow_id: ID                # 当前 Workflow 标识
@@ -350,7 +358,7 @@ class CollectionContext:
     log_path: str | None           # 已确定的工具日志来源位置
 ```
 
-`EventSink`、`ArchiveReader` 在 [模块接口](./module-interfaces.md) 中定义。执行上下文中的依赖引用只供当前调用使用，不成为持久化数据的一部分。
+`ArchiveReader` 在 [模块接口](./module-interfaces.md) 中定义。执行上下文中的依赖引用只供当前调用使用，不成为持久化数据的一部分。
 
 ## 7. 健康结果
 
@@ -369,4 +377,4 @@ class HealthReport:
     components: list[ComponentHealth] # 各组件的可用范围与原因
 ```
 
-服务可降级但仍接收不依赖故障插件的任务。未知远端状态不等于已验证连通；健康查询不隐式采集数据、调用付费模型或发送通知。具体健康规则见 [总体设计 §5.3](../design.md#53-可运维设计)。
+服务可降级并接收运行；已保存 Workflow 引用不可用 Collector 时，由采集阶段返回 missing 并按 on_missing 处理。未知远端状态不等于已验证连通；健康查询不隐式采集数据、调用付费模型或发送通知。具体健康规则见 [总体设计 §5.3](../design.md#53-可运维设计)。
