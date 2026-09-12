@@ -15,7 +15,7 @@
 
 ## 2. 运行记录与存档
 
-- [ ] 2.1 完成 [运行记录与存档 tasks](./modules/archive/tasks.md) 的四项任务；验证：`rtk proxy uv run pytest tests/test_archive.py -q` 通过并独立提交。
+- [x] 2.1 完成 [运行记录与存档 tasks](./modules/archive/tasks.md) 的四项任务；验证：`rtk proxy uv run --no-sync pytest tests/test_archive.py tests/test_archive_contract.py -q` 65 项通过，全量 134 项通过并独立提交。
 
 ## 3. 数据采集
 
@@ -61,4 +61,4 @@ flowchart LR
 
 ## 当前停止点
 
-2026-09-12：配置与资源管理模块已完成，其余 9 个验收批次尚未完成。按用户最新指示，提交本模块代码、测试及已准备的 proposal/design/tasks 后停止，暂不进入存档模块。后续恢复工作从第 2 批次开始；规划文档的存在不代表功能已经实现。
+2026-09-12：配置与资源管理、运行记录与存档两个模块已完成，其余 8 个验收批次尚未完成。按用户“再来一个模块”的指示，提交存档模块代码、测试及 proposal/design/tasks 后停止。后续恢复工作从第 3 批次（数据采集）开始；规划文档的存在不代表功能已经实现。
