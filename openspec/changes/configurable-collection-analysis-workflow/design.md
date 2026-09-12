@@ -165,11 +165,11 @@ Workflow 定义描述可重复执行的配置，Workflow session 描述其中一
 
 ### 3.6 存档与 Workflow
 
-`ArchiveStore(root)` 提供 `create(workflow_id, snapshot, backup)`、`get(session_id)`、`list(workflow_id=None, limit=...)`、`update(session_id, **changes)`、`save_artifact(session_id, name, content)`、`load_artifact(session_id, name)`、`availability(session_id)` 和 `expire()`。管理记录总是持久化；内容备份受策略控制。内容写入成功后才能更新索引；读取核验完整性，缺失、关闭、过期、损坏、写入失败分别保留原因。
+`ArchiveStore(root)` 提供 `create(workflow_id, snapshot, backup)`、`get(session_id)`、`list(workflow_id=None, limit=100)`、`update(session_id, **changes)`、`save_artifact(session_id, name, content)`、`load_artifact(session_id, name)`、`availability(session_id)`、`mark_interrupted()` 和 `expire()`。list 的 limit=None 表示不限制数量；服务启动且尚未接收任务时显式调用 mark_interrupted，不在普通查询中改写运行状态。管理记录总是持久化；内容备份受策略控制。内容写入成功后才能更新索引；读取核验完整性，缺失、关闭、过期、损坏、写入失败分别保留原因。
 
 每个 session 的目录包含 `record.json`、可选 `snapshot.json`、`collection.json`、`analysis.json`、`final.json`。采集存档包含共享输入及各来源结果，分析存档包含声明顺序与成功/失败分支。备份失败先尝试写入缺失记录，再按 `on_failure` 决定停止或继续；管理记录本身不可写时返回存档不可用，不能谎报可恢复。
 
-阶段 JSON 正文固定为：`snapshot` 使用 `WorkflowSnapshot.model_dump(mode="json")`；`collection` 为 `{"shared_input": str, "results": list[CollectionResult]}`；`analysis` 为 `{"order": list[str], "results": list[AnalysisResult], "events": list[dict]}`；`final` 为 `{"outputs": list[Notification], "fan_in": AnalysisResult | null}`。模型在写入前转为 JSON 值；正文无执行器私有对象，历史采集和后继执行器共用这些字段。格式版本与备份策略在管理文件封套中保存。
+阶段 JSON 正文固定为：`snapshot` 使用 `WorkflowSnapshot.model_dump(mode="json")`；`collection` 为 `{"shared_input": str, "results": list[CollectionResult]}`；`analysis` 为 `{"order": list[str], "results": list[AnalysisResult], "events": list[dict]}`；`final` 为 `{"outputs": list[Notification], "fan_in": AnalysisResult | null}`。模型在写入前转为 JSON 值；正文无执行器私有对象，历史采集和后继执行器共用这些字段。管理文件封套保存必填的 `format_version: 1`、备份策略、SessionRecord 和原始快照的 `snapshot_sha256`，不复制阶段正文。存储及恢复规则详见 [存档模块设计](./modules/archive/design.md)。
 
 `WorkflowService` 提供 `validate(definition)`、`save(definition)`、`trigger(workflow_id)`、`wait(session_id)`、`resume(session_id)`、`cancel(session_id)` 与 `shutdown()`。触发分配 session 并排队受全局并发上限约束。单 Workflow 定时触发不重叠；调度按单调时钟推进，服务重启不补发全部错过的触发。
 
