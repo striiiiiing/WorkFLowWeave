@@ -24,16 +24,22 @@
 
 以下模板尽可能解耦
 
-#### 数据采集模块
+#### 配置模块
 
-- 实现数据采集模块。扩展采集器放在插件根目录的独立子目录中，每个目录以 `plugin.json` 声明 `kind: collector` 和 `entry.backend`；配置模块读取该 JSON、导入指向的入口 `.py`，再调用入口导出的 `plugin.register(api)` 自动注册 Collector，并向数据采集模块发布只读 `collectorRegister`。
-
+每个目录以 `plugin.json` 声明 `kind: collector` 或者 `kind: channel` 和 `entry.backend`；配置模块读取该 JSON、导入指向的入口 `.py`，再调用入口导出的 `plugin.register(api)` 自动注册 Collector，并向数据采集模块发布只读 `collectorRegister`。如下
   ```text
   plugins/
     my_collector/
       plugin.json
       main.py
   ```
+其会为数据采集提供collectorRegister和channelRegister
+同时，读取其他的配置
+
+
+#### 数据采集模块
+
+- 实现数据采集模块。扩展采集器放在插件根目录的独立子目录中，
 
   - Collectors应该作为协程，如果它有需要，可以在实现时再开后台线程
 - 配置区分为系统级配置和插件级配置
@@ -62,16 +68,7 @@
 
 #### channel网关模块
 
-- 扩展 channel 也使用独立插件目录，`plugin.json` 声明 `kind: channel` 与目录内的 `entry.backend`；配置模块完成 `plugin.register(api)` 后，把 `channelRegister` 注入 Channel 网关。一个目录可以注册多个同类 channel。
-
-  ```text
-  plugins/
-    my_channel/
-      plugin.json
-      channel.py
-  ```
-
-  - channel应该作为协程，如果它有需要，可以在实现时再开后台线程
+- channel应该作为协程实现
 - 借鉴其他成熟Agent的channel的管理，这里借鉴的是Qwenpaw的
 - 将channel按能力区分
 
