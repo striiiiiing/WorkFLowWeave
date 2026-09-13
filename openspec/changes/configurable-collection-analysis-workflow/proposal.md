@@ -26,16 +26,23 @@
 
 #### 数据采集模块
 
-- 实现数据采集模块，用户只要运行前在插件文件夹的Collectors文件夹内添加自己的Collector文件，就可以自动添加新的Collector
+- 实现数据采集模块。扩展采集器放在插件根目录的独立子目录中，每个目录以 `plugin.json` 声明 `kind: collector` 和 `entry.backend`；配置模块读取该 JSON、导入指向的入口 `.py`，再调用入口导出的 `plugin.register(api)` 自动注册 Collector，并向数据采集模块发布只读 `collectorRegister`。
+
+  ```text
+  plugins/
+    my_collector/
+      plugin.json
+      main.py
+  ```
 
   - Collectors应该作为协程，如果它有需要，可以在实现时再开后台线程
 - 配置区分为系统级配置和插件级配置
-- 采用一个数据源插件，给系统注册多个数据源可选项，以供WorkFlow模块选择
+- 采用一个数据源插件，给系统注册多个数据源可选项，以供 Workflow 模块选择
 - 用户可以选择按照什么字段分组，选择哪些字段等等Collector提供的功能。这部分调用用户添加的自己的Collector
 
   - 这里类似于Setter 注入，要注入了Setter才可使用，Setter若用户点击保存为模板，可以保存下来，以便用户复用
 
-#### WorkFlow模块
+#### Workflow 模块
 
 - 触发可以是内置定时器，也可以是外部的触发，比如WebHook，但是外部的触发这里下一版再写
 - 对用户选择好的数据采集源后，提供细化的配置
@@ -50,12 +57,19 @@
 
 #### 简易Agent模块
 
-- 带有Model及其配置和系统提示词，这个是需要实现的，提供给前面的WorkFlow模块用的
-- 后继可以将将WorkFlow模块的结果，前面添加上可以是系统默认，可以是用户指定的提示词作为系统提示词的部分（即系统提示词模板填充），然后允许用户在双向的channel进行进一步的讨论。这一版不实现，仅仅留有接口
+- 带有Model及其配置和系统提示词，这个是需要实现的，提供给前面的 Workflow 模块用的
+- 后继可以将将 Workflow 模块的结果，前面添加上可以是系统默认，可以是用户指定的提示词作为系统提示词的部分（即系统提示词模板填充），然后允许用户在双向的 channel 进行进一步的讨论。这一版不实现，仅仅留有接口
 
 #### channel网关模块
 
-- 用户在运行前在插件文件夹的channel文件内添加自己的channel文件，就可以自动添加新的channel
+- 扩展 channel 也使用独立插件目录，`plugin.json` 声明 `kind: channel` 与目录内的 `entry.backend`；配置模块完成 `plugin.register(api)` 后，把 `channelRegister` 注入 Channel 网关。一个目录可以注册多个同类 channel。
+
+  ```text
+  plugins/
+    my_channel/
+      plugin.json
+      channel.py
+  ```
 
   - channel应该作为协程，如果它有需要，可以在实现时再开后台线程
 - 借鉴其他成熟Agent的channel的管理，这里借鉴的是Qwenpaw的
@@ -64,8 +78,8 @@
   > 我认为对于workflow，实际上是只要有通知，是单向的，而agent应该是另外一个双向的交流，否则用户体验会很糟糕，先在交流着，然后一个消息发过来，然后对话就切换了 当然，也不一定要完全锁死进入的信息，可能可以在workflow那部分的网关进行一些系统配置相关，当然，我希望这个是可选项，如此便于利用一些只读的网关
   >
 
-  - NotificationChannel，实现`publish()`，适合只读 Webhook、邮件、机器人推送，用于WorkFlow的通知
-  - ControlChannel，实现`publish()`的同时，实现对指令的receive()，当然，这个后面再实现
+  - NotificationChannel，实现单条异步 `send()`，适合只读 Webhook、邮件、机器人推送，用于 Workflow 的通知
+  - ControlChannel，在单条异步`send()`之外实现对指令的receive()，当然，这个后面再实现
   - ConversationChannel，实现 `receive()`、`reply()` 和会话路由，显然，它也是NotificationChannel
   - 一个插件可以同时注册三种不同的channel
 
@@ -81,7 +95,7 @@
 - 所有期望下一版再完成的任务
 - 数据采集模块
   - 复杂的父类，该版默认进行的数据采集较为简单
-- WorkFlow模块
+- Workflow 模块
   - 温度和top_k的选项
 - 简易Agent模块
   - 实现完整的Agent模块，这个是后面考虑的
@@ -104,7 +118,7 @@
 
 ### 功能验收
 
-1. 系统启动时能够读取系统级配置和插件级配置，并自动发现 `Collectors` 文件夹中的有效 Collector；重复注册、配置无效或加载失败时给出可识别的错误，不影响其他有效 Collector 的发现。
+1. 系统启动时配置模块能够读取系统级配置和插件级配置，扫描插件根目录各子目录的 `plugin.json`，导入 `entry.backend` 指向的入口 `.py` 并调用 `plugin.register(api)`；它向数据采集模块发布 `collectorRegister`、向 Channel 网关发布 `channelRegister`。重复注册、manifest/默认配置无效或入口加载失败时给出可识别的错误，不影响其他有效插件的发现。
 2. 首版至少提供以下采集源：
 
    - 可选的指定 Workflow 历史记录，用于为当前 Workflow 提供记忆；
@@ -137,7 +151,7 @@
 
 ### 边界场景
 
-- Collector 文件不存在、无法导入、重复注册或来源专属配置缺失时，系统应记录明确原因，并按照 Workflow 配置跳过并在日志里提示；其他 Collector 仍可被发现。
+- 已引用插件缺失、插件目录的 `plugin.json` 无效或缺失、`entry.backend` 无法导入、入口对象缺失或重复注册时，系统应记录明确原因；失败插件不进入 `collectorRegister` 或 `channelRegister`，其他插件仍可被发现。已保存 Workflow 运行时按其缺失策略处理对应来源。来源实例的专属配置无效时拒绝该实例的提交，不撤销插件的有效注册。
 - 单个来源成功但没有条目、经过字段选择或过滤后没有条目，以及所有来源都没有内容，应分别记录并执行对应策略；不得把失败伪装成空结果。
 - 历史记录超过次数、时间或 token 限制时，只能按配置截取或报告超限，不能静默破坏输入边界。
 - 某个 fan-out 分析任务失败时，其他任务的结果仍应按配置保留；fan-in 开启时用户可选标明输入不完整，fan-in 关闭时按用户配置决定允许分别发送成功结果。
@@ -154,7 +168,7 @@
 - [ ] 设计类似于HolmesGPT的YAML Toolset，将数据采集的部分模块加工为工具，同时提供简易Agent模块选择
 - [ ] 实现各种指令配置
 - [ ] 去掉langGraph
-- [ ] WorkFlow设计评估效果模块，以便用户对于流程、提示词和模型进行修改和选型
+- [ ] Workflow 设计评估效果模块，以便用户对于流程、提示词和模型进行修改和选型
 - [ ] 实现一个漂亮的前端
 - [ ] 前端采用画布式设计
 
@@ -162,10 +176,11 @@
 
 |术语|定义|
 | -------------------| ---------------------------------------------------------------------------------------------------------|
-|Collector（采集器）|封装一种数据来源访问能力的插件，可以通过 CLI、API、文件或其他方式获取数据，并提供自己的配置项和结果字段。|
+|Collector（采集器）|由 collector 插件通过配置模块注册的一种数据来源访问能力，可以通过 CLI、API、文件或其他方式获取数据，并提供自己的配置项和结果字段。|
 |数据源实例|某个 Collector 加上一次具体的连接、范围和查询设置，例如一个 GitHub 仓库或一个 RSS 地址。|
 |系统级配置|对整个服务生效的配置，例如运行参数、公共连接信息、插件位置和默认策略。|
-|插件级配置|随 Collector 或 Channel 插件提供的配置，用于声明该插件可用的来源、字段和选项。|
+|插件清单|每个插件目录的 `plugin.json`，声明标识、版本、`kind` 与 `entry.backend`；配置模块据此导入入口并调用 `plugin.register(api)` 注册能力。|
+|插件级配置|插件根目录可选的 `config.json`，按插件设置启用状态和已注册能力的 options 默认值；实际能力、字段和选项约束由注册声明提供。|
 |Setter|Collector 暴露的可配置设置项或设置注入能力；只有 Collector 声明并接收的 Setter 才能被 Workflow 使用。|
 |Workflow|用户预先配置并按固定流程执行的采集、编排、AI 分析、结果汇聚和通知任务。|
 |Workflow session|一次 Workflow 运行的完整上下文标识，用于关联采集输入、分析结果、fan-in 结果、通知状态和备份内容。|
@@ -178,7 +193,7 @@
 |NotificationChannel|只提供向外发布消息能力的 channel，用于 Workflow 通知，例如邮件或 Mock Channel。|
 |ControlChannel|在发布能力之外接收系统指令的 channel；本期只保留设计余地。|
 |ConversationChannel|提供接收、回复和会话路由能力的双向 channel；本期只保留与 Agent 对接的设计余地。|
-|ChannelManager|负责发现、注册、配置、管理和调用多个 channel 实例的管理模块。|
+|ChannelManager|消费配置模块注入的 `channelRegister`，校验配置、管理并调用多个 channel 实例；不扫描或注册插件。|
 |BaseChannel|channel 的通用基类，约束公共生命周期和能力边界，具体平台行为由插件实现。|
 |简易 Agent|后续版本提供的轻量对话执行者，可复用 AI 配置及 Workflow session，并支持工具调用；本期不实现完整的双向 Agent 功能。|
 
