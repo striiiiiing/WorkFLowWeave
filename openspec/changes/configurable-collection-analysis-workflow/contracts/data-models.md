@@ -19,6 +19,7 @@ JSONObject = dict[str, JSONValue]  # JSON 对象；数值必须有限
 JSONSchema = JSONObject           # 对扩展字段的结构化约束描述
 
 ResourceKind = Literal["sources", "setters", "ai", "channels", "workflows"]
+PluginKind = Literal["collector", "channel"]
 SaveMode = Literal["create", "replace", "upsert"]  # 仅创建、仅替换、存在则替换否则创建
 SourcePolicy = Literal["stop", "skip"]            # 停止运行或跳过当前来源
 ContinuePolicy = Literal["stop", "continue"]      # 停止下游或按允许范围继续
@@ -99,8 +100,7 @@ class ChannelConfig:
     id: ID                          # 具体通知目标的实例 ID
     channel: ID                     # 已注册的 Channel 类型名称
     options: JSONObject             # 路径、收件人、连接与 Credential 等；由类型校验
-    timeout: Seconds                # 单次投递尝试时限；默认 30 秒
-    retries: int                    # 首次失败后的额外尝试上限，非负；默认 0
+    timeout: Seconds                # 单次准备、启动和发送的总时限；默认 30 秒
     enabled: bool                   # 是否允许投递；默认 True
 ```
 
@@ -249,7 +249,7 @@ class DeliveryResult:
     channel_id: ID                 # 本条回执对应的目标实例 ID
     output_id: ID                  # 本条回执对应的输出 ID
     status: DeliveryStatus         # 投递状态：success/failed/timeout/skipped
-    attempts: int                  # 实际开始的尝试次数，非负；禁用目标为 0
+    attempts: int                  # 本次调用进入插件 send 为 1，否则为 0；不累计恢复调用次数
     error: ErrorInfo | None        # 平台错误或不确定性；成功/跳过时为 None
 ```
 
@@ -332,8 +332,32 @@ class SessionArchiveEnvelope:
 下列辅助对象补齐发现和上下文接口的语义返回形状；不表示这些类型已经实现。插件的专属选项由 `options_schema`、`setters_schema` 描述，插件自己的每个可配置字段都必须在 schema 中有类型和说明。
 
 ```python
+class PluginManifest:
+    id: ID                         # 稳定插件标识；同 kind 内唯一
+    version: str                   # 非空插件版本，用于诊断
+    kind: PluginKind               # collector 或 channel
+    api_version: int               # 注册协议版本；首版为 1，未知版本拒绝加载
+    entry: PluginEntry             # 插件目录内的入口声明
+
+class PluginEntry:
+    backend: str                   # 必填；插件目录内相对 .py 路径，例如 main.py
+
+class PluginSettings:
+    enabled: bool                  # 是否注册该插件；默认 True
+    defaults: dict[ID, JSONObject]  # 能力名到实例 options 默认值；默认空对象
+
+# plugins/config.json；缺失相当于两个 kind 均无覆盖。
+PluginConfiguration = dict[PluginKind, dict[ID, PluginSettings]]
+```
+
+每个插件是含 `plugin.json` 的目录。配置模块先读取 manifest，再导入 `entry.backend` 指定的 `.py`；该模块必须导出 `plugin` 对象，其 `register(api)` 方法接收随 kind 收窄的注册 API。插件的能力、schema 和实现只通过该 API 声明，manifest 不重复列出能力。插件设置以 `(kind, plugin_id)` 定位；defaults 必须对应本插件注册的能力，并按其 options_schema 校验已提供字段（必填项可由实例补齐）。这些默认值在保存实例时展开并持久化，不在执行时读取可变插件设置。
+
+manifest、入口导入或声明失败只隔离该插件并记录 DiscoveryReport.errors；配置模块以 `(kind, name)` 唯一索引，拒绝覆盖内置能力。单插件全部声明验证通过才发布，按 owner 清理类型、schema 和工厂，再发布不可变 `collectorRegister`/`channelRegister`。发现流程见 [配置模块](../modules/config/design.md#插件发现与注册)。
+
+```python
 class CapabilityDescription:
-    name: ID                       # 注册能力的唯一名称
+    kind: PluginKind               # 能力所属注册表
+    name: ID                       # 在同 kind 注册表内唯一的能力名称
     description: str               # 面向使用者的能力说明
     plugin: str                    # 所属插件标识，不暴露任意宿主路径
     capabilities: list[str]        # 如 collection、notification；只列真实支持项
@@ -356,6 +380,7 @@ class CollectionContext:
     session_id: ID                 # 当前运行标识
     archive: "ArchiveReader"       # 注入的只读存档能力，不允许由此触发历史运行
     log_path: str | None           # 已确定的工具日志来源位置
+    credentials: "CredentialManager" # 只供本次采集按需解析 Credential，不进入存档
 ```
 
 `ArchiveReader` 在 [模块接口](./module-interfaces.md) 中定义。执行上下文中的依赖引用只供当前调用使用，不成为持久化数据的一部分。
