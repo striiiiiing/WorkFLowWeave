@@ -1,0 +1,367 @@
+"""The sole plugin discovery owner; publication is atomic per plugin and view."""
+
+from __future__ import annotations
+
+import asyncio
+import importlib
+import importlib.util
+import inspect
+import re
+import sys
+from collections.abc import Iterable, Mapping
+from copy import deepcopy
+from importlib.machinery import ModuleSpec
+from pathlib import Path, PureWindowsPath
+from types import ModuleType
+from typing import Any
+from uuid import uuid4
+
+from pydantic import ValidationError
+
+from logagent.config.reader import read_json, read_plugin_configuration
+from logagent.config.views import (
+    ChannelRegister,
+    CollectorRegister,
+    _ChannelRegistration,
+    _CollectorRegistration,
+    channel_registration,
+    collector_registration,
+)
+from logagent.errors import LogAgentError, validation_error
+from logagent.models import (
+    DiscoveryReport,
+    ErrorInfo,
+    JSONObject,
+    PluginKind,
+    PluginManifest,
+    PluginSettings,
+    SystemConfig,
+    copy_model,
+)
+from logagent.protocols import ChannelType, Collector
+from logagent.schema import validate_instance
+
+_Registration = _CollectorRegistration | _ChannelRegistration
+_IDENTIFIER = re.compile(r"[A-Za-z0-9_-]{1,80}\Z")
+_KNOWN_REASONS = frozenset(
+    {
+        "configuration_unavailable",
+        "invalid_config",
+        "invalid_schema",
+        "invalid_declaration",
+        "plugin_entry_invalid",
+        "plugin_id_conflict",
+        "registration_conflict",
+        "registration_aborted",
+        "unknown_defaults",
+    }
+)
+
+
+def _safe_name(value: Any) -> str | None:
+    return value if type(value) is str and _IDENTIFIER.fullmatch(value) else None
+
+
+class _RegistrationTransaction:
+    def __init__(self, kind: PluginKind, owner: str, existing: Mapping[str, _Registration]):
+        self.kind = kind
+        self.owner = owner
+        self.existing = existing
+        self.pending: dict[str, _Registration] = {}
+        self.names: list[str] = []
+        self.failed = False
+        self.closed = False
+
+    def add(self, capability: Collector | ChannelType) -> None:
+        if self.closed:
+            raise LogAgentError("registration_aborted", "插件声明事务已经关闭")
+        try:
+            name = _safe_name(getattr(capability, "name", None))
+            if name and name not in self.names:
+                self.names.append(name)
+            registration = (
+                collector_registration(capability, self.owner)
+                if self.kind == "collector"
+                else channel_registration(capability, self.owner)
+            )
+            name = registration.description.name
+            if name in self.existing or name in self.pending:
+                raise LogAgentError("registration_conflict", "能力名称已被注册，不能覆盖")
+            self.pending[name] = registration
+        except Exception:
+            self.failed = True
+            raise
+
+    def finish(self, defaults: Mapping[str, JSONObject]) -> dict[str, _Registration]:
+        self.closed = True
+        if self.failed or not self.pending:
+            raise LogAgentError("registration_aborted", "插件未提交完整有效的能力声明")
+        if not defaults.keys() <= self.pending.keys():
+            raise LogAgentError("unknown_defaults", "插件 defaults 引用了未声明的能力")
+        for name, value in defaults.items():
+            validate_instance(
+                value,
+                self.pending[name].description.options_schema,
+                path=["defaults", name],
+                partial=True,
+            )
+        return dict(self.pending)
+
+
+class CollectorPluginApi:
+    __slots__ = ("_transaction",)
+
+    def __init__(self, transaction: _RegistrationTransaction):
+        self._transaction = transaction
+
+    def register_collector(self, collector: Collector) -> None:
+        self._transaction.add(collector)
+
+
+class ChannelPluginApi:
+    __slots__ = ("_transaction",)
+
+    def __init__(self, transaction: _RegistrationTransaction):
+        self._transaction = transaction
+
+    def register_channel(self, channel: ChannelType) -> None:
+        self._transaction.add(channel)
+
+
+def _entry_path(directory: Path, backend: str) -> Path:
+    path = Path(backend)
+    if path.is_absolute() or PureWindowsPath(backend).is_absolute() or path.suffix != ".py":
+        raise LogAgentError("plugin_entry_invalid", "插件入口必须为包内相对 .py 文件")
+    try:
+        entry = (directory / path).resolve(strict=True)
+        if not entry.is_relative_to(directory.resolve()) or not entry.is_file():
+            raise ValueError("Entry escapes plugin directory or is not a file")
+    except (OSError, ValueError, RuntimeError):
+        raise LogAgentError(
+            "plugin_entry_invalid", "插件入口不存在、不可读或越出插件目录"
+        ) from None
+    return entry
+
+
+def _remove_modules(prefix: str) -> None:
+    for name in tuple(sys.modules):
+        if name == prefix or name.startswith(prefix + "."):
+            sys.modules.pop(name, None)
+
+
+def _execute_module(name: str, path: Path, *, package: bool = False) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(
+        name, path, submodule_search_locations=[str(path.parent)] if package else None
+    )
+    if spec is None or spec.loader is None:
+        raise LogAgentError("plugin_entry_invalid", "无法创建插件 Python 入口")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    parent_name, _, attribute = name.rpartition(".")
+    parent = sys.modules.get(parent_name)
+    if parent is not None:
+        setattr(parent, attribute, module)
+    return module
+
+
+def _import_entry(directory: Path, entry: Path, prefix: str) -> ModuleType:
+    """Use an isolated real package namespace, including nested relative imports."""
+    importlib.invalidate_caches()
+    directory = directory.resolve()
+    initializer = directory / "__init__.py"
+    if initializer.is_file():
+        package = _execute_module(prefix, initializer, package=True)
+        if entry == initializer:
+            return package
+    else:
+        package = ModuleType(prefix)
+        package.__path__ = [str(directory)]
+        package.__package__ = prefix
+        package.__spec__ = ModuleSpec(prefix, loader=None, is_package=True)
+        package.__spec__.submodule_search_locations = [str(directory)]
+        sys.modules[prefix] = package
+
+    relative = entry.relative_to(directory)
+    is_package = entry.name == "__init__.py"
+    parts = relative.parts[:-1] if is_package else relative.with_suffix("").parts
+    name = ".".join((prefix, *parts))
+    parent = name.rpartition(".")[0]
+    if parent and parent != prefix:
+        importlib.import_module(parent)
+    existing = sys.modules.get(name)
+    if existing is not None:
+        # A package initializer may already have imported its backend normally.
+        return existing
+    return _execute_module(name, entry, package=is_package)
+
+
+def _failure(
+    exc: Exception,
+    *,
+    plugin: str,
+    kind: PluginKind | None,
+    stage: str,
+    names: Iterable[str] = (),
+) -> ErrorInfo:
+    # Plugins may throw their own LogAgentError with secrets in message/details.
+    # Only static messages, validated identifiers and known error codes are kept.
+    details: JSONObject = {
+        "plugin": plugin,
+        "stage": stage,
+        "exception_type": type(exc).__name__,
+        "capabilities": list(names),
+    }
+    if kind is not None:
+        details["kind"] = kind
+    if isinstance(exc, LogAgentError) and exc.code in _KNOWN_REASONS:
+        details["reason"] = exc.code
+    return ErrorInfo(code="plugin_discovery_failed", message="插件发现或注册失败", details=details)
+
+
+class PluginRegistry:
+    def __init__(
+        self,
+        builtin_collectors: Iterable[Collector] | None = None,
+        *,
+        builtin_channels: Iterable[ChannelType] = (),
+    ) -> None:
+        self._builtin_collectors = (
+            tuple(builtin_collectors) if builtin_collectors is not None else None
+        )
+        self._builtin_channels = tuple(builtin_channels)
+        self._collector_register = CollectorRegister()
+        self._channel_register = ChannelRegister()
+        self._lock = asyncio.Lock()
+
+    @property
+    def collectorRegister(self) -> CollectorRegister:
+        return self._collector_register
+
+    @property
+    def channelRegister(self) -> ChannelRegister:
+        return self._channel_register
+
+    async def discover_plugins(self, config: SystemConfig) -> DiscoveryReport:
+        try:
+            config = copy_model(config)
+        except ValidationError as exc:
+            raise validation_error(exc) from None
+        async with self._lock:
+            collectors, channels, report = await asyncio.to_thread(self._discover, config)
+            self._collector_register = collectors
+            self._channel_register = channels
+            return report.model_copy(deep=True)
+
+    def _discover(
+        self, config: SystemConfig
+    ) -> tuple[CollectorRegister, ChannelRegister, DiscoveryReport]:
+        builtins = self._builtin_collectors
+        if builtins is None:
+            from logagent.collection import builtin_collectors
+
+            builtins = tuple(builtin_collectors())
+        entries: dict[PluginKind, dict[str, _Registration]] = {"collector": {}, "channel": {}}
+        defaults: dict[PluginKind, dict[str, JSONObject]] = {"collector": {}, "channel": {}}
+        for kind, capabilities in (("collector", builtins), ("channel", self._builtin_channels)):
+            if not capabilities:
+                continue
+            transaction = _RegistrationTransaction(kind, "builtin", entries[kind])
+            try:
+                for capability in capabilities:
+                    transaction.add(capability)
+                entries[kind].update(transaction.finish({}))
+            except Exception as exc:
+                raise LogAgentError(
+                    "builtin_registration_failed",
+                    "内置能力声明无效，无法发布注册视图",
+                    {"kind": kind, "exception_type": type(exc).__name__},
+                ) from None
+
+        root = Path(config.plugin_dir)
+        settings = read_plugin_configuration(root / "config.json")
+        try:
+            directories = sorted(
+                (entry for entry in root.iterdir() if entry.is_dir()), key=lambda entry: entry.name
+            )
+        except FileNotFoundError:
+            directories = []
+        except OSError:
+            raise LogAgentError("configuration_unavailable", "插件目录无法读取") from None
+
+        errors: list[ErrorInfo] = []
+        owners: set[tuple[PluginKind, str]] = {("collector", "builtin"), ("channel", "builtin")}
+        for directory in directories:
+            kind: PluginKind | None = None
+            plugin_id = _safe_name(directory.name) or "unidentified"
+            transaction = None
+            prefix = "_logagent_plugin_" + uuid4().hex
+            stage = "manifest"
+            try:
+                try:
+                    manifest = PluginManifest.model_validate(read_json(directory / "plugin.json"))
+                except ValidationError as exc:
+                    raise validation_error(exc) from None
+                kind, plugin_id = manifest.kind, manifest.id
+                owner = (kind, plugin_id)
+                if owner in owners:
+                    raise LogAgentError("plugin_id_conflict", "同类插件 ID 已被使用")
+                owners.add(owner)
+                plugin_settings = settings.get(kind, {}).get(plugin_id, PluginSettings())
+                if not plugin_settings.enabled:
+                    continue
+                stage = "entry"
+                entry = _entry_path(directory, manifest.entry.backend)
+                module = _import_entry(directory, entry, prefix)
+                transaction = _RegistrationTransaction(kind, plugin_id, entries[kind])
+                api = (
+                    CollectorPluginApi(transaction)
+                    if kind == "collector"
+                    else ChannelPluginApi(transaction)
+                )
+                stage = "register"
+                plugin = getattr(module, "plugin", None)
+                register = getattr(plugin, "register", None)
+                if not callable(register) or inspect.iscoroutinefunction(register):
+                    raise LogAgentError(
+                        "invalid_declaration", "插件必须提供同步 plugin.register(api)"
+                    )
+                result = register(api)
+                if inspect.iscoroutine(result):
+                    result.close()
+                if result is not None:
+                    raise LogAgentError(
+                        "invalid_declaration", "plugin.register 只提交声明并返回 None"
+                    )
+                stage = "defaults"
+                new_entries = transaction.finish(plugin_settings.defaults)
+                entries[kind].update(new_entries)
+                defaults[kind].update(deepcopy(plugin_settings.defaults))
+            except Exception as exc:
+                if transaction is not None:
+                    transaction.closed = True
+                _remove_modules(prefix)
+                errors.append(
+                    _failure(
+                        exc,
+                        plugin=plugin_id,
+                        kind=kind,
+                        stage=stage,
+                        names=transaction.names if transaction else (),
+                    )
+                )
+
+        collectors = CollectorRegister(
+            entries["collector"],
+            defaults=defaults["collector"],
+            errors=(error for error in errors if error.details.get("kind") in (None, "collector")),
+        )
+        channels = ChannelRegister(
+            entries["channel"],
+            defaults=defaults["channel"],
+            errors=(error for error in errors if error.details.get("kind") in (None, "channel")),
+        )
+        report = DiscoveryReport(
+            registered=[*collectors.describe(), *channels.describe()], errors=errors
+        )
+        return collectors, channels, report
