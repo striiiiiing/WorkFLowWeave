@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
-from collections.abc import Iterable
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
@@ -21,7 +20,6 @@ from logagent.errors import LogAgentError, validation_error
 from logagent.models import (
     AIConfig,
     ChannelConfig,
-    ID,
     ResourceKind,
     SetterTemplate,
     SourceConfig,
@@ -59,7 +57,7 @@ class SQLiteResourceStore:
         with self._lock:
             self._db.close()
 
-    def __enter__(self) -> "SQLiteResourceStore":
+    def __enter__(self) -> SQLiteResourceStore:
         return self
 
     def __exit__(self, *_: object) -> None:
