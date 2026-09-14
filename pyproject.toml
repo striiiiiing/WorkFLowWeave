@@ -12,7 +12,6 @@ dependencies = [
   "jsonschema[format]>=4.23,<5",
   "orjson>=3.12.0",
   "pydantic>=2.10,<3",
-  "referencing>=0.36,<1",
 ]
 
 [dependency-groups]

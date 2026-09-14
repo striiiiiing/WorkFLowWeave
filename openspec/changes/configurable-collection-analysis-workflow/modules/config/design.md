@@ -12,7 +12,7 @@
 | 插件设置 | plugin_dir/config.json，使用 PluginConfiguration | 启动/插件 reload 控制启用及 options 默认值。 |
 | 插件能力 | 每个插件目录的 plugin.json + entry.backend 指定的入口 .py | 配置模块读取 manifest、导入入口并发布 collectorRegister/channelRegister，不保存用户凭据。 |
 | 资源 | data_dir/resources.json | CRUD 或资源 reload 发布新版本，包含 sources/setters/ai/channels/workflows 五个集合。 |
-| 运行 | WorkflowSnapshot | trigger 时复制有效资源；当前及恢复运行一直使用该副本。 |
+| 运行 | WorkflowSnapshot | trigger 时复制有效资源；仅服务当前调用，不提供恢复。 |
 
 以上文件布局是首版实现选择，不是公共 API 的路径承诺。启动显式缺失的系统文件报错；首次空数据目录可建立五个空资源集合，已存在但损坏的文件报错。插件配置文件不存在等于无覆盖。QwenPaw 的类型、注册与配置描述思路见 [参考记录](../../references/qwenpaw.md)。
 
@@ -33,7 +33,7 @@ plugins/
     channel.py        # 导出 plugin，plugin.register(api) 注册能力
 ```
 
-发现顺序为内置能力、外部插件目录稳定排序。配置模块读取并校验 `id`、`version`、`kind`、`api_version`、`entry.backend`，检查入口路径不能越出插件目录；禁用插件不导入入口。按 QwenPaw 的入口约定，导入后读取模块导出的 `plugin` 对象并调用 `plugin.register(api)`；`api` 按 manifest.kind 只暴露 `register_collector` 或 `register_channel`。一个入口可以注册多个同类能力，不能跨 kind 注册。
+发现顺序为内置能力、外部插件目录稳定排序。配置模块读取并校验 `id`、`version`、`kind`、`api_version`、`entry.backend`，检查入口路径不能越出插件目录；禁用插件不导入入口。按 QwenPaw 的入口约定，导入后读取模块导出的 `plugin` 对象并调用 `plugin.register(api)`；`api` 按 manifest.kind 只暴露 `register_collector` 或 `register_channel`。一个入口可以注册多个同类能力，不能跨 kind 注册。插件 reload 可按 owner 增量清理并重新发布选定能力。
 
 注册 API 把声明先放入当前插件的临时集合。配置模块验证能力名、JSON Schema、实现/工厂、内置名称冲突、已有名称冲突及插件 defaults；全部通过后一次性发布并记录 owner。任一声明失败则撤销该插件本轮全部注册并记录 DiscoveryReport，其他插件继续加载。插件 reload 按 owner 清理旧声明，再重复同一流程；已保存资源保留，缺失能力留给运行阶段按策略处理。
 
@@ -83,7 +83,7 @@ resolve 供尚未保存的定义做关系校验，不写资源。对外 get/list
 
 来源 options、渠道 options 和 AIConfig 中的秘密只保存 Credential，运行时按需解析；不能把明文放入 defaults 或任意扩展字段绕过约定。插件 schema 明确哪些字段为 Credential。返回配置、日志、错误、快照都不包含解密值。
 
-主密钥读取、首次生成、已有密文恢复和格式错误规则以数据模型 §2.5 为准。快照固定引用/密文，不备份明文；缺少原环境变量或主密钥时显式失败，不使用最新资源中的凭据替换。
+主密钥读取、首次生成、已有密文解密和格式错误规则以数据模型 §2.5 为准。快照固定引用/密文，不保存明文；缺少原环境变量或主密钥时显式失败，不使用最新资源中的凭据替换。
 
 ## 验证要点
 
