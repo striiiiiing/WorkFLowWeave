@@ -5,7 +5,7 @@ Runtime dependencies live in CollectionContext, outside the serialized models.
 
 from __future__ import annotations
 
-import json
+import math
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -25,12 +25,29 @@ if TYPE_CHECKING:
     from logagent.protocols import CredentialResolver
 
 def _json_value(value: Any) -> Any:
-    """验证值可被 JSON 序列化"""
-    try:
-        json.dumps(value)
-        return value
-    except (TypeError, ValueError):
-        raise ValueError("Expected a JSON-serializable value") from None
+    """Validate a JSON value without Python's permissive coercions."""
+    def walk(item: Any) -> None:
+        if item is None or type(item) is bool or type(item) is str:
+            return
+        if type(item) is int:
+            return
+        if type(item) is float:
+            if not math.isfinite(item):
+                raise ValueError("Expected a finite JSON number")
+            return
+        if type(item) is list:
+            for child in item:
+                walk(child)
+            return
+        if type(item) is dict:
+            for key, child in item.items():
+                if type(key) is not str:
+                    raise ValueError("JSON object keys must be strings")
+                walk(child)
+            return
+        raise ValueError("Expected a JSON-serializable value")
+    walk(value)
+    return deepcopy(value)
 
 def _json_object(value: Any) -> dict[str, Any]:
     if type(value) is not dict:
@@ -64,12 +81,12 @@ def unique_check(name: str):
 
 ID = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,80}$")]
 UTCDateTime = Annotated[datetime, BeforeValidator(_utc_datetime)]
-Seconds = Annotated[float, Field(gt=0, allow_inf_nan=False)]
+Seconds = Annotated[float, Field(strict=True, gt=0, allow_inf_nan=False)]
 JSONObject = Annotated[dict[str, Any], BeforeValidator(_json_object)]
 JSONSchema = JSONObject
 JSONValue = Annotated[Any, BeforeValidator(_validate_json_value)]
 EnvironmentName = Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")]
-NonNegativeInt = Annotated[int, Field(ge=0)]
+NonNegativeInt = Annotated[int, Field(strict=True, ge=0)]
 
 ResourceKind = Literal["sources", "setters", "ai", "channels", "workflows"]
 PluginKind = Literal["collector", "channel"]
@@ -84,7 +101,7 @@ DeliveryStatus = Literal["success", "failed", "timeout", "skipped"]
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(
-        extra="forbid"
+        extra="forbid", strict=True
     )
 
 
