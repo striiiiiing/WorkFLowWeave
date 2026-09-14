@@ -12,29 +12,20 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Self, TypeVar
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator, AfterValidator
 
 if TYPE_CHECKING:
     from logagent.protocols import ArchiveReader, CredentialResolver
 
+import json
 
-def _json_value(value: Any, ancestors: frozenset[int] = frozenset()) -> Any:
-    """Reject coercion, non-finite numbers, non-string keys and cyclic objects."""
-    if value is None or type(value) in (str, int, bool):
+def _json_value(value: Any) -> Any:
+    """验证值可被 JSON 序列化"""
+    try:
+        json.dumps(value)
         return value
-    if type(value) is float and math.isfinite(value):
-        return value
-    if type(value) in (dict, list):
-        if id(value) in ancestors:
-            raise ValueError("JSON values must not contain cycles")
-        nested = ancestors | {id(value)}
-        if type(value) is list:
-            return [_json_value(item, nested) for item in value]
-        if any(type(key) is not str for key in value):
-            raise ValueError("JSON object keys must be strings")
-        return {key: _json_value(item, nested) for key, item in value.items()}
-    raise ValueError("Expected a finite JSON value")
-
+    except (TypeError, ValueError):
+        raise ValueError("Expected a JSON-serializable value")
 
 def _json_object(value: Any) -> dict[str, Any]:
     if type(value) is not dict:
@@ -46,24 +37,28 @@ def _validate_json_value(value: Any) -> Any:
     return _json_value(value)
 
 
-def _identifier(value: Any) -> str:
-    if type(value) is not str or re.fullmatch(r"[A-Za-z0-9_-]{1,80}", value) is None:
-        raise ValueError("Expected an ID of 1-80 ASCII letters, digits, underscores or hyphens")
-    return value
-
-
 def _utc_datetime(value: Any) -> datetime:
     if isinstance(value, str):
         try:
-            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            # 3.11 以后兼容
+            value = datetime.fromisoformat(value)
         except ValueError:
             raise ValueError("Expected an ISO 8601 datetime with a timezone") from None
     if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("Expected a datetime with a timezone")
     return value.astimezone(UTC)
 
+def unique_check(name: str):
+    def check(value: list) -> list:
+        if len(value) != len(set(value)):
+            raise ValueError(f"{name} must be unique")
+        else:
+            return value
+    return check
 
-ID = Annotated[str, BeforeValidator(_identifier)]
+
+ID = Annotated[str, Field(pattern=r"[A-Za-z0-9_-]{1,80}")]
+Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$", min_length=64, max_length=64)]
 UTCDateTime = Annotated[datetime, BeforeValidator(_utc_datetime)]
 Seconds = Annotated[float, Field(gt=0, allow_inf_nan=False)]
 JSONObject = Annotated[dict[str, Any], BeforeValidator(_json_object)]
@@ -75,7 +70,7 @@ NonNegativeInt = Annotated[int, Field(ge=0)]
 ResourceKind = Literal["sources", "setters", "ai", "channels", "workflows"]
 PluginKind = Literal["collector", "channel"]
 SaveMode = Literal["create", "replace", "upsert"]
-SourcePolicy = Literal["stop", "skip"]
+SourcePolicy = Literal["stop","notice", "skip"]
 ContinuePolicy = Literal["stop", "continue"]
 ArtifactName = Literal["snapshot", "collection", "analysis", "final"]
 WorkflowStage = Literal["collect", "analyze", "aggregate", "notify", "finish"]
@@ -96,11 +91,7 @@ ARTIFACT_NAMES: tuple[ArtifactName, ...] = ("snapshot", "collection", "analysis"
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(
-        extra="forbid",
-        strict=True,
-        allow_inf_nan=False,
-        validate_assignment=True,
-        revalidate_instances="always",
+        extra="forbid"
     )
 
 
@@ -123,8 +114,8 @@ class SystemConfig(StrictModel):
     data_dir: str = "data"
     plugin_dir: str = "plugins"
     host: str = "127.0.0.1"
-    port: int = Field(default=8000, ge=1, le=65535)
-    max_concurrent_runs: int = Field(default=4, ge=1)
+    port: int = Field(default=4300, ge=1, le=65535)
+    # max_concurrent_runs: int = Field(default=4, ge=1)
     log_file: str | None = None
     master_key_env: EnvironmentName = "LOGAGENT_MASTER_KEY"
     master_key_file: str = "master.key"
@@ -136,11 +127,11 @@ class SourceConfig(StrictModel):
     options: JSONObject = Field(default_factory=dict)
     setters: JSONObject = Field(default_factory=dict)
     template: ID | None = None
-    timeout: Seconds = 30.0
-    on_error: SourcePolicy = "stop"
-    on_missing: SourcePolicy = "stop"
-    on_empty: SourcePolicy = "skip"
-    on_filtered_empty: SourcePolicy = "skip"
+    timeout: Seconds = 60.0
+    on_error: SourcePolicy = "notice"
+    on_missing: SourcePolicy = "notice"
+    on_empty: SourcePolicy = "notice"
+    on_filtered_empty: SourcePolicy = "notice"
 
 
 class SetterTemplate(StrictModel):
@@ -166,20 +157,14 @@ Credential = Annotated[EnvironmentCredential | EncryptedCredential, Field(discri
 
 class AIConfig(StrictModel):
     id: ID
-    provider: ID = "mock"
-    model: str = Field(default="mock", min_length=1)
+    provider: ID
+    model: str = Field(min_length=1)
     base_url: str | None = None
     api_key: Credential | None = None
     system_prompt: str = ""
     model_options: JSONObject = Field(default_factory=dict)
-    timeout: Seconds = 60.0
-    retries: int = Field(default=0, ge=0)
-
-    @model_validator(mode="after")
-    def reject_legacy_options(self) -> Self:
-        if {"temperature", "top_k"}.intersection(self.model_options):
-            raise ValueError("temperature and top_k are not supported")
-        return self
+    timeout: Seconds = 300.0
+    retries: int = Field(default=3, ge=0)
 
 
 class ChannelConfig(StrictModel):
@@ -206,24 +191,18 @@ class FanInConfig(StrictModel):
 
 class BackupPolicy(StrictModel):
     enabled: bool = True
-    stages: list[ArtifactName] = Field(default_factory=lambda: list(ARTIFACT_NAMES))
-    on_failure: ContinuePolicy = "stop"
+    stages: Annotated[list[ArtifactName],AfterValidator(unique_check("Backup stages"))] = Field(default_factory=lambda: list(ARTIFACT_NAMES))
+    on_failure: ContinuePolicy = "continue"
     retention_days: Seconds | None = None
-
-    @model_validator(mode="after")
-    def unique_stages(self) -> Self:
-        if len(self.stages) != len(set(self.stages)):
-            raise ValueError("Backup stages must be unique")
-        return self
 
 
 class WorkflowDefinition(StrictModel):
     id: ID
     name: str = ""
-    sources: list[ID] = Field(min_length=1)
+    sources: Annotated[list[ArtifactName],AfterValidator(unique_check("sources IDs"))] = Field(min_length=1)
     analyses: list[AnalysisTask] = Field(min_length=1)
     fan_in: FanInConfig | None = None
-    channels: list[ID] = Field(default_factory=list)
+    channels: Annotated[list[ArtifactName],AfterValidator(unique_check("channels IDs"))] = Field(default_factory=list)
     input_separator: str = "\n\n"
     include_counts: bool = False
     collection_concurrency: int = Field(default=4, ge=1)
@@ -238,9 +217,7 @@ class WorkflowDefinition(StrictModel):
     @model_validator(mode="after")
     def valid_references(self) -> Self:
         tasks = [task.id for task in self.analyses]
-        for values in (self.sources, self.channels, tasks):
-            if len(values) != len(set(values)):
-                raise ValueError("Workflow references and analysis IDs must be unique")
+        unique_check("analysis IDs")(tasks)
         if self.fan_in is not None:
             order = self.fan_in.order
             if len(order) != len(set(order)) or not set(order) <= {*tasks, "$input"}:
@@ -257,6 +234,7 @@ class WorkflowSnapshot(StrictModel):
 
     @model_validator(mode="after")
     def exact_references(self) -> Self:
+        # 验证引用完整性
         ai_ids = {task.ai for task in self.workflow.analyses}
         if self.workflow.fan_in is not None and self.workflow.fan_in.ai is not None:
             ai_ids.add(self.workflow.fan_in.ai)
@@ -330,7 +308,7 @@ class DeliveryResult(StrictModel):
 
 
 class ArtifactInfo(StrictModel):
-    sha256: str = Field(pattern=r"^[0-9a-f]{64}$", min_length=64, max_length=64)
+    sha256: Sha256
     size: NonNegativeInt
     written_at: UTCDateTime
     expires_at: UTCDateTime | None = None
@@ -355,8 +333,7 @@ class SessionRecord(StrictModel):
     @model_validator(mode="after")
     def coherent_record(self) -> Self:
         keys = [(delivery.output_id, delivery.channel_id) for delivery in self.deliveries]
-        if len(keys) != len(set(keys)):
-            raise ValueError("Delivery keys must be unique")
+        unique_check("delivery keys")(keys)
         if self.updated_at < self.created_at:
             raise ValueError("updated_at cannot precede created_at")
         return self
@@ -369,8 +346,7 @@ class CollectionArtifact(StrictModel):
     @model_validator(mode="after")
     def unique_sources(self) -> Self:
         ids = [result.source_id for result in self.results]
-        if len(ids) != len(set(ids)):
-            raise ValueError("Collection source IDs must be unique")
+        unique_check("Collection source IDs")(ids)
         return self
 
 
@@ -381,8 +357,7 @@ class AnalysisArtifact(StrictModel):
     @model_validator(mode="after")
     def valid_results(self) -> Self:
         ids = [result.task_id for result in self.results]
-        if len(self.order) != len(set(self.order)) or len(ids) != len(set(ids)):
-            raise ValueError("Analysis order and result IDs must be unique")
+        unique_check("Analysis order and result IDs")(ids)
         if not set(ids) <= set(self.order):
             raise ValueError("Analysis result IDs must belong to order")
         return self
@@ -395,9 +370,10 @@ class FinalArtifact(StrictModel):
     @model_validator(mode="after")
     def unique_outputs(self) -> Self:
         ids = [output.output_id for output in self.outputs]
+        unique_check("Final outputs IDs")(ids)
         sessions = {output.session_id for output in self.outputs}
-        if len(ids) != len(set(ids)) or len(sessions) > 1:
-            raise ValueError("Final outputs must have unique IDs and belong to one session")
+        if len(sessions) > 1:
+            raise ValueError("Final outputs must belong to one session")
         return self
 
 
@@ -426,7 +402,7 @@ class SessionArchiveEnvelope(StrictModel):
     format_version: int = Field(ge=1, le=1)
     backup: BackupPolicy
     record: SessionRecord
-    snapshot_sha256: str = Field(pattern=r"^[0-9a-f]{64}$", min_length=64, max_length=64)
+    snapshot_sha256: Sha256
 
 
 class PluginEntry(StrictModel):
@@ -476,15 +452,13 @@ class ExecutionContext(StrictModel):
 class CollectionContext:
     """Invocation-only dependencies; absent optional services are diagnosed on use."""
 
-    workflow_id: str
-    session_id: str
+    workflow_id: ID
+    session_id: ID
     archive: ArchiveReader | None = None
     log_path: str | None = None
     credentials: CredentialResolver | None = None
 
     def __post_init__(self) -> None:
-        _identifier(self.workflow_id)
-        _identifier(self.session_id)
         if self.log_path is not None and not isinstance(self.log_path, str):
             raise ValueError("log_path must be a resolved path string")
 
