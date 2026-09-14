@@ -5,9 +5,6 @@ from __future__ import annotations
 from typing import Protocol
 
 from logagent.models import (
-    ArtifactAvailability,
-    ArtifactContent,
-    ArtifactName,
     CapabilityDescription,
     ChannelConfig,
     CollectionContext,
@@ -17,7 +14,6 @@ from logagent.models import (
     JSONObject,
     JSONSchema,
     Notification,
-    SessionRecord,
 )
 
 
@@ -42,18 +38,6 @@ class CollectorRegistryView(Protocol):
     def diagnostics(self, name: str) -> list[ErrorInfo]: ...
 
 
-class ArchiveReader(Protocol):
-    async def get(self, session_id: str) -> SessionRecord: ...
-
-    async def list(
-        self, workflow_id: str | None = None, limit: int | None = 100
-    ) -> list[SessionRecord]: ...
-
-    async def load_artifact(self, session_id: str, name: ArtifactName) -> ArtifactContent: ...
-
-    async def availability(self, session_id: str) -> ArtifactAvailability: ...
-
-
 class CredentialResolver(Protocol):
     async def resolve(self, credential: Credential) -> str: ...
 
@@ -72,6 +56,6 @@ class ChannelType(Protocol):
     capabilities: list[str]
     options_schema: JSONSchema
 
-    def create(
+    async def create(
         self, config: ChannelConfig, credentials: CredentialResolver
     ) -> NotificationChannel: ...

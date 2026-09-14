@@ -30,11 +30,11 @@ flowchart LR
 ```
 
 1. 定位能力。未注册或导入失败返回 missing，附带发现诊断；已保存 Workflow 不因当前插件缺失而在触发前被阻断。
-2. 使用 SourceConfig.timeout 限制整次调用，按需注入只读存档、日志路径和凭据解析能力。来源路径在创建运行快照时按插件声明固定。
+2. 使用 SourceConfig.timeout 限制整次调用，按需注入日志路径和凭据解析能力。来源路径在创建运行快照时按插件声明固定。
 3. 插件访问一个来源、执行其声明的处理顺序并返回 CollectorOutput；阻塞 SDK 可在内部使用线程，但线程任务仍须有真实 I/O 时限。
 4. Manager 严格校验返回状态、文本、count、JSON 结构，并补 source_id。异常/非法返回为 failed，时限耗尽为 timeout，不把未完成文本当成功。
 
-正常空和过滤后空由插件区分；只返回处理后 count，不估算过滤前数量。取消向调用者传播，Workflow 记录 session cancelled，不发明 CollectionStatus.cancelled。插件在 finally 释放连接和文件句柄。
+正常空和过滤后空由插件区分；只返回处理后 count，不估算过滤前数量。取消向调用者传播，不发明 CollectionStatus.cancelled。插件在 finally 释放连接和文件句柄。
 
 ## 内置 Collector
 
@@ -46,18 +46,8 @@ options 提供有界样例 records，或显式 mode=success/empty/failed/timeout
 
 通过 CollectionContext.log_path 读取本工具诊断日志；未配置日志文件或目标不存在返回 missing。options 使用 max_lines 和 max_bytes 约束尾部读取，默认 200 行和 256 KiB；从文件尾分块回读，不能为取尾部扫描整文件。
 
-日志建议使用逐行 JSON 事件。setters 支持等级、模块、session/time 范围、字段与分组；count 按处理后的事件数。已读取范围中的损坏完整行返回 failed 并给出行位置诊断；文件尾尚未写完的一行不视为完整事件，metadata 说明忽略事实。日志轮转导致读取中断时报告，不无限重开追踪。
-
-### 历史 history
-
-通过注入的 ArchiveReader 选择指定 workflow_id 的既有终态 session；排除当前 session。options 指定 artifact（collection/analysis/final）、最近次数、可选起止时间及 token 预算；默认读取最近一次 final。次数与时间同时配置时取交集，按创建时间从新到旧选择，同时间按 ID 稳定排列。
-
-读取选中的 artifact 必须使用 load_artifact；collection 取 shared_input，analysis 取成功分支并保持声明顺序，final 取冻结输出。每个 session 的选中阶段作为完整历史记录，count 为实际保留的记录数。
-
-预算按最终格式化内容（含来源标记）计算，插件 schema 公开 tokenizer/估算规则。首版固定使用 UTF-8 字节数作为保守预算估算单位，并在 metadata 写明算法为 utf8_bytes_v1、预算与实际占用；它不等同提供方实际 token 用量。overflow=truncate 时只保留可放入的最新完整记录前缀，首条过大则 filtered_empty 并记录预算截取；overflow=error 时报告超限。不能截断一段 JSON 或半条记录。
-
-正常无匹配返回 empty；选中 session 的必要正文未备份/缺失/过期返回 missing；损坏返回 failed，不静默跳过缺失记录继续伪装完整历史。历史读取永不触发旧 Workflow 或原来源。
+应用诊断由 Python 标准库 `logging` 负责；日志 Collector 只读取其逐行 JSON 输出。setters 支持等级、模块、session/time 范围、字段与分组；count 按处理后的事件数。已读取范围中的损坏完整行返回 failed 并给出行位置诊断；文件尾尚未写完的一行不视为完整事件，metadata 说明忽略事实。日志轮转导致读取中断时报告，不无限重开追踪。
 
 ## 验证要点
 
-覆盖配置模块发布的一个插件多能力、注册冲突与 Manager 只读消费 `collectorRegister`，以及 Setter 覆盖、空状态区别、非法输出、超时/取消、历史选择顺序和完整记录预算；验证日志尾读有界，history 仅调用只读接口。
+覆盖配置模块发布的一个插件多能力、注册冲突与 Manager 只读消费 `collectorRegister`，以及 Setter 覆盖、空状态区别、非法输出、超时/取消和有界日志尾读。

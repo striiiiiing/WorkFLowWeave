@@ -17,7 +17,7 @@
 
 ## 配置与发现
 
-配置模块识别 channel 插件：它读取插件目录的 `plugin.json`，导入 `entry.backend` 指向的入口 `.py`，并调用其 `plugin.register(api)`。入口经 `register_channel` 一次提交类型、说明、schema 和工厂；配置模块检查名称唯一、内置 key 冲突、schema 结构及可调用协议，并向 Manager 注入只读 `channelRegister`。无需继承复杂 BaseChannel。
+配置模块识别 channel 插件：它读取插件目录的 `plugin.json`，导入 `entry.backend` 指向的入口 `.py`，并调用其 `plugin.register(api)`。入口经 `register_channel` 一次提交类型、说明、schema 和异步工厂；配置模块检查名称唯一、内置 key 冲突、schema 结构及可调用协议，并向 Manager 注入只读 `channelRegister`。无需继承复杂 BaseChannel。
 
 一个插件的声明全部验证通过才由配置模块发布；失败时撤销本轮声明并记录原因。ChannelManager 不扫描目录、不导入入口、不维护第二份注册表；其 describe 从 `channelRegister` 生成 CapabilityDescription，`GET /api/plugins` 已返回同一 schema，配置 API 不另维护平台字段清单。
 
@@ -34,17 +34,16 @@ sequenceDiagram
     participant W as Workflow
     participant M as ChannelManager
     participant P as NotificationChannel
-    participant A as ArchiveStore
     W->>M: await send(snapshot.channels[id], notification)
-    M->>P: create / start
+    M->>P: await create / start
     M->>P: await send(notification)
     P-->>M: accepted 或结构化失败
     M->>P: stop
     M-->>W: DeliveryResult
-    W->>A: 保存该条回执
+    W-->>W: 在当前调用中收集回执
 ```
 
-Workflow 在一个 session 内按输出顺序和目标顺序依次 await；并发 session 之间不承诺总顺序。网关没有发送队列、消息缓存、优先级、后台发送任务或内部自动重试。
+Workflow 在一次调用内按输出顺序和目标顺序依次 await；并发调用之间不承诺总顺序。网关没有发送队列、消息缓存、优先级、后台发送任务或内部自动重试。
 
 | 情况 | 回执 |
 | --- | --- |
@@ -55,9 +54,9 @@ Workflow 在一个 session 内按输出顺序和目标顺序依次 await；并�
 | 到达发送总时限 | timeout，attempts 取决于是否已进入插件 send。 |
 | 可能接收但确认丢失 | failed/timeout，error.details.delivery_uncertain=True。 |
 
-attempts 描述本次调用，不累计恢复调用次数。进入插件 send 最多一次；SDK 自动重试必须关闭。已经确认接受后 stop 失败不能降级成功回执，单独记录资源清理诊断。取消向 Workflow 传播，渠道仍有界清理资源。若已进入插件 send，Manager 的取消错误携带 attempts=1 和已知接收情况；Workflow 在收尾时为该项保存 failed + delivery_uncertain 回执（已明确接受则保留 success），再将 session 标记 cancelled，不能继续发送其他目标。尚未进入 send 时没有投递副作用。
+attempts 只描述本次调用。进入插件 send 最多一次；SDK 自动重试必须关闭。已经确认接受后 stop 失败不能降级成功回执，单独记录资源清理诊断。取消向 Workflow 传播，渠道仍有界清理资源。若已进入插件 send，Manager 的取消错误携带 attempts=1 和已知接收情况；Workflow 在当前调用结果中保留 failed + delivery_uncertain 回执（已明确接受则保留 success），不能继续发送其他目标。尚未进入 send 时没有投递副作用。
 
-恢复只跳过已知成功/不确定回执；缺回执的崩溃窗口由 Workflow 的恢复约定处理。网关不读取存档，不自行补发。
+网关只处理当前调用的通知，不读取运行状态，不自行补发。
 
 ## 首版渠道
 

@@ -68,7 +68,6 @@ def test_output_states_cannot_hide_failures_or_partial_text(data):
 
 def test_context_is_separate_from_persistent_models():
     context = CollectionContext(workflow_id="workflow", session_id="session")
-    assert context.archive is None
     assert not hasattr(context, "model_dump")
     with pytest.raises(ValueError):
         CollectionContext(workflow_id="../workflow", session_id="session")

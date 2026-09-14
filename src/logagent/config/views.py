@@ -76,6 +76,7 @@ def collector_registration(collector: Collector, owner: str) -> _CollectorRegist
     except ValidationError as exc:
         raise validation_error(exc, code="invalid_declaration") from None
     if not description.count_unit or not description.count_unit.strip():
+        # 我确实很喜欢计数单位，我觉得他们会让模型有所提升，虽然我没证据
         raise LogAgentError("invalid_declaration", "Collector 必须声明非空计数单位")
     _check_description(description)
     return _CollectorRegistration(description, implementation, validator)
@@ -83,7 +84,7 @@ def collector_registration(collector: Collector, owner: str) -> _CollectorRegist
 
 def channel_registration(channel: ChannelType, owner: str) -> _ChannelRegistration:
     implementation = channel.create
-    _check_callable(implementation, 2, asynchronous=False)
+    _check_callable(implementation, 2, asynchronous=True)
     try:
         description = CapabilityDescription(
             kind="channel",
@@ -95,8 +96,6 @@ def channel_registration(channel: ChannelType, owner: str) -> _ChannelRegistrati
         )
     except ValidationError as exc:
         raise validation_error(exc, code="invalid_declaration") from None
-    if description.capabilities != ["notification"]:
-        raise LogAgentError("invalid_declaration", "首版 Channel 只支持 notification 能力")
     _check_description(description)
     return _ChannelRegistration(description, implementation)
 

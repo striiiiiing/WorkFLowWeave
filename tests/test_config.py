@@ -595,7 +595,7 @@ plugin = Plugin()
     description = "Test notification type"
     capabilities = ["notification"]
     options_schema = {"type": "object", "additionalProperties": False}
-    def create(self, config, credentials):
+    async def create(self, config, credentials):
         return "stable-channel"
 class Plugin:
     def register(self, api):
@@ -605,7 +605,7 @@ plugin = Plugin()
     )
     registry, report = await discover(tmp_path)
     channel = registry.channelRegister.get("mail")
-    assert channel.create(None, None) == "stable-channel"
+    assert await channel.create(None, None) == "stable-channel"
     channel.capabilities.clear()
     channel.options_schema.clear()
     assert registry.channelRegister.get("mail").capabilities == ["notification"]
