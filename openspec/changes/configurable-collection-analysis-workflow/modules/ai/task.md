@@ -7,6 +7,11 @@
 
 依赖执行：公共契约 → Task 1；Task 2 与 Task 3 可在 Task 1 后并行；Task 4 等待 Task 2、Task 3，Task 5 完成集成和清理。AI 不依赖 Workflow/LangGraph 的实现，独立调用不要求 session。
 
+## 执行记录（2026-09-15）
+
+- 已完成：实现 `AIService.validate/execute`、离线 Mock provider、OpenAI-compatible HTTP provider、字面提示词组装、usage 映射、总时限、有限重试、取消和客户端关闭。
+- 已完成：AI 执行无 session 状态或持久化；凭据仅在调用期间解析，错误结果使用脱敏错误结构。
+
 # Task 1: 定义 AI 配置验证与适配器边界
 
 描述：后续 AI 模块任务，预计 45 分钟。建立 AIService.validate 和可注入的 mock/http 适配器映射，明确支持的模型参数及资源配置边界。

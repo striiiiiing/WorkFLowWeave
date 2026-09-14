@@ -343,7 +343,7 @@ class WorkflowService:
                         data.setdefault("channel_id", cid); data.setdefault("output_id", note.output_id)
                         data.setdefault("status", "success"); data.setdefault("attempts", 1)
                         result.deliveries.append(DeliveryResult.model_validate(data))
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     result.deliveries.append(DeliveryResult(channel_id=cid, output_id=note.output_id, status="timeout", attempts=1,
                                                           error=ErrorInfo(code="delivery_timeout", message="通知发送超时")))
                 except asyncio.CancelledError: raise
