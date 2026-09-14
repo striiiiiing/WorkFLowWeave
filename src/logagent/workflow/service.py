@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import logging
 import time
 import uuid
 from copy import deepcopy
@@ -20,6 +21,8 @@ from logagent.models import (
     AnalysisResult, CollectionContext, CollectionResult, DeliveryResult,
     ErrorInfo, Notification, WorkflowDefinition, WorkflowSnapshot,
 )
+
+logger = logging.getLogger("logagent.workflow")
 
 
 @dataclass
@@ -92,14 +95,18 @@ class RunCoordinator:
         self._max = max_concurrent_runs
         self._tasks: dict[str, asyncio.Task[Any]] = {}
         self._lock = asyncio.Lock()
+        self._admission_lock = asyncio.Lock()
+        self._active_count = 0
 
     @property
     def active(self) -> int: return len(self._tasks)
 
     async def acquire(self, session_id: str) -> None:
         # Capacity exhaustion is an immediate admission failure.
-        if self._capacity.locked():
-            raise LogAgentError("capacity_exhausted", "运行容量已满")
+        async with self._admission_lock:
+            if self._active_count >= self._max:
+                raise LogAgentError("capacity_exhausted", "运行容量已满")
+            self._active_count += 1
         await self._capacity.acquire()
         async with self._lock:
             self._tasks[session_id] = asyncio.current_task()  # type: ignore[assignment]
@@ -108,6 +115,8 @@ class RunCoordinator:
         async with self._lock:
             self._tasks.pop(session_id, None)
         self._capacity.release()
+        async with self._admission_lock:
+            self._active_count = max(0, self._active_count - 1)
 
     async def cancel(self, session_id: str) -> bool:
         async with self._lock:
@@ -194,6 +203,7 @@ class WorkflowService:
 
     async def _run_graph(self, snap: WorkflowSnapshot, sid: str, ctx: CollectionContext) -> WorkflowResult:
         result = WorkflowResult(session_id=sid, workflow_id=snap.workflow.id)
+        logger.info("workflow started", extra={"workflow_id": snap.workflow.id, "session_id": sid, "stage": "collect"})
         state: _State = {"snapshot": snap, "session_id": sid, "context": ctx, "result": result,
                          "analysis_map": {}, "outputs": {}}
         try:
@@ -201,7 +211,10 @@ class WorkflowService:
             return out["result"]
         except asyncio.CancelledError:
             result.cancelled = True; result.stopped = True; result.stage = "finish"
+            logger.info("workflow cancelled", extra={"workflow_id": snap.workflow.id, "session_id": sid, "stage": "finish"})
             return result
+        finally:
+            logger.info("workflow finished", extra={"workflow_id": snap.workflow.id, "session_id": sid, "stage": "finish"})
 
     async def _collect(self, s: _State) -> dict[str, Any]:
         snap, wf, result = s["snapshot"], s["snapshot"].workflow, s["result"]
@@ -241,7 +254,8 @@ class WorkflowService:
                 try:
                     cfg = snap.ai[task.ai]
                     started = time.perf_counter()
-                    value = await _maybe_call(self.ai_service.execute, cfg, task.prompt, s.get("shared_input", ""))
+                    call = _maybe_call(self.ai_service.execute, cfg, task.prompt, s.get("shared_input", ""))
+                    value = await asyncio.wait_for(call, timeout=cfg.timeout)
                     if isinstance(value, AnalysisResult):
                         return value if value.task_id == task.id else value.model_copy(update={"task_id": task.id})
                     data = dict(value)
@@ -249,6 +263,12 @@ class WorkflowService:
                     if "elapsed_ms" not in data: data["elapsed_ms"] = (time.perf_counter() - started) * 1000
                     return AnalysisResult.model_validate(data)
                 except asyncio.CancelledError: raise
+                except TimeoutError:
+                    return AnalysisResult(
+                        task_id=task.id,
+                        status="timeout",
+                        error=ErrorInfo(code="analysis_timeout", message="分析任务执行超时"),
+                    )
                 except Exception as exc:
                     return AnalysisResult(task_id=task.id, status="failed", error=_error(exc, "analysis_failed", "分析任务执行失败"))
         vals = await asyncio.gather(*(one(t) for t in wf.analyses))
@@ -284,7 +304,10 @@ class WorkflowService:
             else:
                 try:
                     cfg = snap.ai[wf.fan_in.ai]
-                    value = await _maybe_call(self.ai_service.execute, cfg, wf.fan_in.prompt, joined)
+                    value = await asyncio.wait_for(
+                        _maybe_call(self.ai_service.execute, cfg, wf.fan_in.prompt, joined),
+                        timeout=cfg.timeout,
+                    )
                     if isinstance(value, AnalysisResult):
                         if value.status != "success": raise RuntimeError("aggregation failed")
                         outputs = {"final": value.text}
@@ -310,7 +333,9 @@ class WorkflowService:
                 if not cfg.enabled:
                     result.deliveries.append(DeliveryResult(channel_id=cid, output_id=note.output_id, status="skipped", attempts=0)); continue
                 try:
-                    value = await _maybe_call(self.channel_manager.send, cfg, note)
+                    value = await asyncio.wait_for(
+                        _maybe_call(self.channel_manager.send, cfg, note), timeout=cfg.timeout
+                    )
                     if isinstance(value, DeliveryResult):
                         result.deliveries.append(value)
                     else:
