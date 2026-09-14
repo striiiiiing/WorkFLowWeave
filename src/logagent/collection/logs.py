@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import stat
 from collections import deque
@@ -31,6 +32,7 @@ _MAX_LINES = 10_000
 _MAX_BYTES = 16 * 1024 * 1024
 _JSON_OBJECT = TypeAdapter(JSONObject)
 _SESSION_ID = TypeAdapter(ID)
+logger = logging.getLogger(__name__)
 
 
 class _ReadCancelled(Exception):
@@ -104,6 +106,7 @@ def _bounded_tail(
     an extra byte outside max_bytes to inspect its preceding delimiter.
     """
     _check_cancelled(cancelled)
+    logger.debug("reading bounded JSONL log path=%s max_lines=%d max_bytes=%d", path, max_lines, max_bytes)
     try:
         before_open = os.stat(path)
     except FileNotFoundError:

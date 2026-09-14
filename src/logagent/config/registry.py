@@ -86,6 +86,7 @@ class _RegistrationTransaction:
             )
             name = registration.description.name
             if name in self.existing or name in self.pending:
+                # 总不能赌读取顺序吧
                 raise LogAgentError("registration_conflict", "能力名称已被注册，不能覆盖")
             self.pending[name] = registration
         except Exception:
@@ -253,8 +254,28 @@ class PluginRegistry:
             self._channel_register = channels
             return report.model_copy(deep=True)
 
+    async def reload_plugins(
+        self, config: SystemConfig, *, owners: Iterable[str] | None = None
+    ) -> DiscoveryReport:
+        """Reload selected plugin owners while retaining the other published owners."""
+        try:
+            config = copy_model(config)
+        except ValidationError as exc:
+            raise validation_error(exc) from None
+        selected = None if owners is None else frozenset(owners)
+        async with self._lock:
+            collectors, channels, report = await asyncio.to_thread(
+                self._discover, config, reload_owners=selected
+            )
+            self._collector_register = collectors
+            self._channel_register = channels
+            return report.model_copy(deep=True)
+
     def _discover(
-        self, config: SystemConfig
+        self,
+        config: SystemConfig,
+        *,
+        reload_owners: frozenset[str] | None = None,
     ) -> tuple[CollectorRegister, ChannelRegister, DiscoveryReport]:
         builtins = self._builtin_collectors
         if builtins is None:
@@ -277,6 +298,22 @@ class PluginRegistry:
                     "内置能力声明无效，无法发布注册视图",
                     {"kind": kind, "exception_type": type(exc).__name__},
                 ) from None
+
+        # A targeted reload removes only the selected owners. Their replacement
+        # is committed below as a per-owner transaction; all other published
+        # registrations remain available during the rebuild.
+        retained_defaults: dict[PluginKind, dict[str, JSONObject]] = {
+            "collector": {}, "channel": {}
+        }
+        if reload_owners is not None:
+            for kind, view in (("collector", self._collector_register), ("channel", self._channel_register)):
+                for name, registration in view._registrations.items():
+                    owner = registration.description.plugin
+                    if owner == "builtin" or owner in reload_owners:
+                        continue
+                    entries[kind][name] = registration
+                    retained_defaults[kind][name] = view.options_defaults(name)
+            defaults = retained_defaults
 
         root = Path(config.plugin_dir)
         settings = read_plugin_configuration(root / "config.json")
@@ -303,6 +340,8 @@ class PluginRegistry:
                 except ValidationError as exc:
                     raise validation_error(exc) from None
                 kind, plugin_id = manifest.kind, manifest.id
+                if reload_owners is not None and plugin_id not in reload_owners:
+                    continue
                 owner = (kind, plugin_id)
                 if owner in owners:
                     raise LogAgentError("plugin_id_conflict", "同类插件 ID 已被使用")

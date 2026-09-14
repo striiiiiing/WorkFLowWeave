@@ -5,19 +5,24 @@ Runtime dependencies live in CollectionContext, outside the serialized models.
 
 from __future__ import annotations
 
-import math
-import re
+import json
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Self, TypeVar
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator, AfterValidator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    model_validator,
+)
 
 if TYPE_CHECKING:
-    from logagent.protocols import ArchiveReader, CredentialResolver
-
-import json
+    from logagent.protocols import CredentialResolver
 
 def _json_value(value: Any) -> Any:
     """验证值可被 JSON 序列化"""
@@ -25,7 +30,7 @@ def _json_value(value: Any) -> Any:
         json.dumps(value)
         return value
     except (TypeError, ValueError):
-        raise ValueError("Expected a JSON-serializable value")
+        raise ValueError("Expected a JSON-serializable value") from None
 
 def _json_object(value: Any) -> dict[str, Any]:
     if type(value) is not dict:
@@ -57,8 +62,7 @@ def unique_check(name: str):
     return check
 
 
-ID = Annotated[str, Field(pattern=r"[A-Za-z0-9_-]{1,80}")]
-Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$", min_length=64, max_length=64)]
+ID = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,80}$")]
 UTCDateTime = Annotated[datetime, BeforeValidator(_utc_datetime)]
 Seconds = Annotated[float, Field(gt=0, allow_inf_nan=False)]
 JSONObject = Annotated[dict[str, Any], BeforeValidator(_json_object)]
@@ -72,21 +76,10 @@ PluginKind = Literal["collector", "channel"]
 SaveMode = Literal["create", "replace", "upsert"]
 SourcePolicy = Literal["stop","notice", "skip"]
 ContinuePolicy = Literal["stop", "continue"]
-ArtifactName = Literal["snapshot", "collection", "analysis", "final"]
 WorkflowStage = Literal["collect", "analyze", "aggregate", "notify", "finish"]
 CollectionStatus = Literal["success", "empty", "filtered_empty", "missing", "failed", "timeout"]
 AnalysisStatus = Literal["success", "failed", "timeout", "cancelled"]
 DeliveryStatus = Literal["success", "failed", "timeout", "skipped"]
-SessionStatus = Literal[
-    "created", "running", "completed", "partial", "failed", "cancelled", "interrupted"
-]
-MissingReason = Literal[
-    "disabled", "out_of_scope", "not_created", "missing", "expired", "corrupt", "write_failed"
-]
-TERMINAL_SESSION_STATUSES = frozenset(
-    {"completed", "partial", "failed", "cancelled", "interrupted"}
-)
-ARTIFACT_NAMES: tuple[ArtifactName, ...] = ("snapshot", "collection", "analysis", "final")
 
 
 class StrictModel(BaseModel):
@@ -189,20 +182,13 @@ class FanInConfig(StrictModel):
     mark_incomplete: bool = True
 
 
-class BackupPolicy(StrictModel):
-    enabled: bool = True
-    stages: Annotated[list[ArtifactName],AfterValidator(unique_check("Backup stages"))] = Field(default_factory=lambda: list(ARTIFACT_NAMES))
-    on_failure: ContinuePolicy = "continue"
-    retention_days: Seconds | None = None
-
-
 class WorkflowDefinition(StrictModel):
     id: ID
     name: str = ""
-    sources: Annotated[list[ArtifactName],AfterValidator(unique_check("sources IDs"))] = Field(min_length=1)
+    sources: Annotated[list[ID], AfterValidator(unique_check("sources IDs"))] = Field(min_length=1)
     analyses: list[AnalysisTask] = Field(min_length=1)
     fan_in: FanInConfig | None = None
-    channels: Annotated[list[ArtifactName],AfterValidator(unique_check("channels IDs"))] = Field(default_factory=list)
+    channels: Annotated[list[ID], AfterValidator(unique_check("channels IDs"))] = Field(default_factory=list)
     input_separator: str = "\n\n"
     include_counts: bool = False
     collection_concurrency: int = Field(default=4, ge=1)
@@ -210,7 +196,6 @@ class WorkflowDefinition(StrictModel):
     on_all_empty: SourcePolicy = "stop"
     analysis_failure: ContinuePolicy = "continue"
     send_partial: bool = True
-    backup: BackupPolicy = Field(default_factory=BackupPolicy)
     interval_seconds: Seconds | None = None
     enabled: bool = True
 
@@ -307,104 +292,6 @@ class DeliveryResult(StrictModel):
     error: ErrorInfo | None = None
 
 
-class ArtifactInfo(StrictModel):
-    sha256: Sha256
-    size: NonNegativeInt
-    written_at: UTCDateTime
-    expires_at: UTCDateTime | None = None
-
-
-class SessionRecord(StrictModel):
-    id: ID
-    workflow_id: ID
-    status: SessionStatus = "created"
-    created_at: UTCDateTime
-    updated_at: UTCDateTime
-    stage: WorkflowStage = "collect"
-    source_statuses: dict[ID, CollectionStatus] = Field(default_factory=dict)
-    analysis_statuses: dict[ID, AnalysisStatus] = Field(default_factory=dict)
-    deliveries: list[DeliveryResult] = Field(default_factory=list)
-    errors: list[ErrorInfo] = Field(default_factory=list)
-    artifacts: dict[ArtifactName, ArtifactInfo] = Field(default_factory=dict)
-    recoverable: bool = False
-    missing_artifacts: dict[ArtifactName, MissingReason] = Field(default_factory=dict)
-    output_frozen: bool = False
-
-    @model_validator(mode="after")
-    def coherent_record(self) -> Self:
-        keys = [(delivery.output_id, delivery.channel_id) for delivery in self.deliveries]
-        unique_check("delivery keys")(keys)
-        if self.updated_at < self.created_at:
-            raise ValueError("updated_at cannot precede created_at")
-        return self
-
-
-class CollectionArtifact(StrictModel):
-    shared_input: str
-    results: list[CollectionResult]
-
-    @model_validator(mode="after")
-    def unique_sources(self) -> Self:
-        ids = [result.source_id for result in self.results]
-        unique_check("Collection source IDs")(ids)
-        return self
-
-
-class AnalysisArtifact(StrictModel):
-    order: list[ID]
-    results: list[AnalysisResult]
-
-    @model_validator(mode="after")
-    def valid_results(self) -> Self:
-        ids = [result.task_id for result in self.results]
-        unique_check("Analysis order and result IDs")(ids)
-        if not set(ids) <= set(self.order):
-            raise ValueError("Analysis result IDs must belong to order")
-        return self
-
-
-class FinalArtifact(StrictModel):
-    outputs: list[Notification]
-    fan_in: AnalysisResult | None = None
-
-    @model_validator(mode="after")
-    def unique_outputs(self) -> Self:
-        ids = [output.output_id for output in self.outputs]
-        unique_check("Final outputs IDs")(ids)
-        sessions = {output.session_id for output in self.outputs}
-        if len(sessions) > 1:
-            raise ValueError("Final outputs must belong to one session")
-        return self
-
-
-ArtifactContent = WorkflowSnapshot | CollectionArtifact | AnalysisArtifact | FinalArtifact
-ARTIFACT_MODELS: dict[ArtifactName, type[StrictModel]] = {
-    "snapshot": WorkflowSnapshot,
-    "collection": CollectionArtifact,
-    "analysis": AnalysisArtifact,
-    "final": FinalArtifact,
-}
-
-
-class ArtifactAvailability(StrictModel):
-    available: list[ArtifactName]
-    missing_artifacts: dict[ArtifactName, MissingReason]
-    recoverable: bool
-
-
-class ExpirationReport(StrictModel):
-    sessions: NonNegativeInt
-    artifacts: NonNegativeInt
-    errors: list[JSONObject] = Field(default_factory=list)
-
-
-class SessionArchiveEnvelope(StrictModel):
-    format_version: int = Field(ge=1, le=1)
-    backup: BackupPolicy
-    record: SessionRecord
-    snapshot_sha256: Sha256
-
-
 class PluginEntry(StrictModel):
     backend: str = Field(min_length=1)
 
@@ -454,11 +341,16 @@ class CollectionContext:
 
     workflow_id: ID
     session_id: ID
-    archive: ArchiveReader | None = None
     log_path: str | None = None
     credentials: CredentialResolver | None = None
 
     def __post_init__(self) -> None:
+        try:
+            # 因为是dataclass而非pydantic
+            TypeAdapter(ID).validate_python(self.workflow_id)
+            TypeAdapter(ID).validate_python(self.session_id)
+        except Exception as exc:
+            raise ValueError("workflow_id and session_id must be valid IDs") from exc
         if self.log_path is not None and not isinstance(self.log_path, str):
             raise ValueError("log_path must be a resolved path string")
 
