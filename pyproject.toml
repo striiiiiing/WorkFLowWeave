@@ -9,8 +9,10 @@ description = "Configurable asynchronous collection for LogAgent workflows"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+  "aiosqlite>=0.20,<0.22",
   "jsonschema[format]>=4.23,<5",
   "langgraph>=0.2,<1",
+  "langgraph-checkpoint-sqlite>=2,<3",
   "orjson>=3.12.0",
   "pydantic>=2.10,<3",
 ]
@@ -33,6 +35,3 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I", "UP", "B", "ASYNC"]
-
-[tool.ruff.lint.per-file-ignores]
-"src/logagent/workflow/service.py" = ["E701", "E702", "I001"]
