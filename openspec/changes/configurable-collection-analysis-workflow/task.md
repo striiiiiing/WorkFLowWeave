@@ -11,7 +11,7 @@
 | 3 | [配置](./modules/config/task.md) | 1；JSON 原子资源视图、凭据、引用、reload | 已提交 `6adffca` |
 | 4 | [AI](./modules/ai/task.md) | 1、3；600秒/5重试、共享连接多模型、开放扩展参数 | 本次修正完成并通过主代理审查；取代 `5b90965` 兼容实现 |
 | 5 | [Channel](./modules/channel/task.md) | 1、3；常驻实例、快照绑定、有界关闭 | 修正完成；主代理审查、专项与全套验证通过 |
-| 6 | [Mock](./modules/channel/mock/task.md) | 5；可读文本、专用Handler、调用后检查 | 待补齐；`dbf2494` 尚未完成设计验收 |
+| 6 | [Mock](./modules/channel/mock/task.md) | 5；可读文本、专用Handler、调用后检查 | 修正完成；主代理审查、专项与全套验证通过 |
 | 7 | [Email](./modules/channel/email/task.md) | 3、5；异步SMTP、真实受理回执 | 待执行 |
 | 8 | [Collection](./modules/collection/task.md) | 2、3；history复用SessionView | 待执行 |
 | 9 | [Lifecycle](./modules/lifecycle/task.md) | 1–8；启停、定时、reload、健康 | 待执行 |
@@ -32,3 +32,5 @@
 - 先前只显示测试进度点、没有拿到退出码和最终汇总的运行，不能作为全套通过证据；后续长命令保留 session_id 并收取最终结果，每个后端测试命令硬超时 60 秒。
 
 2026-09-17 用户要求：实现优先使用 `gpt-5.5/high` 子代理；调用异常时主代理接手。code/spec 审查仅由主代理负责，范围为新增提交及当日尚未审查的改动；每个模块任务验证完成后单独 commit，不混入其他模块半成品。
+
+主代理复核：本轮过程中新增的 `d273cfb`（Channel）与 `7cfa9b9`（Mock）已按相应 design/task 审查；Channel 发现的生命周期问题由 `ad75c7b` 修正。Mock 当前代码含线程归属、完整写入计数及共享 Handler 关闭竞争回归，验证结果见模块 task。

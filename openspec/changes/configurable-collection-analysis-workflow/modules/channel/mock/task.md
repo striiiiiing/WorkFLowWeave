@@ -8,27 +8,17 @@
 - [x] 文件操作在线程执行；实际写完才释放锁，取消/部分写入/超时保留不确定性，无自动补写；关闭等待有界清理。代码保持最小，不引入队列或日志框架。
 - [x] 测试可读多行、重复发送、同路径并发、write/flush 错误、全局日志禁用、取消及关闭（60 秒）；lint、构建、真实文件追加烟测。
 
-## 初版实现与验证（2026-09-17，后续复核发现缺口）
+## 本次修正与主代理审查（2026-09-17）
 
-- MockFileChannel 使用专用 logging.Handler 直接写入 UTF-8 可读标题/正文，保留原文件并 flush；同路径 Handler 通过进程内注册表共享线程锁，引用释放后关闭。调用不经过 root logger、等级或全局禁用状态。
-- 写入在线程执行，Handler 的每次 emit 独立完成；异常直接传播给 ChannelManager，由回执记录失败/不确定投递。
-- 已同步 Workflow integration 对新设计文本输出的断言；定向回归通过，Ruff 通过。
+- 主代理对照 Mock design 复核 `dbf2494` 后全部 Handler 改动及测试；proposal/design 未修改。专用 logging.Handler 只负责通知文本，直接调用 write，不经过 root logger、等级或过滤器。
+- 每个 send 使用独立 _WriteResult；仅 write 返回完整字符数且 flush 成功才标记成功。None 返回值、短写、write/flush 异常均失败，不补写、不以文件长度推断成功。details 只含阶段、异常类型、errno 和计数。
+- 同路径 Handler 共享 I/O 锁和引用计数，start 幂等；最后一个引用关闭期间仍保留池条目，新所有者沿用同一把锁，避免重复 Handler 与关闭/open 竞争。
+- 主代理发现并修复：取消后的 start/write 线程未被跟踪、stop 可能先关闭后被延迟 start 重新打开，以及 write 未返回完整计数仍报成功。每实例保留未结束 I/O task，stop 先排空再释放引用；取消不能停止实际线程操作，已开始写入的投递仍不确定且不重试。
+- stop 的独立清理任务归实例所有，调用者等待上限 5 秒；超时显式报错且保留任务，后续 stop 可继续等待同一清理结果。默认值与网关本地关闭预算一致，不覆盖文件写入结果的事实。无法强杀阻塞的文件系统线程；此限制不被伪装成成功关闭。
 
-### 决策依据与默认值
+## 验证
 
-- 直接调用专用 `_FileHandler.write` 而不走 `logging.Handler.handle/emit`：依据 Mock design“直接调用专用 Handler，不经过全局日志等级、过滤器或 root logger”。`handle` 会先执行 handler 过滤器，过滤器返回 False 时 `emit` 不执行而 `send` 仍返回成功，这是本轮修复的真实缺陷。
-- `_WriteResult.started` 在真正调用 `stream.write` 之前置位：依据 Mock design“已经开始写入后的超时、取消或部分写入标记 delivery_uncertain”。`write` 抛错无法证明一个字节都没落盘，因此短写和 write/flush 异常都按 uncertain 上报；未 start 就失败的调用保持 `uncertain=False`。
-- 短写按 `EIO` 处理并把 `written`/`expected` 写入 details：文本流 `write` 返回已写字符数，少于预期即不满足 design“完整写入并 flush 成功后才标记成功”；不补写、不重试，遵循“无自动补写”。
-- 关闭等待使用 `_STOP_TIMEOUT = 5.0`：与 ChannelManager 的默认关闭预算一致；装配层可通过 `ChannelManager.stop_timeout` 再包一层有界等待，Handler 自身不接收注入预算，保持最小实现。
+- Mock 专项 15 passed，0.65 秒，exit 0；含取消 start、取消 write、超时后再次 stop、新所有者与关闭竞争、未知写入长度等回归。
+- 与 Channel/Workflow 集成共 49 passed，3.38 秒，exit 0；相关 Ruff 通过。构建、真实文件追加 smoke 与全套最终结果收取后补录。
 
-### 本轮复核缺口的修复（2026-09-17）
-
-- 每次 `send` 构造独立 `_WriteResult`（初始 `success=False`），Handler 完整 `write + flush` 后才置成功；`send` 返回前检查结果，失败抛 `ChannelDeliveryError(code="mock_write_failed")`，details 保留 operation、exception_type、errno、written、expected，不按文件长度或全文件回读推断成功。
-- 写入路径绕开 root logger、Handler 等级、Handler 过滤器和 `logging.disable`；`_HANDLERS` 同路径共享 Handler 与线程 I/O 锁，`start` 复用已打开的流，`stop` 以实例级 `_released` 保证单实例幂等、引用归零才关闭流。
-- 取消时保留已知投递事实：已经开始写入的取消在线程内完成该次写入，同时向上抛 `CancelledError`，不追加第二次。
-- 证据：新增 `tests/test_channel_mock.py` 11 项测试（多行可读与保留原文件、24 路并发不交错、过滤器/等级/全局禁用不影响、write/flush OSError、短写 uncertain、失败不污染下一次、取消只写一次、共享引用与 stop 幂等）；全量 `468 passed`，Ruff 通过；Workflow 集成断言改为完整文本比较。
-
-### 未覆盖的边界
-
-- `_HANDLERS` 是进程内全局注册表，用于满足“同一目标文件复用 Handler”；同路径实例必须通过 `stop` 释放引用，测试之间共享进程时需要显式清理。
-- 线程内的文件写入无法被取消打断：取消发生在写入开始后时，该次写入仍会完成，mock 只上报不确定性并停止追加第二次，不尝试回滚已写内容。
+提交前验证：全套 490 passed，34.13 秒，exit 0；uv build 成功；真实文件两次发送仅一次创建、完整文本相等及重复 stop smoke 成功。所有审查由主代理完成。
