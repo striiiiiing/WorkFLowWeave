@@ -23,7 +23,7 @@ from logagent.protocols import SessionReader
 
 def test_workflow_defaults_keep_every_phase_and_snapshot_without_expiry():
     workflow = WorkflowDefinition(
-        id="workflow", sources=["source"], analyses=[{"id": "analysis", "ai": "ai"}]
+        id="workflow", sources=["source"], analyses=[{"id": "analysis", "ai": "ai", "model": "model"}]
     )
     assert workflow.backup.enabled
     assert workflow.backup.snapshot

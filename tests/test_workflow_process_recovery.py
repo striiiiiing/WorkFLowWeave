@@ -58,8 +58,8 @@ class Collector:
 
 
 class AI:
-    async def execute(self, config, prompt, text, *, task_id, context):
-        record("analyze", task_id=task_id, text=text, model=config.model)
+    async def execute(self, config, prompt, text, *, model, task_id, context):
+        record("analyze", task_id=task_id, text=text, model=model)
         if mode == "crash-analysis" and task_id == "second":
             assert (await asyncio.to_thread(store.entry, "run", "phase:collect"))["body"]["shared_input"] == "durable input"
             assert (await asyncio.to_thread(store.entry, "run", "analyze:item:first"))["body"]["status"] == "success"
@@ -88,11 +88,11 @@ async def main():
         snapshot = WorkflowSnapshot(
             workflow=WorkflowDefinition(
                 id="demo", sources=["source"],
-                analyses=[AnalysisTask(id=key, ai="ai", prompt="{input}") for key in tasks],
+                analyses=[AnalysisTask(id=key, ai="ai", model="original-model", prompt="{input}") for key in tasks],
                 channels=channels, analysis_concurrency=1,
             ),
             sources={"source": SourceConfig(id="source", collector="mock")},
-            ai={"ai": AIConfig(id="ai", provider="mock", model="original-model")},
+            ai={"ai": AIConfig(id="ai", provider="mock", models={"original-model": {}})},
             channels={key: ChannelConfig(id=key, channel="mock") for key in channels},
             created_at=datetime.now(UTC),
         )

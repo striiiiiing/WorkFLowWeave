@@ -43,7 +43,7 @@ async def test_encryption_round_trip_and_file_permissions(tmp_path, monkeypatch)
     assert key_path.read_bytes() == original
     assert second.key_id == value.key_id
     store = ResourceStore(tmp_path / "resources.json")
-    store.save("ai", AIConfig(id="ai", provider="mock", model="model", api_key=value))
+    store.save("ai", AIConfig(id="ai", provider="mock", models={"model": {}}, api_key=value))
     assert "凭据-secret" not in await asyncio.to_thread(Path(store.location).read_text)
 
 
@@ -73,7 +73,7 @@ async def test_decryption_never_generates_key_and_protect_checks_existing_cipher
     credentials = manager(tmp_path)
     value = credentials.protect("secret")
     store = ResourceStore(tmp_path / "resources.json")
-    store.save("ai", AIConfig(id="ai", provider="mock", model="model", api_key=value))
+    store.save("ai", AIConfig(id="ai", provider="mock", models={"model": {}}, api_key=value))
     (tmp_path / "master.key").unlink()
     for operation in (lambda: credentials.protect("new"),):
         with pytest.raises(LogAgentError) as caught:

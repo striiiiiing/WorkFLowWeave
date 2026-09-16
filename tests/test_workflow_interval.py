@@ -7,7 +7,7 @@ from logagent.workflow import IntervalTrigger
 
 def workflow(**kwargs):
     return WorkflowDefinition(
-        id="demo", sources=["source"], analyses=[{"id": "task", "ai": "ai"}], **kwargs
+        id="demo", sources=["source"], analyses=[{"id": "task", "ai": "ai", "model": "model"}], **kwargs
     )
 
 

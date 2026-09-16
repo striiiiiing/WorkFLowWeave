@@ -159,26 +159,18 @@ class EncryptedCredential(StrictModel):
 Credential = Annotated[EnvironmentCredential | EncryptedCredential, Field(discriminator="kind")]
 
 
+ModelName = Annotated[str, Field(min_length=1, pattern=r"\S")]
+
+
 class AIConfig(StrictModel):
     id: ID
     provider: ID
-    model: str = Field(min_length=1)
     base_url: str | None = None
     api_key: Credential | None = None
     system_prompt: str = ""
-    model_options: JSONObject = Field(default_factory=dict)
-    models: dict[str, JSONObject] = Field(default_factory=dict)
+    models: dict[ModelName, JSONObject] = Field(min_length=1)
     timeout: Seconds = 600.0
     retries: int = Field(default=5, ge=0)
-
-    @model_validator(mode="after")
-    def ensure_selected_model(self) -> Self:
-        if not self.models:
-            self.models = {self.model: dict(self.model_options)}
-        elif self.model not in self.models:
-            self.models = {self.model: dict(self.model_options), **self.models}
-        return self
-
 
 class ChannelConfig(StrictModel):
     id: ID
@@ -192,7 +184,7 @@ class AnalysisTask(StrictModel):
     id: ID
     ai: ID
     prompt: str = "{input}"
-    model: str | None = None
+    model: ModelName
 
 
 class FanInConfig(StrictModel):
@@ -200,8 +192,14 @@ class FanInConfig(StrictModel):
     separator: str = "\n\n"
     ai: ID | None = None
     prompt: str = "{input}"
-    model: str | None = None
+    model: ModelName | None = None
     mark_incomplete: bool = True
+
+    @model_validator(mode="after")
+    def paired_model(self) -> Self:
+        if (self.ai is None) != (self.model is None):
+            raise ValueError("Fan-in AI and model must be specified together")
+        return self
 
 
 class BackupPolicy(StrictModel):
@@ -266,11 +264,11 @@ class WorkflowSnapshot(StrictModel):
             if set(resources) != expected or any(key != item.id for key, item in resources.items()):
                 raise ValueError("Snapshot mappings must exactly cover their referenced IDs")
         for task in self.workflow.analyses:
-            selected = task.model or self.ai[task.ai].model
+            selected = task.model
             if selected not in self.ai[task.ai].models:
                 raise ValueError("Analysis task model is not configured")
         if self.workflow.fan_in and self.workflow.fan_in.ai:
-            selected = self.workflow.fan_in.model or self.ai[self.workflow.fan_in.ai].model
+            selected = self.workflow.fan_in.model
             if selected not in self.ai[self.workflow.fan_in.ai].models:
                 raise ValueError("Fan-in model is not configured")
         return self

@@ -644,5 +644,5 @@ async def test_string_config_values_normalize_through_readers_and_store(tmp_path
     assert store.list("sources")[0].timeout == 2.5
     channel = store.save("channels", {"id": "channel", "channel": "mock", "enabled": "false", "options": {"path": "out.txt"}})
     assert channel.enabled is False
-    ai = store.save("ai", {"id": "ai", "provider": "mock", "model": "mock", "retries": "3"})
+    ai = store.save("ai", {"id": "ai", "provider": "mock", "models": {"mock": {}}, "retries": "3"})
     assert ai.retries == 3

@@ -782,14 +782,12 @@ class WorkflowService:
             "errors": [e.model_dump(mode="json") for e in result.errors],
         }
 
-    async def _analysis_call(self, config, prompt, text, task_id, result, model=None):
+    async def _analysis_call(self, config, prompt, text, task_id, result, model):
         try:
             async with asyncio.timeout(config.timeout):
-                kwargs = {"task_id": task_id, "context": ExecutionContext(
+                kwargs = {"model": model, "task_id": task_id, "context": ExecutionContext(
                     workflow_id=result.workflow_id, session_id=result.session_id, stage=result.stage,
                 )}
-                if model is not None:
-                    kwargs["model"] = model
                 raw = await self.ai_service.execute(copy_model(config), prompt, text, **kwargs)
             if asyncio.current_task().cancelling():
                 raise asyncio.CancelledError
