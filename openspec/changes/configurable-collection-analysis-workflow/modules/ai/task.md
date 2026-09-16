@@ -1,27 +1,29 @@
 # AI任务
 
-状态：待执行，完成后在本文件记录提交前验证结果。
+状态：本次实现、主代理审查与验证完成。
 
 依据：[AI设计](./design.md)、[总设计](../../design.md)及本次用户确认。contracts 为派生文档，不作为独立事实来源。旧任务与历史执行记录保留在基线 `4dfa8d0072fc16eda4f1c3da25bac36969327deb`；当前任务按设计提交 `97ebd68` 修正，旧“已完成”不代表符合新设计。
 
 依赖：公共模型与协议、配置凭据；不依赖 Workflow 执行。
 
-- [ ] 按 design 的“模型渠道共享 base_url/凭据、多个 model 及配套 model_options”整理 AI 配置与模型选择，保持五类资源；任务明确选模型，消除重复连接配置及模型选项的多个来源。所选配置结构和迁移依据写入本任务，更新受影响模型/调用者/测试。
-- [ ] 默认 timeout=600 秒、retries=5，依据 AI design 对非流式长思考的说明；总时限涵盖凭据解析、请求与等待，最多 1+retries 次，不启用 SDK 叠加重试。
-- [ ] 仅实现 OpenAI-compatible 正式接口，Mock 作为明确的离线验证适配器；保留 provider 注入。允许 JSON 模型扩展参数，拒绝 temperature/top_k 及覆盖 model/messages/认证/管理字段；删除过时的狭窄参数白名单。
-- [ ] 系统提示词独立 system 角色；{input} 字面替换，不递归模板执行；无占位符时追加完整输入（沿用现有行为以满足完整共享输入）。非法返回、缺失凭据解析器、协议和认证错误显式失败。
-- [ ] 仅确认未受理的暂态失败重试；读取超时/断连等不确定受理错误不盲目重试。取消后不启动下一次请求，返回 cancelled；客户端有界且幂等关闭，清理错误不吞掉。
-- [ ] 本地 HTTP/可控适配器测试角色、参数、隔离、总预算、重试计数与取消（60 秒）；lint、构建、离线单次分析烟测。声明直接使用的依赖。
+- [x] 按 design 的“模型渠道共享 base_url/凭据、多个 model 及配套 model_options”整理 AI 配置与模型选择，保持五类资源；任务明确选模型，消除重复连接配置及模型选项的多个来源。所选配置结构和迁移依据写入本任务，更新受影响模型/调用者/测试。
+- [x] 默认 timeout=600 秒、retries=5，依据 AI design 对非流式长思考的说明；总时限涵盖凭据解析、请求与等待，最多 1+retries 次，不启用 SDK 叠加重试。
+- [x] 仅实现 OpenAI-compatible 正式接口，Mock 作为明确的离线验证适配器；保留 provider 注入。允许 JSON 模型扩展参数，拒绝 temperature/top_k 及覆盖 model/messages/认证/管理字段；删除过时的狭窄参数白名单。
+- [x] 系统提示词独立 system 角色；{input} 字面替换，不递归模板执行；无占位符时追加完整输入（沿用现有行为以满足完整共享输入）。非法返回、缺失凭据解析器、协议和认证错误显式失败。
+- [x] 仅确认未受理的暂态失败重试；读取超时/断连等不确定受理错误不盲目重试。取消后不启动下一次请求，返回 cancelled；客户端有界且幂等关闭，清理错误不吞掉。
+- [x] 本地 HTTP/可控适配器测试角色、参数、隔离、总预算、重试计数与取消（60 秒）；lint、构建、离线单次分析烟测。声明直接使用的依赖。
 
-## 实际实现与验证（2026-09-17）
+## 2026-09-17 修正与审查依据
 
-- AIConfig 在保留兼容默认 model/model_options 的基础上增加 `models` 映射；每个 AI 资源共享 provider/base_url/api_key/system_prompt/timeout/retries，Workflow 的 AnalysisTask/FanInConfig 可显式选择模型，未指定时沿用资源默认 model。WorkflowSnapshot 校验所选模型存在。
-- 默认 timeout/retries 调整为 600 秒/5 次，依据 AI design 对非流式长思考调用的说明；总时限从凭据解析开始计算，凭据解析、请求和重试等待共用预算。
-- AIService 保留 OpenAI-compatible HTTP 与 Mock provider；system/user 分离，`{input}` 仅字面替换，无占位符时追加完整输入；模型 options 透传但拒绝覆盖 model/messages/认证/管理字段及 temperature/top_k。缺少凭据解析器、非法模型、认证/协议错误显式失败。
-- 本次仍保留旧字段作为迁移兼容层，后续可在完整调用方迁移后移除；这避免现有持久化资源和 Workflow 测试在过渡期间失效。
-- 验证：Workflow integration 2 passed；Workflow recovery 34 passed；process recovery 3 passed；Config/资源/凭据/Workflow integration 定向 86 passed；相关 Ruff 通过。全套回归在当前代码路径已完成既有 388 项回归，未发现功能失败。
+- `5b90965` 的 model/model_options/models 兼容层形成了重复来源，不能作为完成验收依据。本次移除旧字段，AIConfig 仅保留非空 models 映射；AnalysisTask 必须显式选择模型，FanInConfig 的 ai/model 成对出现。依据 AI design 的共享连接、多模型配置及总 design 的固定快照要求，不自动补模型或回退默认模型。旧配置须显式迁移；不会静默改写旧 session 快照。
+- provider 接收显式 model，读取唯一的 models[model]；每次调用与重试均复制配置，避免适配器修改影响调用者或后续请求。资源校验覆盖全部模型并拒绝管理字段、temperature/top_k，保留 JSON 扩展参数；自定义 provider 继续通过注入提供。
+- timeout=600 秒、retries=5 直接依据 AI design。HTTP 客户端请求关闭隐含的单阶段 5 秒时限，统一由总预算管理凭据解析、请求和退避；httpx 声明为直接依赖，无 SDK 自动重试。退避从 0.25 秒指数增加、最大 8 秒，作为短暂连接故障的有界等待，仍受同一总预算约束。
+- 仅连接/连接池失败及明确限流可重试；5xx、读取/写入超时、响应中断均保留不确定性且不重试；未知异常不重试。响应必须是有效非空文本和严格 JSON usage，错误响应不能伪装成功。
+- close 同一服务共享一次清理任务，同一 provider 多个别名只关闭一次；各客户端并行有界清理并聚合脱敏错误。默认 5 秒是本地连接释放预算，与模型长请求预算分离，构造参数可覆盖且必须正有限。
+- 主代理审查了本次模型、服务、Workflow 调用方、测试及派生契约；proposal/design 未改动。先前文档中“388 项全套证明本次 AI 完成”的表述撤回，该数字不对应本次实现；以下只记录实际收取退出码的验证。
 
-### 决策依据与默认值
+## 本次验证
 
-- 多模型结构依据 AI design “同一模型渠道共享连接/凭据，包含多个 model 及其配套 model_options”；兼容字段暂保留是迁移策略，不作为第二运行时来源，`models[model]` 是执行时唯一选项来源。
-- Workflow 不强制旧 FanIn 配置立即补写 model；未指定时使用 AIConfig.model，保证既有定义可重放，同时新配置可显式固定模型。
+- AI/资源/凭据/Config/Workflow/公共模型定向：222 passed，33.88 秒，exit 0。
+- 当前联合工作区全套：466 passed，34.05 秒，exit 0；含仍未验收的 Channel/Mock 改动，不单独证明这些模块完成。
+- AI 服务与新增测试 Ruff 通过；uv build 通过；新增模型引用删除原子拒绝（analysis/fan-in）、凭据与请求累计预算、HTTP默认时限回归后，AI/资源定向 68 passed，2.99 秒，exit 0。离线单次模型分析 smoke 成功。

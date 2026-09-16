@@ -703,6 +703,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
     { name = "cryptography" },
+    { name = "httpx" },
     { name = "jsonschema", extra = ["format"] },
     { name = "langgraph" },
     { name = "langgraph-checkpoint-sqlite" },
@@ -721,6 +722,7 @@ dev = [
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.20,<0.22" },
     { name = "cryptography", specifier = ">=44,<47" },
+    { name = "httpx", specifier = ">=0.27,<1" },
     { name = "jsonschema", extras = ["format"], specifier = ">=4.23,<5" },
     { name = "langgraph", specifier = ">=0.2,<1" },
     { name = "langgraph-checkpoint-sqlite", specifier = ">=2,<3" },

@@ -25,7 +25,7 @@ def snapshot(*, channels=True, fan_in=None, tasks=("first", "second"), **options
     wf = WorkflowDefinition(
         id="demo",
         sources=["source"],
-        analyses=[AnalysisTask(id=key, ai="ai", prompt=f"{key}: {{input}}") for key in tasks],
+        analyses=[AnalysisTask(id=key, ai="ai", model="offline", prompt=f"{key}: {{input}}") for key in tasks],
         channels=["one", "two"] if channels else [],
         fan_in=fan_in,
         **options,
@@ -33,7 +33,7 @@ def snapshot(*, channels=True, fan_in=None, tasks=("first", "second"), **options
     return WorkflowSnapshot(
         workflow=wf,
         sources={"source": SourceConfig(id="source", collector="mock")},
-        ai={"ai": AIConfig(id="ai", provider="mock", model="offline")},
+        ai={"ai": AIConfig(id="ai", provider="mock", models={"offline": {}})},
         channels={
             key: ChannelConfig(id=key, channel="mock", options={"target": key})
             for key in wf.channels
@@ -60,8 +60,8 @@ class AI:
         self.block = block
         self.started = asyncio.Event()
 
-    async def execute(self, config, prompt, text, *, task_id, context):
-        self.calls.append((task_id, text, config.model))
+    async def execute(self, config, prompt, text, *, model, task_id, context):
+        self.calls.append((task_id, text, model))
         if task_id == self.block:
             self.started.set()
             await asyncio.Future()
@@ -158,7 +158,7 @@ async def test_cancel_resume_reuses_successful_branch_and_original_snapshot(tmp_
     ] == "success"
     assert await w.cancel("run")
     assert (await w.wait("run")).status == "cancelled"
-    snap.ai["ai"].model = "changed"
+    snap.ai["ai"].models = {"changed": {}}
     await close(w, store)
     new, reopened, c, a, n = service(path)
     await new.recover("run")
@@ -289,7 +289,7 @@ async def test_duplicate_capacity_and_shutdown(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "fan_in", [None, FanInConfig(), FanInConfig(ai="ai", order=["second", "$input", "first"])]
+    "fan_in", [None, FanInConfig(), FanInConfig(ai="ai", model="offline", order=["second", "$input", "first"])]
 )
 async def test_order_fanin_and_disabled_channel(tmp_path, fan_in):
     w, store, _, _, n = service(tmp_path / "runs.sqlite3")
@@ -320,7 +320,7 @@ async def test_analysis_failure_policy(tmp_path, policy, partial, status, sends)
 
 async def test_aggregate_failure_does_not_fallback_to_branch_delivery(tmp_path):
     w, store, _, a, n = service(tmp_path / "runs.sqlite3", ai=AI(fail={"final"}))
-    result = await run(w, snapshot(fan_in=FanInConfig(ai="ai")))
+    result = await run(w, snapshot(fan_in=FanInConfig(ai="ai", model="offline")))
     assert result.status == "failed" and result.aggregate.status == "failed"
     assert not result.outputs and not n.calls
     await close(w, store)
@@ -350,7 +350,7 @@ async def test_coordinator_completion_cache_is_bounded():
 async def test_failed_work_recovery_reuses_successful_branches(tmp_path, failure):
     w, store, c, _, n = service(tmp_path / "runs.sqlite3", ai=AI(fail={failure}))
     definition = snapshot(
-        analysis_failure="stop", fan_in=FanInConfig(ai="ai") if failure == "final" else None
+        analysis_failure="stop", fan_in=FanInConfig(ai="ai", model="offline") if failure == "final" else None
     )
     first = await run(w, definition)
     assert first.status == "failed" and not n.calls
