@@ -13,99 +13,26 @@ uv run python examples/collect.py
 
 示例支持 `--collector logs --log-file app.jsonl`。
 
-## SQLite 保存范围与恢复
+## Session 业务存档与恢复
 
-`WorkflowService` 默认复用注入的 `SQLiteResourceStore.location` 文件；未注入资源仓库或资源仓库为 `:memory:` 时，使用 `data/workflows.sqlite3`。可以传入 `database="data/logagent.sqlite3"` 或 `run_store=SQLiteRunStore(...)` 指定文件。可恢复 Workflow 不接受 `:memory:` 存储。
+Workflow 默认使用 `data/workflows.sqlite3`，也可注入 `SessionStore` 或指定 `database`。LangGraph checkpointer 保存执行位置；SessionStore 独立保存原配置快照、业务结果、状态、通知意图与回执。父图和子图使用同一存档节点工厂，以闭包绑定阶段和条目标识，提交业务事务后再返回图状态。重放相同逻辑写入复用原版本，冲突报错。
 
-| 数据 | SQLite 中的内容 |
-| --- | --- |
-| 可复用配置 | `resources` 保存 Source、Setter、AI、Channel、Workflow；由 SQLiteResourceStore 管理。 |
-| 运行快照 | `run_sessions` 保存 session、状态、阶段、时间、冻结的 WorkflowSnapshot 和日志路径。 |
-| 阶段与逐项结果 | `run_stages`、`run_items` 保存 collect/analyze/aggregate/notify/finish 的结果、采集项、分析项，以及发送意图和回执。 |
-| 用户可查历史 | `run_history` 保存按顺序编号的事件、时间、阶段、输入、输出及脱敏错误正文；默认完整保留，不自动删除。 |
-| LangGraph 恢复点 | 原生 `AsyncSqliteSaver` 在同一 SQLite 文件中管理 `checkpoints`、`writes`。 |
-
-数据库保存实际参与工作流的采集结果和分析正文；logs Collector 的原始日志文件仍在配置的路径中。运行时客户端、凭据解析器和解析后的凭据不进入 checkpoint 或历史。自定义 Collector 返回的正文属于运行数据，也会保存。
-
-每次触发先冻结配置快照，恢复使用这份快照。阶段结果在图推进前提交，逐项成功结果也立即提交；`recover(session_id)`（别名 `resume`）复用已完成阶段与成功分支，重试未完成项。已完成 session 再次恢复直接返回最终结果。恢复不是自动扫描：重启后需显式调用该接口，并重新装配所需插件和运行时凭据。
-
-通知正文在发送前固定，发送意图先于外部调用写入 SQLite。已有回执的目标在恢复时跳过；有发送意图但没有可靠回执时记为 `delivery_uncertain`，不会自动补发，其他未开始目标可继续。因此不能保证外部通知 exactly-once；需要用户核对不确定投递的实际接收情况。单个数据库文件只支持一个执行器进程，同一进程的多个服务实例会互斥执行相同 session。
-
-## 运行并恢复一个 Workflow
-
-在仓库根目录将下面代码保存为 `workflow_demo.py`。示例使用离线 Mock AI，通知追加到本地 JSONL 文件，配置和运行历史共用 `data/logagent.sqlite3`。
+`SessionView` 提供只读列表、详情和固定业务 `version` 的阶段内容，不读取 checkpoint 内部表。`BackupPolicy` 默认保存全部正文；关闭备份时正文仅在当前运行内存中使用。到期删除全部历史正文并保留摘要、可用性及幂等键，避免重放复活内容。
 
 ```python
-import asyncio
-import sys
-
-from logagent.ai import AIService, MockProvider
-from logagent.channel import ChannelManager, MockFileChannelType
-from logagent.collection import CollectorManager
-from logagent.config import PluginRegistry, SQLiteResourceStore, expand_source
-from logagent.models import (
-    AIConfig, AnalysisTask, ChannelConfig, SourceConfig, SystemConfig,
-    WorkflowDefinition,
+sid = await workflow.trigger("daily")
+result = await workflow.wait(sid)
+record = await workflow.get_session(sid)
+content = await workflow.session_view.get_phase_content(
+    sid, "analyze", version=record.version,
 )
-from logagent.workflow import WorkflowService
-
-
-async def main():
-    registry = PluginRegistry(builtin_channels=[MockFileChannelType()])
-    await registry.discover_plugins(SystemConfig(plugin_dir="plugins"))
-    collector = CollectorManager(registry.collectorRegister)
-    ai = AIService(providers={"mock": MockProvider()})
-    channel = ChannelManager(registry.channelRegister)
-    with SQLiteResourceStore("data/logagent.sqlite3") as resources:
-        source = expand_source(
-            SourceConfig(id="demo-source", collector="mock"),
-            collector=registry.collectorRegister.get("mock"),
-            options_defaults=registry.collectorRegister.options_defaults("mock"),
-        )
-        resources.save("sources", source)
-        resources.save("ai", AIConfig(id="demo-ai", provider="mock", model="offline"))
-        resources.save("channels", ChannelConfig(
-            id="demo-channel", channel="mock", options={"path": "data/notifications.jsonl"},
-        ))
-        resources.save("workflows", WorkflowDefinition(
-            id="demo", sources=["demo-source"],
-            analyses=[AnalysisTask(id="summary", ai="demo-ai", prompt="总结：{input}")],
-            channels=["demo-channel"],
-        ))
-        workflow = WorkflowService(collector, ai, channel, resources)
-        try:
-            if sys.argv[1:] == ["recover"]:
-                result = await workflow.recover("demo-run")
-            else:
-                result = await workflow.trigger("demo", session_id="demo-run")
-            print(result.model_dump_json(indent=2))
-            print(await workflow.history("demo-run", stage="analyze"))
-        finally:
-            await workflow.shutdown()
-            await channel.stop()
-            await ai.close()
-
-
-asyncio.run(main())
 ```
 
-```bash
-uv run python workflow_demo.py
-# 新进程恢复同一 session；完成过的运行不会再次采集、分析或发送。
-uv run python workflow_demo.py recover
-```
+触发返回 session 标识，RunCoordinator 持有任务，调用者取消等待不会取消运行。显式取消使用 `await workflow.cancel(sid)`；恢复使用 `await workflow.recover(sid)`，然后通过 `wait` 等待结果。恢复保留原 session 的快照和内容，缺少 checkpoint 或必要存档时明确失败，不重采或重新执行成功分析补齐。
 
-`session_id` 必须唯一，重新执行完整流程应使用新 ID。取消执行可调用 `await workflow.cancel(session_id)`；关闭服务会取消并等待当前任务退出，已有运行记录保留。调用方注入的 `run_store` 由调用方负责关闭。
+通知先存档意图再调用渠道，回执逐项保存；已有意图但回执未知时记录 `delivery_uncertain`，不自动补发。启动将遗留运行标记为中断，不自动恢复。只支持单执行器进程；调用方注入的存储由调用方关闭。旧 Workflow 数据库需显式迁移，不能把旧记录静默隐藏在新表之外。
 
-只读 CLI 输出 JSON，支持分页和阶段筛选；数据库路径必须指向运行时使用的同一个文件：
-
-```bash
-uv run python -m logagent.workflow --database data/logagent.sqlite3 sessions --workflow-id demo
-uv run python -m logagent.workflow --database data/logagent.sqlite3 show demo-run
-uv run python -m logagent.workflow --database data/logagent.sqlite3 history demo-run --stage analyze --limit 100 --offset 0
-```
-
-Python 调用可使用 `await workflow.list_sessions(...)`、`await workflow.get_session(session_id)` 和 `await workflow.history(session_id, ...)` 查看同样的数据。
+旧直读 SQLite CLI 已移除，对外命令行将在交互模块中通过 HTTP 查询同一 SessionView。
 
 ## 独立使用采集模块
 
