@@ -1104,3 +1104,20 @@ async def test_start_that_swallows_cancellation_cannot_send():
         await active
     await manager.stop()
     assert calls == ["stop"]
+
+
+async def test_readonly_registry_wrappers_do_not_recreate_unchanged_instances(tmp_path):
+    from logagent.channel import MockFileChannelType
+    from logagent.config import PluginRegistry
+    from logagent.models import SystemConfig
+    registry = PluginRegistry([], builtin_channels=[MockFileChannelType()])
+    await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
+    manager = ChannelManager(registry.channelRegister)
+    config = ChannelConfig(id="file", channel="mock", options={"path": str(tmp_path / "out.txt")})
+    assert (await manager.send(config, _notification("first"))).status == "success"
+    original = next(iter(manager._entries.values()))
+    await manager.replace_register(registry.channelRegister)
+    assert next(iter(manager._entries.values())) is original
+    assert not original.stopped
+    assert (await manager.send(config, _notification("second"))).status == "success"
+    await manager.stop()
