@@ -12,7 +12,7 @@
 | 4 | [AI](./modules/ai/task.md) | 1、3；600秒/5重试、共享连接多模型、开放扩展参数 | 本次修正完成并通过主代理审查；取代 `5b90965` 兼容实现 |
 | 5 | [Channel](./modules/channel/task.md) | 1、3；常驻实例、快照绑定、有界关闭 | 修正完成；主代理审查、专项与全套验证通过 |
 | 6 | [Mock](./modules/channel/mock/task.md) | 5；可读文本、专用Handler、调用后检查 | 修正完成；主代理审查、专项与全套验证通过 |
-| 7 | [Email](./modules/channel/email/task.md) | 3、5；异步SMTP、真实受理回执 | 待执行 |
+| 7 | [Email](./modules/channel/email/task.md) | 3、5；异步SMTP、真实受理回执 | 完成；常驻实例、真实受理语义、本地 SMTP 验证与主代理审查通过 |
 | 8 | [Collection](./modules/collection/task.md) | 2、3；history复用SessionView | 待执行 |
 | 9 | [Lifecycle](./modules/lifecycle/task.md) | 1–8；启停、定时、reload、健康 | 待执行 |
 | 10 | [Interaction](./modules/interaction/task.md) | 1–9；FastAPI、Typer、完整HTTP链路 | 待执行 |
@@ -34,3 +34,5 @@
 2026-09-17 用户要求：实现优先使用 `gpt-5.5/high` 子代理；调用异常时主代理接手。code/spec 审查仅由主代理负责，范围为新增提交及当日尚未审查的改动；每个模块任务验证完成后单独 commit，不混入其他模块半成品。
 
 主代理复核：本轮过程中新增的 `d273cfb`（Channel）与 `7cfa9b9`（Mock）已按相应 design/task 审查；Channel 发现的生命周期问题由 `ad75c7b` 修正。Mock 当前代码含线程归属、完整写入计数及共享 Handler 关闭竞争回归，验证结果见模块 task。
+
+主代理复核：AI 由 `9bbda93` 按 AI design 收敛为单一 `models` 来源并限定 5xx/断连不重试；Channel/Mock 的实例复用、总时限、写入完成检查与共享 Handler 生命周期由 `ad75c7b`、`ebebb13`、`340aae9` 收口；Email 按 Email design 实现常驻 SMTP 实例、按需连接、DATA 肯定接受才成功、其余网络结果为不确定投递，未引入重试或隐式降级。Email 验证为专项 27 passed、全套 519 passed（33.73s，exit 0）、lint/build/本地 SMTP 烟测通过，详见模块 task。

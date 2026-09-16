@@ -9,6 +9,7 @@ description = "Configurable asynchronous collection for LogAgent workflows"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+  "aiosmtplib>=3,<6",
   "aiosqlite>=0.20,<0.22",
   "cryptography>=44,<47",
   "httpx>=0.27,<1",
