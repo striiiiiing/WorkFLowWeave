@@ -12,7 +12,7 @@
 | 插件设置 | plugin_dir/config.json，使用 PluginConfiguration | 启动/插件 reload 控制启用及 options 默认值。 |
 | 插件能力 | 每个插件目录的 plugin.json + entry.backend 指定的入口 .py | 配置模块读取 manifest、导入入口并发布 collectorRegister/channelRegister，不保存用户凭据。 |
 | 资源 | data_dir/resources.json | CRUD 或资源 reload 发布新版本，包含 sources/setters/ai/channels/workflows 五个集合。 |
-| 运行 | WorkflowSnapshot | trigger 时复制有效资源；仅服务当前调用，不提供恢复。 |
+| 运行 | WorkflowSnapshot | trigger 时复制有效资源；由 Workflow 按备份策略持久化到 LangGraph，供原 session 恢复使用。 |
 
 以上文件布局是首版实现选择，不是公共 API 的路径承诺。启动显式缺失的系统文件报错；首次空数据目录可建立五个空资源集合，已存在但损坏的文件报错。插件配置文件不存在等于无覆盖。QwenPaw 的类型、注册与配置描述思路见 [参考记录](../../references/qwenpaw.md)。
 

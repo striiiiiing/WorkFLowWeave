@@ -9,7 +9,7 @@
 | 组件 | 职责 |
 | --- | --- |
 | `routers/resources` | 五类资源 CRUD，交给配置应用服务；Workflow 写入转交 WorkflowService。 |
-| `routers/runs` | 触发和取消当前调用；不持有运行任务或阶段逻辑。 |
+| `routers/runs` | 触发、查询 session、恢复和按 session_id 取消；不持有运行任务或阶段逻辑。 |
 | `routers/system` | 插件能力、schema、健康与显式 reload。 |
 | `schemas` / `errors` | 严格解析传输输入、统一 ErrorResponse 与 HTTP 状态。 |
 | `cli` | 本地启动/配置样例；其余命令使用同一 HTTP API。 |
@@ -29,8 +29,8 @@ flowchart LR
 
 1. 校验 JSON、路径 ID、分页及未知字段。请求边界的结构校验不替代所属模块的业务校验。
 2. 资源写入交由配置应用服务组织 schema、语义及引用校验；Workflow 定义交由 WorkflowService 校验后使用同一存储提交入口。
-3. 触发执行当前 Workflow 调用并返回本次结果；取消只作用于当前请求。
-4. 路由不提供运行查询、恢复或私有文件轮询。
+3. 触发创建 session 并返回 session 标识；取消通过 session_id 转交 WorkflowService，由 RunCoordinator 管理实际任务。
+4. 路由通过 Workflow 的 SessionView 查询 session 列表、运行状态、阶段结果和备份可用性，恢复交给 WorkflowService；不直接访问 LangGraph 或 SQLite。
 
 完整路径、状态码和响应形状以接口契约为准。`GET /api/plugins` 已返回 `CapabilityDescription` 中的 schema，无需另维护渠道 schema 路由或表单字段副本。固定路由优先于 `/{kind}/{id}`。
 
@@ -42,4 +42,4 @@ flowchart LR
 
 ## 验证要点
 
-API 与 CLI 对同一无效配置返回相同原因；POST/PUT 的存在性约束在提交时成立；未知资源字段被拒绝；插件 schema 查询不执行采集、模型或通知。
+API 与 CLI 对同一无效配置返回相同原因；POST/PUT 的存在性约束在提交时成立；未知资源字段被拒绝；插件 schema 查询不执行采集、模型或通知。验证 session 展示与 checkpoint 状态一致、恢复缺失材料的错误，以及独立请求通过 session_id 取消手动和定时运行。

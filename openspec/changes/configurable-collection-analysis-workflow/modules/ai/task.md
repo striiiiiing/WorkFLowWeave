@@ -23,7 +23,7 @@
 依赖：公共 AI 配置、Credential、ErrorInfo 和分析结果契约。
 
 验收标准：
-- provider 仅接受当前支持的 mock/http；model 非空，http 地址合法，timeout 为正有限秒数，retries 为非负整数且不接受布尔/字符串隐式转换。
+- provider 仅接受当前支持的 mock/http；model 非空，http 地址合法，timeout 为正有限秒数，retries 经 Pydantic 默认类型转换后为非负整数，允许数字字符串配置。
 - 顶层及 model_options 均拒绝 temperature、top_k；不允许覆盖 messages、model、认证、地址、timeout 或 retries。
 - 已声明的思考开关/强度等扩展按适配器规定校验，未知参数返回字段级原因，不直接透传任意 JSON。
 - validate 不发起模型请求、不解析凭据造成外部调用，且不修改传入配置。

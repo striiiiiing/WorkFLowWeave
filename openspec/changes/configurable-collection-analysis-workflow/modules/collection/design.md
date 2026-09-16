@@ -48,6 +48,12 @@ options 提供有界样例 records，或显式 mode=success/empty/failed/timeout
 
 应用诊断由 Python 标准库 `logging` 负责；日志 Collector 只读取其逐行 JSON 输出。setters 支持等级、模块、session/time 范围、字段与分组；count 按处理后的事件数。已读取范围中的损坏完整行返回 failed 并给出行位置诊断；文件尾尚未写完的一行不视为完整事件，metadata 说明忽略事实。日志轮转导致读取中断时报告，不无限重开追踪。
 
+### Workflow 历史 history
+
+通过 CollectionContext 注入 Workflow 的 SessionView 只读接口，与对外 session 展示共用同一查询实现，不直接读取 SQLite 表或自行解释 LangGraph checkpoint。按指定 Workflow/session、最近次数、时间范围和 token 内容预算选择已保存阶段结果；只读取历史，不重新执行原始 Collector 或 Workflow。
+
+最近次数按 session 计数，不按 checkpoint 数量计数；一次查询固定所选历史版本，并排除当前 session。未匹配历史返回 empty；已选内容未保存、过期或损坏则报告 missing/failed 及原因。超过预算按配置截取或报错，并记录截取范围；字段、分组等 Setter 由此 Collector 声明，count 为最终选中的历史 session 数。
+
 ## 验证要点
 
-覆盖配置模块发布的一个插件多能力、注册冲突与 Manager 只读消费 `collectorRegister`，以及 Setter 覆盖、空状态区别、非法输出、超时/取消和有界日志尾读。
+覆盖配置模块发布的一个插件多能力、注册冲突与 Manager 只读消费 `collectorRegister`，以及 Setter 覆盖、空状态区别、非法输出、超时/取消和有界日志尾读。历史采集验证与 SessionView 展示一致、次数/时间/token 边界、正文缺失与无历史的区别，以及读取时不重跑来源。

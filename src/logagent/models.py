@@ -5,18 +5,19 @@ Runtime dependencies live in CollectionContext, outside the serialized models.
 
 from __future__ import annotations
 
-import math
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Self, TypeVar
 
+import orjson
 from pydantic import (
     AfterValidator,
     BaseModel,
     BeforeValidator,
     ConfigDict,
     Field,
+    JsonValue,
     TypeAdapter,
     model_validator,
 )
@@ -24,30 +25,16 @@ from pydantic import (
 if TYPE_CHECKING:
     from logagent.protocols import CredentialResolver
 
+_JSON_VALUE = TypeAdapter(JsonValue, config=ConfigDict(strict=True, allow_inf_nan=False))
+
+
 def _json_value(value: Any) -> Any:
-    """Validate a JSON value without Python's permissive coercions."""
-    def walk(item: Any) -> None:
-        if item is None or type(item) is bool or type(item) is str:
-            return
-        if type(item) is int:
-            return
-        if type(item) is float:
-            if not math.isfinite(item):
-                raise ValueError("Expected a finite JSON number")
-            return
-        if type(item) is list:
-            for child in item:
-                walk(child)
-            return
-        if type(item) is dict:
-            for key, child in item.items():
-                if type(key) is not str:
-                    raise ValueError("JSON object keys must be strings")
-                walk(child)
-            return
-        raise ValueError("Expected a JSON-serializable value")
-    walk(value)
-    return deepcopy(value)
+    """Validate JSON types and round-trip through orjson for an independent value."""
+    try:
+        return orjson.loads(orjson.dumps(_JSON_VALUE.validate_python(value)))
+    except (ValueError, orjson.JSONEncodeError):
+        raise ValueError("Expected a JSON-compatible value supported by orjson") from None
+
 
 def _json_object(value: Any) -> dict[str, Any]:
     if type(value) is not dict:
@@ -81,7 +68,7 @@ def unique_check(name: str):
 
 ID = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,80}$")]
 UTCDateTime = Annotated[datetime, BeforeValidator(_utc_datetime)]
-Seconds = Annotated[float, Field(strict=True, gt=0, allow_inf_nan=False)]
+Seconds = Annotated[float, Field(gt=0, allow_inf_nan=False)]
 JSONObject = Annotated[dict[str, Any], BeforeValidator(_json_object)]
 JSONSchema = JSONObject
 JSONValue = Annotated[Any, BeforeValidator(_validate_json_value)]
@@ -101,7 +88,7 @@ DeliveryStatus = Literal["success", "failed", "timeout", "skipped"]
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(
-        extra="forbid", strict=True
+        extra="forbid", strict=False
     )
 
 

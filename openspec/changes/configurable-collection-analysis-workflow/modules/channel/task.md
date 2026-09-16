@@ -16,7 +16,7 @@
 依赖：contracts 模块提供的公共基础类型、ErrorInfo、Credential 及渠道/凭据协议；仅依赖这些基础产物，不等待 config 模块的资源 CRUD 或完整插件发现。
 
 验收标准：
-- ChannelConfig 严格检查公共字段，timeout 默认 30 秒并拒绝布尔值、非有限数、非正数及数字字符串，enabled 默认 True。
+- ChannelConfig 严格检查公共字段，timeout 默认 30 秒，允许数字字符串按 Pydantic 默认规则转换后校验，拒绝非有限数及非正数，enabled 默认 True。
 - Notification 保留 session_id、output_id、title、text 和可序列化 metadata；未知公共字段被拒绝。
 - DeliveryResult 仅接受 success/failed/timeout/skipped，attempts 仅为本次调用的 0 或 1；成功和跳过不携带错误。
 - 平台实例通过工厂绑定配置和 CredentialManager，协议无需引入接收循环、会话缓存或复杂继承体系。

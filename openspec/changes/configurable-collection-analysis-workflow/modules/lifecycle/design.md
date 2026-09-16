@@ -7,11 +7,12 @@
 ## 启动顺序
 
 1. 读取 SystemConfig，初始化配置存储和凭据。
-2. 创建配置模块及其 PluginRegistry，发现并注册 logs、mock 等 Collector 插件及 Channel 插件，发布 `collectorRegister` 与 `channelRegister`。
-3. 将两个注册结果分别注入数据采集模块与 Channel 网关，再解析五类资源及引用。已保存来源的插件缺失保留为诊断，执行时按 on_missing 处理。
-4. 装配 AIService、ChannelManager、WorkflowService 和 API；完成后开放准入及定时触发。
+2. 打开 LangGraph SQLite checkpointer，建立 Workflow 的 SessionView 查询能力；存储不可用时不开放运行准入。
+3. 创建配置模块及其 PluginRegistry，发现并注册 history、logs、mock 等 Collector 插件及 Channel 插件，发布 `collectorRegister` 与 `channelRegister`。
+4. 将两个注册结果分别注入数据采集模块与 Channel 网关，为历史 Collector 注入 SessionView 只读接口，再解析五类资源及引用。已保存来源的插件缺失保留为诊断，执行时按 on_missing 处理。
+5. 装配 AIService、ChannelManager、WorkflowService 和 API；由 Workflow 检查 checkpoint，将遗留 created/running session 标记 interrupted 后开放准入及定时触发，不自动恢复运行。
 
-所有依赖由构造参数注入。健康检查汇总已知本地状态，不通过启动流程发送探测邮件、读取实际来源或调用付费模型。Channel 使用每次调用的短生命周期实例，服务启动不遍历所有目标建立远端连接。
+所有依赖由构造参数注入。健康检查汇总已知本地状态，不通过启动流程发送探测邮件、读取实际来源或调用付费模型。Channel 实例按快照配置首次使用时初始化并常驻，服务关闭时统一释放；服务启动不遍历所有目标建立远端连接。
 
 ## 插件注册协调
 
@@ -27,14 +28,14 @@ resources：重新读取资源 JSON，完整验证后原子替换有效视图；
 
 plugins：仅在没有活动运行时允许，原子关闭准入并暂停定时触发后再检查活动数；存在活动运行返回冲突，不自动取消它们。调用配置模块按 owner 清理旧声明、读取 `plugin.json` 并重新导入入口，再把新发布的 `collectorRegister`/`channelRegister` 注入两个业务模块；装配层不复制或重建注册内容。失败插件保持不可用并报告诊断，其他有效插件可以使服务 degraded 后继续接收运行；不宣称任意 Python 导入副作用可回滚。
 
-卸载是插件 reload 后 owner 不再存在的结果，移除其全部类型/schema/工厂；已保存资源由配置模块按引用规则处理。
+插件 reload 在没有活动运行的边界，先关闭受影响 owner 的渠道实例，再由配置模块清理旧注册并加载新代码。卸载是 reload 后 owner 不再存在的结果，移除其全部类型/schema/工厂；已保存资源由配置模块按引用规则处理。
 
 ## 关闭与清理
 
-关闭先禁止新准入和定时触发，再取消当前 Workflow 调用，最后逆序关闭已创建的模型客户端和插件资源。ChannelManager 等待当前 send 的清理完成。启动失败也按已获取资源清单逆序释放。
+关闭先禁止新准入和定时触发，再由 RunCoordinator 等待或取消活动 session 并完成状态写入；随后关闭模型客户端、渠道常驻实例和插件资源，最后关闭 SQLite checkpointer。ChannelManager 等待当前 send 的有界清理后统一 stop。启动失败也按已获取资源清单逆序释放。
 
 stop/shutdown 可重复调用，清理错误独立记录，不掩盖原始启动或业务失败。阻塞 SDK/线程必须有实际 I/O 时限；取消 async 包装并不强制终止线程。首版不运行无所属的后台任务。
 
 ## 验证要点
 
-覆盖配置模块提供的目录插件注册结果注入、一个插件多能力、重复 ID/key、manifest 与 kind 不符、`entry.backend` 路径越界、入口导入失败、默认配置无效、注册原子性、插件 reload 活动冲突、卸载无残留和失败启动清理。
+覆盖配置模块提供的目录插件注册结果注入、一个插件多能力、重复 ID/key、manifest 与 kind 不符、`entry.backend` 路径越界、入口导入失败、默认配置无效、注册原子性、插件 reload 活动冲突、卸载无残留和失败启动清理。验证 checkpointer 不可用时不开放准入、遗留 session 标记中断，以及渠道实例和数据库按序释放。

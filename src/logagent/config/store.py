@@ -73,7 +73,7 @@ class SQLiteResourceStore:
         kind = self._kind(kind)
         model = _MODELS[kind]
         try:
-            value = model.model_validate(resource, strict=True)
+            value = model.model_validate(resource)
         except ValidationError as exc:
             raise validation_error(exc, code="invalid_config") from None
         payload = value.model_dump(mode="json")
