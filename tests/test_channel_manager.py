@@ -1121,3 +1121,16 @@ async def test_readonly_registry_wrappers_do_not_recreate_unchanged_instances(tm
     assert not original.stopped
     assert (await manager.send(config, _notification("second"))).status == "success"
     await manager.stop()
+
+
+async def test_failure_diagnostics_log_identity_without_notification_or_exception(caplog):
+    async def create(config):
+        raise RuntimeError("private-credential")
+    manager = _manager(_ChannelType(create))
+    await manager.send(_config(), Notification(session_id="session", output_id="output", text="private-body"))
+    records = [record for record in caplog.records if record.getMessage() == "notification_failed"]
+    assert len(records) == 1
+    assert records[0].session_id == "session" and records[0].channel_id == "target"
+    assert records[0].error_code == "channel_prepare_failed"
+    assert "private" not in str(records[0].__dict__)
+    await manager.stop()
