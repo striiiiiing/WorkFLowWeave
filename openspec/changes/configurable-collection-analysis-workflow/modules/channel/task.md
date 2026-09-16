@@ -1,6 +1,6 @@
 # Channel 网关任务
 
-状态：本轮复核缺口已在工作树修复并通过验证，待提交。`1c97439` 是初版；下列任务现在由专项测试证明。
+状态：本轮复核缺口已修复、验证并提交（`d273cfb`、`ad75c7b`、`ebebb13`、`340aae9`，发送预算共享见下）。`1c97439` 是初版；下列任务现在由专项测试证明。
 
 依据：[Channel 网关设计](./design.md)、[总设计](../../design.md)及本次用户确认。contracts 为派生文档，不作为独立事实来源。旧任务与历史执行记录保留在基线 `4dfa8d0072fc16eda4f1c3da25bac36969327deb`；当前任务按设计提交 `97ebd68` 修正，旧“已完成”不代表符合新设计。
 
@@ -32,3 +32,7 @@
 后续装配审查发现只读注册表每次 get 都返回新包装对象，不能用包装对象身份判断插件变化。改为比较 create 实现、schema、能力与 owner；新增真实 PluginRegistry 回归证明未变更实例不会被重建。Channel 定向 33 passed（exit 0），Ruff 通过。
 
 对照 Channel design 的失败诊断要求补充复核：失败回执统一写入标准 logging，仅包含 event、session/channel/output ID、错误码、状态和不确定性，不包含通知正文、凭据或原始异常。新增日志脱敏回归 1 passed（exit 0），Ruff 通过。
+
+Email 实施中复核到一处预算缺陷：常驻实例按 channel_id 与有效配置复用，timeout 被排除在缓存键之外，因此适配器若沿用创建时的 timeout，后续发送会继续使用旧快照的时限。设计第 32 行要求“每次发送的 timeout 覆盖等待实例可用、必要准备和发送”，故由 Manager 在调用 send 前把本次绝对 deadline 放入 `logagent.channel.context` 的 ContextVar，内置适配器据此读取剩余预算；插件 send(notification) 签名与语义不变，不读取该上下文也不会改变行为。Email 新增常驻连接复用下的当前快照时限回归（`tests/test_email_channel.py::test_reused_connection_obeys_current_snapshot_timeout`）。
+
+主代理验证：全套 520 passed，33.75 秒，exit 0；本地 SMTP 端到端烟测一次 DATA 受理、正常收尾，exit 0。

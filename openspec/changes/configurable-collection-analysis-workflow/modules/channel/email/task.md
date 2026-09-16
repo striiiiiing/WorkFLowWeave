@@ -22,5 +22,4 @@
 - 全套回归 `timeout 60s uv run pytest -q`：`519 passed / 33.73s / exit 0`（langgraph 弃用 warning 为既有噪声）。`uv run ruff check src/logagent/channel tests/test_email_channel.py` 全通过，`uv build` 生成 sdist/wheel 成功。
 - 本地 SMTP 端到端烟测走真实 ChannelManager 路径：`receipt.status == "success"`、DATA 恰好提交一次、`manager.stop()` 正常收尾，exit 0。
 - 全部 SMTP 测试只连接本机回环测试服务，未向外部邮箱发信。
-
-- 当前预算修复后全套 520 passed，35.07 秒，exit 0；Ruff、uv build、git diff --check 通过。
+- 预算共享修补后全套 520 passed，33.75 秒，exit 0；Ruff、uv build、git diff --check 通过。常驻实例复用时的时限取自本次调用，回归见 `test_reused_connection_obeys_current_snapshot_timeout`。
