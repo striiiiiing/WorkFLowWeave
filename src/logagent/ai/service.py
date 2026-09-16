@@ -22,7 +22,7 @@ class ProviderError(Exception):
 
 
 class Provider(Protocol):
-    async def complete(self, config: AIConfig, *, system: str, user: str, credential: str | None = None) -> Mapping[str, Any]: ...
+    async def complete(self, config: AIConfig, *, model: str | None = None, model_options: Mapping[str, Any] | None = None, system: str, user: str, credential: str | None = None) -> Mapping[str, Any]: ...
     async def close(self) -> None: ...
 
 
@@ -34,7 +34,7 @@ class MockProvider:
     def __init__(self, responder: Callable[..., Any] | None = None):
         self.responder = responder
 
-    async def complete(self, config: AIConfig, *, system: str, user: str, credential: str | None = None) -> Mapping[str, Any]:
+    async def complete(self, config: AIConfig, *, model: str | None = None, model_options: Mapping[str, Any] | None = None, system: str, user: str, credential: str | None = None) -> Mapping[str, Any]:
         if self.responder is None:
             return {"text": user}
         value = self.responder(config=config, system=system, user=user, credential=credential)
@@ -49,13 +49,13 @@ class HTTPProvider:
         self.client = client or httpx.AsyncClient()
         self._owned = client is None
 
-    async def complete(self, config: AIConfig, *, system: str, user: str, credential: str | None = None) -> Mapping[str, Any]:
+    async def complete(self, config: AIConfig, *, model: str | None = None, model_options: Mapping[str, Any] | None = None, system: str, user: str, credential: str | None = None) -> Mapping[str, Any]:
         if not config.base_url:
             raise ProviderError("invalid_config", "HTTP provider 需要 base_url")
         headers = {"content-type": "application/json"}
         if credential:
             headers["authorization"] = f"Bearer {credential}"
-        payload = {"model": config.model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}], **dict(config.model_options)}
+        payload = {"model": model or config.model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}], **dict(model_options or config.model_options)}
         try:
             response = await self.client.post(config.base_url.rstrip("/") + "/chat/completions", headers=headers, json=payload)
         except asyncio.CancelledError:
@@ -91,25 +91,28 @@ class AIService:
         self.providers = dict(providers or {"mock": MockProvider(), "http": HTTPProvider()})
         self.credential_resolver = credential_resolver
 
-    def validate(self, config: AIConfig) -> None:
+    def validate(self, config: AIConfig, model: str | None = None) -> None:
         if config.provider not in {"mock", "http"}:
             raise LogAgentError("invalid_config", "不支持的 AI provider", {"field": "provider"})
         if config.provider == "http":
             parsed = urlparse(config.base_url or "")
             if parsed.scheme not in {"http", "https"} or not parsed.netloc:
                 raise LogAgentError("invalid_config", "HTTP provider 的 base_url 无效", {"field": "base_url"})
+        selected = model or config.model
+        if selected not in config.models:
+            raise LogAgentError("invalid_config", "选择的 AI model 不存在", {"field": "model"})
+        options = config.models[selected]
         forbidden = {"temperature", "top_k", "messages", "model", "api_key", "base_url", "timeout", "retries"}
-        bad = sorted(forbidden & set(config.model_options))
+        bad = sorted(forbidden & set(options))
         if bad:
             raise LogAgentError("invalid_config", "model_options 包含不允许覆盖的字段", {"fields": bad})
-        unknown = set(config.model_options) - {"enable_thinking", "thinking", "thinking_level", "response_format"}
-        if unknown:
-            raise LogAgentError("invalid_config", "model_options 包含未声明字段", {"fields": sorted(unknown)})
+        if not all(isinstance(key, str) for key in options):
+            raise LogAgentError("invalid_config", "model_options 字段名必须为字符串")
 
-    async def execute(self, config: AIConfig, prompt: str, input_text: str, *, task_id: str = "task", context: ExecutionContext | None = None) -> AnalysisResult:
+    async def execute(self, config: AIConfig, prompt: str, input_text: str, *, model: str | None = None, task_id: str = "task", context: ExecutionContext | None = None) -> AnalysisResult:
         started = time.perf_counter()
         try:
-            self.validate(config)
+            self.validate(config, model)
         except LogAgentError as exc:
             return AnalysisResult(task_id=task_id, status="failed", error=exc.info, elapsed_ms=(time.perf_counter()-started)*1000)
         provider = self.providers.get(config.provider)
@@ -117,17 +120,27 @@ class AIService:
             return AnalysisResult(task_id=task_id, status="failed", error=ErrorInfo(code="provider_missing", message="AI provider 不可用"), elapsed_ms=(time.perf_counter()-started)*1000)
         credential = None
         try:
-            if config.api_key is not None and self.credential_resolver is not None:
-                credential = await self.credential_resolver.resolve(config.api_key)
-            system, user = config.system_prompt, _prompt(prompt, input_text)
             deadline = started + config.timeout
+            if config.api_key is not None:
+                if self.credential_resolver is None:
+                    raise LogAgentError("credential_resolver_missing", "AI 凭据解析器未配置")
+                remaining = deadline - time.perf_counter()
+                if remaining <= 0:
+                    raise TimeoutError
+                credential = await asyncio.wait_for(
+                    self.credential_resolver.resolve(config.api_key), remaining
+                )
+            system, user = config.system_prompt, _prompt(prompt, input_text)
+            selected = model or config.model
+            selected_options = config.models[selected]
+            config = config.model_copy(update={"model": selected, "model_options": dict(config.models[selected])})
             last: ProviderError | None = None
             for attempt in range(config.retries + 1):
                 remaining = deadline - time.perf_counter()
                 if remaining <= 0:
                     raise TimeoutError
                 try:
-                    data = await asyncio.wait_for(provider.complete(config, system=system, user=user, credential=credential), remaining)
+                    data = await asyncio.wait_for(provider.complete(config, model=selected, model_options=selected_options, system=system, user=user, credential=credential), remaining)
                     text = data.get("text") if isinstance(data, Mapping) else None
                     if not isinstance(text, str) or not text.strip():
                         raise ProviderError("invalid_response", "模型服务响应缺少有效文本")
