@@ -13,7 +13,7 @@
 | 5 | [Channel](./modules/channel/task.md) | 1、3；常驻实例、快照绑定、有界关闭 | 修正完成；主代理审查、专项与全套验证通过 |
 | 6 | [Mock](./modules/channel/mock/task.md) | 5；可读文本、专用Handler、调用后检查 | 修正完成；主代理审查、专项与全套验证通过 |
 | 7 | [Email](./modules/channel/email/task.md) | 3、5；异步SMTP、真实受理回执 | 完成；常驻实例、真实受理语义、本地 SMTP 验证与主代理审查通过 |
-| 8 | [Collection](./modules/collection/task.md) | 2、3；history复用SessionView | 待执行 |
+| 8 | [Collection](./modules/collection/task.md) | 2、3；history复用SessionView | 已实现并经主代理审查、验证 |
 | 9 | [Lifecycle](./modules/lifecycle/task.md) | 1–8；启停、定时、reload、健康 | 待执行 |
 | 10 | [Interaction](./modules/interaction/task.md) | 1–9；FastAPI、Typer、完整HTTP链路 | 待执行 |
 
