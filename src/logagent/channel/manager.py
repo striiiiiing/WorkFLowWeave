@@ -8,6 +8,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
+from logagent.channel.context import delivery_deadline
 from logagent.channel.errors import ChannelDeliveryError
 from logagent.errors import LogAgentError, exception_error
 from logagent.models import (
@@ -311,7 +312,11 @@ class ChannelManager:
                     if asyncio.current_task().cancelling():
                         raise asyncio.CancelledError
                     entered = True
-                    await send(notification)
+                    budget_token = delivery_deadline.set(deadline)
+                    try:
+                        await send(notification)
+                    finally:
+                        delivery_deadline.reset(budget_token)
                     if asyncio.current_task().cancelling():
                         raise asyncio.CancelledError
             return self._receipt(config, notification, status="success", attempts=1)
