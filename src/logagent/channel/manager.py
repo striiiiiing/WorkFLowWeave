@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import math
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -18,6 +19,7 @@ from logagent.models import (
 )
 from logagent.schema import validate_instance
 
+_LOGGER = logging.getLogger(__name__)
 _STOP_TIMEOUT = 5.0
 
 
@@ -99,6 +101,16 @@ class ChannelManager:
         attempts: int,
         error: ErrorInfo | None = None,
     ) -> DeliveryResult:
+        if error is not None:
+            _LOGGER.warning(
+                "notification_failed",
+                extra={
+                    "event": "notification_failed", "session_id": notification.session_id,
+                    "channel_id": config.id, "output_id": notification.output_id,
+                    "error_code": error.code, "delivery_status": status,
+                    "delivery_uncertain": bool(error.details.get("delivery_uncertain")),
+                },
+            )
         return DeliveryResult(
             channel_id=config.id,
             output_id=notification.output_id,
