@@ -4,9 +4,9 @@
 
 ### 1.1 总体结构
 
-保留模块化单体的总体结构：五个核心模块为交互、Workflow、数据采集、AI、Channel 网关；配置与资源管理提供公共支撑；装配与生命周期负责组合这些模块，共七个模块。session 的记录、展示、历史读取和恢复依附于 Workflow 内的 LangGraph 持久化能力。装配模块负责依赖注入和启停协调，插件发现与注册由配置模块执行，面向个人开发者与轻量自托管场景。
+保留模块化单体的总体结构：五个核心模块为交互、Workflow、数据采集、AI、Channel 网关；配置与资源管理提供公共支撑；装配与生命周期负责组合这些模块，共七个模块。Workflow 内部将执行 checkpoint 与可读 session 内容分开：LangGraph 负责运行进度，运行时的存档节点维护业务内容，SessionView 对外只读。装配模块负责依赖注入和启停协调，插件发现与注册由配置模块执行，面向个人开发者与轻量自托管场景。
 
-用户通过 API 管理资源、触发运行和查询结果；CLI 提供服务启动和轻量 API 调用入口。Workflow 组织一次运行，分别调用采集、AI 和通知能力，并通过 LangGraph checkpoint 保存执行状态与可恢复材料。配置模块提供本次有效配置。
+用户通过 API 管理资源、触发运行和查询结果；CLI 提供服务启动和轻量 API 调用入口。Workflow 组织一次运行，分别调用采集、AI 和通知能力，通过 LangGraph checkpoint 保存执行进度，并由图节点将原快照、阶段结果和回执幂等写入 SessionStore。配置模块提供本次有效配置。
 
 ### 1.2 模块及协作边界
 
@@ -34,8 +34,9 @@ flowchart TB
     Workflow -->|单来源采集| Collection[数据采集]
     Workflow -->|明确分析任务| AI[AI]
     Workflow -->|有序通知| Gateway[Channel 网关]
-    Workflow -->|持久化 / 恢复| Checkpoints[LangGraph checkpoint / SQLite]
-    View -->|只读投影| Checkpoints
+    Workflow -->|执行进度 / 恢复| Checkpoints[LangGraph checkpointer / SQLite]
+    Workflow -->|运行时存档节点：幂等写入| Sessions[SessionStore：业务内容 / SQLite]
+    View -->|只读查询| Sessions
     Collection -->|历史 Collector| View
     Config -.-> Workflow
     Config -.->|collectorRegister| Collection
@@ -77,11 +78,15 @@ flowchart LR
 
 ### 1.6 定义、运行与恢复
 
-`WorkflowDefinition` 是可重复执行的配置，`WorkflowSnapshot` 固定本次运行引用的有效资源。session_id 对应 LangGraph thread_id，父图和子图的 checkpoint 保存该次运行进度。SessionView 将它们投影为 session 状态、阶段结果和备份可用性；`SessionRecord` 表示查询结果，不另维护一套运行进度。修改资源影响后续新运行，当前运行和历史恢复保持原配置含义。
+`WorkflowDefinition` 是可重复执行的配置，`WorkflowSnapshot` 固定本次运行引用的有效资源。session_id 对应 LangGraph thread_id。checkpointer 管理父图和子图的执行进度；SessionStore 保存图运行时产出的业务内容，包括原快照、状态摘要、阶段结果、发送意图和回执。二者可以共用 SQLite 文件，但各自管理自己的表与接口。SessionStore 不决定下一个节点，不作为缺失 checkpoint 时另起执行的替代调度器。
 
-session 管理信息与正文保留范围分开：状态、错误和内容可用性始终保存；备份策略决定持久化哪些配置快照和阶段正文。该策略同样约束 LangGraph 的父图、子图 checkpoint 及待提交写入，不能以图状态名义另存一份被排除的正文。看得到 session，不代表具备完整恢复材料。
+SessionView 只读取 SessionStore，为 API 与历史 Collector 提供 session 列表、状态、历史版本和正文可用性，无需解释 checkpoint 内部结构。SessionRecord 是该只读业务视图。可读内容由 LangGraph 的可复用节点维护；通过节点工厂闭包绑定存储、阶段、逻辑作用域、结果选择器和业务标识，父图与子图复用同一写入逻辑。对外不开放 session 写入 API。
 
-恢复由 Workflow 检查 LangGraph checkpoint 中原快照、输入与结果的可用性后续跑。已保存输入可以直接复用，成功分支和成功投递不自动重复执行；必要内容缺失必须说明限制。输出冻结后只能继续投递确定内容，重新分析需要新 session。取消以 session_id 定位活动运行，由 RunCoordinator 管理任务生命周期，HTTP 只转交取消指令。
+节点写入使用稳定的业务幂等键（session、逻辑作用域、阶段、条目、事件及必要的执行代次），不能使用重放时新生成的时间或随机 ID。相同键与相同内容重复提交返回原结果，不增加历史版本、不推进状态；相同不可变键的不同内容明确冲突。正文、可用性和可读摘要在同一业务事务发布；子图只提交自身条目，不能用旧整份 session 覆盖父图或其他分支的状态。SessionStore 提交后 checkpoint 尚未提交的窗口，通过节点重放和相同幂等键收敛，不假设两者存在跨存储事务。
+
+备份策略决定保存哪些原快照和阶段正文；状态、错误、意图、回执和内容可用性始终保存。checkpoint 尽量只携带控制状态及存档引用，未启用备份的正文只留当前运行内存，不得通过父子图、历史 checkpoint 或 pending writes 绕过策略。SessionStore 中的正文过期后保留摘要和缺失原因。公开历史版本使用独立的 session version，不能把 checkpoint_id 当业务版本。
+
+恢复由 Workflow 检查原 checkpoint 与 SessionStore 中必要的原快照、输入和结果后，继续原 thread_id。已保存输入、成功分支和成功投递直接复用；必要内容缺失明确拒绝，checkpoint 缺失不能从业务存档猜测进度。通知意图须先完成存档事务，再调用外部 send；意图存在但没有确定回执时标记 delivery_uncertain，不自动补发。输出冻结后只能继续投递原内容，重新分析需要新 session。取消以 session_id 定位活动运行，由 RunCoordinator 管理任务生命周期，HTTP 只转交取消指令。
 
 ### 1.7 版本边界
 
@@ -115,7 +120,7 @@ session 管理信息与正文保留范围分开：状态、错误和内容可用
 
 JSON 值的校验与编解码采用 Pydantic JsonValue 和 orjson，保证严格 JSON 兼容并简化实现。
 
-Workflow 采用 LangGraph 表达阶段和条件转移；业务规则放在可独立调用的编排函数中，节点负责调用它们。LangGraph checkpoint 以 SQLite 持久化 session 状态、阶段结果和恢复所需的快照，并作为运行状态展示与历史 Collector 的读取来源。AI 只使用普通 Provider 适配器，不为一次模型请求单独建立图。
+Workflow 采用 LangGraph 表达阶段和条件转移；业务规则放在可独立调用的编排函数中，节点负责调用它们。LangGraph SQLite checkpointer 保存执行进度；运行时通过可复用、参数化闭包生成的存档节点，将业务内容幂等写入 SessionStore。SessionView 从业务存储提供只读展示和历史读取，避免查询层耦合 checkpoint 的内部结构。AI 只使用普通 Provider 适配器，不为一次模型请求单独建立图。
 
 配置模块内置轻量插件加载与注册组件，读取插件目录中的 `plugin.json`，按 `entry.backend` 导入入口 `.py`，完成声明校验后发布 `collectorRegister` 和 `channelRegister`。参考 QwenPaw 的 manifest、入口和 owner 注册机制，不依赖其运行时。数据采集模块和 Channel 网关分别接收对应注册结果。Channel 只执行单条异步发送，无发送队列、消息缓存、优先级或自动重试。首版内置邮件和追加文件的 Mock 通知。
 
@@ -197,7 +202,7 @@ AI 的内部重试有总时限和次数上限，只用于可重试且确认没�
 
 日志、错误响应和诊断事件必须独立脱敏，不记录主密钥、凭据明文或认证请求头；存储加密不替代运行时脱敏。日志默认记录摘要、计数与耗时，避免完整输入、提示词、模型输出和通知正文重复落盘；正文查看通过 Workflow 的 SessionView，受备份策略控制。Mock 专用 Handler 的通知输出与应用诊断日志分开。日志需要轮转、容量和保留边界，日志采集读取有界。关键诊断不可用时要通过健康或备用诊断途径显式报告，不能递归写日志导致业务失控。
 
-**健康检查。** 服务报告 ready、degraded 或 unavailable，并单独说明 accepting_runs。必要配置、LangGraph 持久化存储或生命周期未就绪时，不接受新运行；可选插件故障且必要能力仍可用时，可降级服务，并明确受影响组件。活动运行数达到上限时返回容量错误，不据此把整个服务认定为故障。
+**健康检查。** 服务报告 ready、degraded 或 unavailable，并单独说明 accepting_runs。必要配置、LangGraph checkpointer、SessionStore 或生命周期未就绪时，不接受新运行；可选插件故障且必要能力仍可用时，可降级服务，并明确受影响组件。活动运行数达到上限时返回容量错误，不据此把整个服务认定为故障。
 
 健康查询只汇总已知本地状态和已有诊断，区分“尚未检查”“已初始化”“远端可访问”“某条通知已接收”。不得借健康查询请求付费模型、重新采集或发送探测邮件。周期性的插件连通探测、异常/恢复通知属于 v0.2 的健康监听，首版健康接口不冒充已实现该能力。
 
@@ -224,10 +229,10 @@ AI 的内部重试有总时限和次数上限，只用于可重试且确认没�
 
 **并发边界。** 单进程内资源提交、同一 session 的记录/正文提交和插件注册发布分别串行化；不同 session 可以并发执行，来源、分析和通知的并发上限由 Workflow 配置和全局容量共同限制。容量计数在建档前占用、终态收尾后释放，进程异常遗留的 `created/running` 记录由启动检查标记为 `interrupted`，不自动重跑。
 
-**启动。** 启动依次加载系统配置、凭据、LangGraph SQLite checkpointer、内置能力、外部插件和资源，完成必要引用检查后才开放新运行和定时触发。插件发现失败只隔离失败插件并留下诊断；checkpointer 或必要配置不可用时服务保持未就绪，不接受运行。启动过程不连接所有渠道、不读取外部来源、不调用模型，也不创建无所属的后台任务。
+**启动。** 启动依次加载系统配置、凭据、LangGraph SQLite checkpointer 与 SessionStore、内置能力、外部插件和资源，完成必要引用检查后才开放新运行和定时触发。插件发现失败只隔离失败插件并留下诊断；checkpointer、SessionStore 或必要配置不可用时服务保持未就绪，不接受运行。启动过程不连接所有渠道、不读取外部来源、不调用模型，也不创建无所属的后台任务。
 
 **显式 reload。** 资源 reload 只替换成功校验后的资源视图；插件 reload 先关闭准入并暂停定时触发，仅在没有活动运行时清理旧 owner 的注册并重新发现。reload 不取消活动运行、不修改已有快照、不恢复历史 session；失败时保留旧资源或报告降级状态。系统路径、监听地址和全局容量通过重启生效，不由 reload 静默改变。
 
-**关闭。** 关闭先禁止新触发和定时任务，再等待或取消活动 Workflow，最后按逆序释放模型客户端、常驻渠道实例、插件资源和 SQLite checkpointer。每个清理步骤有界且可重复；清理失败单独记录，不能覆盖原始业务错误，也不能把未写入的回执报告为成功。
+**关闭。** 关闭先禁止新触发和定时任务，再等待或取消活动 Workflow，最后按逆序释放模型客户端、常驻渠道实例、插件资源，最后释放 SessionStore 和 SQLite checkpointer。每个清理步骤有界且可重复；清理失败单独记录，不能覆盖原始业务错误，也不能把未写入的回执报告为成功。
 
-**磁盘与保留。** LangGraph 持久化的正文受 `BackupPolicy` 的阶段范围和保留天数限制；过期清理只处理终态 session，覆盖父图、子图、历史 checkpoint 及待提交写入，保留 session 摘要和缺失原因。SQLite 写入由 checkpointer 管理，资源 JSON 继续采用临时文件和原子替换；日志、错误和 metadata 不重复存放完整正文。首版不承诺固定磁盘配额，但实现必须提供正文大小、日志轮转和清理失败诊断，便于观察和控制占用。
+**磁盘与保留。** SessionStore 中的正文受 `BackupPolicy` 的阶段范围和保留天数限制；过期清理只处理终态 session，覆盖全部历史业务版本，保留摘要、幂等键和缺失原因，重放不能复活已清理正文。checkpoint 只持有控制状态及引用；任何必须持久化的正文副本同样受策略和清理约束。执行存储和业务存储各自管理 SQLite 写入，资源 JSON 继续采用临时文件和原子替换；日志、错误和 metadata 不重复存放完整正文。首版不承诺固定磁盘配额，但实现必须提供正文大小、日志轮转和清理失败诊断，便于观察和控制占用。
