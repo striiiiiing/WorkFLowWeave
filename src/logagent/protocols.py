@@ -14,6 +14,16 @@ from logagent.models import (
     JSONObject,
     JSONSchema,
     Notification,
+    PhaseContent,
+    ResourceKind,
+    SaveMode,
+    SessionRecord,
+    SessionVersion,
+    SourceConfig,
+    StrictModel,
+    UTCDateTime,
+    WorkflowSnapshot,
+    WorkflowStage,
 )
 
 
@@ -59,3 +69,62 @@ class ChannelType(Protocol):
     async def create(
         self, config: ChannelConfig, credentials: CredentialResolver
     ) -> NotificationChannel: ...
+
+
+class ChannelRegistryView(Protocol):
+    def get(self, name: str) -> ChannelType | None: ...
+
+    def describe(self) -> list[CapabilityDescription]: ...
+
+    def diagnostics(self, name: str) -> list[ErrorInfo]: ...
+
+
+class ResourceReader(Protocol):
+    def get(self, kind: ResourceKind, ident: str) -> StrictModel | None: ...
+
+    def list(self, kind: ResourceKind) -> list[StrictModel]: ...
+
+    def resolve(self, source: SourceConfig) -> SourceConfig:
+        """Resolve the effective source configuration, including setter templates."""
+        ...
+
+    def snapshot(self, workflow_id: str) -> WorkflowSnapshot: ...
+
+
+class ResourceStore(ResourceReader, Protocol):
+    def save(
+        self, kind: ResourceKind, resource: StrictModel | JSONObject, *, mode: SaveMode = "upsert"
+    ) -> StrictModel: ...
+
+    def delete(self, kind: ResourceKind, ident: str) -> None: ...
+
+    def reload_resources(self) -> None: ...
+
+
+class SessionReader(Protocol):
+    """Read business session data from SessionStore through SessionView.
+
+    Lists contain the latest version for each session, newest first. Versions
+    increase on new logical writes; replaying a write does not increase them.
+    A selected version pins reads. Missing or expired content must not be
+    replaced by content from the latest version.
+    """
+
+    async def list_sessions(
+        self,
+        workflow_id: str | None = None,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+        after: UTCDateTime | None = None,
+        before: UTCDateTime | None = None,
+        exclude_session_id: str | None = None,
+    ) -> list[SessionRecord]: ...
+
+    async def get_session(
+        self, session_id: str, *, version: SessionVersion | None = None
+    ) -> SessionRecord: ...
+
+    async def get_phase_content(
+        self, session_id: str, stage: WorkflowStage, *, version: SessionVersion
+    ) -> PhaseContent: ...
