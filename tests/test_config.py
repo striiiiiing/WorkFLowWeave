@@ -159,8 +159,8 @@ async def test_system_paths_are_relative_to_config_and_defaults_are_fixed(tmp_pa
     [
         "not json",
         "[]",
-        '{"port": "8000"}',
-        '{"port": true}',
+        '{"port": "invalid"}',
+        '{"port": 65536}',
         '{"unknown": "secret-value"}',
         '{"port": 8000, "port": 9000}',
         '{"data_dir": ""}',
@@ -180,7 +180,7 @@ async def test_optional_plugin_settings_are_missing_only_not_invalid_or_unreadab
     assert await reader.load_plugin_config(path) == {}
     with pytest.raises(LogAgentError, match="不存在"):
         await reader.load_system(path)
-    path.write_text('{"collector": {"demo": {"enabled": "false"}}}')
+    path.write_text('{"collector": {"demo": {"enabled": "invalid"}}}')
     with pytest.raises(LogAgentError):
         await reader.load_plugin_config(path)
     path.unlink()
@@ -622,3 +622,23 @@ async def test_invalid_global_settings_leave_previous_published_view_intact(tmp_
         await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path)))
     assert registry.collectorRegister is old_view
     assert registry.collectorRegister.get("demo") is not None
+
+
+async def test_string_config_values_normalize_through_readers_and_store(tmp_path):
+    from logagent.config.store import SQLiteResourceStore
+
+    system = tmp_path / "system.json"
+    system.write_text('{"port": "4300"}')
+    assert (await ConfigurationReader().load_system(system)).port == 4300
+    plugins = tmp_path / "plugins.json"
+    plugins.write_text('{"collector": {"demo": {"enabled": "false"}}}')
+    config = await ConfigurationReader().load_plugin_config(plugins)
+    assert config["collector"]["demo"].enabled is False
+    with SQLiteResourceStore(":memory:") as store:
+        source = store.save("sources", {"id": "source", "collector": "mock", "timeout": "2.5"})
+        assert source.timeout == 2.5
+        assert store.list("sources")[0].timeout == 2.5
+        channel = store.save("channels", {"id": "channel", "channel": "mock", "enabled": "false"})
+        assert channel.enabled is False
+        ai = store.save("ai", {"id": "ai", "provider": "mock", "model": "mock", "retries": "3"})
+        assert ai.retries == 3

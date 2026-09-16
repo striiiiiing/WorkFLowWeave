@@ -48,7 +48,7 @@ def read_json(location: Path, *, optional: bool = False) -> Any:
 def read_plugin_configuration(location: Path) -> PluginConfiguration:
     try:
         return _PLUGIN_CONFIGURATION.validate_python(
-            read_json(location, optional=True), strict=True
+            read_json(location, optional=True)
         )
     except ValidationError as exc:
         raise validation_error(exc) from None
