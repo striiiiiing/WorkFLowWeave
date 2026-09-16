@@ -4,13 +4,48 @@ from __future__ import annotations
 
 import inspect
 from copy import deepcopy
+from pathlib import Path
 
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from logagent.errors import LogAgentError, validation_error
-from logagent.models import JSONObject, SetterTemplate, SourceConfig, copy_model
+from logagent.models import Credential, JSONObject, SetterTemplate, SourceConfig, copy_model
 from logagent.protocols import Collector
-from logagent.schema import schema_defaults, validate_instance, validate_schema
+from logagent.schema import (
+    schema_defaults,
+    transform_annotations,
+    validate_instance,
+    validate_schema,
+)
+
+_CREDENTIAL = TypeAdapter(Credential)
+
+
+def normalize_options(options, schema, defaults, *, data_dir: Path, apply_defaults: bool):
+    """Only explicit schema annotations identify paths and credential fields."""
+    if apply_defaults:
+        validate_instance(defaults, schema, partial=True)
+        options = {**schema_defaults(schema), **defaults, **options}
+
+    def normalize(value, rule):
+        if not isinstance(rule, dict):
+            return deepcopy(value)
+        if rule.get("x-logagent-credential") is True and value is not None:
+            try:
+                return _CREDENTIAL.validate_python(value).model_dump(mode="json")
+            except ValidationError as exc:
+                raise validation_error(exc) from None
+        if rule.get("x-logagent-path") is True:
+            if not isinstance(value, str) or not value or "\x00" in value:
+                raise LogAgentError("invalid_config", "声明的路径必须为非空有效字符串")
+            try:
+                path = Path(value)
+                return str((path if path.is_absolute() else data_dir / path).resolve())
+            except (OSError, ValueError, RuntimeError):
+                raise LogAgentError("invalid_config", "声明的路径无法解析") from None
+        return deepcopy(value)
+
+    return transform_annotations(options, schema, normalize)
 
 
 def expand_source(
@@ -50,14 +85,23 @@ def expand_source(
     if template is not None:
         validate_instance(setters, setters_schema, path=["template", "setters"], partial=True)
     setters.update(source.setters)
-    validate_instance(options, options_schema, path=["options"])
-    validate_instance(setters, setters_schema, path=["setters"])
+    source.options = deepcopy(options)
+    source.setters = deepcopy(setters)
+    source.template = None
+    validate_effective_source(source, collector)
+    return source
+
+
+def validate_effective_source(source: SourceConfig, collector: Collector) -> None:
+    """Validate a normalized source without applying changing defaults."""
+    validate_instance(source.options, collector.options_schema, path=["options"])
+    validate_instance(source.setters, collector.setters_schema, path=["setters"])
     semantic_validate = getattr(collector, "validate", None)
     if semantic_validate is not None:
         if not callable(semantic_validate) or inspect.iscoroutinefunction(semantic_validate):
             raise LogAgentError("invalid_config", "Collector.validate 必须为同步校验函数")
         try:
-            result = semantic_validate(deepcopy(options), deepcopy(setters))
+            result = semantic_validate(deepcopy(source.options), deepcopy(source.setters))
             if inspect.iscoroutine(result):
                 result.close()
             if result is not None:
@@ -68,7 +112,3 @@ def expand_source(
                 "来源选项或 Setter 未通过 Collector 语义校验",
                 {"exception_type": type(exc).__name__},
             ) from None
-    source.options = deepcopy(options)
-    source.setters = deepcopy(setters)
-    source.template = None
-    return source

@@ -1,171 +1,305 @@
-"""Small transactional SQLite resource store used by the application services.
-
-The store persists reusable configuration only.  Execution state and stage
-artifacts deliberately do not belong here.
-"""
+"""One published resource view, backed by an atomically replaced JSON document."""
 
 from __future__ import annotations
 
-import json
-import sqlite3
+import inspect
+import os
+import tempfile
 import threading
+from collections.abc import Callable, Mapping
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, overload
 
-from pydantic import ValidationError
+import orjson
+from pydantic import Field, ValidationError
 
+from logagent.config.normalize import normalize_options, validate_effective_source
+from logagent.config.reader import read_json
 from logagent.errors import LogAgentError, validation_error
 from logagent.models import (
     AIConfig,
     ChannelConfig,
     ResourceKind,
+    SaveMode,
     SetterTemplate,
     SourceConfig,
+    StrictModel,
     WorkflowDefinition,
     WorkflowSnapshot,
+    copy_model,
 )
+from logagent.protocols import ChannelRegistryView, CollectorRegistryView
+from logagent.schema import validate_instance
 
-_MODELS: dict[str, type] = {
-    "sources": SourceConfig,
-    "setters": SetterTemplate,
-    "ai": AIConfig,
-    "channels": ChannelConfig,
-    "workflows": WorkflowDefinition,
+_MODELS = {
+    "sources": SourceConfig, "setters": SetterTemplate, "ai": AIConfig,
+    "channels": ChannelConfig, "workflows": WorkflowDefinition,
 }
+Validator = Callable[[StrictModel], None]
 
 
-class SQLiteResourceStore:
-    """Persist and snapshot reusable resources in a single SQLite database."""
+class _Resources(StrictModel):
+    format_version: int = Field(ge=1, le=1)
+    sources: dict[str, SourceConfig]
+    setters: dict[str, SetterTemplate]
+    ai: dict[str, AIConfig]
+    channels: dict[str, ChannelConfig]
+    workflows: dict[str, WorkflowDefinition]
 
-    def __init__(self, location: str | Path = "data/resources.sqlite3") -> None:
-        self.location = str(location)
-        if self.location != ":memory:":
-            Path(self.location).parent.mkdir(parents=True, exist_ok=True)
+
+def _call_validator(validator: Validator, value: StrictModel) -> None:
+    # Validators are pure synchronous hooks; never turn arbitrary plugin text
+    # into public configuration errors or let an async hook go unawaited.
+    try:
+        result = validator(copy_model(value))
+        if inspect.iscoroutine(result):
+            result.close()
+        if result is not None:
+            raise TypeError("Validator must return None")
+    except Exception as exc:
+        raise LogAgentError(
+            "invalid_config", "资源未通过业务校验", {"exception_type": type(exc).__name__}
+        ) from None
+
+
+class ResourceStore:
+    """CRUD, reload and snapshots share one lock and one candidate validation path.
+
+    Existing files may reference unavailable plugins. New or changed resources
+    require their declared capabilities; snapshots do not recheck availability.
+    """
+
+    def __init__(
+        self,
+        location: str | Path = "data/resources.json",
+        *,
+        collector_register: CollectorRegistryView | None = None,
+        channel_register: ChannelRegistryView | None = None,
+        validators: Mapping[ResourceKind, Validator] | None = None,
+        data_dir: str | Path | None = None,
+    ) -> None:
+        self.location = str(Path(location).absolute())
+        self._data_dir = Path(data_dir or Path(self.location).parent).absolute()
+        self._collectors, self._channels = collector_register, channel_register
+        self._validators = dict(validators or {})
         self._lock = threading.RLock()
-        self._db = sqlite3.connect(self.location, check_same_thread=False)
-        self._db.row_factory = sqlite3.Row
-        self._db.execute("PRAGMA foreign_keys=ON")
-        self._db.execute(
-            "CREATE TABLE IF NOT EXISTS resources (kind TEXT NOT NULL, id TEXT NOT NULL, "
-            "payload TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(kind,id))"
-        )
-        self._db.commit()
+        self._view = _Resources(format_version=1, **{kind: {} for kind in _MODELS})
+        path = Path(self.location)
+        if path.exists() or path.is_symlink():
+            candidate = self._parse(read_json(path))
+            self._validate(candidate, changed=set(), normalize=False)
+            self._view = candidate
+        else:
+            self._publish(self._view)
 
-    def close(self) -> None:
-        with self._lock:
-            self._db.close()
-
-    def __enter__(self) -> SQLiteResourceStore:
-        return self
-
-    def __exit__(self, *_: object) -> None:
-        self.close()
+    @staticmethod
+    def _parse(data: Any) -> _Resources:
+        try:
+            candidate = _Resources.model_validate(data)
+        except ValidationError as exc:
+            raise validation_error(exc) from None
+        for kind in _MODELS:
+            if any(key != value.id for key, value in getattr(candidate, kind).items()):
+                raise LogAgentError("invalid_config", "资源键必须与内部 ID 一致", {"kind": kind})
+        return candidate
 
     @staticmethod
     def _kind(kind: str) -> str:
         if kind not in _MODELS:
-            raise LogAgentError("invalid_argument", "资源类型无效", {"kind": kind})
+            raise LogAgentError("invalid_argument", "资源类型无效")
         return kind
 
-    def _validate(self, kind: str, resource: Any) -> tuple[str, str]:
-        kind = self._kind(kind)
-        model = _MODELS[kind]
+    def update_dependencies(
+        self,
+        *,
+        collector_register: CollectorRegistryView,
+        channel_register: ChannelRegistryView,
+        validators: Mapping[ResourceKind, Validator],
+    ) -> None:
+        """Install one published plugin generation without rewriting saved resources."""
+        with self._lock:
+            self._collectors, self._channels = collector_register, channel_register
+            self._validators = dict(validators)
+
+    def _capability(self, kind, value, changed):
+        registry = self._collectors if kind in ("sources", "setters") else self._channels
+        name = value.collector if kind in ("sources", "setters") else value.channel
+        capability = registry.get(name) if registry is not None else None
+        if capability is None and changed:
+            raise LogAgentError("capability_missing", "新资源引用的插件能力不可用", {"name": name})
+        return registry, capability
+
+    @staticmethod
+    def _source(source: SourceConfig, candidate: _Resources) -> SourceConfig:
+        source = copy_model(source)
+        if source.template is None:
+            return source
+        template = candidate.setters.get(source.template)
+        if template is None:
+            raise LogAgentError("invalid_reference", "来源引用的 Setter 模板不存在")
+        if template.collector != source.collector:
+            raise LogAgentError("invalid_reference", "Setter 模板与来源的 Collector 不同")
+        source.setters = {**deepcopy(template.setters), **source.setters}
+        source.template = None
+        return source
+
+    def _snapshot(self, workflow: WorkflowDefinition, candidate: _Resources) -> WorkflowSnapshot:
+        ai_ids = {task.ai for task in workflow.analyses}
+        if workflow.fan_in is not None and workflow.fan_in.ai is not None:
+            ai_ids.add(workflow.fan_in.ai)
         try:
-            value = model.model_validate(resource)
+            return WorkflowSnapshot(
+                workflow=copy_model(workflow),
+                sources={key: self._source(candidate.sources[key], candidate) for key in workflow.sources},
+                ai={key: copy_model(candidate.ai[key]) for key in ai_ids},
+                channels={key: copy_model(candidate.channels[key]) for key in workflow.channels},
+                created_at=datetime.now(UTC),
+            )
+        except KeyError:
+            raise LogAgentError("invalid_reference", "Workflow 引用的资源不存在") from None
         except ValidationError as exc:
-            raise validation_error(exc, code="invalid_config") from None
-        payload = value.model_dump(mode="json")
-        return value.id, json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+            raise validation_error(exc) from None
 
-    def save(self, kind: ResourceKind | str, resource: Any, *, mode: str = "upsert") -> Any:
-        if mode not in {"create", "replace", "upsert"}:
+    def _validate(self, candidate: _Resources, *, changed: set, normalize: bool) -> None:
+        for kind in ("setters", "sources", "channels", "ai", "workflows"):
+            for ident, value in getattr(candidate, kind).items():
+                is_changed = (kind, ident) in changed
+                effective = value
+                if kind in ("sources", "setters", "channels"):
+                    registry, capability = self._capability(kind, value, is_changed)
+                    if kind == "sources":
+                        effective = self._source(value, candidate)
+                    if capability is None:
+                        continue
+                    if kind == "setters":
+                        validate_instance(value.setters, capability.setters_schema, partial=True)
+                    elif kind == "sources":
+                        defaults = registry.options_defaults(value.collector) if normalize and is_changed else {}
+                        normalized = normalize_options(
+                            value.options, capability.options_schema, defaults,
+                            data_dir=self._data_dir, apply_defaults=normalize and is_changed,
+                        )
+                        effective.options = normalized
+                        validate_effective_source(effective, capability)
+                        value.options = normalized
+                    else:
+                        defaults = registry.options_defaults(value.channel) if normalize and is_changed else {}
+                        normalized = normalize_options(
+                            value.options, capability.options_schema, defaults,
+                            data_dir=self._data_dir, apply_defaults=normalize and is_changed,
+                        )
+                        validate_instance(normalized, capability.options_schema, path=["options"])
+                        effective = copy_model(value)
+                        effective.options = normalized
+                        value.options = normalized
+                if kind == "workflows":
+                    self._snapshot(value, candidate)
+                validator = self._validators.get(kind)
+                if validator is not None:
+                    _call_validator(validator, effective)
+
+    def _publish(self, candidate: _Resources) -> None:
+        path = Path(self.location)
+        temporary = None
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            payload = orjson.dumps(candidate.model_dump(mode="json"), option=orjson.OPT_INDENT_2)
+            with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".resources-", delete=False) as stream:
+                temporary = Path(stream.name)
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+            temporary = None
+        except (OSError, ValueError):
+            raise LogAgentError("storage_failed", "资源文件原子保存失败") from None
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+        self._view = candidate
+
+    def _commit(self, data, *, changed: set, normalize=True) -> None:
+        candidate = self._parse(data)
+        self._validate(candidate, changed=changed, normalize=normalize)
+        self._publish(candidate)
+
+    def save(self, kind: ResourceKind, resource: Any, *, mode: SaveMode = "upsert") -> StrictModel:
+        kind = self._kind(kind)
+        if mode not in ("create", "replace", "upsert"):
             raise LogAgentError("invalid_argument", "保存模式无效")
-        kind = self._kind(kind)
-        ident, payload = self._validate(kind, resource)
+        try:
+            value = _MODELS[kind].model_validate(resource)
+        except ValidationError as exc:
+            raise validation_error(exc) from None
         with self._lock:
-            exists = self._db.execute(
-                "SELECT 1 FROM resources WHERE kind=? AND id=?", (kind, ident)
-            ).fetchone() is not None
+            data = self._view.model_dump(mode="python")
+            exists = value.id in data[kind]
             if mode == "create" and exists:
-                raise LogAgentError("already_exists", "资源已存在", {"kind": kind, "id": ident})
+                raise LogAgentError("already_exists", "资源已存在")
             if mode == "replace" and not exists:
-                raise LogAgentError("not_found", "资源不存在", {"kind": kind, "id": ident})
+                raise LogAgentError("not_found", "资源不存在")
+            data[kind][value.id] = value.model_dump(mode="python")
+            self._commit(data, changed={(kind, value.id)})
+            return copy_model(getattr(self._view, kind)[value.id])
+
+    def get(self, kind: ResourceKind, ident: str) -> StrictModel | None:
+        with self._lock:
+            value = getattr(self._view, self._kind(kind)).get(ident)
+            return copy_model(value) if value is not None else None
+
+    def list(self, kind: ResourceKind) -> list[StrictModel]:
+        with self._lock:
+            values = getattr(self._view, self._kind(kind))
+            return [copy_model(values[key]) for key in sorted(values)]
+
+    def delete(self, kind: ResourceKind, ident: str) -> None:
+        kind = self._kind(kind)
+        with self._lock:
+            data = self._view.model_dump(mode="python")
+            if ident not in data[kind]:
+                raise LogAgentError("not_found", "资源不存在")
+            del data[kind][ident]
             try:
-                self._db.execute(
-                    "INSERT INTO resources(kind,id,payload,updated_at) VALUES(?,?,?,?) "
-                    "ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at",
-                    (kind, ident, payload, datetime.now(UTC).isoformat()),
-                )
-                self._db.commit()
-            except sqlite3.Error as exc:
-                self._db.rollback()
-                raise LogAgentError("storage_failed", "资源保存失败", {"exception_type": type(exc).__name__}) from None
-        return self.get(kind, ident)
+                self._commit(data, changed=set(), normalize=False)
+            except LogAgentError as exc:
+                if exc.code == "invalid_reference":
+                    raise LogAgentError("reference_conflict", "资源仍被引用，不能删除") from None
+                raise
 
-    def get(self, kind: ResourceKind | str, ident: str) -> Any | None:
-        kind = self._kind(kind)
-        with self._lock:
-            row = self._db.execute(
-                "SELECT payload FROM resources WHERE kind=? AND id=?", (kind, ident)
-            ).fetchone()
-        if row is None:
-            return None
-        try:
-            return _MODELS[kind].model_validate(json.loads(row[0]), strict=True)
-        except (ValueError, ValidationError):
-            raise LogAgentError("storage_corrupt", "资源存储内容无效", {"kind": kind}) from None
+    @overload
+    def resolve(self, resource: SourceConfig) -> SourceConfig: ...
 
-    def list(self, kind: ResourceKind | str) -> list[Any]:
-        kind = self._kind(kind)
-        with self._lock:
-            rows = self._db.execute(
-                "SELECT payload FROM resources WHERE kind=? ORDER BY id", (kind,)
-            ).fetchall()
-        try:
-            return [_MODELS[kind].model_validate(json.loads(row[0]), strict=True) for row in rows]
-        except (ValueError, ValidationError):
-            raise LogAgentError("storage_corrupt", "资源存储内容无效", {"kind": kind}) from None
+    @overload
+    def resolve(self, resource: WorkflowDefinition) -> WorkflowSnapshot: ...
 
-    def delete(self, kind: ResourceKind | str, ident: str) -> None:
-        kind = self._kind(kind)
+    def resolve(self, resource):
         with self._lock:
-            cursor = self._db.execute("DELETE FROM resources WHERE kind=? AND id=?", (kind, ident))
-            self._db.commit()
-        if cursor.rowcount == 0:
-            raise LogAgentError("not_found", "资源不存在", {"kind": kind, "id": ident})
+            if not isinstance(resource, (SourceConfig, WorkflowDefinition)):
+                raise LogAgentError("invalid_argument", "resolve 需要来源或 Workflow 定义")
+            kind = "sources" if isinstance(resource, SourceConfig) else "workflows"
+            data = self._view.model_dump(mode="python")
+            data[kind][resource.id] = resource.model_dump(mode="python")
+            candidate = self._parse(data)
+            self._validate(candidate, changed={(kind, resource.id)}, normalize=True)
+            if kind == "sources":
+                return self._source(candidate.sources[resource.id], candidate)
+            return self._snapshot(candidate.workflows[resource.id], candidate)
 
     def snapshot(self, workflow_id: str) -> WorkflowSnapshot:
-        definition = self.get("workflows", workflow_id)
-        if definition is None:
-            raise LogAgentError("not_found", "Workflow 不存在", {"workflow_id": workflow_id})
-        sources: dict[str, SourceConfig] = {}
-        for ident in definition.sources:
-            source = self.get("sources", ident)
-            if source is None:
-                raise LogAgentError("invalid_reference", "Workflow 引用的来源不存在", {"source": ident})
-            sources[ident] = source
-        ai_ids = {task.ai for task in definition.analyses}
-        if definition.fan_in and definition.fan_in.ai:
-            ai_ids.add(definition.fan_in.ai)
-        ai: dict[str, AIConfig] = {}
-        for ident in ai_ids:
-            value = self.get("ai", ident)
-            if value is None:
-                raise LogAgentError("invalid_reference", "Workflow 引用的 AI 不存在", {"ai": ident})
-            ai[ident] = value
-        channels: dict[str, ChannelConfig] = {}
-        for ident in definition.channels:
-            value = self.get("channels", ident)
-            if value is None:
-                raise LogAgentError("invalid_reference", "Workflow 引用的 Channel 不存在", {"channel": ident})
-            channels[ident] = value
-        return WorkflowSnapshot(
-            workflow=deepcopy(definition), sources=sources, ai=ai, channels=channels,
-            created_at=datetime.now(UTC),
-        )
+        with self._lock:
+            workflow = self._view.workflows.get(workflow_id)
+            if workflow is None:
+                raise LogAgentError("not_found", "Workflow 不存在")
+            return self._snapshot(workflow, self._view)
 
-
-ResourceStore = SQLiteResourceStore
-
+    def reload_resources(self) -> None:
+        with self._lock:
+            candidate = self._parse(read_json(Path(self.location)))
+            changed = {
+                (kind, ident) for kind in _MODELS
+                for ident, value in getattr(candidate, kind).items()
+                if getattr(self._view, kind).get(ident) != value
+            }
+            self._commit(candidate.model_dump(mode="python"), changed=changed)
