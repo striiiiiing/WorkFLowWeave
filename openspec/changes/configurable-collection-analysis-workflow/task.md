@@ -10,7 +10,7 @@
 | 2 | [Workflow](./modules/workflow/task.md) | 1及现有注入接口；checkpoint执行进度、幂等存档节点、只读SessionView、恢复与备份 | 已完成 |
 | 3 | [配置](./modules/config/task.md) | 1；JSON 原子资源视图、凭据、引用、reload | 已提交 `6adffca` |
 | 4 | [AI](./modules/ai/task.md) | 1、3；600秒/5重试、共享连接多模型、开放扩展参数 | 本次修正完成并通过主代理审查；取代 `5b90965` 兼容实现 |
-| 5 | [Channel](./modules/channel/task.md) | 1、3；常驻实例、快照绑定、有界关闭 | 待补齐；`1c97439` 尚未完成设计验收 |
+| 5 | [Channel](./modules/channel/task.md) | 1、3；常驻实例、快照绑定、有界关闭 | 修正完成；主代理审查、专项与全套验证通过 |
 | 6 | [Mock](./modules/channel/mock/task.md) | 5；可读文本、专用Handler、调用后检查 | 待补齐；`dbf2494` 尚未完成设计验收 |
 | 7 | [Email](./modules/channel/email/task.md) | 3、5；异步SMTP、真实受理回执 | 待执行 |
 | 8 | [Collection](./modules/collection/task.md) | 2、3；history复用SessionView | 待执行 |

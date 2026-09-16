@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
@@ -33,7 +34,7 @@ class _Entry:
     owner: str
     instance: Any
     send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    stop_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    stop_task: asyncio.Task[None] | None = None
     stopped: bool = False
 
 
@@ -45,15 +46,20 @@ class ChannelManager:
         credentials: Any = None,
         stop_timeout: float = _STOP_TIMEOUT,
     ):
+        if not math.isfinite(stop_timeout) or stop_timeout <= 0:
+            raise ValueError("stop_timeout must be positive and finite")
         self._register = channel_register
         self._credentials = credentials
         self._entries: dict[tuple[str, str], _Entry] = {}
+        self._retired: set[_Entry] = set()
         self._init_locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._releasing: dict[tuple[str, str], asyncio.Event] = {}
         self._release_tasks: dict[tuple[str, str], asyncio.Task[None]] = {}
         self._lock = asyncio.Lock()
         self._reload_lock = asyncio.Lock()
         self._stopping = False
+        self._blocked_types: set[str] = set()
+        self._unloaded_owners: set[str] = set()
         self._active_sends: set[asyncio.Task[Any]] = set()
         self._active_by_key: dict[tuple[str, str], int] = {}
         self._active_channels: dict[tuple[str, str], tuple[str, str]] = {}
@@ -124,6 +130,8 @@ class ChannelManager:
             self._admit()
             entry = self._entries.get(key)
             if entry is not None:
+                if entry.stop_task is not None:
+                    raise LogAgentError("channel_unavailable", "渠道尚未完成关闭")
                 return entry
             init_lock = self._init_locks.setdefault(key, asyncio.Lock())
         async with init_lock:
@@ -131,6 +139,8 @@ class ChannelManager:
                 self._admit()
                 entry = self._entries.get(key)
                 if entry is not None:
+                    if entry.stop_task is not None:
+                        raise LogAgentError("channel_unavailable", "渠道尚未完成关闭")
                     return entry
             instance = None
             try:
@@ -142,9 +152,9 @@ class ChannelManager:
                     raise _BudgetExhausted
             except BaseException as initialization_error:
                 try:
-                    await self._stop_instance(
-                        instance, timeout_code="channel_init_cleanup_timeout"
-                    )
+                    await self._cleanup_initialization(instance, config, key)
+                except asyncio.CancelledError:
+                    raise
                 except BaseException as cleanup_error:
                     raise self._initialization_cleanup_error(
                         initialization_error, cleanup_error
@@ -165,34 +175,27 @@ class ChannelManager:
                     return entry
             except BaseException as admission_error:
                 try:
-                    await self._stop_instance(
-                        instance, timeout_code="channel_init_cleanup_timeout"
-                    )
+                    await self._cleanup_initialization(instance, config, key)
+                except asyncio.CancelledError:
+                    raise
                 except BaseException as cleanup_error:
                     raise self._initialization_cleanup_error(
                         admission_error, cleanup_error
                     ) from admission_error
                 raise
 
-    async def _stop_instance(self, instance: Any, *, timeout_code: str) -> None:
+    async def _cleanup_initialization(self, instance, config, key) -> None:
         if instance is None:
             return
-        try:
-            await asyncio.wait_for(instance.stop(), self._stop_timeout)
-        except TimeoutError as exc:
-            raise LogAgentError(
-                timeout_code,
-                "通知渠道未在关闭预算内停止",
-                {"timeout": self._stop_timeout},
-            ) from exc
+        entry = _Entry(key, config.channel, self._channel_owner(config.channel), instance)
+        self._retired.add(entry)
+        await self._stop_entry(entry)
 
     @staticmethod
     def _exception_summary(exc: BaseException) -> dict[str, Any]:
-        if isinstance(exc, LogAgentError):
-            return exc.info.model_dump(mode="json")
         return {
             "code": "channel_cleanup_failed",
-            "message": str(exc),
+            "message": "渠道清理发生异常",
             "details": {"exception_type": type(exc).__name__},
         }
 
@@ -214,6 +217,11 @@ class ChannelManager:
         while True:
             async with self._lock:
                 self._admit()
+                if (
+                    config.channel in self._blocked_types
+                    or self._channel_owner(config.channel) in self._unloaded_owners
+                ):
+                    raise LogAgentError("channel_unavailable", "渠道正在卸载或替换")
                 release_event = self._releasing.get(key)
                 if release_event is None:
                     task = asyncio.current_task()
@@ -248,6 +256,7 @@ class ChannelManager:
             self._sends_idle.set()
 
     async def send(self, config: ChannelConfig, notification: Notification) -> DeliveryResult:
+        config, notification = deepcopy(config), deepcopy(notification)
         if not config.enabled:
             return self._receipt(config, notification, status="skipped", attempts=0)
         channel = self._register.get(config.channel)
@@ -279,14 +288,20 @@ class ChannelManager:
         try:
             async with timeout:
                 key = await self._begin_send(config)
+                self.validate(config)
+                channel = self._register.get(config.channel)
                 entry = await self._entry(key, channel, config, deadline=deadline)
                 preparing = False
                 async with entry.send_lock:
                     send = entry.instance.send
                     if asyncio.get_running_loop().time() >= deadline:
                         raise _BudgetExhausted
+                    if asyncio.current_task().cancelling():
+                        raise asyncio.CancelledError
                     entered = True
                     await send(notification)
+                    if asyncio.current_task().cancelling():
+                        raise asyncio.CancelledError
             return self._receipt(config, notification, status="success", attempts=1)
         except _BudgetExhausted:
             return self._receipt(
@@ -365,13 +380,22 @@ class ChannelManager:
                 self._end_send(key)
 
     async def _stop_entry(self, entry: _Entry) -> None:
-        async with entry.stop_lock:
-            if entry.stopped:
-                return
-            await self._stop_instance(
-                entry.instance, timeout_code="channel_stop_timeout"
-            )
-            entry.stopped = True
+        if entry.stopped:
+            return
+        if entry.stop_task is None:
+            entry.stop_task = asyncio.create_task(entry.instance.stop())
+        try:
+            await asyncio.wait_for(asyncio.shield(entry.stop_task), self._stop_timeout)
+        except TimeoutError as exc:
+            raise LogAgentError("channel_stop_timeout", "渠道关闭尚未完成") from exc
+        entry.stopped = True
+        async with self._lock:
+            self._retired.discard(entry)
+            if self._entries.get(entry.key) is entry:
+                self._entries.pop(entry.key)
+                self._init_locks.pop(entry.key, None)
+                if not self._active_by_key.get(entry.key):
+                    self._key_idle.pop(entry.key, None)
 
     async def _wait_for_key(self, key: tuple[str, str]) -> None:
         async with self._lock:
@@ -394,7 +418,7 @@ class ChannelManager:
                 ) from exc
 
         async with self._lock:
-            entries = [self._entries.pop(key) for key in keys if key in self._entries]
+            entries = [self._entries[key] for key in keys if key in self._entries]
         errors: list[BaseException] = []
         for entry in entries:
             try:
@@ -427,7 +451,7 @@ class ChannelManager:
         try:
             await self._wait_for_key(key)
             async with self._lock:
-                entry = self._entries.pop(key, None)
+                entry = self._entries.get(key)
             if entry is not None:
                 await self._stop_entry(entry)
         finally:
@@ -437,39 +461,47 @@ class ChannelManager:
                 released.set()
 
     async def unload_owner(self, owner: str) -> None:
-        """Release resident instances owned by one plugin owner."""
-        async with self._lock:
-            self._admit()
-            keys = {
-                entry.key for entry in self._entries.values() if entry.owner == owner
-            } | {
-                key
-                for key, (_channel, active_owner) in self._active_channels.items()
-                if active_owner == owner
-            }
-        await self._drain_and_stop(keys)
-
-    async def replace_register(self, channel_register: Any) -> None:
-        """Inject a replacement readonly registry and unload removed channel types."""
+        """Close admission for the owner before draining its resident instances."""
         async with self._reload_lock:
             async with self._lock:
                 self._admit()
-                old_names = {
-                    description.name for description in self._register.describe()
-                } | {entry.channel for entry in self._entries.values()}
-                new_names = {
-                    description.name for description in channel_register.describe()
-                }
-                removed = old_names - new_names
-                self._register = channel_register
+                self._unloaded_owners.add(owner)
                 keys = {
-                    entry.key for entry in self._entries.values() if entry.channel in removed
+                    entry.key for entry in self._entries.values() if entry.owner == owner
                 } | {
-                    key
-                    for key, (channel, _owner) in self._active_channels.items()
-                    if channel in removed
+                    key for key, (_, active_owner) in self._active_channels.items()
+                    if active_owner == owner
                 }
             await self._drain_and_stop(keys)
+
+    async def replace_register(self, channel_register: Any) -> None:
+        """Replace changed implementations, including registrations with the same name."""
+        async with self._reload_lock:
+            async with self._lock:
+                self._admit()
+                old_names = {item.name for item in self._register.describe()} | {
+                    entry.channel for entry in self._entries.values()
+                }
+                changed = {
+                    name for name in old_names
+                    if self._register.get(name) is not channel_register.get(name)
+                    or self._channel_owner(name) in self._unloaded_owners
+                }
+                self._blocked_types.update(changed)
+                keys = {
+                    entry.key for entry in self._entries.values() if entry.channel in changed
+                } | {
+                    key for key, (channel, _) in self._active_channels.items() if channel in changed
+                }
+            # On failure retain old registrations and blocked admission; callers
+            # can retry cleanup without losing ownership of unfinished instances.
+            await self._drain_and_stop(keys)
+            async with self._lock:
+                self._register = channel_register
+                self._blocked_types.difference_update(changed)
+                self._unloaded_owners.difference_update(
+                    item.plugin for item in channel_register.describe()
+                )
 
     async def reload_register(self, channel_register: Any) -> None:
         """Lifecycle-facing alias for replacing the readonly registry view."""
@@ -477,53 +509,40 @@ class ChannelManager:
 
     async def stop(self) -> None:
         async with self._lock:
-            if self._stop_task is None:
+            if self._stop_task is None or (
+                self._stop_task.done() and (self._entries or self._retired or self._active_sends)
+            ):
                 self._stopping = True
-                entries = list(self._entries.values())
-                release_tasks = list(self._release_tasks.values())
-                self._entries.clear()
-                self._init_locks.clear()
-                self._stop_task = asyncio.create_task(
-                    self._stop_entries(entries, release_tasks)
-                )
+                self._stop_task = asyncio.create_task(self._stop_entries())
             stop_task = self._stop_task
         await asyncio.shield(stop_task)
 
-    async def _stop_entries(
-        self,
-        entries: list[_Entry],
-        release_tasks: list[asyncio.Task[None]],
-    ) -> None:
+    async def _stop_entries(self) -> None:
         errors: list[BaseException] = []
         try:
             await asyncio.wait_for(self._sends_idle.wait(), self._stop_timeout)
-        except TimeoutError as exc:
-            errors.append(
-                LogAgentError(
-                    "channel_stop_timeout",
-                    "渠道发送未在关闭预算内结束",
-                    {
-                        "active_sends": len(self._active_sends),
-                        "timeout": self._stop_timeout,
-                    },
-                )
-            )
-            errors[0].__cause__ = exc
-        else:
-            if release_tasks:
-                results = await asyncio.gather(*release_tasks, return_exceptions=True)
-                errors.extend(
-                    result for result in results if isinstance(result, BaseException)
-                )
-
-            for entry in entries:
-                try:
-                    await self._stop_entry(entry)
-                except BaseException as exc:
-                    errors.append(exc)
+        except TimeoutError:
+            # Drain first; after the budget expires cancellation prevents new
+            # external operations and lets send finally blocks release ownership.
+            for task in tuple(self._active_sends):
+                task.cancel()
+            try:
+                await asyncio.wait_for(self._sends_idle.wait(), self._stop_timeout)
+            except TimeoutError as exc:
+                raise LogAgentError(
+                    "channel_stop_failed", "活动渠道调用未响应取消",
+                    {"active_sends": len(self._active_sends)},
+                ) from exc
+        async with self._lock:
+            entries = [*self._entries.values(), *self._retired]
+            releases = list(self._release_tasks.values())
+        results = await asyncio.gather(
+            *(self._stop_entry(entry) for entry in entries),
+            *releases, return_exceptions=True,
+        )
+        errors.extend(result for result in results if isinstance(result, BaseException))
         if errors:
             raise LogAgentError(
-                "channel_stop_failed",
-                "通知渠道实例关闭失败",
+                "channel_stop_failed", "通知渠道实例关闭失败",
                 {"errors": [self._exception_summary(exc) for exc in errors]},
             ) from errors[0]
