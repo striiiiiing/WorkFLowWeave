@@ -1,4 +1,4 @@
-"""Strict, JSON-compatible exchange models from the OpenSpec contracts.
+"""JSON-compatible exchange models derived from the approved module designs.
 
 Runtime dependencies live in CollectionContext, outside the serialized models.
 """
@@ -23,7 +23,7 @@ from pydantic import (
 )
 
 if TYPE_CHECKING:
-    from logagent.protocols import CredentialResolver
+    from logagent.protocols import CredentialResolver, SessionReader
 
 _JSON_VALUE = TypeAdapter(JsonValue, config=ConfigDict(strict=True, allow_inf_nan=False))
 
@@ -74,6 +74,7 @@ JSONSchema = JSONObject
 JSONValue = Annotated[Any, BeforeValidator(_validate_json_value)]
 EnvironmentName = Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")]
 NonNegativeInt = Annotated[int, Field(strict=True, ge=0)]
+SessionVersion = Annotated[int, Field(gt=0)]
 
 ResourceKind = Literal["sources", "setters", "ai", "channels", "workflows"]
 PluginKind = Literal["collector", "channel"]
@@ -84,6 +85,12 @@ WorkflowStage = Literal["collect", "analyze", "aggregate", "notify", "finish"]
 CollectionStatus = Literal["success", "empty", "filtered_empty", "missing", "failed", "timeout"]
 AnalysisStatus = Literal["success", "failed", "timeout", "cancelled"]
 DeliveryStatus = Literal["success", "failed", "timeout", "skipped"]
+SessionStatus = Literal[
+    "created", "running", "completed", "partial", "failed", "cancelled", "interrupted"
+]
+ArtifactAvailability = Literal[
+    "available", "pending", "not_saved", "expired", "missing", "corrupt", "write_failed"
+]
 
 
 class StrictModel(BaseModel):
@@ -112,7 +119,7 @@ class SystemConfig(StrictModel):
     plugin_dir: str = "plugins"
     host: str = "127.0.0.1"
     port: int = Field(default=4300, ge=1, le=65535)
-    # max_concurrent_runs: int = Field(default=4, ge=1)
+    max_concurrent_runs: int = Field(default=4, ge=1)
     log_file: str | None = None
     master_key_env: EnvironmentName = "LOGAGENT_MASTER_KEY"
     master_key_file: str = "master.key"
@@ -186,6 +193,18 @@ class FanInConfig(StrictModel):
     mark_incomplete: bool = True
 
 
+class BackupPolicy(StrictModel):
+    """Retention policy for business content and any persisted execution copies."""
+
+    enabled: bool = True
+    snapshot: bool = True
+    collection: bool = True
+    analysis: bool = True
+    final: bool = True
+    on_failure: ContinuePolicy = "stop"
+    retention_days: int | None = Field(default=None, gt=0)
+
+
 class WorkflowDefinition(StrictModel):
     id: ID
     name: str = ""
@@ -202,6 +221,7 @@ class WorkflowDefinition(StrictModel):
     send_partial: bool = True
     interval_seconds: Seconds | None = None
     enabled: bool = True
+    backup: BackupPolicy = Field(default_factory=BackupPolicy)
 
     @model_validator(mode="after")
     def valid_references(self) -> Self:
@@ -295,6 +315,53 @@ class DeliveryResult(StrictModel):
     attempts: int = Field(ge=0, le=1)
     error: ErrorInfo | None = None
 
+    @model_validator(mode="after")
+    def coherent_result(self) -> Self:
+        if self.status == "success" and (self.attempts != 1 or self.error is not None):
+            raise ValueError("Successful delivery requires one attempt and no error")
+        if self.status == "skipped" and (self.attempts != 0 or self.error is not None):
+            raise ValueError("Skipped delivery requires zero attempts and no error")
+        if self.status in ("failed", "timeout") and self.error is None:
+            raise ValueError("Failed or timed out delivery requires an error")
+        return self
+
+
+class ArtifactInfo(StrictModel):
+    stage: WorkflowStage
+    availability: ArtifactAvailability
+    size_bytes: NonNegativeInt | None = None
+    error: ErrorInfo | None = None
+
+
+class PhaseContent(ArtifactInfo):
+    """A body read from one explicitly selected SessionStore version."""
+
+    session_id: ID
+    version: SessionVersion
+    content: JSONValue = None
+
+    @model_validator(mode="after")
+    def coherent_content(self) -> Self:
+        if (self.availability == "available") != (self.content is not None):
+            raise ValueError("Only available phase content carries a non-null body")
+        return self
+
+
+class SessionRecord(StrictModel):
+    """Read-only business session data, independent of execution checkpoints."""
+
+    session_id: ID
+    workflow_id: ID
+    version: SessionVersion
+    status: SessionStatus
+    stage: WorkflowStage | None = None
+    created_at: UTCDateTime
+    updated_at: UTCDateTime
+    finished_at: UTCDateTime | None = None
+    error: ErrorInfo | None = None
+    artifacts: list[ArtifactInfo] = Field(default_factory=list)
+    snapshot_availability: ArtifactAvailability
+
 
 class PluginEntry(StrictModel):
     backend: str = Field(min_length=1)
@@ -347,6 +414,7 @@ class CollectionContext:
     session_id: ID
     log_path: str | None = None
     credentials: CredentialResolver | None = None
+    session_reader: SessionReader | None = None
 
     def __post_init__(self) -> None:
         try:
