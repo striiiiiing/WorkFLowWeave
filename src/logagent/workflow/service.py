@@ -617,7 +617,7 @@ class WorkflowService:
                     incoming = await self._result(runtime, snapshot, state, required=("collect",))
                     task = next(task for task in wf.analyses if task.id == ident)
                     result = await self._analysis_call(
-                        snapshot.ai[task.ai], task.prompt, incoming.shared_input, ident, incoming
+                        snapshot.ai[task.ai], task.prompt, incoming.shared_input, ident, incoming, task.model
                     )
                 return result.model_dump(mode="json")
 
@@ -782,20 +782,15 @@ class WorkflowService:
             "errors": [e.model_dump(mode="json") for e in result.errors],
         }
 
-    async def _analysis_call(self, config, prompt, text, task_id, result):
+    async def _analysis_call(self, config, prompt, text, task_id, result, model=None):
         try:
             async with asyncio.timeout(config.timeout):
-                raw = await self.ai_service.execute(
-                    copy_model(config),
-                    prompt,
-                    text,
-                    task_id=task_id,
-                    context=ExecutionContext(
-                        workflow_id=result.workflow_id,
-                        session_id=result.session_id,
-                        stage=result.stage,
-                    ),
-                )
+                kwargs = {"task_id": task_id, "context": ExecutionContext(
+                    workflow_id=result.workflow_id, session_id=result.session_id, stage=result.stage,
+                )}
+                if model is not None:
+                    kwargs["model"] = model
+                raw = await self.ai_service.execute(copy_model(config), prompt, text, **kwargs)
             if asyncio.current_task().cancelling():
                 raise asyncio.CancelledError
             output = AnalysisResult.model_validate(
@@ -838,7 +833,7 @@ class WorkflowService:
                 self._halt(result, "aggregate_empty", "汇总未产生有效正文")
             elif wf.fan_in.ai:
                 result.aggregate = await self._analysis_call(
-                    snapshot.ai[wf.fan_in.ai], wf.fan_in.prompt, text, "final", result
+                    snapshot.ai[wf.fan_in.ai], wf.fan_in.prompt, text, "final", result, wf.fan_in.model
                 )
                 if result.aggregate.status != "success":
                     self._halt(result, "aggregate_failed", "AI 汇总失败")

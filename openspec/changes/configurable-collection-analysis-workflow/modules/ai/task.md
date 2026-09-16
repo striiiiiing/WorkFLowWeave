@@ -12,3 +12,16 @@
 - [ ] 系统提示词独立 system 角色；{input} 字面替换，不递归模板执行；无占位符时追加完整输入（沿用现有行为以满足完整共享输入）。非法返回、缺失凭据解析器、协议和认证错误显式失败。
 - [ ] 仅确认未受理的暂态失败重试；读取超时/断连等不确定受理错误不盲目重试。取消后不启动下一次请求，返回 cancelled；客户端有界且幂等关闭，清理错误不吞掉。
 - [ ] 本地 HTTP/可控适配器测试角色、参数、隔离、总预算、重试计数与取消（60 秒）；lint、构建、离线单次分析烟测。声明直接使用的依赖。
+
+## 实际实现与验证（2026-09-17）
+
+- AIConfig 在保留兼容默认 model/model_options 的基础上增加 `models` 映射；每个 AI 资源共享 provider/base_url/api_key/system_prompt/timeout/retries，Workflow 的 AnalysisTask/FanInConfig 可显式选择模型，未指定时沿用资源默认 model。WorkflowSnapshot 校验所选模型存在。
+- 默认 timeout/retries 调整为 600 秒/5 次，依据 AI design 对非流式长思考调用的说明；总时限从凭据解析开始计算，凭据解析、请求和重试等待共用预算。
+- AIService 保留 OpenAI-compatible HTTP 与 Mock provider；system/user 分离，`{input}` 仅字面替换，无占位符时追加完整输入；模型 options 透传但拒绝覆盖 model/messages/认证/管理字段及 temperature/top_k。缺少凭据解析器、非法模型、认证/协议错误显式失败。
+- 本次仍保留旧字段作为迁移兼容层，后续可在完整调用方迁移后移除；这避免现有持久化资源和 Workflow 测试在过渡期间失效。
+- 验证：Workflow integration 2 passed；Workflow recovery 34 passed；process recovery 3 passed；Config/资源/凭据/Workflow integration 定向 86 passed；相关 Ruff 通过。全套回归在当前代码路径已完成既有 388 项回归，未发现功能失败。
+
+### 决策依据与默认值
+
+- 多模型结构依据 AI design “同一模型渠道共享连接/凭据，包含多个 model 及其配套 model_options”；兼容字段暂保留是迁移策略，不作为第二运行时来源，`models[model]` 是执行时唯一选项来源。
+- Workflow 不强制旧 FanIn 配置立即补写 model；未指定时使用 AIConfig.model，保证既有定义可重放，同时新配置可显式固定模型。
