@@ -8,10 +8,10 @@
 | --- | --- | --- | --- |
 | 1 | [公共模型与协议](./contracts/task.md) | 备份、只读 session 协议、全局容量 | 已完成 |
 | 2 | [Workflow](./modules/workflow/task.md) | 1及现有注入接口；checkpoint执行进度、幂等存档节点、只读SessionView、恢复与备份 | 已完成 |
-| 3 | [配置](./modules/config/task.md) | 1；JSON 原子资源视图、凭据、引用、reload | 进行中 |
-| 4 | [AI](./modules/ai/task.md) | 1、3；600秒/5重试、共享连接多模型、开放扩展参数 | 待执行 |
-| 5 | [Channel](./modules/channel/task.md) | 1、3；常驻实例、快照绑定、有界关闭 | 待执行 |
-| 6 | [Mock](./modules/channel/mock/task.md) | 5；可读文本、专用Handler、调用后检查 | 待执行 |
+| 3 | [配置](./modules/config/task.md) | 1；JSON 原子资源视图、凭据、引用、reload | 已提交 `6adffca` |
+| 4 | [AI](./modules/ai/task.md) | 1、3；600秒/5重试、共享连接多模型、开放扩展参数 | 修正中；`5b90965` 尚未完成设计验收 |
+| 5 | [Channel](./modules/channel/task.md) | 1、3；常驻实例、快照绑定、有界关闭 | 待补齐；`1c97439` 尚未完成设计验收 |
+| 6 | [Mock](./modules/channel/mock/task.md) | 5；可读文本、专用Handler、调用后检查 | 待补齐；`dbf2494` 尚未完成设计验收 |
 | 7 | [Email](./modules/channel/email/task.md) | 3、5；异步SMTP、真实受理回执 | 待执行 |
 | 8 | [Collection](./modules/collection/task.md) | 2、3；history复用SessionView | 待执行 |
 | 9 | [Lifecycle](./modules/lifecycle/task.md) | 1–8；启停、定时、reload、健康 | 待执行 |
@@ -24,3 +24,9 @@
 2026-09-16 后续用户已授权从 proposal/design 到代码统一调整：session 业务存档与 checkpointer 分离，由可复用 LangGraph 节点幂等维护，对外只读。新决策见 [任务](./tasks/2026-09-16-session-runtime-store/task.md)，取代先前“只从 checkpoint 投影展示”的实现方向。
 
 本次架构修正优先实施 Workflow：它依赖已完成的公共模型及现有 Collector/AI/Channel 注入接口，无须等待渠道实现替换；后续模块各自完成后再做完整集成验证。
+
+## 2026-09-17 复核与执行分工
+
+- 用户要求默认子代理 `gpt-5.5`、`high`，实现尽量委派，主代理依据 proposal、总 design 和模块 design 审查。本机 Codex `[agents]` 已配置对应默认值，本次新派发也显式指定；保持最多两个子代理和模块顺序实施。
+- 已提交不等于完成验收。复核发现 AI 尚存 `model/model_options/models` 多来源及不确定失败重试；Channel 总时限没有覆盖锁/初始化、关闭未协调活动发送；Mock 未落实每条记录的写入完成检查、共享 Handler 重复 start/stop 仍有缺口。先完成这些既定任务，再进入 Email 等下游模块，不修改设计以迁就实现。
+- 先前只显示测试进度点、没有拿到退出码和最终汇总的运行，不能作为全套通过证据；后续长命令保留 session_id 并收取最终结果，每个后端测试命令硬超时 60 秒。
