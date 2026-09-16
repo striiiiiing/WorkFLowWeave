@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from logagent.workflow import SQLiteRunStore
+from logagent.workflow import SessionStore
 
 _CHILD_PROGRAM = """
 import asyncio
@@ -22,21 +22,10 @@ from logagent.models import (
     AIConfig, AnalysisResult, AnalysisTask, ChannelConfig, CollectionResult,
     DeliveryResult, SourceConfig, WorkflowDefinition, WorkflowSnapshot,
 )
-from logagent.workflow import SQLiteRunStore, WorkflowService
+from logagent.workflow import SessionStore, WorkflowService
 
 database, ledger_path, report_path, mode = sys.argv[1:]
 
-if mode == "crash-notify":
-    original_put = AsyncSqliteSaver.aput
-
-    async def hold_aggregate_checkpoint(self, config, checkpoint, metadata, new_versions):
-        if checkpoint["channel_values"].get("result", {}).get("stage") == "aggregate":
-            # Keep the completed aggregate in pending_writes when the process
-            # exits. aget_state then has next=() but a completed pending task.
-            await asyncio.Future()
-        return await original_put(self, config, checkpoint, metadata, new_versions)
-
-    AsyncSqliteSaver.aput = hold_aggregate_checkpoint
 
 
 def record(kind, **details):
@@ -47,12 +36,14 @@ def record(kind, **details):
         os.fsync(ledger.fileno())
 
 
-class Store(SQLiteRunStore):
-    def save_delivery(self, session_id, receipt):
-        if mode == "crash-notify" and receipt["channel_id"] == "one":
-            # The provider returned success, but no receipt is committed.
+class Store(SessionStore):
+    def write(self, sid, key, **kwargs):
+        if mode == "crash-notify" and key == "delivery:first:one":
             os._exit(74)
-        return super().save_delivery(session_id, receipt)
+        result = super().write(sid, key, **kwargs)
+        if mode == "crash-archive" and key == "collect:item:source":
+            os._exit(75)
+        return result
 
 
 store = Store(database)
@@ -70,9 +61,8 @@ class AI:
     async def execute(self, config, prompt, text, *, task_id, context):
         record("analyze", task_id=task_id, text=text, model=config.model)
         if mode == "crash-analysis" and task_id == "second":
-            assert store.stage_result("run", "collect")["shared_input"] == "durable input"
-            assert store.item_results("run", "analyze")["first"]["status"] == "success"
-            # No cancellation, shutdown, connection close, or finally handlers.
+            assert (await asyncio.to_thread(store.entry, "run", "phase:collect"))["body"]["shared_input"] == "durable input"
+            assert (await asyncio.to_thread(store.entry, "run", "analyze:item:first"))["body"]["status"] == "success"
             os._exit(73)
         return AnalysisResult(task_id=task_id, status="success", text=f"{task_id}({text})")
 
@@ -87,9 +77,10 @@ class Channel:
 
 
 async def main():
-    service = WorkflowService(Collector(), AI(), Channel(), run_store=store)
+    service = WorkflowService(Collector(), AI(), Channel(), session_store=store)
     if mode == "recover":
-        result = await service.recover("run")
+        await service.recover("run")
+        result = await service.wait("run")
     else:
         notification_crash = mode == "crash-notify"
         tasks = ("first",) if notification_crash else ("first", "second")
@@ -105,11 +96,12 @@ async def main():
             channels={key: ChannelConfig(id=key, channel="mock") for key in channels},
             created_at=datetime.now(UTC),
         )
-        result = await service.trigger(snapshot, session_id="run")
+        await service.trigger(snapshot, session_id="run")
+        result = await service.wait("run")
     report = {
         "result": result.model_dump(mode="json"),
-        "history": await service.history("run", limit=1000),
-        "session": await service.get_session("run"),
+        "history": await service.history("run"),
+        "session": (await service.get_session("run")).model_dump(mode="json"),
     }
     Path(report_path).write_text(json.dumps(report), encoding="utf-8")
     await service.shutdown()
@@ -161,10 +153,13 @@ def _report(tmp_path):
 def test_hard_exit_during_analysis_recovers_only_unfinished_branch(tmp_path):
     _run_child(tmp_path, "crash-analysis", 73)
     database = tmp_path / "runs.sqlite3"
-    with SQLiteRunStore(database) as store:
-        assert store.stage_result("run", "collect")["shared_input"] == "durable input"
-        assert store.stage_result("run", "analyze") is None
-        assert list(store.item_results("run", "analyze")) == ["first"]
+    store = SessionStore(database)
+    try:
+        assert store.entry("run", "phase:collect")["body"]["shared_input"] == "durable input"
+        assert store.entry("run", "phase:analyze") is None
+        assert store.entry("run", "analyze:item:first") is not None
+    finally:
+        store.close()
     with sqlite3.connect(database) as db:
         assert (
             db.execute("SELECT count(*) FROM checkpoints WHERE thread_id=?", ("run",)).fetchone()[0]
@@ -187,18 +182,14 @@ def test_hard_exit_during_analysis_recovers_only_unfinished_branch(tmp_path):
         "first(durable input)",
         "second(durable input)",
     ]
-    assert [
-        event["stage"]
-        for event in report["history"]
-        if event["event"] == "completed" and "session_id" in event["payload"]
-    ] == [
+    assert [event["stage"] for event in report["history"] if event["scope"] == "phase"] == [
         "collect",
         "analyze",
         "aggregate",
         "notify",
         "finish",
     ]
-    assert any(event["event"] == "resumed" for event in report["history"])
+    assert any(event["write_key"].startswith("running:") for event in report["history"])
 
     # A third interpreter reading the completed session also performs no I/O.
     _run_child(tmp_path, "recover", 0)
@@ -207,10 +198,14 @@ def test_hard_exit_during_analysis_recovers_only_unfinished_branch(tmp_path):
 
 def test_hard_exit_after_send_preserves_uncertainty_and_continues_next_target(tmp_path):
     _run_child(tmp_path, "crash-notify", 74)
-    with SQLiteRunStore(tmp_path / "runs.sqlite3") as store:
-        assert store.stage_result("run", "aggregate") is not None
-        assert store.stage_result("run", "notify") is None
-        assert store.item_results("run", "notify")["first:one"]["status"] == "sending"
+    store = SessionStore(tmp_path / "runs.sqlite3")
+    try:
+        assert store.entry("run", "phase:aggregate") is not None
+        assert store.entry("run", "phase:notify") is None
+        assert store.entry("run", "intent:first:one") is not None
+        assert store.entry("run", "delivery:first:one") is None
+    finally:
+        store.close()
     assert [event for event in _ledger(tmp_path) if event["kind"] == "send"] == [
         {"kind": "send", "output_id": "first", "channel_id": "one"}
     ]
@@ -228,8 +223,8 @@ def test_hard_exit_after_send_preserves_uncertainty_and_continues_next_target(tm
     assert second["channel_id"] == "two" and second["status"] == "success"
     notify_history = [event for event in report["history"] if event["stage"] == "notify"]
     assert any(
-        event["event"] == "completed"
-        and event["payload"]["deliveries"][0]["error"]["code"] == "delivery_uncertain"
+        event["scope"] == "phase"
+        and event["body"]["deliveries"][0]["error"]["code"] == "delivery_uncertain"
         for event in notify_history
     )
 
@@ -237,3 +232,12 @@ def test_hard_exit_after_send_preserves_uncertainty_and_continues_next_target(tm
     _run_child(tmp_path, "recover", 0)
     assert _ledger(tmp_path) == events
     assert _report(tmp_path)["result"] == report["result"]
+
+
+def test_hard_exit_after_business_commit_before_checkpoint_reuses_collector(tmp_path):
+    _run_child(tmp_path, "crash-archive", 75)
+    assert [event["kind"] for event in _ledger(tmp_path)] == ["collect"]
+    _run_child(tmp_path, "recover", 0)
+    events = _ledger(tmp_path)
+    assert [event["kind"] for event in events] == ["collect", "analyze", "analyze"]
+    assert _report(tmp_path)["result"]["status"] == "completed"

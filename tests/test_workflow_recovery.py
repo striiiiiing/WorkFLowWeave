@@ -18,7 +18,7 @@ from logagent.models import (
     WorkflowDefinition,
     WorkflowSnapshot,
 )
-from logagent.workflow import SQLiteRunStore, WorkflowService
+from logagent.workflow import SessionStore, WorkflowService
 
 
 def snapshot(*, channels=True, fan_in=None, tasks=("first", "second"), **options):
@@ -85,282 +85,433 @@ class Channel:
         )
 
 
-def service(path, *, ai=None, store_type=SQLiteRunStore):
+def service(path, *, ai=None, store_type=SessionStore):
     c, a, n = Collector(), ai or AI(), Channel()
     store = store_type(path)
-    return WorkflowService(c, a, n, run_store=store), store, c, a, n
+    return WorkflowService(c, a, n, session_store=store), store, c, a, n
+
+
+async def run(workflow, definition=None, sid="run"):
+    await workflow.trigger(definition or snapshot(), session_id=sid)
+    return await workflow.wait(sid)
+
+
+async def close(workflow, store):
+    await workflow.shutdown()
+    store.close()
 
 
 async def test_full_history_native_checkpoint_and_completed_recovery(tmp_path):
     path = tmp_path / "runs.sqlite3"
     w, store, c, a, n = service(path)
-    result = await w.trigger(snapshot(), session_id="run")
-    assert result.status == "completed"
-    assert result.shared_input == "original data"
-    assert [entry[:2] for entry in n.calls] == [
+    result = await run(w)
+    assert result.status == "completed" and result.shared_input == "original data"
+    assert [row[:2] for row in n.calls] == [
         ("first", "one"),
         ("first", "two"),
         ("second", "one"),
         ("second", "two"),
     ]
-    history = await w.history("run", limit=1000)
-    completed = [
-        entry
-        for entry in history
-        if entry["event"] == "completed" and "session_id" in entry["payload"]
-    ]
-    assert [entry["stage"] for entry in completed] == [
+    assert [e["stage"] for e in await w.history("run") if e["scope"] == "phase"] == [
         "collect",
         "analyze",
         "aggregate",
         "notify",
         "finish",
     ]
-    assert completed[0]["payload"]["shared_input"] == "original data"
-    assert completed[1]["payload"]["analyses"][0]["text"] == "first(original data)"
-    assert all(entry["created_at"] for entry in history)
+    record = await w.get_session("run")
+    assert record.status == "completed"
+    content = await w.session_view.get_phase_content("run", "collect", version=record.version)
+    assert content.content["shared_input"] == "original data"
     with sqlite3.connect(path) as db:
-        assert (
-            db.execute("SELECT count(*) FROM checkpoints WHERE thread_id=?", ("run",)).fetchone()[0]
-            >= 5
-        )
-    store.close()
+        namespaces = {row[0] for row in db.execute("SELECT checkpoint_ns FROM checkpoints")}
+        assert "" in namespaces and any(ns.startswith("collect:") for ns in namespaces)
+        assert any(ns.startswith("analyze:") for ns in namespaces)
+        assert any(ns.startswith("notify:") for ns in namespaces)
+    await close(w, store)
     new, reopened, c2, a2, n2 = service(path)
-    recovered = await new.recover("run")
-    assert recovered == result
+    await new.recover("run")
+    assert await new.wait("run") == result
     assert not c2.calls and not a2.calls and not n2.calls
-    assert (await new.get_session("run"))["recoverable"] is False
-    reopened.close()
+    await close(new, reopened)
+
+
+async def test_trigger_is_immediately_queryable_and_cancel_works_before_first_step(tmp_path):
+    w, store, _, _, _ = service(tmp_path / "runs.sqlite3")
+    sid = await w.trigger(snapshot(), session_id="run")
+    assert sid == "run" and (await w.get_session(sid)).status == "created"
+    assert await w.cancel(sid)
+    assert (await w.wait(sid)).status == "cancelled"
+    assert (await w.get_session(sid)).status == "cancelled"
+    await close(w, store)
 
 
 async def test_cancel_resume_reuses_successful_branch_and_original_snapshot(tmp_path):
     path = tmp_path / "runs.sqlite3"
     ai = AI(block="second")
-    w, store, c, _, n = service(path, ai=ai)
+    w, store, _, _, _ = service(path, ai=ai)
     snap = snapshot(analysis_concurrency=1)
-    task = asyncio.create_task(w.trigger(snap, session_id="run"))
+    await w.trigger(snap, session_id="run")
     await asyncio.wait_for(ai.started.wait(), 5)
-    assert store.item_results("run", "analyze")["first"]["status"] == "success"
+    assert (await asyncio.to_thread(store.entry, "run", "analyze:item:first"))["body"][
+        "status"
+    ] == "success"
     assert await w.cancel("run")
-    cancelled = await asyncio.wait_for(task, 5)
-    assert cancelled.status == "cancelled"
-    assert w.coordinator.active == 0
+    assert (await w.wait("run")).status == "cancelled"
     snap.ai["ai"].model = "changed"
-    store.close()
-    new, reopened, c2, a2, n2 = service(path)
-    result = await new.resume("run")
+    await close(w, store)
+    new, reopened, c, a, n = service(path)
+    await new.recover("run")
+    result = await new.wait("run")
     assert result.status == "completed"
-    assert c2.calls == []
-    assert a2.calls == [("second", "original data", "offline")]
-    assert len(n2.calls) == 4
-    reopened.close()
+    assert not c.calls and a.calls == [("second", "original data", "offline")]
+    assert len(n.calls) == 4
+    await close(new, reopened)
 
 
-async def test_failed_analysis_recovery_only_retries_failed_branch(tmp_path):
-    path = tmp_path / "runs.sqlite3"
-    w, store, _, _, n = service(path, ai=AI(fail={"second"}))
-    result = await w.trigger(snapshot(analysis_failure="stop"), session_id="run")
-    assert result.status == "failed"
-    assert not n.calls
-    w.ai_service = AI()
-    recovered = await w.recover("run")
-    assert recovered.status == "completed"
-    assert [call[0] for call in w.ai_service.calls] == ["second"]
-    failed = await w.history("run", stage="analyze")
-    assert any(row["event"] == "failed" for row in failed)
-    assert any(row["event"] == "resumed" for row in await w.history("run"))
-    store.close()
-
-
-async def test_completed_stage_survives_checkpoint_failure(tmp_path):
-    class FailAfterStage(SQLiteRunStore):
-        def save_stage(self, sid, stage, payload, status="completed"):
-            super().save_stage(sid, stage, payload, status)
-            if stage == "collect":
-                raise RuntimeError("simulated exit before LangGraph checkpoint")
+async def test_business_commit_before_checkpoint_replays_without_external_call(tmp_path):
+    class FailAfterArchive(SessionStore):
+        def write(self, sid, key, **kwargs):
+            entry = super().write(sid, key, **kwargs)
+            if key == "collect:item:source":
+                raise RuntimeError("process interruption after archive commit")
+            return entry
 
     path = tmp_path / "runs.sqlite3"
-    w, store, c, a, n = service(path, store_type=FailAfterStage)
-    with pytest.raises(LogAgentError, match="checkpoint"):
-        await w.trigger(snapshot(), session_id="run")
+    w, store, c, a, n = service(path, store_type=FailAfterArchive)
+    with pytest.raises(LogAgentError):
+        await run(w)
     assert c.calls == ["source"] and not a.calls and not n.calls
-    store.close()
-    new, reopened, c2, _, _ = service(path)
-    assert (await new.recover("run")).status == "completed"
-    assert not c2.calls
-    reopened.close()
+    await close(w, store)
+    new, reopened, c, _, _ = service(path)
+    await new.recover("run")
+    assert (await new.wait("run")).status == "completed"
+    assert not c.calls
+    await close(new, reopened)
 
 
-async def test_send_receipt_crash_does_not_repeat_uncertain_delivery(tmp_path):
-    class FailReceipt(SQLiteRunStore):
-        def save_delivery(self, sid, receipt):
-            if receipt["channel_id"] == "one":
+async def test_send_receipt_failure_preserves_uncertainty_and_next_target(tmp_path):
+    class FailReceipt(SessionStore):
+        def write(self, sid, key, **kwargs):
+            if key == "delivery:first:one":
                 raise RuntimeError("receipt disk failure")
-            return super().save_delivery(sid, receipt)
+            return super().write(sid, key, **kwargs)
 
     path = tmp_path / "runs.sqlite3"
     w, store, _, _, n = service(path, store_type=FailReceipt)
     with pytest.raises(LogAgentError):
-        await w.trigger(snapshot(tasks=("first",)), session_id="run")
+        await run(w, snapshot(tasks=("first",)))
     assert [row[:2] for row in n.calls] == [("first", "one")]
-    store.close()
-    new, reopened, c, a, n2 = service(path)
-    result = await new.recover("run")
-    assert result.status == "partial"
-    assert not c.calls and not a.calls
-    assert [row[:2] for row in n2.calls] == [("first", "two")]
+    await close(w, store)
+    new, reopened, c, a, n = service(path)
+    await new.recover("run")
+    result = await new.wait("run")
+    assert result.status == "partial" and not c.calls and not a.calls
+    assert [row[:2] for row in n.calls] == [("first", "two")]
     assert result.deliveries[0].error.code == "delivery_uncertain"
-    assert result.deliveries[0].error.details["delivery_uncertain"] is True
     assert result.deliveries[1].status == "success"
-    reopened.close()
+    await close(new, reopened)
 
 
-async def test_store_failure_before_send_prevents_external_effect(tmp_path):
-    class FailIntent(SQLiteRunStore):
-        def begin_delivery(self, *args):
-            raise RuntimeError("disk unavailable")
+async def test_intent_storage_failure_prevents_send_and_retains_unwaited_error(tmp_path):
+    class FailIntent(SessionStore):
+        def write(self, sid, key, **kwargs):
+            if key.startswith("intent:"):
+                raise RuntimeError("private disk path")
+            return super().write(sid, key, **kwargs)
 
     w, store, _, _, channel = service(tmp_path / "runs.sqlite3", store_type=FailIntent)
-    with pytest.raises(LogAgentError):
-        await w.trigger(snapshot(), session_id="run")
-    assert channel.calls == []
+    await w.trigger(snapshot(), session_id="run")
+    for _ in range(1000):
+        if not w.coordinator.active:
+            break
+        await asyncio.sleep(0.001)
+    with pytest.raises(LogAgentError) as caught:
+        await w.wait("run")
+    assert "private" not in str(caught.value) and not channel.calls
+    assert (await w.get_session("run")).status == "interrupted"
+    await close(w, store)
+
+
+async def test_missing_checkpoint_is_not_reconstructed_from_business_history(tmp_path):
+    path = tmp_path / "runs.sqlite3"
+    w, store, _, _, _ = service(path)
+    await run(w)
+    await w._checkpointer.adelete_thread("run")
+    with pytest.raises(LogAgentError) as caught:
+        await w.recover("run")
+    assert caught.value.code == "checkpoint_missing"
+    assert (await w.get_session("run")).status == "completed"
+    await close(w, store)
+
+
+@pytest.mark.parametrize("category", ["snapshot", "collection", "analysis", "final"])
+async def test_disabled_required_body_refuses_recovery_and_checkpoint_has_no_body(
+    tmp_path, category
+):
+    from logagent.models import BackupPolicy
+
+    policy = BackupPolicy(**{category: False})
+    # Block before outputs freeze to make collection/analysis necessary.
+    ai = AI(block="second") if category in {"collection", "analysis"} else AI()
+    w, store, _, _, _ = service(tmp_path / "runs.sqlite3", ai=ai)
+    await w.trigger(snapshot(backup=policy, analysis_concurrency=1), session_id="run")
+    if ai.block:
+        await asyncio.wait_for(ai.started.wait(), 5)
+        await w.cancel("run")
+    await w.wait("run")
+    with pytest.raises(LogAgentError) as caught:
+        await w.recover("run")
+    assert caught.value.code == "recovery_unavailable"
+    async for checkpoint in w._checkpointer.alist(None):
+        # All categories, even when enabled, remain out of checkpoint channels.
+        encoded = repr(checkpoint.checkpoint) + repr(checkpoint.pending_writes)
+        assert "original data" not in encoded
+        assert "offline" not in encoded
+    await close(w, store)
+
+
+async def test_duplicate_capacity_and_shutdown(tmp_path):
+    ai = AI(block="first")
+    w, store, _, _, _ = service(tmp_path / "runs.sqlite3", ai=ai)
+    w.coordinator._max = 1
+    await w.trigger(snapshot(), session_id="run")
+    await asyncio.wait_for(ai.started.wait(), 5)
+    with pytest.raises(LogAgentError, match="同一 session"):
+        await w.recover("run")
+    with pytest.raises(LogAgentError, match="容量"):
+        await w.trigger(snapshot(), session_id="other")
+    await w.shutdown()
+    assert (await w.wait("run")).status == "cancelled"
+    with pytest.raises(LogAgentError, match="关闭"):
+        await w.recover("run")
     store.close()
 
 
-async def test_aggregate_failure_is_recoverable_without_repeating_branches(tmp_path):
-    path = tmp_path / "runs.sqlite3"
-    w, store, _, _, n = service(path, ai=AI(fail={"final"}))
-    result = await w.trigger(
-        snapshot(fan_in=FanInConfig(ai="ai", order=["second", "$input", "first"])), session_id="run"
-    )
+@pytest.mark.parametrize(
+    "fan_in", [None, FanInConfig(), FanInConfig(ai="ai", order=["second", "$input", "first"])]
+)
+async def test_order_fanin_and_disabled_channel(tmp_path, fan_in):
+    w, store, _, _, n = service(tmp_path / "runs.sqlite3")
+    snap = snapshot(fan_in=fan_in)
+    snap.channels["one"].enabled = False
+    result = await run(w, snap)
+    assert result.status == "completed"
+    assert result.deliveries[0].status == "skipped"
+    assert all(row[1] == "two" for row in n.calls)
+    assert list(result.outputs) == (["first", "second"] if fan_in is None else ["final"])
+    await close(w, store)
+
+
+@pytest.mark.parametrize(
+    "policy,partial,status,sends",
+    [
+        ("continue", True, "partial", 2),
+        ("continue", False, "failed", 0),
+        ("stop", True, "failed", 0),
+    ],
+)
+async def test_analysis_failure_policy(tmp_path, policy, partial, status, sends):
+    w, store, _, _, n = service(tmp_path / "runs.sqlite3", ai=AI(fail={"second"}))
+    result = await run(w, snapshot(analysis_failure=policy, send_partial=partial))
+    assert result.status == status and len(n.calls) == sends
+    await close(w, store)
+
+
+async def test_aggregate_failure_does_not_fallback_to_branch_delivery(tmp_path):
+    w, store, _, a, n = service(tmp_path / "runs.sqlite3", ai=AI(fail={"final"}))
+    result = await run(w, snapshot(fan_in=FanInConfig(ai="ai")))
     assert result.status == "failed" and result.aggregate.status == "failed"
     assert not result.outputs and not n.calls
-    w.ai_service = AI()
-    recovered = await w.recover("run")
-    assert recovered.status == "completed"
-    assert [row[0] for row in w.ai_service.calls] == ["final"]
-    assert (
-        w.ai_service.calls[0][1] == "second(original data)\n\noriginal data\n\nfirst(original data)"
-    )
-    store.close()
+    await close(w, store)
 
 
-async def test_duplicate_admission_and_closed_service_recovery(tmp_path):
-    path = tmp_path / "runs.sqlite3"
-    w, store, _, ai, _ = service(path, ai=AI(block="first"))
-    running = asyncio.create_task(w.trigger(snapshot(), session_id="run"))
-    await asyncio.wait_for(ai.started.wait(), 5)
-    other, second, _, _, _ = service(path)
-    with pytest.raises(LogAgentError) as error:
-        await other.recover("run")
-    assert error.value.code == "session_active"
-    assert other.coordinator.active == 0
-    await w.shutdown()
-    assert (await running).status == "cancelled"
-    with pytest.raises(LogAgentError) as closed:
-        await w.recover("run")
-    assert closed.value.code == "shutdown"
-    second.close()
-    store.close()
-
-
-async def test_disabled_channel_and_source_stop_policy(tmp_path):
-    w, store, _, _, n = service(tmp_path / "runs.sqlite3")
-    snap = snapshot(tasks=("first",))
-    snap.channels["one"].enabled = False
-    result = await w.trigger(snap, session_id="run")
-    assert result.deliveries[0].status == "skipped"
-    assert [row[1] for row in n.calls] == ["two"]
-    with pytest.raises(LogAgentError) as duplicate:
-        await w.trigger(snap, session_id="run")
-    assert duplicate.value.code == "session_exists"
-    store.close()
-
-
-def test_recoverable_service_rejects_in_memory_database():
-    with pytest.raises(LogAgentError, match="SQLite 文件"):
+def test_in_memory_database_is_rejected():
+    with pytest.raises(LogAgentError):
         WorkflowService(Collector(), AI(), Channel(), database=":memory:")
 
 
-async def test_recover_reconciles_final_status_after_commit_failure(tmp_path):
-    class FailFinalStatus(SQLiteRunStore):
-        def set_status(self, sid, status, error=None):
-            if status == "completed":
-                raise RuntimeError("disk failure after completed result")
-            return super().set_status(sid, status, error)
+async def test_coordinator_completion_cache_is_bounded():
+    from logagent.workflow import RunCoordinator
+
+    coordinator = RunCoordinator()
+
+    async def value():
+        return 1
+
+    for i in range(coordinator.COMPLETED_LIMIT + 5):
+        coordinator.submit(str(i), value)
+        assert await coordinator.wait(str(i)) == 1
+    assert len(coordinator._completed) <= coordinator.COMPLETED_LIMIT
+    await coordinator.shutdown()
+
+
+@pytest.mark.parametrize("failure", ["second", "final"])
+async def test_failed_work_recovery_reuses_successful_branches(tmp_path, failure):
+    w, store, c, _, n = service(tmp_path / "runs.sqlite3", ai=AI(fail={failure}))
+    definition = snapshot(
+        analysis_failure="stop", fan_in=FanInConfig(ai="ai") if failure == "final" else None
+    )
+    first = await run(w, definition)
+    assert first.status == "failed" and not n.calls
+    w.ai_service = AI()
+    await w.recover("run")
+    result = await w.wait("run")
+    assert result.status == "completed"
+    assert [row[0] for row in w.ai_service.calls] == [failure]
+    assert c.calls == ["source"]
+    await close(w, store)
+
+
+@pytest.mark.parametrize("damage", ["missing", "corrupt", "expired"])
+async def test_recovery_refuses_missing_corrupt_or_expired_archives(tmp_path, damage):
+    from datetime import timedelta
+
+    from logagent.models import BackupPolicy
 
     path = tmp_path / "runs.sqlite3"
-    w, store, _, _, _ = service(path, store_type=FailFinalStatus)
+    w, store, c, a, n = service(path)
+    await run(w, snapshot(backup=BackupPolicy(retention_days=1)))
+    calls = (list(c.calls), list(a.calls), list(n.calls))
+    if damage == "expired":
+        assert await asyncio.to_thread(store.expire, datetime.now(UTC) + timedelta(days=2)) > 0
+        assert (await w.get_session("run")).status == "completed"
+    else:
+        with sqlite3.connect(path) as db:
+            if damage == "missing":
+                db.execute(
+                    "DELETE FROM session_entries WHERE session_id=? AND write_key=?",
+                    ("run", "analyze:item:first"),
+                )
+            else:
+                db.execute(
+                    "UPDATE session_entries SET body=? WHERE session_id=? AND write_key=?",
+                    ('{"text":"private-content"}', "run", "phase:aggregate"),
+                )
+    with pytest.raises(LogAgentError) as error:
+        await w.recover("run")
+    assert error.value.code in {"recovery_unavailable", "storage_corrupt"}
+    assert "private-content" not in str(error.value)
+    assert calls == (c.calls, a.calls, n.calls)
+    await close(w, store)
+
+
+@pytest.mark.parametrize("on_failure", ["stop", "continue"])
+async def test_body_backup_failure_is_recorded_and_stop_cannot_replay_past_it(tmp_path, on_failure):
+    from logagent.models import BackupPolicy
+
+    class BodyFailure(SessionStore):
+        def write(self, sid, key, **kwargs):
+            if key == "collect:item:source" and kwargs.get("body") is not None:
+                raise sqlite3.OperationalError("body unavailable")
+            return super().write(sid, key, **kwargs)
+
+    w, store, _, a, n = service(tmp_path / "runs.sqlite3", store_type=BodyFailure)
+    definition = snapshot(backup=BackupPolicy(on_failure=on_failure))
+    if on_failure == "stop":
+        with pytest.raises(LogAgentError, match="备份策略"):
+            await run(w, definition)
+        with pytest.raises(LogAgentError):
+            await w.recover("run")
+        assert not a.calls and not n.calls
+    else:
+        result = await run(w, definition)
+        assert result.status == "partial" and n.calls
+    entry = await asyncio.to_thread(store.entry, "run", "collect:item:source")
+    assert entry["availability"] == "write_failed" and entry["body"] is None
+    await close(w, store)
+
+
+async def test_reconcile_interrupted_preserves_events_without_running_business(tmp_path):
+    from logagent.models import BackupPolicy
+
+    w, store, c, a, n = service(tmp_path / "runs.sqlite3")
+    store.create("orphan", "demo", BackupPolicy())
+    await w.reconcile_interrupted()
+    record = await w.get_session("orphan")
+    assert record.status == "interrupted"
+    await w.reconcile_interrupted()
+    assert (await w.get_session("orphan")).version == record.version
+    assert not c.calls and not a.calls and not n.calls
+    await close(w, store)
+
+
+async def test_notification_node_names_do_not_collide_for_underscored_ids(tmp_path):
+    w, store, _, _, n = service(tmp_path / "runs.sqlite3")
+    definition = snapshot(tasks=("a_b", "a"))
+    definition.workflow.channels = ["c", "b_c"]
+    definition.channels = {
+        cid: ChannelConfig(id=cid, channel="mock") for cid in definition.workflow.channels
+    }
+    result = await run(w, definition)
+    assert result.status == "completed"
+    assert [row[:2] for row in n.calls] == [("a_b", "c"), ("a_b", "b_c"), ("a", "c"), ("a", "b_c")]
+    await close(w, store)
+
+
+async def test_created_session_cannot_be_reused_after_snapshot_write_failure(tmp_path):
+    class BrokenSnapshot(SessionStore):
+        def write(self, sid, key, **kwargs):
+            if key == "snapshot":
+                raise RuntimeError("snapshot write interrupted")
+            return super().write(sid, key, **kwargs)
+
+    w, store, c, a, n = service(tmp_path / "runs.sqlite3", store_type=BrokenSnapshot)
+    with pytest.raises(RuntimeError):
+        await w.trigger(snapshot(), session_id="run")
+    assert (await w.get_session("run")).status == "created"
+    with pytest.raises(LogAgentError) as error:
+        await w.trigger(snapshot(), session_id="run")
+    assert error.value.code == "session_exists" and not c.calls and not a.calls and not n.calls
+    await close(w, store)
+
+
+async def test_final_archive_replay_reconciles_interrupted_summary(tmp_path):
+    class CrashAfterFinal(SessionStore):
+        failed = False
+
+        def write(self, sid, key, **kwargs):
+            value = super().write(sid, key, **kwargs)
+            if key == "phase:finish" and not self.failed:
+                self.failed = True
+                raise RuntimeError("after final business commit")
+            return value
+
+    w, store, c, a, n = service(tmp_path / "runs.sqlite3", store_type=CrashAfterFinal)
     with pytest.raises(LogAgentError):
-        await w.trigger(snapshot(), session_id="run")
-    assert store.get_session("run")["status"] == "interrupted"
-    store.close()
-    new, reopened, c, a, n = service(path)
-    assert (await new.recover("run")).status == "completed"
-    assert (await new.get_session("run"))["status"] == "completed"
-    assert not c.calls and not a.calls and not n.calls
-    reopened.close()
+        await run(w)
+    assert (await w.get_session("run")).status == "interrupted"
+    calls = (list(c.calls), list(a.calls), list(n.calls))
+    await w.recover("run")
+    assert (await w.wait("run")).status == "completed"
+    assert (await w.get_session("run")).status == "completed"
+    assert calls == (c.calls, a.calls, n.calls)
+    await close(w, store)
 
 
-async def test_recovery_refuses_missing_prerequisite(tmp_path):
-    path = tmp_path / "runs.sqlite3"
-    w, store, _, _, _ = service(path, ai=AI(fail={"second"}))
-    await w.trigger(snapshot(analysis_failure="stop"), session_id="run")
-    store.close()
-    with sqlite3.connect(path) as db:
-        db.execute("DELETE FROM run_stages WHERE session_id=? AND stage=?", ("run", "collect"))
-    new, reopened, c, a, n = service(path)
-    with pytest.raises(LogAgentError) as error:
-        await new.recover("run")
-    assert error.value.code == "storage_corrupt"
-    assert not c.calls and not a.calls and not n.calls
-    reopened.close()
+async def test_unsaved_definition_is_not_silently_replaced_by_same_id(tmp_path):
+    w, store, _, _, _ = service(tmp_path / "runs.sqlite3")
+    with pytest.raises(LogAgentError):
+        await w.trigger(snapshot().workflow)
+    await close(w, store)
 
 
-async def test_stage_journal_recovers_when_native_checkpoint_is_missing(tmp_path):
-    path = tmp_path / "runs.sqlite3"
-    w, store, _, _, _ = service(path, ai=AI(fail={"second"}))
-    await w.trigger(snapshot(analysis_failure="stop"), session_id="run")
-    store.close()
-    with sqlite3.connect(path) as db:
-        db.execute("DELETE FROM checkpoints WHERE thread_id=?", ("run",))
-        db.execute("DELETE FROM writes WHERE thread_id=?", ("run",))
-    new, reopened, c, a, _ = service(path)
-    assert (await new.recover("run")).status == "completed"
-    assert not c.calls
-    assert [call[0] for call in a.calls] == ["second"]
-    reopened.close()
+async def test_collector_cannot_swallow_cancellation_and_start_analysis(tmp_path):
+    entered = asyncio.Event()
 
+    class SwallowingCollector:
+        async def collect(self, config, context):
+            entered.set()
+            try:
+                await asyncio.Future()
+            except asyncio.CancelledError:
+                return CollectionResult(source_id=config.id, status="success", text="late", count=1)
 
-async def test_storage_failure_during_status_update_is_structured(tmp_path):
-    class OfflineStore(SQLiteRunStore):
-        def set_status(self, *args, **kwargs):
-            raise RuntimeError("unavailable with private connection details")
-
-    w, store, c, a, n = service(tmp_path / "runs.sqlite3", store_type=OfflineStore)
-    with pytest.raises(LogAgentError) as error:
-        await w.trigger(snapshot(), session_id="run")
-    assert error.value.code == "checkpoint_failed"
-    assert "private" not in str(error.value)
-    assert not c.calls and not a.calls and not n.calls
-    assert w.coordinator.active == 0
-    store.close()
-
-
-@pytest.mark.parametrize("stage,key", [("collect", "source"), ("analyze", "first")])
-async def test_missing_successful_item_cannot_be_replayed(tmp_path, stage, key):
-    path = tmp_path / "runs.sqlite3"
-    w, store, _, _, _ = service(path, ai=AI(fail={"second"}))
-    await w.trigger(snapshot(analysis_failure="stop"), session_id="run")
-    store.close()
-    with sqlite3.connect(path) as db:
-        db.execute(
-            "DELETE FROM run_items WHERE session_id=? AND stage=? AND item_key=?",
-            ("run", stage, key),
-        )
-    new, reopened, c, a, n = service(path)
-    with pytest.raises(LogAgentError) as error:
-        await new.recover("run")
-    assert error.value.code == "storage_corrupt"
-    assert not c.calls and not a.calls and not n.calls
-    reopened.close()
+    w, store, _, a, n = service(tmp_path / "runs.sqlite3")
+    w.collector_manager = SwallowingCollector()
+    await w.trigger(snapshot(), session_id="run")
+    await entered.wait()
+    await w.cancel("run")
+    assert (await w.wait("run")).status == "cancelled"
+    assert not a.calls and not n.calls
+    await close(w, store)

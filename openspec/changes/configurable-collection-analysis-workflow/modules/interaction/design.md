@@ -32,7 +32,7 @@ flowchart LR
 3. 触发创建 session 并返回 session 标识；取消通过 session_id 转交 WorkflowService，由 RunCoordinator 管理实际任务。
 4. 路由通过 Workflow 的 SessionView 读取由 LangGraph 节点维护的业务存档，查询 session 列表、运行状态、阶段结果和备份可用性，恢复交给 WorkflowService；不直接访问 LangGraph 或 SQLite。
 
-完整路径、状态码和响应形状以接口契约为准。`GET /api/plugins` 已返回 `CapabilityDescription` 中的 schema，无需另维护渠道 schema 路由或表单字段副本。固定路由优先于 `/{kind}/{id}`。
+路径、状态码和响应形状依据本设计与总设计在交互任务中细化，接口契约仅同步记录派生结果。`GET /api/plugins` 已返回 `CapabilityDescription` 中的 schema，无需另维护渠道 schema 路由或表单字段副本。固定路由优先于 `/{kind}/{id}`。
 
 ## 配置与错误
 
