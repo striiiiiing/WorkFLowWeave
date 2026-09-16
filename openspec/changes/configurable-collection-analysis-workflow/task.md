@@ -1,14 +1,22 @@
-# 实施计划
+# 实施计划（2026-09-16）
 
-1. 完成严格数据模型、轻量 JSON Schema 校验和配置资源管理。
-2. 完成 QwenPaw 风格的 manifest/backend/plugin.register 注册流程；mock 作为普通 Collector 插件加载。
-3. 完成 Collection、AI、Channel 和基于 LangGraph 的可恢复 Workflow 调用链路。
-4. 使用 Python 标准库 `logging` 负责诊断输出；logs Collector 只做有界读取。
-5. API、CLI 和生命周期装配上述能力；Workflow 使用 SQLite 保存运行状态、阶段结果、投递回执和完整历史，支持重启后恢复。
+旧实现/任务基线：`4dfa8d0072fc16eda4f1c3da25bac36969327deb`。已确认新设计提交：`97ebd68`。
 
-## Workflow 持久化约定
+新设计是事实依据，contracts 仅作派生说明。先逐份修正 task.md，再依赖顺序串行实施，每份 task 默认一个代码提交；最多两个子代理，独立审查可并行，代码模块逐个完成。设计调整依据另见 [决策记录](./tasks/2026-09-16-session-design/task.md)。
 
-- Workflow 使用同一个 SQLite 文件保存配置快照、运行状态、阶段结果、逐项结果、通知意图/回执和 `run_history`。默认复用注入资源仓库的 `location`；资源仓库使用 `:memory:` 时改用 `data/workflows.sqlite3`，也可通过 `database` 显式指定路径。
-- 每次执行在开始时冻结 `WorkflowSnapshot` 和运行上下文。历史保存各阶段输入、输出、错误及事件正文，默认永久保留且不自动清理；凭据引用可进入配置快照，解析后的凭据不写入快照、历史或错误。
-- `WorkflowService.recover(session_id)`（别名 `resume`）读取 LangGraph 原生 SQLite checkpoint 与阶段日志，复用已成功的采集/分析/聚合结果，只重试未完成项。已写入的投递回执不会重复发送；发送意图存在但没有回执时记录 `delivery_uncertain` 并停止补发，因此不承诺外部 exactly-once。
-- 单个数据库文件只支持一个执行器进程；同一进程可创建多个服务实例，但同一 `session_id` 互斥。进程重启后可使用 `recover` 继续未完成运行。
+| 顺序 | 任务 | 依赖与主要差异 | 状态 |
+| --- | --- | --- | --- |
+| 1 | [公共模型与协议](./contracts/task.md) | 备份、只读 session 协议、全局容量 | 待执行 |
+| 2 | [配置](./modules/config/task.md) | 1；JSON 原子资源视图、凭据、引用、reload | 待执行 |
+| 3 | [AI](./modules/ai/task.md) | 1–2；600秒/5重试、共享连接多模型、开放扩展参数 | 待执行 |
+| 4 | [Channel](./modules/channel/task.md) | 1–2；常驻实例、快照绑定、有界关闭 | 待执行 |
+| 5 | [Mock](./modules/channel/mock/task.md) | 4；可读文本、专用Handler、调用后检查 | 待执行 |
+| 6 | [Email](./modules/channel/email/task.md) | 2、4；异步SMTP、真实受理回执 | 待执行 |
+| 7 | [Workflow](./modules/workflow/task.md) | 1–6；LangGraph唯一进度、子图、SessionView、恢复与备份 | 待执行 |
+| 8 | [Collection](./modules/collection/task.md) | 2、7；history复用SessionView | 待执行 |
+| 9 | [Lifecycle](./modules/lifecycle/task.md) | 1–8；启停、定时、reload、健康 | 待执行 |
+| 10 | [Interaction](./modules/interaction/task.md) | 1–9；FastAPI、Typer、完整HTTP链路 | 待执行 |
+
+业务校验、SessionView和API装配以注入接口解除反向依赖，不额外增加资源或运行事实来源。旧SQLite资源/运行表及直读CLI按所属任务删除，避免为维持旧测试保留过时实现。
+
+每模块按定向测试（后端命令硬超时60秒）→类型/lint→构建→烟测验证，再记录任务结果并commit。基线测试为338项通过；新行为需新增真实边界测试，旧行为与设计冲突时同步修正。
