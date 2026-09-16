@@ -49,7 +49,7 @@ plugins/
 }
 ```
 
-注册入口及 `CollectorPluginApi` / `ChannelPluginApi` 以[接口契约 §9](../../contracts/module-interfaces.md#9-插件注册入口)为准；两个注册结果的 `get(name)` 与 `describe()` 查询能力以[接口契约 §2](../../contracts/module-interfaces.md#2-配置与资源管理)为准。
+插件通过对应类型的注册入口声明能力；业务模块仅通过注册结果的 `get(name)` 与 `describe()` 查询。接口契约记录本设计的派生接口，不作为独立事实来源。
 
 配置模块对外发布只读注册视图：`collectorRegister: CollectorRegister` 提供给数据采集模块，`channelRegister: ChannelRegister` 提供给 Channel 网关。这里的名称表示注册结果，不要求业务模块再次调用插件入口；插件入口只在配置模块发现或 reload 时调用。
 
@@ -83,7 +83,7 @@ resolve 供尚未保存的定义做关系校验，不写资源。对外 get/list
 
 来源 options、渠道 options 和 AIConfig 中的秘密只保存 Credential，运行时按需解析；不能把明文放入 defaults 或任意扩展字段绕过约定。插件 schema 明确哪些字段为 Credential。返回配置、日志、错误、快照都不包含解密值。
 
-主密钥读取、首次生成、已有密文解密和格式错误规则以数据模型 §2.5 为准。快照固定引用/密文，不保存明文；缺少原环境变量或主密钥时显式失败，不使用最新资源中的凭据替换。
+主密钥优先从系统配置指定的环境变量读取，否则从数据目录指定的密钥文件读取；首次加密可生成并限制密钥文件权限，解密既有密文时缺失密钥或格式不合法必须报错，不能自动生成替代密钥。派生数据模型记录具体序列化形状。快照固定引用/密文，不保存明文；缺少原环境变量或主密钥时显式失败，不使用最新资源中的凭据替换。
 
 ## 验证要点
 

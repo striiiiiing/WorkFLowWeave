@@ -6,7 +6,7 @@
 
 - [x] proposal 验收9/恢复边界、总设计、Workflow/Collection/Config/Lifecycle/Interaction design 对齐新职责。
 - [x] 公共查询模型使用独立 version；SessionReader 对外只读，图内 writer 与之分开。
-- [ ] Workflow 实现 SessionStore 原子幂等写入、节点闭包复用、SessionView 及 checkpoint 恢复。
+- [x] Workflow 实现 SessionStore 原子幂等写入、节点闭包复用、SessionView 及 checkpoint 恢复。
 - [ ] Collection/API 使用只读业务存档；Lifecycle 注入并关闭两类存储。
 - [ ] 验证同键重放、内容冲突、并发分支、存档提交后强退、发送确认窗口、备份关闭/过期，以及真实 HTTP 查询/取消。
 
