@@ -31,7 +31,7 @@ class MockFileChannelType:
     name = "mock"
     description = "追加 JSON Lines 通知"
     capabilities = ["notification"]
-    options_schema = {"type": "object", "properties": {"path": {"type": "string", "minLength": 1, "description": "输出文件"}}, "required": ["path"], "additionalProperties": False}
+    options_schema = {"type": "object", "properties": {"path": {"type": "string", "minLength": 1, "description": "输出文件（相对 data_dir）", "x-logagent-path": True}}, "required": ["path"], "additionalProperties": False}
 
     async def create(self, config: ChannelConfig, credentials: Any) -> MockFileChannel:
         return MockFileChannel(config)

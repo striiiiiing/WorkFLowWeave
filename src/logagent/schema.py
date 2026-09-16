@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+from collections.abc import Callable
 from copy import deepcopy
 from typing import Any
 
@@ -35,6 +37,7 @@ class _SchemaGraph:
         self.registry = Registry().with_resource(base, resource).crawl()
         self.nodes: dict[int, Any] = {}
         self.references: dict[int, list[Any]] = {}
+        self.resolvers: dict[int, Any] = {}
         self._visit(resource, self.registry.resolver(base))
 
     def _visit(self, resource: Any, resolver: Any) -> None:
@@ -50,6 +53,7 @@ class _SchemaGraph:
         except SchemaError:
             raise _invalid_schema("JSON Schema 2020-12 声明无效") from None
         self.nodes[id(node)] = node
+        self.resolvers[id(node)] = resolver
         if isinstance(node, bool):
             return
         for keyword in ("$ref", "$dynamicRef"):
@@ -159,3 +163,63 @@ def schema_defaults(schema: dict[str, Any]) -> dict[str, Any]:
     return {name: deepcopy(rule["default"])
             for name, rule in schema.get("properties", {}).items()
             if isinstance(rule, dict) and "default" in rule}
+
+
+def transform_annotations(
+    instance: Any, schema: dict[str, Any], transform: Callable[[Any, dict[str, Any]], Any]
+) -> Any:
+    """Transform declared values through local references and applicable schemas.
+
+    Branch selection uses the original value, before transformations such as
+    path resolution. Structural validation remains the caller's responsibility;
+    unknown properties are retained so validation can reject them normally.
+    """
+    graph = _SchemaGraph(schema)
+    validator = Draft202012Validator(schema, format_checker=FormatChecker(), registry=graph.registry)
+    visited: set[tuple[tuple[str | int, ...], int]] = set()
+
+    def matches(value: Any, rule: Any) -> bool:
+        return not any(validator.descend(value, rule, resolver=graph.resolvers[id(rule)]))
+
+    def visit(value: Any, original: Any, rule: Any, path: tuple[str | int, ...]) -> Any:
+        if not isinstance(rule, dict) or (path, id(rule)) in visited:
+            return value
+        visited.add((path, id(rule)))
+        applicable = list(graph.references.get(id(rule), []))
+        applicable.extend(rule.get("allOf", []))
+        for keyword in ("anyOf", "oneOf"):
+            applicable.extend(branch for branch in rule.get(keyword, []) if matches(original, branch))
+        if "if" in rule:
+            branch = "then" if matches(original, rule["if"]) else "else"
+            if branch in rule:
+                applicable.append(rule[branch])
+        if isinstance(original, dict):
+            applicable.extend(branch for key, branch in rule.get("dependentSchemas", {}).items()
+                              if key in original)
+        value = transform(value, rule)
+        for branch in applicable:
+            value = visit(value, original, branch, path)
+        if isinstance(value, dict) and isinstance(original, dict):
+            properties = rule.get("properties", {})
+            patterns = rule.get("patternProperties", {})
+            result = {}
+            for key, item in value.items():
+                declarations = [properties[key]] if key in properties else []
+                declarations.extend(child for pattern, child in patterns.items() if re.search(pattern, key))
+                if not declarations and "additionalProperties" in rule:
+                    declarations.append(rule["additionalProperties"])
+                for child in declarations:
+                    item = visit(item, original.get(key, item), child, (*path, key))
+                result[key] = item
+            return result
+        if isinstance(value, list) and isinstance(original, list):
+            prefix = rule.get("prefixItems", [])
+            return [visit(item, original[index], prefix[index] if index < len(prefix)
+                          else rule.get("items"), (*path, index))
+                    for index, item in enumerate(value)]
+        return value
+
+    try:
+        return visit(deepcopy(instance), instance, schema, ())
+    except RecursionError:
+        raise _invalid_schema("JSON Schema 或实例嵌套层级过深") from None

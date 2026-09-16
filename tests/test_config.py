@@ -625,7 +625,9 @@ async def test_invalid_global_settings_leave_previous_published_view_intact(tmp_
 
 
 async def test_string_config_values_normalize_through_readers_and_store(tmp_path):
-    from logagent.config.store import SQLiteResourceStore
+    from logagent.channel.mock import MockFileChannelType
+    from logagent.collection.mock import MockCollector
+    from logagent.config.store import ResourceStore
 
     system = tmp_path / "system.json"
     system.write_text('{"port": "4300"}')
@@ -634,11 +636,13 @@ async def test_string_config_values_normalize_through_readers_and_store(tmp_path
     plugins.write_text('{"collector": {"demo": {"enabled": "false"}}}')
     config = await ConfigurationReader().load_plugin_config(plugins)
     assert config["collector"]["demo"].enabled is False
-    with SQLiteResourceStore(":memory:") as store:
-        source = store.save("sources", {"id": "source", "collector": "mock", "timeout": "2.5"})
-        assert source.timeout == 2.5
-        assert store.list("sources")[0].timeout == 2.5
-        channel = store.save("channels", {"id": "channel", "channel": "mock", "enabled": "false"})
-        assert channel.enabled is False
-        ai = store.save("ai", {"id": "ai", "provider": "mock", "model": "mock", "retries": "3"})
-        assert ai.retries == 3
+    registry = PluginRegistry([MockCollector()], builtin_channels=[MockFileChannelType()])
+    await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
+    store = ResourceStore(tmp_path / "resources.json", collector_register=registry.collectorRegister, channel_register=registry.channelRegister)
+    source = store.save("sources", {"id": "source", "collector": "mock", "timeout": "2.5"})
+    assert source.timeout == 2.5
+    assert store.list("sources")[0].timeout == 2.5
+    channel = store.save("channels", {"id": "channel", "channel": "mock", "enabled": "false", "options": {"path": "out.txt"}})
+    assert channel.enabled is False
+    ai = store.save("ai", {"id": "ai", "provider": "mock", "model": "mock", "retries": "3"})
+    assert ai.retries == 3
