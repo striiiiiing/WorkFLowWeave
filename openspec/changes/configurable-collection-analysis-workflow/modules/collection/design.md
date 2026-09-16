@@ -50,9 +50,9 @@ options 提供有界样例 records，或显式 mode=success/empty/failed/timeout
 
 ### Workflow 历史 history
 
-通过 CollectionContext 注入 Workflow 的 SessionView 只读接口，与对外 session 展示共用同一查询实现，不直接读取 SQLite 表或自行解释 LangGraph checkpoint。按指定 Workflow/session、最近次数、时间范围和 token 内容预算选择已保存阶段结果；只读取历史，不重新执行原始 Collector 或 Workflow。
+通过 CollectionContext 注入 Workflow 的 SessionView 只读接口，读取运行时节点维护的 SessionStore，与对外 session 展示共用同一查询实现，不直接读取 SQLite 表或自行解释 LangGraph checkpoint。按指定 Workflow/session、最近次数、时间范围和 token 内容预算选择已保存阶段结果；只读取历史，不重新执行原始 Collector 或 Workflow。
 
-最近次数按 session 计数，不按 checkpoint 数量计数；一次查询固定所选历史版本，并排除当前 session。未匹配历史返回 empty；已选内容未保存、过期或损坏则报告 missing/failed 及原因。超过预算按配置截取或报错，并记录截取范围；字段、分组等 Setter 由此 Collector 声明，count 为最终选中的历史 session 数。
+最近次数按 session 计数，不按 checkpoint 数量计数；一次查询固定所选 session version，与 checkpoint_id 无关，并排除当前 session。未匹配历史返回 empty；已选内容未保存、过期或损坏则报告 missing/failed 及原因。超过预算按配置截取或报错，并记录截取范围；字段、分组等 Setter 由此 Collector 声明，count 为最终选中的历史 session 数。
 
 ## 验证要点
 

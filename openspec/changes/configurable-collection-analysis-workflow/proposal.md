@@ -136,7 +136,7 @@
 
    Workflow 只依赖单向通知能力，不需要启动双向 Agent 对话即可完成运行和发送。
 8. AI 模块能够被 Workflow 的分析任务复用，并能提供模型及其配置和系统提示词；同一套 AI 配置可以被后续 Agent 复用。当前版本不要求实现完整的双向 Agent，但应保留 Workflow 输出被后续 Agent 使用的关联信息。
-9. API 能够完成 Workflow 的基本配置、保存和触发操作，并通过 Workflow 基于 LangGraph 的展示能力查询各 session 的运行状态、历史及备份结果；CLI 只提供启动和必要的调用入口，不重复实现业务逻辑。
+9. API 能够完成 Workflow 的基本配置、保存和触发操作，并通过 Workflow 的只读 session 展示能力查询运行状态、历史及备份结果；可读内容由 LangGraph 运行时维护，与执行 checkpoint 分离；CLI 只提供启动和必要的调用入口，不重复实现业务逻辑。
 
 ### 性能验收
 
@@ -154,7 +154,8 @@
 - 某个 fan-out 分析任务失败时，其他任务的结果仍应按配置保留；fan-in 开启时用户可选标明输入不完整，fan-in 关闭时按用户配置决定允许分别发送成功结果。
 - 采集备份或分析结果备份失败时，系统应标记该 session 不可完整恢复，并按照配置停止或继续
 - 邮件发送失败、Mock Channel 文件不可写或部分 channel 失败时，已完成的采集和分析结果仍应保留
-- Workflow 被中断后，由 Workflow 使用 LangGraph 持久化的原 session 内容、配置和执行进度恢复；保存被关闭或备份已过期时，应明确提示无法恢复的范围。
+- Workflow 被中断后，由 Workflow 使用 LangGraph checkpoint 的执行进度及运行时保存的原 session 内容、配置恢复；保存被关闭或备份已过期时，应明确提示无法恢复的范围。
+- LangGraph 节点重放时，同一业务写入必须幂等，不重复新增 session 内容、历史版本或通知；session 对外只读，父图和子图通过可复用存档节点维护业务内容。
 - API 收到不完整、未知或不符合 Collector schema 的配置时，应返回可理解的校验错误，不启动半配置的 Workflow。
 
 ## 4. 后继计划

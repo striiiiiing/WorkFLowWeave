@@ -8,6 +8,6 @@
 
 - [ ] 保留单来源管理器、Mock/logs 的声明、schema/Setter、真实空状态、有界读取、超时取消与脱敏；不自行发现插件或保存资源。
 - [ ] 新增 history Collector，注入 SessionReader 读取 SessionView，不导入 WorkflowService、不解析 SQLite/checkpoint 私有结构、不触发原工作流或来源。
-- [ ] 支持 Workflow/session、最近次数、时间范围及 token 预算；次数按 session 而非checkpoint，固定选中版本，排除当前 session。参数边界/默认值依据设计和有界读取目标记录于本任务，不伪造精确 token 数。
+- [ ] 支持 Workflow/session、最近次数、时间范围及 token 预算；次数按 session 而非checkpoint，固定选中 session version，排除当前 session。参数边界/默认值依据设计和有界读取目标记录于本任务，不伪造精确 token 数。
 - [ ] 无匹配返回 empty；已选正文未保存/过期返回 missing，损坏 failed；超预算按显式策略截取或拒绝，metadata 说明范围。字段/分组 Setter 明确声明，count 为选中 session 数。
 - [ ] 通过内置注册入口发布 history；用真实 SessionView 验证展示与历史采集一致、边界及不重跑，再运行既有采集测试（每命令60秒）、lint、构建和历史采集烟测。
