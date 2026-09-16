@@ -35,10 +35,10 @@ async def resources(tmp_path):
 
 def seed(store):
     store.save("sources", SourceConfig(id="source", collector="mock"))
-    store.save("ai", AIConfig(id="ai", provider="mock", model="model"))
+    store.save("ai", AIConfig(id="ai", provider="mock", models={"model": {}}))
     store.save("channels", ChannelConfig(id="channel", channel="mock", options={"path": "out.txt"}))
     definition = WorkflowDefinition(
-        id="workflow", sources=["source"], analyses=[{"id": "analysis", "ai": "ai"}],
+        id="workflow", sources=["source"], analyses=[{"id": "analysis", "ai": "ai", "model": "model"}],
         channels=["channel"],
     )
     store.save("workflows", definition)
@@ -63,17 +63,17 @@ async def test_save_reopen_copies_and_original_snapshot(resources):
     assert store.get("sources", "source").options != fetched.options
     store.list("workflows")[0].sources.clear()
     assert store.get("workflows", "workflow") == definition
-    store.save("ai", AIConfig(id="ai", provider="mock", model="updated"))
-    assert original.ai["ai"].model == "model"
+    store.save("ai", AIConfig(id="ai", provider="mock", models={"model": {"reasoning_effort": "high"}}))
+    assert original.ai["ai"].models == {"model": {}}
     reopened = ResourceStore(store.location, collector_register=registry.collectorRegister,
                              channel_register=registry.channelRegister)
-    assert reopened.snapshot("workflow").ai["ai"].model == "updated"
+    assert reopened.snapshot("workflow").ai["ai"].models == {"model": {"reasoning_effort": "high"}}
     assert set(read(store)) == {"format_version", "sources", "setters", "ai", "channels", "workflows"}
 
 
 async def test_create_replace_and_unknown_fields(resources):
     store, _ = resources
-    value = AIConfig(id="ai", provider="mock", model="model")
+    value = AIConfig(id="ai", provider="mock", models={"model": {}})
     with pytest.raises(LogAgentError, match="不存在"):
         store.save("ai", value, mode="replace")
     store.save("ai", value, mode="create")
@@ -179,7 +179,7 @@ async def test_missing_plugin_does_not_block_saved_snapshots(resources):
     seed(store)
     reopened = ResourceStore(store.location)
     assert reopened.snapshot("workflow").sources["source"].collector == "mock"
-    reopened.save("ai", AIConfig(id="ai", provider="mock", model="changed"))
+    reopened.save("ai", AIConfig(id="ai", provider="mock", models={"model": {"reasoning_effort": "low"}}))
     with pytest.raises(LogAgentError) as caught:
         reopened.save("sources", SourceConfig(id="new", collector="mock"))
     assert caught.value.code == "capability_missing"
@@ -196,10 +196,10 @@ async def test_write_failure_preserves_disk_and_published_view(resources, monkey
         raise OSError("fake-private-path")
     monkeypatch.setattr(f"logagent.config.store.os.{failure}", fail)
     with pytest.raises(LogAgentError) as caught:
-        store.save("ai", AIConfig(id="ai", provider="mock", model="changed"))
+        store.save("ai", AIConfig(id="ai", provider="mock", models={"model": {"reasoning_effort": "low"}}))
     assert "fake-private" not in caught.value.info.model_dump_json()
     assert await asyncio.to_thread(Path(store.location).read_bytes) == before
-    assert store.get("ai", "ai").model == "model"
+    assert store.get("ai", "ai").models == {"model": {}}
     assert not list(Path(store.location).parent.glob(".resources-*"))
 
 
@@ -214,7 +214,7 @@ async def test_reload_candidate_failure_then_success_and_relative_path(resources
         store.reload_resources()
     assert store.snapshot("workflow").workflow.sources == ["source"]
     data["channels"]["channel"]["options"]["path"] = "relative/next.txt"
-    data["ai"]["ai"]["model"] = "reloaded"
+    data["ai"]["ai"]["models"] = {"model": {"reasoning_effort": "high"}}
     edit(store, data)
     store.reload_resources()
     expected = str(Path(store.location).parent / "relative/next.txt")
@@ -255,7 +255,7 @@ async def test_parallel_writes_and_snapshots_use_one_complete_view(resources):
     store, _ = resources
     seed(store)
     def change(index):
-        store.save("ai", AIConfig(id=f"a{index}", provider="mock", model=str(index)))
+        store.save("ai", AIConfig(id=f"a{index}", provider="mock", models={str(index): {}}))
         snap = store.snapshot("workflow")
         assert set(snap.ai) == {"ai"} and set(snap.sources) == {"source"}
     with ThreadPoolExecutor(max_workers=8) as executor:
@@ -282,3 +282,23 @@ async def test_injected_validation_sees_final_options_once(resources):
     with pytest.raises(LogAgentError):
         store.save("channels", ChannelConfig(id="channel", channel="mock", options={"path": "relative.txt", "unknown": True}))
     assert read(store) == before
+
+
+@pytest.mark.parametrize("reference", ["analysis", "fan_in"])
+async def test_removing_referenced_model_rejects_entire_resource_candidate(resources, reference):
+    store, _ = resources
+    definition = seed(store)
+    store.save("ai", AIConfig(id="ai", provider="mock", models={"model": {}, "summary": {}}))
+    if reference == "fan_in":
+        from logagent.models import FanInConfig
+        definition.fan_in = FanInConfig(ai="ai", model="summary")
+        store.save("workflows", definition)
+    before = await asyncio.to_thread(Path(store.location).read_bytes)
+    original = store.snapshot("workflow")
+    remaining = {"summary": {}} if reference == "analysis" else {"model": {}}
+    with pytest.raises(LogAgentError):
+        store.save("ai", AIConfig(id="ai", provider="mock", models=remaining))
+    assert await asyncio.to_thread(Path(store.location).read_bytes) == before
+    current = store.snapshot("workflow")
+    assert current.ai == original.ai
+    assert current.workflow == original.workflow

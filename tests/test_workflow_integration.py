@@ -64,7 +64,7 @@ def _save_resources(registry, resources, output_path, version):
     assert source.setters == {"fields": ["message"]}
     resources.save("sources", source)
     resources.save("setters", template)
-    resources.save("ai", AIConfig(id="ai", provider="mock", model=f"model-{version}"))
+    resources.save("ai", AIConfig(id="ai", provider="mock", models={"model": {"version": version}}))
     resources.save(
         "channels", ChannelConfig(id="file", channel="mock", options={"path": str(output_path)})
     )
@@ -75,12 +75,12 @@ def _save_resources(registry, resources, output_path, version):
             name=f"Report {version}",
             sources=["source"],
             analyses=[
-                AnalysisTask(id=key, ai="ai", prompt=f"{version}-{key}: {{input}}")
+                AnalysisTask(id=key, ai="ai", model="model", prompt=f"{version}-{key}: {{input}}")
                 for key in ("first", "second")
             ],
             analysis_concurrency=1,
             fan_in=FanInConfig(
-                ai="ai",
+                ai="ai", model="model",
                 order=["second", "$input", "first"],
                 separator="\n--\n",
                 prompt=f"{version}-summary: {{input}}",
@@ -114,8 +114,8 @@ async def test_real_modules_recovery_preserves_original_output(tmp_path):
         assert original.outputs == {"final": original.aggregate.text}
         assert original.deliveries[0].status == "success"
         notifications = _notifications(original_path)
-        assert notifications.startswith("Report original\n")
-        assert original.outputs["final"] in notifications
+        # Full equality catches an accidental second write of the same text.
+        assert notifications == f"Report original\n{original.outputs['final']}\n"
 
         history = await service.history("original-run")
         completed = {row["stage"]: row["body"] for row in history if row["scope"] == "phase"}
@@ -136,7 +136,7 @@ async def test_real_modules_recovery_preserves_original_output(tmp_path):
         assert _notifications(original_path) == notifications
         assert not changed_path.exists()
         saved = await asyncio.to_thread(service.session_store.entry, "original-run", "snapshot")
-        assert saved["body"]["snapshot"]["ai"]["ai"]["model"] == "model-original"
+        assert saved["body"]["snapshot"]["ai"]["ai"]["models"] == {"model": {"version": "original"}}
 
         await service.trigger("demo", session_id="changed-run")
         changed = await service.wait("changed-run")
@@ -145,9 +145,7 @@ async def test_real_modules_recovery_preserves_original_output(tmp_path):
         assert changed.aggregate.text.startswith("changed-summary: changed-second:")
         assert _notifications(original_path) == notifications
         changed_notes = _notifications(changed_path)
-        assert changed_notes.startswith("Report changed\n")
-        assert changed.outputs["final"] in changed_notes
-        assert changed_notes.startswith("Report changed\n")
+        assert changed_notes == f"Report changed\n{changed.outputs['final']}\n"
 
     with sqlite3.connect(tmp_path / "sessions.sqlite3") as db:
         tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
@@ -159,7 +157,7 @@ async def test_real_modules_recovery_preserves_original_output(tmp_path):
 async def test_real_ai_cancellation_resumes_saved_snapshot_after_resource_changes(tmp_path):
     second_started = asyncio.Event()
 
-    async def pause_second(*, config, system, user, credential):
+    async def pause_second(*, config, model, system, user, credential):
         if user.startswith("original-second:"):
             second_started.set()
             await asyncio.Future()

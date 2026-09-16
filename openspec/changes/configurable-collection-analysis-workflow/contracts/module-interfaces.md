@@ -30,7 +30,7 @@ SessionView 只读取 SessionStore，列表返回每个 session 的最新业务�
 
 ## AI 与 Channel
 
-AI 接收明确的配置、prompt 和 input，返回 AnalysisResult；多模型配置与请求默认值由 AI 模块统一维护。
+`AIService.execute(config, prompt, input_text, *, model, task_id="task", context=None)` 接收显式模型选择并返回 AnalysisResult。validate 检查全部模型参数与所选模型；provider 可注入。OpenAI-compatible HTTP 请求使用独立 system/user 消息，单一总预算覆盖凭据解析、请求及退避；连接前失败或限流可重试，5xx/读写中断等不确定受理结果不重复请求。close 幂等且有界，清理错误单独报告。
 
 ChannelManager 依据 channel ID 与有效配置版本复用长期实例；首次发送前只初始化一次，在卸载或系统关闭时 stop。并发发送、配置替换及旧快照使用保持相应实例生命周期。每次 send 只处理一条 Notification 并返回 DeliveryResult，不排队、不缓存消息、不自动重试。Mock 专用持久 logging Handler 追加 UTF-8 标题和正文文本；不得混入应用诊断日志或将其改成 JSON 记录。
 
