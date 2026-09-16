@@ -28,3 +28,5 @@
 - 相关 Ruff 通过；构建与真实文件两次发送仅一次创建 smoke、全套结果在收取退出码后补录。
 
 提交前验证：全套 490 passed，34.13 秒，exit 0；uv build 成功；真实文件两次发送仅一次创建、完整文本相等及重复 stop smoke 成功。所有审查由主代理完成。
+
+后续装配审查发现只读注册表每次 get 都返回新包装对象，不能用包装对象身份判断插件变化。改为比较 create 实现、schema、能力与 owner；新增真实 PluginRegistry 回归证明未变更实例不会被重建。Channel 定向 33 passed（exit 0），Ruff 通过。

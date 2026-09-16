@@ -482,11 +482,18 @@ class ChannelManager:
                 old_names = {item.name for item in self._register.describe()} | {
                     entry.channel for entry in self._entries.values()
                 }
-                changed = {
-                    name for name in old_names
-                    if self._register.get(name) is not channel_register.get(name)
-                    or self._channel_owner(name) in self._unloaded_owners
-                }
+                new_owners = {item.name: item.plugin for item in channel_register.describe()}
+                changed = set()
+                for name in old_names:
+                    old, new = self._register.get(name), channel_register.get(name)
+                    if (
+                        old is None or new is None or old.create != new.create
+                        or old.options_schema != new.options_schema
+                        or old.capabilities != new.capabilities
+                        or self._channel_owner(name) != new_owners.get(name)
+                        or self._channel_owner(name) in self._unloaded_owners
+                    ):
+                        changed.add(name)
                 self._blocked_types.update(changed)
                 keys = {
                     entry.key for entry in self._entries.values() if entry.channel in changed
