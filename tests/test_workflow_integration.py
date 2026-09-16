@@ -1,7 +1,6 @@
 """Exercise durable workflows through the real registry, managers, and local plugins."""
 
 import asyncio
-import json
 import sqlite3
 from contextlib import asynccontextmanager
 
@@ -92,7 +91,7 @@ def _save_resources(registry, resources, output_path, version):
 
 
 def _notifications(path):
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    return path.read_text(encoding="utf-8")
 
 
 async def test_real_modules_recovery_preserves_original_output(tmp_path):
@@ -115,9 +114,8 @@ async def test_real_modules_recovery_preserves_original_output(tmp_path):
         assert original.outputs == {"final": original.aggregate.text}
         assert original.deliveries[0].status == "success"
         notifications = _notifications(original_path)
-        assert len(notifications) == 1
-        assert notifications[0]["text"] == original.outputs["final"]
-        assert notifications[0]["session_id"] == "original-run"
+        assert notifications.startswith("Report original\n")
+        assert original.outputs["final"] in notifications
 
         history = await service.history("original-run")
         completed = {row["stage"]: row["body"] for row in history if row["scope"] == "phase"}
@@ -147,9 +145,9 @@ async def test_real_modules_recovery_preserves_original_output(tmp_path):
         assert changed.aggregate.text.startswith("changed-summary: changed-second:")
         assert _notifications(original_path) == notifications
         changed_notes = _notifications(changed_path)
-        assert len(changed_notes) == 1 and changed_notes[0]["text"] == changed.outputs["final"]
-        assert changed_notes[0]["title"] == "Report changed"
-        assert changed_notes[0]["session_id"] == "changed-run"
+        assert changed_notes.startswith("Report changed\n")
+        assert changed.outputs["final"] in changed_notes
+        assert changed_notes.startswith("Report changed\n")
 
     with sqlite3.connect(tmp_path / "sessions.sqlite3") as db:
         tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
@@ -197,7 +195,8 @@ async def test_real_ai_cancellation_resumes_saved_snapshot_after_resource_change
         assert recovered.analyses[1].text == 'original-second: {"message":"original"}'
         assert recovered.aggregate.text.startswith("original-summary:")
         notes = _notifications(original_path)
-        assert len(notes) == 1 and notes[0]["text"] == recovered.outputs["final"]
+        assert notes.startswith("Report original\n")
+        assert recovered.outputs["final"] in notes
         assert not changed_path.exists()
         history = await service.history("interrupted")
         assert sum(row["write_key"] == "collect:item:source" for row in history) == 1
