@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, overload
 
 from logagent.models import (
     CapabilityDescription,
@@ -22,6 +22,7 @@ from logagent.models import (
     SourceConfig,
     StrictModel,
     UTCDateTime,
+    WorkflowDefinition,
     WorkflowSnapshot,
     WorkflowStage,
 )
@@ -84,9 +85,11 @@ class ResourceReader(Protocol):
 
     def list(self, kind: ResourceKind) -> list[StrictModel]: ...
 
-    def resolve(self, source: SourceConfig) -> SourceConfig:
-        """Resolve the effective source configuration, including setter templates."""
-        ...
+    @overload
+    def resolve(self, resource: SourceConfig) -> SourceConfig: ...
+
+    @overload
+    def resolve(self, resource: WorkflowDefinition) -> WorkflowSnapshot: ...
 
     def snapshot(self, workflow_id: str) -> WorkflowSnapshot: ...
 

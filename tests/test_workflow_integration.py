@@ -9,7 +9,7 @@ from logagent.ai import AIService, MockProvider
 from logagent.channel import ChannelManager, MockFileChannelType
 from logagent.collection.manager import CollectorManager
 from logagent.collection.mock import MockCollector
-from logagent.config import PluginRegistry, SQLiteResourceStore, expand_source
+from logagent.config import PluginRegistry, ResourceStore, expand_source
 from logagent.models import (
     AIConfig,
     AnalysisTask,
@@ -30,7 +30,7 @@ async def _application(tmp_path, *, provider=None):
         SystemConfig(plugin_dir=str(tmp_path / "plugins"), data_dir=str(tmp_path))
     )
     assert not report.errors
-    resources = SQLiteResourceStore(tmp_path / "logagent.sqlite3")
+    resources = ResourceStore(tmp_path / "resources.json", collector_register=registry.collectorRegister, channel_register=registry.channelRegister)
     ai = AIService(providers={"mock": provider or MockProvider()})
     channels = ChannelManager(registry.channelRegister)
     service = WorkflowService(
@@ -46,7 +46,6 @@ async def _application(tmp_path, *, provider=None):
         await service.shutdown()
         await ai.close()
         await channels.stop()
-        resources.close()
 
 
 def _save_resources(registry, resources, output_path, version):
