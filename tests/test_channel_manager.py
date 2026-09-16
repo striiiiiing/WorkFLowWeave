@@ -795,10 +795,11 @@ async def test_stop_preserves_every_cleanup_error():
         await manager.stop()
 
     assert error.value.code == "channel_stop_failed"
-    assert [failure["message"] for failure in error.value.details["errors"]] == [
-        "cleanup one",
-        "cleanup two",
-    ]
+    assert len(error.value.details["errors"]) == 2
+    assert all(item["details"]["exception_type"] == "RuntimeError"
+               for item in error.value.details["errors"])
+    assert "cleanup one" not in error.value.info.model_dump_json()
+    assert "cleanup two" not in error.value.info.model_dump_json()
 
 
 async def test_release_waits_for_active_send_and_allows_a_new_instance():
@@ -949,3 +950,157 @@ async def test_unload_owner_waits_for_active_send():
     await unloading
     assert instance.stop_calls == 1
     await manager.stop()
+
+
+@pytest.mark.parametrize("budget", [0, -1, float("nan"), float("inf")])
+def test_stop_budget_must_be_positive_and_finite(budget):
+    with pytest.raises(ValueError):
+        _manager(None, stop_timeout=budget)
+
+
+async def test_same_name_replacement_releases_old_implementation():
+    events = []
+    def channel_type(version):
+        class Instance:
+            async def start(self):
+                events.append((version, "start"))
+            async def send(self, notification):
+                events.append((version, "send"))
+            async def stop(self):
+                events.append((version, "stop"))
+        async def create(config):
+            return Instance()
+        return _owned_type("test", "owner", create)
+    manager = ChannelManager(_View({"test": channel_type("old")}))
+    await manager.send(_config(), _notification("before"))
+    await manager.replace_register(_View({"test": channel_type("new")}))
+    await manager.send(_config(), _notification("after"))
+    await manager.stop()
+    assert events == [("old", "start"), ("old", "send"), ("old", "stop"),
+                      ("new", "start"), ("new", "send"), ("new", "stop")]
+
+
+async def test_unload_owner_rejects_new_sends_while_draining():
+    entered, finish = asyncio.Event(), asyncio.Event()
+    calls = []
+    class Instance:
+        async def start(self):
+            pass
+        async def send(self, notification):
+            calls.append(notification.text)
+            entered.set()
+            await finish.wait()
+        async def stop(self):
+            calls.append("stop")
+    async def create(config):
+        return Instance()
+    manager = ChannelManager(_View({"test": _owned_type("test", "owner", create)}))
+    active = asyncio.create_task(manager.send(_config(), _notification("active")))
+    await entered.wait()
+    unload = asyncio.create_task(manager.unload_owner("owner"))
+    await asyncio.sleep(0)
+    rejected = await manager.send(_config(), _notification("new"))
+    assert rejected.status == "failed" and rejected.attempts == 0
+    finish.set()
+    assert (await active).status == "success"
+    await unload
+    rejected = await manager.send(_config(), _notification("after"))
+    assert rejected.status == "failed" and calls == ["active", "stop"]
+    await manager.stop()
+
+
+async def test_stop_cancels_overdue_send_then_closes_instance():
+    entered = asyncio.Event()
+    events = []
+    class Instance:
+        async def start(self):
+            pass
+        async def send(self, notification):
+            entered.set()
+            try:
+                await asyncio.Future()
+            finally:
+                events.append("send_done")
+        async def stop(self):
+            events.append("stop")
+    async def create(config):
+        return Instance()
+    manager = _manager(_ChannelType(create), stop_timeout=.02)
+    active = asyncio.create_task(manager.send(_config(), _notification("active")))
+    await entered.wait()
+    await manager.stop()
+    with pytest.raises(asyncio.CancelledError):
+        await active
+    assert events == ["send_done", "stop"]
+    assert not manager._entries
+    await manager.stop()
+
+
+async def test_cleanup_timeout_retains_ownership_until_later_stop():
+    release = asyncio.Event()
+    calls = []
+    class Instance:
+        async def start(self):
+            pass
+        async def send(self, notification):
+            pass
+        async def stop(self):
+            calls.append("stop")
+            await release.wait()
+    async def create(config):
+        return Instance()
+    manager = _manager(_ChannelType(create), stop_timeout=.02)
+    await manager.send(_config(), _notification("once"))
+    with pytest.raises(LogAgentError):
+        await manager.stop()
+    assert len(manager._entries) == 1
+    release.set()
+    await manager.stop()
+    assert not manager._entries and calls == ["stop"]
+
+
+async def test_failed_start_cleanup_retains_instance_until_it_finishes():
+    release = asyncio.Event()
+    calls = []
+    class Instance:
+        async def start(self):
+            raise RuntimeError("secret-start")
+        async def stop(self):
+            calls.append("stop")
+            await release.wait()
+    async def create(config):
+        return Instance()
+    manager = _manager(_ChannelType(create), stop_timeout=.02)
+    result = await manager.send(_config(), _notification("bad"))
+    assert result.status == "failed" and result.attempts == 0
+    assert "secret-start" not in result.model_dump_json()
+    assert len(manager._retired) == 1
+    release.set()
+    await manager.stop()
+    assert not manager._retired and calls == ["stop"]
+
+
+async def test_start_that_swallows_cancellation_cannot_send():
+    entered = asyncio.Event()
+    calls = []
+    class Instance:
+        async def start(self):
+            entered.set()
+            try:
+                await asyncio.Future()
+            except asyncio.CancelledError:
+                return
+        async def send(self, notification):
+            calls.append("send")
+        async def stop(self):
+            calls.append("stop")
+    async def create(config):
+        return Instance()
+    manager = _manager(_ChannelType(create))
+    active = asyncio.create_task(manager.send(_config(), _notification("cancelled")))
+    await entered.wait()
+    active.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await active
+    await manager.stop()
+    assert calls == ["stop"]
