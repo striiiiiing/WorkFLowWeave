@@ -10,16 +10,16 @@
 | --- | --- |
 | `ChannelType` | 注册声明：name、真实能力、options_schema、实例工厂。一个插件可注册多个类型。 |
 | `ChannelConfig` | 可保存的目标配置，id 表示实例身份，channel 指向类型。 |
-| `NotificationChannel` | 根据一份配置构造的运行实例，提供 start、send、stop。 |
+| `NotificationChannel` | 按快照配置绑定的常驻实例，提供 start、send、stop，多次发送复用。 |
 | `ChannelManager` | 消费只读 `channelRegister`，组合配置校验器和单条发送入口，统一返回 DeliveryResult。 |
 
 首版目标需要 notification 能力。ControlChannel、ConversationChannel 仅保留能力名称和将来扩展方向，本期不设计接收循环、命令路由或会话缓存。
 
 ## 配置与发现
 
-配置模块识别 channel 插件：它读取插件目录的 `plugin.json`，导入 `entry.backend` 指向的入口 `.py`，并调用其 `plugin.register(api)`。入口经 `register_channel` 一次提交类型、说明、schema 和异步工厂；配置模块检查名称唯一、内置 key 冲突、schema 结构及可调用协议，并向 Manager 注入只读 `channelRegister`。无需继承复杂 BaseChannel。
+channel以插件形式导入，通过config模块向 Manager 注入只读 `channelRegister`
 
-一个插件的声明全部验证通过才由配置模块发布；失败时撤销本轮声明并记录原因。ChannelManager 不扫描目录、不导入入口、不维护第二份注册表；其 describe 从 `channelRegister` 生成 CapabilityDescription，`GET /api/plugins` 已返回同一 schema，配置 API 不另维护平台字段清单。
+这个模块需要负责读取ChannelConfig，这个是可复用的，诸如channel的key这些信息
 
 ChannelConfig 的公共字段由公共模型校验，options 由注册类型解释。目标只能来自配置，通知 text/metadata 不能覆盖收件人、路径或凭据。校验阶段不连接远端或发送测试消息。
 
@@ -27,20 +27,29 @@ ChannelConfig 的公共字段由公共模型校验，options 由注册类型解�
 
 对外入口是 `await ChannelManager.send(config, notification)`。config 必须来自本次 WorkflowSnapshot，不能只按 channel_id 查最新配置，否则修改目标地址会改变活动 session 的投递位置。
 
-首版每次调用按该配置创建一个短生命周期实例：校验/解析凭据 → factory → start → await send → stop。无跨调用连接池或实例缓存；同一目标的旧配置和新配置天然分离。总 timeout 覆盖本次准备、启动和发送，收尾需有界并保留清理错误。
+渠道实例由 ChannelManager 持有并持续整个程序生命周期，首次使用快照配置时创建并 start，后续发送复用，服务关闭时统一 stop。实例按 channel_id 与有效配置版本区分；资源更新创建新版本，旧实例继续服务旧快照，不能原地修改其目标。显式替换或卸载可在旧实例没有活动引用后关闭；历史恢复仍按原快照绑定实例。
+
+同一实例的初始化只执行一次，不能因并发首发重复创建；不支持并发发送的实例串行调用 send。每次发送的 timeout 覆盖等待实例可用、必要准备和发送，关闭单独有界。输出和目标顺序由 Workflow 依次 await 保证。
+
+调用示例如下
 
 ```mermaid
 sequenceDiagram
     participant W as Workflow
     participant M as ChannelManager
     participant P as NotificationChannel
-    W->>M: await send(snapshot.channels[id], notification)
-    M->>P: await create / start
-    M->>P: await send(notification)
-    P-->>M: accepted 或结构化失败
-    M->>P: stop
-    M-->>W: DeliveryResult
-    W-->>W: 在当前调用中收集回执
+    loop 多次发送
+        W->>M: await send(snapshot.channels[id], notification)
+        opt 该配置版本首次使用
+            M->>P: await create / start
+        end
+        M->>P: await send(notification)
+        P-->>M: accepted 或结构化失败
+        M-->>W: DeliveryResult
+        W-->>W: 保存回执
+    end
+    Note over M,P: 服务关闭或显式替换、卸载且无活动引用
+    M->>P: await stop
 ```
 
 Workflow 在一次调用内按输出顺序和目标顺序依次 await；并发调用之间不承诺总顺序。网关没有发送队列、消息缓存、优先级、后台发送任务或内部自动重试。
@@ -49,14 +58,12 @@ Workflow 在一次调用内按输出顺序和目标顺序依次 await；并发�
 | --- | --- |
 | enabled=False | skipped，attempts=0，不构造实例或解析凭据。 |
 | 类型缺失、凭据失败或启动失败 | failed；尚未进入插件 send 时 attempts=0。 |
-| 平台明确接受 | success，attempts=1；仅代表平台提交成功。 |
+| 平台明确接受 | success，attempts=1 |
 | 明确拒绝或传输失败 | failed，attempts=1，保留原因。 |
 | 到达发送总时限 | timeout，attempts 取决于是否已进入插件 send。 |
 | 可能接收但确认丢失 | failed/timeout，error.details.delivery_uncertain=True。 |
 
-attempts 只描述本次调用。进入插件 send 最多一次；SDK 自动重试必须关闭。已经确认接受后 stop 失败不能降级成功回执，单独记录资源清理诊断。取消向 Workflow 传播，渠道仍有界清理资源。若已进入插件 send，Manager 的取消错误携带 attempts=1 和已知接收情况；Workflow 在当前调用结果中保留 failed + delivery_uncertain 回执（已明确接受则保留 success），不能继续发送其他目标。尚未进入 send 时没有投递副作用。
-
-网关只处理当前调用的通知，不读取运行状态，不自行补发。
+失败会向调用的模块汇报，并且记录日志
 
 ## 首版渠道
 
@@ -69,4 +76,4 @@ attempts 只描述本次调用。进入插件 send 最多一次；SDK 自动重�
 
 ## 验证要点
 
-检查配置模块发布的多类型、schema 与注册冲突，以及 ChannelManager 只读消费 `channelRegister`；同时检查多实例、禁用无副作用、配置更新不改变旧目标、发送次数至多一次、超时/取消、SMTP 不确定性以及文件完整消息边界。
+检查配置模块发布的多类型、schema 与注册冲突，以及 ChannelManager 只读消费 `channelRegister`。验证连续发送复用实例、并发首次使用只初始化一次、旧快照目标不漂移，以及关闭或卸载时只释放一次。

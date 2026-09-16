@@ -20,7 +20,7 @@
 
 ## 一次投递
 
-ChannelManager 按原快照配置创建实例。start 准备异步 SMTP 客户端，send 连接、按 tls 配置协商、可选认证，构造 UTF-8 text/plain MIME 并提交一次消息，stop 关闭连接。适配器自身的网络操作设时限，不重连补发。
+ChannelManager 按快照配置创建并复用常驻实例。start 准备异步 SMTP 客户端，send 按需连接、按 tls 配置协商、可选认证，构造 UTF-8 text/plain MIME 并提交一次消息；同一 SMTP 连接上的 send 串行执行。stop 在服务关闭或显式替换、卸载时释放连接，不随每次 send 调用。适配器自身的网络操作设时限；后续独立发送可重新建立已断开的连接，但同一次 send 不重连补发。
 
 message ID 可以由 session_id/output_id/channel_id 稳定派生以便诊断，但 SMTP 不保证据此去重。正文不包含额外实现信息，输出关联由回执和日志记录。
 

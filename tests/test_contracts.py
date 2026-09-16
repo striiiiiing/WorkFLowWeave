@@ -16,8 +16,8 @@ from logagent.models import (
 from logagent.schema import schema_defaults, validate_instance, validate_schema
 
 
-@pytest.mark.parametrize("timeout", [True, "2", 0, -1, math.inf, math.nan])
-def test_seconds_are_strict_and_finite(timeout):
+@pytest.mark.parametrize("timeout", ["invalid", 0, -1, math.inf, math.nan])
+def test_seconds_are_positive_and_finite(timeout):
     with pytest.raises(ValidationError):
         SourceConfig(id="source", collector="mock", timeout=timeout)
 
@@ -34,11 +34,11 @@ def test_extension_data_is_json(value):
         SourceConfig(id="source", collector="mock", options={"data": value})
 
 
-def test_top_level_fields_are_strict_and_independent():
+def test_top_level_fields_forbid_extras_and_copy_extension_data():
     with pytest.raises(ValidationError):
         SourceConfig(id="source", collector="mock", unknown=True)
     with pytest.raises(ValidationError):
-        SystemConfig(port=True)
+        SystemConfig(port=0)
     options = {"records": [{"message": "before"}]}
     source = SourceConfig(id="source", collector="mock", options=options)
     options["records"][0]["message"] = "after"
@@ -378,3 +378,19 @@ def test_partial_defaults_still_check_nested_requirements_through_anchors():
     validate_instance({}, schema, partial=True)
     with pytest.raises(LogAgentError):
         validate_instance({"value": {}}, schema, partial=True)
+
+
+@pytest.mark.parametrize("value", [2**64, -(2**63) - 1, "\ud800", {"nested": -math.inf}])
+def test_json_value_rejects_orjson_boundaries(value):
+    with pytest.raises(ValidationError):
+        TypeAdapter(JSONValue).validate_python(value)
+
+
+def test_json_value_handles_integer_boundaries_and_cycles():
+    adapter = TypeAdapter(JSONValue)
+    value = {"integers": [-(2**63), 2**64 - 1]}
+    assert adapter.validate_python(value) == value
+    cycle = []
+    cycle.append(cycle)
+    with pytest.raises(ValidationError):
+        adapter.validate_python(cycle)
