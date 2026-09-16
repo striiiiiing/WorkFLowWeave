@@ -1,12 +1,15 @@
-# Workflow 任务
+# Workflow任务
 
-1. 在每次运行开始时固定 `WorkflowSnapshot`，通过 LangGraph StateGraph 按顺序完成 collect、analyze、aggregate、notify、finish。
-2. 维护并发限制、超时、取消和失败策略，并将状态与阶段结果写入 SQLite，支持取消后恢复。
-3. 使用注入的 CollectorManager、AIService 和 ChannelManager；运行记录由 SQLiteRunStore 与 LangGraph `AsyncSqliteSaver` 管理，不序列化客户端或凭据。
-4. 结果按统一模型返回；提供 `get_session`、`list_sessions`、`history`、`recover/resume` 查询和恢复接口。
+状态：待执行，完成后在本文件记录提交前验证结果。
 
-## 执行记录（2026-09-15）
+依据：[Workflow设计](./design.md)、[总设计](../../design.md)及本次用户确认。contracts 为派生文档，不作为独立事实来源。旧任务与历史执行记录保留在基线 `4dfa8d0072fc16eda4f1c3da25bac36969327deb`；当前任务按设计提交 `97ebd68` 修正，旧“已完成”不代表符合新设计。
 
-- 已完成：使用 LangGraph StateGraph 实现 collect → analyze → aggregate → notify → finish；阶段完成前后写入 SQLite 阶段日志和原生 checkpoint，支持来源/分析并发限制、全空与失败策略、fan-in、通知顺序、取消和容量准入。
-- 已完成：注入 CollectorManager、AIService、ChannelManager 与冻结资源快照；SQLiteRunStore 保存 `run_sessions`、`run_stages`、`run_items`、`run_history` 和投递意图/回执，`recover/resume` 在重启后复用成功分支并重试失败分支。
-- 已完成：通知发送前持久化 intent，已有回执在恢复时跳过；无回执的 intent 标记 `delivery_uncertain`，不自动补发。单个 SQLite 文件约束为一个执行器进程。
+依赖：公共模型、配置、AI、Channel/Mock/Email；历史 Collector 尚未实现时用注入协议测试。
+
+- [ ] 以 LangGraph SQLite checkpointer 收敛 session 持久化，移除 SQLiteRunStore 的独立 run_sessions/run_stages/run_items/run_history 事实源及私有文件查询；session_id 对应 thread_id，父图与两个子图共享 checkpointer/namespace。保留用户指定的 M/A/T 图语义和 aggregate 可空/可选模型，不擅改 design。
+- [ ] 实现 SessionView 的 session 列表/详情、阶段内容、可用性和历史版本读取；枚举父图最新 checkpoint 按 thread_id 去重，供 API/历史 Collector 共用，不让二者直接读数据库。
+- [ ] 同一 session 管理容量、互斥和任务句柄；提供提交/等待、recover/resume、cancel、shutdown，取消按 session_id 对所有触发来源生效。服务启动标记遗留 created/running 为 interrupted，不自动恢复。
+- [ ] 保持完整共享输入、来源/分析并发限制、稳定顺序、失败/空策略、fan-in 及部分发送策略；成功项持久化后不自动重跑。通知在持久化发送意图后执行，回执逐条提交，不确定意图不补发。
+- [ ] 按 BackupPolicy 保存快照和各阶段正文；未保存正文仅留当前运行内存，全部父/子图 checkpoint 和 pending writes 均不得泄漏被禁用内容。终态按期限清理历史正文，保留摘要和可用性；材料缺失明确拒绝恢复，不能重采补齐。
+- [ ] 删除过时 argparse 直读存档入口，其用户功能由后续 HTTP CLI 接管；同步现有调用测试及示例。单进程一致性，不新增多进程执行器。
+- [ ] 定向测试真实 SQLite 的跨重启/子图恢复、并行成功项复用、失败策略、投递确认窗口、取消、查询去重、备份关闭/到期内容实际删除（每命令60秒）；lint、构建、离线完整 Workflow 烟测。
