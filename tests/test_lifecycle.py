@@ -68,7 +68,7 @@ class ExternalChannel:
     async def start(self):
         await self._record("{prefix}-start")
 
-    async def send(self, notification):
+    async def send(self, notification, *, options):
         await self._record("{prefix}-send")
 
     async def stop(self):

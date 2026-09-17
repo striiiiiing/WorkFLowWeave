@@ -31,7 +31,7 @@ async def test_send_preserves_readable_multiline_text_and_existing_content(tmp_p
     channel = _channel(path)
     await channel.start()
     try:
-        await channel.send(_notification("first\nsecond", title="Report"))
+        await channel.send(_notification("first\nsecond", title="Report"), options={})
         assert path.read_text(encoding="utf-8") == (
             "existing\n"
             "Report\n"
@@ -50,7 +50,7 @@ async def test_concurrent_appends_do_not_interleave(tmp_path):
     try:
         await asyncio.gather(
             *(
-                channel.send(_notification(message, output_id=f"output-{index}"))
+                channel.send(_notification(message, output_id=f"output-{index}"), options={})
                 for index, message in enumerate(messages)
             )
         )
@@ -71,7 +71,7 @@ async def test_handler_filter_and_level_do_not_skip_mock_output(tmp_path):
     channel.handler.setLevel(logging.CRITICAL + 1)
     await channel.start()
     try:
-        await channel.send(_notification("written directly"))
+        await channel.send(_notification("written directly"), options={})
         assert path.read_text(encoding="utf-8") == "written directly\n"
     finally:
         await channel.stop()
@@ -86,7 +86,7 @@ async def test_global_logging_disable_and_disabled_root_do_not_skip_mock_output(
     try:
         logging.disable(logging.CRITICAL)
         logging.root.disabled = True
-        await channel.send(_notification("still written"))
+        await channel.send(_notification("still written"), options={})
         assert path.read_text(encoding="utf-8") == "still written\n"
     finally:
         logging.disable(previous_disable)
@@ -126,7 +126,7 @@ async def test_write_and_flush_errors_fail_send_with_diagnostics(
     monkeypatch.setattr(channel.handler, "_stream", _FailingStream(operation, failure))
     try:
         with pytest.raises(ChannelDeliveryError) as caught:
-            await channel.send(_notification("not delivered"))
+            await channel.send(_notification("not delivered"), options={})
         assert caught.value.code == "mock_write_failed"
         assert caught.value.uncertain is True
         assert caught.value.details["operation"] == operation
@@ -164,8 +164,8 @@ async def test_each_send_has_an_independent_result(tmp_path, monkeypatch):
     monkeypatch.setattr(channel.handler, "_stream", failing)
     try:
         with pytest.raises(ChannelDeliveryError):
-            await channel.send(_notification("first"))
-        await channel.send(_notification("second"))
+            await channel.send(_notification("first"), options={})
+        await channel.send(_notification("second"), options={})
         assert failing.calls == 2
         assert path.read_text(encoding="utf-8") == "second\n"
     finally:
@@ -196,7 +196,7 @@ async def test_partial_write_is_uncertain(tmp_path, monkeypatch):
     monkeypatch.setattr(channel.handler, "_stream", _PartialWriteStream())
     try:
         with pytest.raises(ChannelDeliveryError) as caught:
-            await channel.send(_notification("partially delivered"))
+            await channel.send(_notification("partially delivered"), options={})
         assert caught.value.code == "mock_write_failed"
         assert caught.value.uncertain is True
         assert caught.value.details["operation"] == "write"
@@ -210,7 +210,7 @@ async def test_partial_write_is_uncertain(tmp_path, monkeypatch):
 async def test_failure_before_stream_write_is_not_uncertain(tmp_path):
     channel = _channel(tmp_path / "not-started.txt")
     with pytest.raises(ChannelDeliveryError) as caught:
-        await channel.send(_notification("not delivered"))
+        await channel.send(_notification("not delivered"), options={})
     assert caught.value.code == "mock_write_failed"
     assert caught.value.uncertain is False
     await channel.stop()
@@ -248,7 +248,7 @@ async def test_cancellation_propagates_and_does_not_append_twice(tmp_path, monke
     real_stream = channel.handler._stream
     blocking = _BlockingStream(real_stream)
     monkeypatch.setattr(channel.handler, "_stream", blocking)
-    task = asyncio.create_task(channel.send(_notification("cancelled")))
+    task = asyncio.create_task(channel.send(_notification("cancelled"), options={}))
     try:
         assert await asyncio.to_thread(blocking.write_started.wait, 1)
         task.cancel()
@@ -289,7 +289,7 @@ async def test_missing_write_count_cannot_report_success(tmp_path, monkeypatch):
     monkeypatch.setattr(channel.handler, "_stream", Stream())
     try:
         with pytest.raises(ChannelDeliveryError) as error:
-            await channel.send(_notification("body"))
+            await channel.send(_notification("body"), options={})
         assert error.value.uncertain
     finally:
         monkeypatch.setattr(channel.handler, "_stream", original)
@@ -334,7 +334,7 @@ async def test_stop_waits_for_cancelled_write_and_can_be_awaited_again(tmp_path,
     await channel.start()
     blocking = _BlockingStream(channel.handler._stream)
     monkeypatch.setattr(channel.handler, "_stream", blocking)
-    send = asyncio.create_task(channel.send(_notification("once")))
+    send = asyncio.create_task(channel.send(_notification("once"), options={}))
     try:
         assert await asyncio.to_thread(blocking.write_started.wait, 1)
         send.cancel()
@@ -377,7 +377,7 @@ async def test_new_owner_shares_handler_during_close(tmp_path, monkeypatch):
         await stop
     await starting
     try:
-        await second.send(_notification("new owner"))
+        await second.send(_notification("new owner"), options={})
     finally:
         await second.stop()
     assert path.read_text() == "new owner\n"
