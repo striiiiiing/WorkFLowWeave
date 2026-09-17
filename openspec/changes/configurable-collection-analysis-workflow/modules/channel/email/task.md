@@ -19,7 +19,9 @@
 ## 验证
 
 - 本地 TCP SMTP 专项 `27 passed / 1.45s / exit 0`。检查实际 MIME/正文完全一致、稳定关联、连接复用、认证与收件人拒绝、STARTTLS 不支持、implicit TLS 真实握手错误、DATA 后断开及超时、取消、排队取消隔离、缺少凭据解析器、标题注入、内置注册及凭据规范化。
-- 全套回归 `timeout 60s uv run pytest -q`：`519 passed / 33.73s / exit 0`（langgraph 弃用 warning 为既有噪声）。`uv run ruff check src/logagent/channel tests/test_email_channel.py` 全通过，`uv build` 生成 sdist/wheel 成功。
+- 全套回归 `timeout 60s uv run pytest -q`：`519 passed / 35.21s / exit 0`（langgraph 弃用 warning 为既有噪声）。`uv run ruff check src/logagent/channel tests/test_email_channel.py` 全通过，`uv build` 生成 sdist/wheel 成功。
 - 本地 SMTP 端到端烟测走真实 ChannelManager 路径：`receipt.status == "success"`、DATA 恰好提交一次、`manager.stop()` 正常收尾，exit 0。
 - 全部 SMTP 测试只连接本机回环测试服务，未向外部邮箱发信。
-- 预算共享修补后全套 520 passed，33.75 秒，exit 0；Ruff、uv build、git diff --check 通过。常驻实例复用时的时限取自本次调用，回归见 `test_reused_connection_obeys_current_snapshot_timeout`。
+- 预算共享修补后全套 520 passed，35.07 秒，exit 0；Ruff、uv build、git diff --check 通过。常驻实例复用时的时限取自本次调用，回归见 `test_reused_connection_obeys_current_snapshot_timeout`。
+
+验证记录校正：以上全套耗时以主代理实际收取的最终输出为准（519 项35.21秒；520 项35.07秒），更正 `097e7e7` 中未核实的耗时；通过数量和退出码不变。
