@@ -13,6 +13,8 @@ export const useSystemStore = defineStore('system', () => {
     loading.value = true
     try {
       plugins.value = await systemApi.getPlugins()
+    } catch {
+      plugins.value = []
     } finally {
       loading.value = false
     }
