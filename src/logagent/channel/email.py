@@ -1,4 +1,4 @@
-"""One SMTP recipient per resident channel; only DATA acceptance is success."""
+"""One reusable SMTP account per resident channel; only DATA acceptance is success."""
 
 from __future__ import annotations
 
@@ -15,7 +15,12 @@ from pydantic import TypeAdapter
 from logagent.channel.context import remaining_delivery_time
 from logagent.channel.errors import ChannelDeliveryError
 from logagent.models import ChannelConfig, Credential, Notification
-from logagent.schema import validate_instance
+from logagent.schema import (
+    resource_options_schema,
+    split_options,
+    validate_instance,
+    validate_workflow_options,
+)
 
 _STOP_TIMEOUT = 5.0
 _CREDENTIAL_SCHEMA = TypeAdapter(Credential).json_schema()
@@ -26,7 +31,7 @@ _OPTIONS_SCHEMA = {
     "properties": {
         "host": {"type": "string", "description": "SMTP 主机", "minLength": 1, "pattern": r"^\S+$"},
         "port": {"type": "integer", "description": "SMTP 端口", "minimum": 1, "maximum": 65535},
-        "sender": _ADDRESS, "recipient": _ADDRESS,
+        "sender": _ADDRESS, "recipient": {**_ADDRESS, "x-logagent-workflow": True},
         "tls": {"type": "string", "description": "TLS 连接方式", "enum": ["none", "starttls", "implicit"], "default": "starttls"},
         "username": {"type": ["string", "null"], "description": "认证用户名", "minLength": 1, "default": None},
         "password": {"description": "认证凭据引用或密文", "anyOf": [_CREDENTIAL_SCHEMA, {"type": "null"}],
@@ -43,8 +48,9 @@ _OPTIONS_SCHEMA = {
 
 class EmailChannel:
     def __init__(self, config: ChannelConfig, credentials: Any, *, client_factory=aiosmtplib.SMTP):
-        validate_instance(config.options, _OPTIONS_SCHEMA, path=["options"])
-        self._config = deepcopy(config)
+        validate_instance(config.options, resource_options_schema(_OPTIONS_SCHEMA), path=["options"])
+        account, _ = split_options(config.options, _OPTIONS_SCHEMA)
+        self._config = config.model_copy(update={"options": account}, deep=True)
         self._credentials = credentials
         self._client_factory = client_factory
         self._client = None
@@ -63,10 +69,10 @@ class EmailChannel:
             use_tls=tls == "implicit", start_tls=tls == "starttls", validate_certs=True,
         )
 
-    def _message(self, notification: Notification, *, international: bool) -> bytes:
+    def _message(self, notification: Notification, *, recipient: str, international: bool) -> bytes:
         options = self._config.options
         message = EmailMessage(policy=SMTPUTF8 if international else SMTP)
-        message["From"], message["To"] = options["sender"], options["recipient"]
+        message["From"], message["To"] = options["sender"], recipient
         message["Subject"] = notification.title
         identity = "\0".join((notification.session_id, notification.output_id, self._config.id))
         message["Message-ID"] = f"<{hashlib.sha256(identity.encode()).hexdigest()}@logagent.local>"
@@ -74,7 +80,11 @@ class EmailChannel:
         message.set_param("charset", "utf-8")
         return message.as_bytes()
 
-    async def send(self, notification: Notification) -> None:
+    async def send(self, notification: Notification, *, options: dict) -> None:
+        validate_workflow_options(options, _OPTIONS_SCHEMA)
+        effective = {**self._config.options, **deepcopy(options)}
+        validate_instance(effective, _OPTIONS_SCHEMA, path=["options"])
+        recipient = effective["recipient"]
         stage = "prepare"
         owns_connection = False
         try:
@@ -85,8 +95,8 @@ class EmailChannel:
                     raise ChannelDeliveryError("email_unavailable", "邮件渠道未就绪")
                 client, options = self._client, self._config.options
                 client.timeout = budget
-                international = not (options["sender"] + options["recipient"]).isascii()
-                body = self._message(notification, international=international)
+                international = not (options["sender"] + recipient).isascii()
+                body = self._message(notification, recipient=recipient, international=international)
                 if not client.is_connected:
                     stage = "connect"
                     await client.connect()
@@ -108,7 +118,7 @@ class EmailChannel:
                 await client.mail(options["sender"], options=["SMTPUTF8"] if international else [],
                                   encoding=encoding)
                 stage = "recipient"
-                await client.rcpt(options["recipient"], encoding=encoding)
+                await client.rcpt(recipient, encoding=encoding)
                 stage = "data"
                 await client.data(body)
                 # Keep the connected client. No post-acceptance QUIT can replace

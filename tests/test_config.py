@@ -191,7 +191,7 @@ async def test_optional_plugin_settings_are_missing_only_not_invalid_or_unreadab
 
 async def test_valid_plugin_config_and_invalid_top_level_kind(tmp_path):
     path = tmp_path / "config.json"
-    path.write_text('{"collector": {"demo": {"enabled": false, "defaults": {}}}}')
+    path.write_text('{"collector": {"demo": {"enabled": false}}}')
     config = await ConfigurationReader().load_plugin_config(path)
     assert config["collector"]["demo"].enabled is False
     path.write_text('{"unsupported": {}}')
@@ -263,12 +263,11 @@ def test_source_expansion_order_shallow_override_and_empty_list(tmp_path):
         id="source",
         collector="sample",
         template="template",
-        options={"required_value": "value", "connection": {"host": "instance"}},
+        options={"required_value": "value", "limit": 7, "connection": {"host": "instance"}},
         setters={"fields": [], "filter": {"b": "new"}},
     )
-    defaults = {"limit": 7, "connection": {"host": "plugin", "label": "plugin"}}
     expanded = expand_source(
-        source, collector=collector, template=template, options_defaults=defaults
+        source, collector=collector, template=template
     )
     assert expanded.options == {
         "required_value": "value",
@@ -280,7 +279,6 @@ def test_source_expansion_order_shallow_override_and_empty_list(tmp_path):
     assert expand_source(expanded, collector=collector) == expanded
     expanded.options["connection"]["host"] = "changed"
     assert source.options["connection"]["host"] == "instance"
-    assert defaults["connection"]["host"] == "plugin"
     assert template.setters["fields"] == ["message"]
 
 
@@ -302,12 +300,11 @@ def test_template_missing_mismatched_or_unknown_setter_rejected():
 
 
 @pytest.mark.parametrize("defaults", [{"unknown": "secret"}, {"connection": {"label": "no host"}}])
-def test_partial_defaults_still_validate_declared_fields_and_nested_requirements(defaults):
+def test_instance_options_validate_declared_fields_and_nested_requirements(defaults):
     with pytest.raises(LogAgentError) as error:
         expand_source(
-            SourceConfig(id="source", collector="sample", options={"required_value": "yes"}),
+            SourceConfig(id="source", collector="sample", options={"required_value": "yes", **defaults}),
             collector=ConfigurableCollector(),
-            options_defaults=defaults,
         )
     assert "secret" not in error.value.info.model_dump_json()
 
@@ -474,40 +471,69 @@ plugin = Plugin()
     assert report.errors[0].details["reason"] == "registration_aborted"
 
 
-async def test_partial_plugin_defaults_are_validated_then_expanded_only_on_request(tmp_path):
-    write_plugin(tmp_path, "demo")
-    (tmp_path / "config.json").write_text(
-        json.dumps({"collector": {"demo": {"defaults": {"demo": {"limit": 4}}}}})
-    )
-    registry, report = await discover(tmp_path)
-    assert not report.errors
-    view = registry.collectorRegister
-    defaults = view.options_defaults("demo")
-    defaults["limit"] = 100
-    assert view.options_defaults("demo") == {"limit": 4}
-    source = expand_source(
-        SourceConfig(id="source", collector="demo", options={"required_value": "instance"}),
-        collector=view.get("demo"),
-        options_defaults=view.options_defaults("demo"),
-    )
-    assert source.options["limit"] == 4
-    (tmp_path / "config.json").write_text("{}")
-    await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path)))
-    assert source.options["limit"] == view.options_defaults("demo")["limit"] == 4
-    assert registry.collectorRegister.options_defaults("demo") == {}
-
-
-@pytest.mark.parametrize("defaults", [{"unknown": {}}, {"demo": {"not_declared": "secret-value"}}])
-async def test_invalid_defaults_isolate_only_the_owning_plugin(tmp_path, defaults):
-    write_plugin(tmp_path, "demo")
-    write_plugin(tmp_path, "good")
+@pytest.mark.parametrize("defaults", [{}, {"demo": {"limit": 4}}])
+async def test_old_framework_plugin_defaults_are_explicitly_rejected(tmp_path, defaults):
     (tmp_path / "config.json").write_text(
         json.dumps({"collector": {"demo": {"defaults": defaults}}})
     )
+    with pytest.raises(LogAgentError):
+        await discover(tmp_path)
+
+
+async def test_plugin_reads_private_json_and_injects_constructor_dependencies(tmp_path):
+    package = write_plugin(tmp_path, "private", body='''
+import json
+from .support import SampleCollector
+from logagent.models import CollectorOutput
+
+class ConfiguredCollector(SampleCollector):
+    def __init__(self, prefix):
+        super().__init__("private")
+        self.prefix = prefix
+
+    async def collect(self, options, setters, context):
+        return CollectorOutput(status="success", text=self.prefix + options["required_value"], count=1)
+
+class Plugin:
+    def register(self, api):
+        assert api.config_path.is_absolute()
+        settings = json.loads(api.config_path.read_text())
+        api.register_collector(ConfiguredCollector(settings["prefix"]))
+plugin = Plugin()
+''')
+    private = package / "config.json"
+    private.write_text('{"prefix": "original:"}')
     registry, report = await discover(tmp_path)
-    assert registry.collectorRegister.get("demo") is None
+    assert not report.errors
+    original = registry.collectorRegister.get("private")
+    private.write_text('{"prefix": "new:"}')
+    await registry.reload_plugins(SystemConfig(plugin_dir=str(tmp_path)), owners=["private"])
+    context = CollectionContext("workflow", "session")
+    assert (await original.collect({"required_value": "value"}, {}, context)).text == "original:value"
+    current = registry.collectorRegister.get("private")
+    assert (await current.collect({"required_value": "value"}, {}, context)).text == "new:value"
+
+
+@pytest.mark.parametrize("private", [None, "broken JSON", '{"unexpected": 1}'])
+async def test_invalid_private_configuration_rolls_back_only_its_plugin(tmp_path, private):
+    package = write_plugin(tmp_path, "private", body='''
+import json
+from .support import SampleCollector
+class Plugin:
+    def register(self, api):
+        api.register_collector(SampleCollector("temporary"))
+        settings = json.loads(api.config_path.read_text())
+        if settings["required"] != "valid":
+            raise ValueError("bad private configuration")
+plugin = Plugin()
+''')
+    if private is not None:
+        (package / "config.json").write_text(private)
+    write_plugin(tmp_path, "good")
+    registry, report = await discover(tmp_path)
+    assert len(report.errors) == 1
+    assert registry.collectorRegister.get("temporary") is None
     assert registry.collectorRegister.get("good") is not None
-    assert "secret-value" not in report.model_dump_json()
 
 
 async def test_disabled_plugin_is_not_imported(tmp_path):

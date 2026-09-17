@@ -3,7 +3,7 @@
 [总设计](../../design.md) · [接口契约](../../contracts/module-interfaces.md#3-数据采集)
 
 模块执行单来源采集，向 Workflow 提供可消费文本、记录、处理后计数和真实状态。跨来源拼接、失败策略和 AI/通知调用由 Workflow 决定。
-
+配置遵循[Manager 四层设计](../manager%20design.md)：作者构造注入、插件自行读取私有 JSON、可复用 SourceConfig、Workflow.source_overrides 调用选项。
 ## 内部组织与依赖
 
 CollectorManager 对外提供 describe/validate/collect；启动时接收配置模块发布的只读 `collectorRegister`，内部只按该视图定位声明与实现并执行单来源采集。插件目录扫描、`plugin.json` 解析、入口导入、`plugin.register(api)` 调用及注册冲突处理由[配置模块](../config/design.md#插件发现与注册)完成。来源专属处理留在 Collector 实现中，避免通用父类承担过滤、分页等不一致逻辑。
@@ -14,9 +14,9 @@ CollectorManager 对外提供 describe/validate/collect；启动时接收配置�
 
 Collector 由插件入口的 `plugin.register(api)` 经 `register_collector` 提交 name、options_schema、setters_schema、可选 fields、count_unit 和 collect 协程。配置模块校验并发布后，Manager 的 describe 从 `collectorRegister` 生成 CapabilityDescription，供 API 展示与配置校验复用。
 
-options 定义连接/范围；setters 定义可用字段选择、过滤、排序、分组及格式化，具体类型必须在 schema 中说明。未声明的 Setter 不可注入。schema 应为 JSON Schema 2020-12 的对象约束，对不允许任意键的对象使用 additionalProperties=false。
+options 定义连接/范围；顶层 x-logagent-workflow=true 声明可由 Workflow 覆盖的调用字段，其他实例字段不可覆盖。setters 定义可用字段选择、过滤、排序、分组及格式化，具体类型必须在 schema 中说明。未声明的 Setter 不可注入。schema 应为 JSON Schema 2020-12 的对象约束，对不允许任意键的对象使用 additionalProperties=false。
 
-SetterTemplate 由配置模块存储；配置展开时先复制模板再以实例显式同名键覆盖，包括空列表；不做隐式深度合并。Manager 校验展开后的结果及模板的 collector 归属。
+SetterTemplate 由配置模块存储；配置展开时依次合并实例模板、实例显式键、Workflow 模板、Workflow 显式键，包括空列表；不做隐式深度合并。Manager 校验展开后的结果及模板的 collector 归属。
 
 ## 单次采集流程
 

@@ -98,18 +98,28 @@ class _SchemaGraph:
                     or id(rule) not in typed):
                 raise _invalid_schema("每个可配置字段必须声明类型及说明")
 
-    def remove_root_requirements(self, schema: dict[str, Any]) -> None:
+    def remove_root_requirements(
+        self, schema: dict[str, Any], names: set[str] | None = None
+    ) -> None:
         seen: set[int] = set()
 
         def visit(node: Any) -> None:
             if not isinstance(node, dict) or id(node) in seen:
                 return
             seen.add(id(node))
-            node.pop("required", None)
+            if names is None:
+                node.pop("required", None)
+            elif "required" in node:
+                node["required"] = [name for name in node["required"] if name not in names]
             for target in self.references.get(id(node), []):
                 visit(target)
             for keyword in ("allOf", "anyOf", "oneOf"):
                 for child in node.get(keyword, []):
+                    visit(child)
+            if names is not None:
+                for keyword in ("then", "else"):
+                    visit(node.get(keyword))
+                for child in node.get("dependentSchemas", {}).values():
                     visit(child)
         visit(schema)
 
@@ -128,7 +138,16 @@ def validate_schema(schema: dict[str, Any]) -> None:
     if "$schema" in value and value["$schema"].rstrip("#") != _DRAFT:
         raise LogAgentError("invalid_schema", "能力 schema 必须使用 JSON Schema 2020-12")
     try:
-        _SchemaGraph(value).check_field_types(value)
+        graph = _SchemaGraph(value)
+        graph.check_field_types(value)
+        for rule in value.get("properties", {}).values():
+            if not isinstance(rule, dict):
+                continue
+            marker = rule.get("x-logagent-workflow", False)
+            if type(marker) is not bool:
+                raise _invalid_schema("x-logagent-workflow 必须为布尔值")
+            if marker and _contains_credential(rule, graph):
+                raise _invalid_schema("凭据只能配置在实例层")
     except RecursionError:
         raise _invalid_schema("JSON Schema 嵌套层级过深") from None
 
@@ -223,3 +242,58 @@ def transform_annotations(
         return visit(deepcopy(instance), instance, schema, ())
     except RecursionError:
         raise _invalid_schema("JSON Schema 或实例嵌套层级过深") from None
+
+
+def _contains_credential(rule: Any, graph: _SchemaGraph) -> bool:
+    seen = set()
+
+    def visit(node):
+        if not isinstance(node, dict) or id(node) in seen:
+            return False
+        seen.add(id(node))
+        if node.get("x-logagent-credential") is True:
+            return True
+        if any(visit(target) for target in graph.references.get(id(node), [])):
+            return True
+        return any(visit(child.contents)
+                   for child in DRAFT202012.create_resource(node).subresources())
+
+    return visit(rule)
+
+
+def workflow_option_names(schema: dict[str, Any]) -> set[str]:
+    """Only explicit top-level declarations expose per-workflow options."""
+    return {name for name, rule in schema.get("properties", {}).items()
+            if isinstance(rule, dict) and rule.get("x-logagent-workflow") is True}
+
+
+def split_options(options: JSONObject, schema: dict[str, Any]) -> tuple[JSONObject, JSONObject]:
+    names = workflow_option_names(schema)
+    return (
+        {key: deepcopy(value) for key, value in options.items() if key not in names},
+        {key: deepcopy(value) for key, value in options.items() if key in names},
+    )
+
+
+def options_complete(options: JSONObject, schema: dict[str, Any]) -> bool:
+    """Whether a resource is ready for call-level semantic validation."""
+    graph = _SchemaGraph(schema)
+    return Draft202012Validator(
+        schema, format_checker=FormatChecker(), registry=graph.registry
+    ).is_valid(options)
+
+
+def resource_options_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Defer required call options until workflow binding; keep account requirements."""
+    result = deepcopy(schema)
+    _SchemaGraph(result).remove_root_requirements(result, workflow_option_names(schema))
+    return result
+
+
+def validate_workflow_options(options: JSONObject, schema: dict[str, Any]) -> None:
+    unknown = options.keys() - workflow_option_names(schema)
+    if unknown:
+        raise LogAgentError("invalid_config", "Workflow 只能设置声明的调用选项",
+                            {"errors": [{"path": ["options", name], "reason": "instance_only"}
+                                        for name in sorted(unknown)]})
+    # Full constraints are checked against the merged effective configuration.

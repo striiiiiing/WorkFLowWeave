@@ -31,7 +31,12 @@ from logagent.models import (
     copy_model,
 )
 from logagent.protocols import ChannelRegistryView, CollectorRegistryView
-from logagent.schema import validate_instance
+from logagent.schema import (
+    options_complete,
+    resource_options_schema,
+    validate_instance,
+    validate_workflow_options,
+)
 
 _MODELS = {
     "sources": SourceConfig, "setters": SetterTemplate, "ai": AIConfig,
@@ -132,16 +137,23 @@ class ResourceStore:
         return registry, capability
 
     @staticmethod
-    def _source(source: SourceConfig, candidate: _Resources) -> SourceConfig:
+    def _source(source: SourceConfig, candidate: _Resources, override=None) -> SourceConfig:
         source = copy_model(source)
-        if source.template is None:
-            return source
-        template = candidate.setters.get(source.template)
-        if template is None:
-            raise LogAgentError("invalid_reference", "来源引用的 Setter 模板不存在")
-        if template.collector != source.collector:
-            raise LogAgentError("invalid_reference", "Setter 模板与来源的 Collector 不同")
-        source.setters = {**deepcopy(template.setters), **source.setters}
+        templates = [(source.template, source.setters)]
+        if override is not None:
+            templates.append((override.template, override.setters))
+            source.options = {**source.options, **deepcopy(override.options)}
+        setters = {}
+        for template_id, explicit in templates:
+            if template_id is not None:
+                template = candidate.setters.get(template_id)
+                if template is None:
+                    raise LogAgentError("invalid_reference", "来源引用的 Setter 模板不存在")
+                if template.collector != source.collector:
+                    raise LogAgentError("invalid_reference", "Setter 模板与来源的 Collector 不同")
+                setters.update(deepcopy(template.setters))
+            setters.update(deepcopy(explicit))
+        source.setters = setters
         source.template = None
         return source
 
@@ -150,17 +162,51 @@ class ResourceStore:
         if workflow.fan_in is not None and workflow.fan_in.ai is not None:
             ai_ids.add(workflow.fan_in.ai)
         try:
+            channels = {key: copy_model(candidate.channels[key]) for key in workflow.channels}
+            for key, override in workflow.channel_overrides.items():
+                channels[key].options = {**channels[key].options, **deepcopy(override.options)}
             return WorkflowSnapshot(
                 workflow=copy_model(workflow),
-                sources={key: self._source(candidate.sources[key], candidate) for key in workflow.sources},
+                sources={key: self._source(candidate.sources[key], candidate,
+                                          workflow.source_overrides.get(key))
+                         for key in workflow.sources},
                 ai={key: copy_model(candidate.ai[key]) for key in ai_ids},
-                channels={key: copy_model(candidate.channels[key]) for key in workflow.channels},
+                channels=channels,
                 created_at=datetime.now(UTC),
             )
         except KeyError:
             raise LogAgentError("invalid_reference", "Workflow 引用的资源不存在") from None
         except ValidationError as exc:
             raise validation_error(exc) from None
+
+    def _validate_workflow(self, workflow, candidate, *, changed):
+        snapshot = self._snapshot(workflow, candidate)
+        for kind, resources, overrides, registry in (
+            ("sources", snapshot.sources, workflow.source_overrides, self._collectors),
+            ("channels", snapshot.channels, workflow.channel_overrides, self._channels),
+        ):
+            for ident, effective in resources.items():
+                name = effective.collector if kind == "sources" else effective.channel
+                capability = registry.get(name) if registry is not None else None
+                if capability is None:
+                    if changed and ident in overrides:
+                        raise LogAgentError("capability_missing", "调用覆盖引用的插件能力不可用")
+                    continue
+                override = overrides.get(ident)
+                if override is not None:
+                    validate_workflow_options(override.options, capability.options_schema)
+                    override.options = normalize_options(
+                        override.options, capability.options_schema,
+                        data_dir=self._data_dir, apply_defaults=False,
+                    )
+                    effective.options.update(deepcopy(override.options))
+                if kind == "sources":
+                    validate_effective_source(effective, capability)
+                else:
+                    validate_instance(effective.options, capability.options_schema, path=["options"])
+                validator = self._validators.get(kind)
+                if validator is not None:
+                    _call_validator(validator, effective)
 
     def _validate(self, candidate: _Resources, *, changed: set, normalize: bool) -> None:
         for kind in ("setters", "sources", "channels", "ai", "workflows"):
@@ -176,28 +222,38 @@ class ResourceStore:
                     if kind == "setters":
                         validate_instance(value.setters, capability.setters_schema, partial=True)
                     elif kind == "sources":
-                        defaults = registry.options_defaults(value.collector) if normalize and is_changed else {}
                         normalized = normalize_options(
-                            value.options, capability.options_schema, defaults,
+                            value.options, capability.options_schema,
                             data_dir=self._data_dir, apply_defaults=normalize and is_changed,
                         )
                         effective.options = normalized
-                        validate_effective_source(effective, capability)
+                        validate_instance(normalized, resource_options_schema(capability.options_schema),
+                                          path=["options"])
+                        validate_instance(effective.setters, capability.setters_schema,
+                                          path=["setters"])
+                        if options_complete(normalized, capability.options_schema):
+                            validate_effective_source(effective, capability)
                         value.options = normalized
                     else:
-                        defaults = registry.options_defaults(value.channel) if normalize and is_changed else {}
                         normalized = normalize_options(
-                            value.options, capability.options_schema, defaults,
+                            value.options, capability.options_schema,
                             data_dir=self._data_dir, apply_defaults=normalize and is_changed,
                         )
-                        validate_instance(normalized, capability.options_schema, path=["options"])
+                        validate_instance(normalized, resource_options_schema(capability.options_schema),
+                                          path=["options"])
                         effective = copy_model(value)
                         effective.options = normalized
                         value.options = normalized
                 if kind == "workflows":
-                    self._snapshot(value, candidate)
+                    self._validate_workflow(value, candidate, changed=is_changed)
                 validator = self._validators.get(kind)
+                # Runtime validators require a complete call. Deferred call
+                # fields are validated after workflow binding above.
                 if validator is not None:
+                    if kind in ("sources", "channels") and not options_complete(
+                        effective.options, capability.options_schema
+                    ):
+                        continue
                     _call_validator(validator, effective)
 
     def _publish(self, candidate: _Resources) -> None:

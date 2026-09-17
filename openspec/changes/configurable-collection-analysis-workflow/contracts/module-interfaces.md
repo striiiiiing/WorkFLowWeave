@@ -8,7 +8,7 @@
 
 公共 `ResourceReader` 协议提供 get/list/resolve/snapshot；`ResourceStore` 在其上增加 save/delete/reload_resources。resolve 返回模板与本地 Setter 合并后的有效 SourceConfig；snapshot 固定同一有效资源视图。调用者依赖协议，不依赖 JSON 仓库实现。业务校验由配置模块注入，文件保存使用临时文件与原子替换。
 
-`CollectorRegistryView` 和 `ChannelRegistryView` 提供 get/describe/diagnostics，只发布能力，业务模块不自行扫描插件目录。options defaults 的解释属于配置模块，不由调用阶段重新合并。
+`CollectorRegistryView` 和 `ChannelRegistryView` 提供 get/describe/diagnostics，只发布能力，业务模块不自行扫描插件目录。schema 默认值及 Workflow 覆盖属于配置模块，不由调用阶段重新合并。插件通过 api.config_path 自行读取私有配置，根 PluginSettings 只控制 enabled。
 
 ## Collection 与历史读取
 
@@ -32,7 +32,7 @@ SessionView 只读取 SessionStore，列表返回每个 session 的最新业务�
 
 `AIService.execute(config, prompt, input_text, *, model, task_id="task", context=None)` 接收显式模型选择并返回 AnalysisResult。validate 检查全部模型参数与所选模型；`model_factories` 注入按渠道接口创建 `BaseChatModel` 的工厂。内置仅 `http` 对应 OpenAI-compatible `ChatOpenAI`，直接异步 `ainvoke`，无生产 Mock 或旧 Provider.complete 协议。独立 SystemMessage/HumanMessage，模型参数来自唯一的 models[model] 并通过 extra_body 传递。单一 600 秒默认预算覆盖凭据解析、请求及退避，默认最多 6 次尝试，SDK 重试关闭；连接前失败和 HTTP 408/429/5xx 可重试，每次错误立即汇报，认证/协议错误及读写中断不重试。模块无会话/结果存储，close 幂等且有界，清理错误单独报告。
 
-ChannelManager 依据 channel ID 与有效配置版本复用长期实例；首次发送前只初始化一次，在卸载或系统关闭时 stop。并发发送、配置替换及旧快照使用保持相应实例生命周期。每次 send 只处理一条 Notification 并返回 DeliveryResult，不排队、不缓存消息、不自动重试。Mock 专用持久 logging Handler 追加 UTF-8 标题和正文文本；不得混入应用诊断日志或将其改成 JSON 记录。
+ChannelManager 按 x-logagent-workflow 注解分离 options，依据 channel ID、类型及实例 options 版本复用长期实例；create(config, credentials) 只接收实例 options，send(notification, *, options) 接收本次调用 options；首次发送前只初始化一次，在卸载或系统关闭时 stop。并发发送、配置替换及旧快照使用保持相应实例生命周期。每次 send 只处理一条 Notification 并返回 DeliveryResult，不排队、不缓存消息、不自动重试。Mock 专用持久 logging Handler 追加 UTF-8 标题和正文文本；不得混入应用诊断日志或将其改成 JSON 记录。
 
 ## Workflow
 

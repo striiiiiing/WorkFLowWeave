@@ -2,7 +2,7 @@
 
 [Channel 网关](../design.md) · [ChannelConfig 契约](../../../contracts/data-models.md#24-channel-配置)
 
-注册名为 email，能力为 notification。一个实例对应一个 SMTP 服务和一个收件人；要发给多个收件人，配置多个实例，使每条回执含义明确。
+注册名为 email，能力为 notification。一个实例对应一套 SMTP 账户；recipient 属于调用层，多个 Workflow 通过 channel_overrides 配置不同收件人并复用账户连接。一次 send 仍只发给一个收件人。
 
 ## options
 
@@ -11,7 +11,7 @@
 | host | 非空字符串，必填 | SMTP 主机。 |
 | port | 1–65535 的整数，必填 | 显式填写，避免推测服务配置。 |
 | sender | 单个邮箱地址，必填 | SMTP 信封发件人及 From。 |
-| recipient | 单个邮箱地址，必填 | SMTP 信封收件人及 To。 |
+| recipient | 单个邮箱地址，调用时必填 | x-logagent-workflow=true；实例可存默认值，Workflow 可覆盖。 |
 | tls | none/starttls/implicit，默认 starttls | 显式连接方式，协商失败报告错误。 |
 | username | 字符串或 null，默认 null | SMTP 认证用户。 |
 | password | Credential 或 null，默认 null | 与 username 成对提供；不认证的本地 relay 可都为空。 |

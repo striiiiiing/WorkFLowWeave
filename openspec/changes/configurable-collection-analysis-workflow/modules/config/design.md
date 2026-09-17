@@ -9,12 +9,12 @@
 | 层级 | 首版 JSON 入口 | 生效时机 |
 | --- | --- | --- |
 | 系统 | CLI 显式指定的系统配置文件 | 启动时固定 data_dir、plugin_dir、监听和全局上限；修改后重启。 |
-| 插件设置 | plugin_dir/config.json，使用 PluginConfiguration | 启动/插件 reload 控制启用及 options 默认值。 |
+| 插件设置 | plugin_dir/config.json，使用 PluginConfiguration | 启动/插件 reload 只控制 enabled；插件自行读取自身目录内 config.json。 |
 | 插件能力 | 每个插件目录的 plugin.json + entry.backend 指定的入口 .py | 配置模块读取 manifest、导入入口并发布 collectorRegister/channelRegister，不保存用户凭据。 |
 | 资源 | data_dir/resources.json | CRUD 或资源 reload 发布新版本，包含 sources/setters/ai/channels/workflows 五个集合。 |
 | 运行 | WorkflowSnapshot | trigger 时复制有效资源；由 LangGraph 运行时存档节点按备份策略写入 SessionStore，供原 session 恢复使用。 |
 
-以上文件布局是首版实现选择，不是公共 API 的路径承诺。启动显式缺失的系统文件报错；首次空数据目录可建立五个空资源集合，已存在但损坏的文件报错。插件配置文件不存在等于无覆盖。QwenPaw 的类型、注册与配置描述思路见 [参考记录](../../references/qwenpaw.md)。
+以上文件布局是首版实现选择，不是公共 API 的路径承诺。启动显式缺失的系统文件报错；首次空数据目录可建立五个空资源集合，已存在但损坏的文件报错。根插件设置文件不存在表示默认启用；插件私有配置文件是否必需由插件自己定义并显式报错。QwenPaw 的类型、注册与配置描述思路见 [参考记录](../../references/qwenpaw.md)。
 
 系统相对路径按系统配置所在目录解析；插件 manifest 入口按插件包目录解析。来源/渠道 options 内路径由能力 schema 的说明及所属模块解释，快照固定有效位置，不能把所有名叫 path 的字段统一重写。
 
@@ -35,7 +35,7 @@ plugins/
 
 发现顺序为内置能力、外部插件目录稳定排序。配置模块读取并校验 `id`、`version`、`kind`、`api_version`、`entry.backend`，检查入口路径不能越出插件目录；禁用插件不导入入口。按 QwenPaw 的入口约定，导入后读取模块导出的 `plugin` 对象并调用 `plugin.register(api)`；`api` 按 manifest.kind 只暴露 `register_collector` 或 `register_channel`。一个入口可以注册多个同类能力，不能跨 kind 注册。插件 reload 可按 owner 增量清理并重新发布选定能力。
 
-注册 API 把声明先放入当前插件的临时集合。配置模块验证能力名、JSON Schema、实现/工厂、内置名称冲突、已有名称冲突及插件 defaults；全部通过后一次性发布并记录 owner。任一声明失败则撤销该插件本轮全部注册并记录 DiscoveryReport，其他插件继续加载。插件 reload 按 owner 清理旧声明，再重复同一流程；已保存资源保留，缺失能力留给运行阶段按策略处理。
+注册 API 把声明先放入当前插件的临时集合。配置模块验证能力名、JSON Schema、实现/工厂、内置名称冲突、已有名称冲突；全部通过后一次性发布并记录 owner。任一声明失败则撤销该插件本轮全部注册并记录 DiscoveryReport，其他插件继续加载。插件 reload 按 owner 清理旧声明，再重复同一流程；已保存资源保留，缺失能力留给运行阶段按策略处理。
 
 例如 `my_source/plugin.json`：
 
@@ -61,11 +61,11 @@ ResourceStore 接收注入的业务校验函数。WorkflowService 负责定义�
 
 ## 默认值与配置合并
 
-插件设置仅含 enabled 和按能力名组织的 options defaults，不引入插件私有运行时配置对象。默认值必须在已注册 options_schema 中声明；声明之外的默认字段直接报错。
+遵循[Manager 四层设计](../manager%20design.md)。根插件设置仅含 enabled；注册 API 提供 config_path，插件自行读取、验证私有 JSON 并构造实现。旧 defaults 明确拒绝。
 
-保存来源/渠道实例时，依次应用能力 schema 默认值、插件 defaults、实例显式 options，同名键整体覆盖，不深度混合；再验证完整结果，规范化为持久化 options。修改插件 defaults 影响后续保存/导入，已保存实例保留原有效值，执行时不再与可变 defaults 合并。
+保存来源/渠道实例时，依次应用能力 schema 默认值、实例显式 options，同名键整体覆盖，不深度混合；校验实例必填字段与已提供的调用默认值，规范化为持久化 options；Workflow 绑定后校验完整结果。已保存实例保留原有效值，执行时不重新应用默认值；必填调用字段可留待 Workflow 配置。
 
-Setter 使用“模板 → 实例显式键”的独立规则，不与 options 混合；展开后的 Setter 再过 Collector 校验。显式空列表仍是覆盖。AIConfig 直接保存 provider 支持的模型选项，遵循 AI 模块契约。
+Workflow 的 source_overrides/channel_overrides 仅可覆盖标注 x-logagent-workflow=true 的字段，候选提交时规范化路径、校验合并后的完整配置。Setter 使用“实例模板 → 实例显式键 → Workflow 模板 → Workflow 显式键”的独立规则，不与 options 混合；展开后的 Setter 再过 Collector 校验。显式空列表仍是覆盖。AIConfig 直接保存 provider 支持的模型选项，遵循 AI 模块契约。
 
 ## 原子提交与快照
 
@@ -81,10 +81,10 @@ resolve 供尚未保存的定义做关系校验，不写资源。对外 get/list
 
 ## 凭据
 
-来源 options、渠道 options 和 AIConfig 中的秘密只保存 Credential，运行时按需解析；不能把明文放入 defaults 或任意扩展字段绕过约定。插件 schema 明确哪些字段为 Credential。返回配置、日志、错误、快照都不包含解密值。
+来源 options、渠道 options 和 AIConfig 中的秘密只保存 Credential，运行时按需解析；不能把明文放入 schema 默认值、插件私有文件或任意扩展字段绕过约定。插件 schema 明确哪些字段为 Credential。返回配置、日志、错误、快照都不包含解密值。
 
 主密钥优先从系统配置指定的环境变量读取，否则从数据目录指定的密钥文件读取；首次加密可生成并限制密钥文件权限，解密既有密文时缺失密钥或格式不合法必须报错，不能自动生成替代密钥。派生数据模型记录具体序列化形状。快照固定引用/密文，不保存明文；缺少原环境变量或主密钥时显式失败，不使用最新资源中的凭据替换。
 
 ## 验证要点
 
-检查目录 manifest 与入口对象、禁用插件不导入、一个插件多能力、重复 ID/能力名、kind 不符、默认配置无效、单插件失败无残留及注册结果只读；同时检查 defaults 的覆盖与固化、Setter 归属、未知字段、删除引用资源、提交中断保留旧视图、并发写入和 snapshot 一致性，以及更新资源后旧 session 地址/提示词不改变。
+检查目录 manifest 与入口对象、禁用插件不导入、一个插件多能力、重复 ID/能力名、kind 不符、插件私有配置无效、单插件失败无残留及注册结果只读；同时检查 schema 默认值和 Workflow 覆盖的固化、Setter 归属、未知字段、删除引用资源、提交中断保留旧视图、并发写入和 snapshot 一致性，以及更新资源后旧 session 地址/提示词不改变。

@@ -51,7 +51,6 @@ async def main():
     source = expand_source(
         SourceConfig(id="demo", collector="mock"),
         collector=registry.collectorRegister.get("mock"),
-        options_defaults=registry.collectorRegister.options_defaults("mock"),
     )
     manager.validate(source)
     result = await manager.collect(
@@ -65,7 +64,7 @@ asyncio.run(main())
 
 插件目录不存在时仍可使用内置 logs Collector；mock 由仓库中的 `plugins/mock` 提供。`report.errors` 提供逐插件的发现诊断；`manager.describe()` 返回能力、字段和完整 JSON Schema。
 
-保存或导入来源时调用 `expand_source`：options 按 schema 默认值 → 插件 defaults → 实例显式键覆盖；Setter 按模板 → 实例显式键覆盖。同名复杂值整体替换，显式空列表有效。展开成功后 `template=None`，运行时直接使用固化的配置，不回查模板或可变插件默认值。
+保存或导入来源时调用 `expand_source`：options 按 schema 默认值 → 实例显式键覆盖；Setter 按模板 → 实例显式键覆盖。同名复杂值整体替换，显式空列表有效。展开成功后 `template=None`，运行时直接使用固化的配置，不回查模板或可变插件默认值。
 
 `CollectionContext` 只携带本次调用的运行时依赖，不持久化。Mock 通过 `plugins/mock` 注册；logs 需要已固定的 `log_path`。外部 Collector 可按需使用注入的异步凭据解析器。
 
@@ -147,5 +146,38 @@ plugin = Plugin()
 可选的 `plugins/config.json`：
 
 ```json
-{"collector":{"example":{"enabled":true,"defaults":{"example":{"message":"离线文本"}}}}}
+{"collector":{"example":{"enabled":true}}}
 ```
+
+
+### 实例与 Workflow 调用配置
+
+插件作者通过构造函数注入内部依赖；`plugin.register(api)` 可自行读取
+`api.config_path` 指向的插件目录 `config.json`，验证后构造能力。
+框架仅解释根 `plugins/config.json` 的 `enabled`。旧 `defaults` 字段已移除，
+需要迁移到实例 `options` 或由插件自行解释的私有文件，不做隐式迁移。
+
+实例 `SourceConfig` / `ChannelConfig` 保存一套账户及可选调用默认值。
+`options_schema.properties` 中标记 `"x-logagent-workflow": true` 的字段可以被
+Workflow 覆盖；未标记的连接和凭据字段只能在实例设置。Setter 是调用设置。
+例如下面的字段可放入现有 Workflow 定义，两份 Workflow 可以引用同一账户：
+
+```json
+{
+  "sources": ["history-account"],
+  "source_overrides": {
+    "history-account": {"options": {"limit": 5}, "setters": {"fields": ["session_id"]}}
+  },
+  "channels": ["email-account"],
+  "channel_overrides": {
+    "email-account": {"options": {"recipient": "report@example.com"}}
+  }
+}
+```
+
+options 按 schema 默认值、实例 options、Workflow options 同名键整体覆盖。
+Setter 按实例模板、实例 Setter、Workflow template、Workflow Setter 覆盖；
+显式空列表有效。保存 Workflow 时校验完整配置，运行快照固定合并值和路径。
+渠道插件的 `create(config, credentials)` 只接收实例 options；
+`send(notification, *, options)` 接收本次调用 options。邮件 recipient 属于调用层，
+不同收件人复用账户连接；Mock 文件 path 属于实例层。旧渠道插件需要更新 send 签名。

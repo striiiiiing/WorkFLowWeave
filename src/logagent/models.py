@@ -214,6 +214,16 @@ class BackupPolicy(StrictModel):
     retention_days: int | None = Field(default=None, gt=0)
 
 
+class SourceOverride(StrictModel):
+    options: JSONObject = Field(default_factory=dict)
+    setters: JSONObject = Field(default_factory=dict)
+    template: ID | None = None
+
+
+class ChannelOverride(StrictModel):
+    options: JSONObject = Field(default_factory=dict)
+
+
 class WorkflowDefinition(StrictModel):
     id: ID
     name: str = ""
@@ -221,6 +231,8 @@ class WorkflowDefinition(StrictModel):
     analyses: list[AnalysisTask] = Field(min_length=1)
     fan_in: FanInConfig | None = None
     channels: Annotated[list[ID], AfterValidator(unique_check("channels IDs"))] = Field(default_factory=list)
+    source_overrides: dict[ID, SourceOverride] = Field(default_factory=dict)
+    channel_overrides: dict[ID, ChannelOverride] = Field(default_factory=dict)
     input_separator: str = "\n\n"
     include_counts: bool = False
     collection_concurrency: int = Field(default=4, ge=1)
@@ -234,6 +246,10 @@ class WorkflowDefinition(StrictModel):
 
     @model_validator(mode="after")
     def valid_references(self) -> Self:
+        if not self.source_overrides.keys() <= set(self.sources):
+            raise ValueError("Source overrides must reference selected sources")
+        if not self.channel_overrides.keys() <= set(self.channels):
+            raise ValueError("Channel overrides must reference selected channels")
         tasks = [task.id for task in self.analyses]
         unique_check("analysis IDs")(tasks)
         if self.fan_in is not None:
@@ -394,7 +410,6 @@ class PluginManifest(StrictModel):
 
 class PluginSettings(StrictModel):
     enabled: bool = True
-    defaults: dict[ID, JSONObject] = Field(default_factory=dict)
 
 
 PluginConfiguration = dict[PluginKind, dict[ID, PluginSettings]]

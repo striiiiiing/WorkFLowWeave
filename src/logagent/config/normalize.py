@@ -9,7 +9,7 @@ from pathlib import Path
 from pydantic import TypeAdapter, ValidationError
 
 from logagent.errors import LogAgentError, validation_error
-from logagent.models import Credential, JSONObject, SetterTemplate, SourceConfig, copy_model
+from logagent.models import Credential, SetterTemplate, SourceConfig, copy_model
 from logagent.protocols import Collector
 from logagent.schema import (
     schema_defaults,
@@ -21,11 +21,10 @@ from logagent.schema import (
 _CREDENTIAL = TypeAdapter(Credential)
 
 
-def normalize_options(options, schema, defaults, *, data_dir: Path, apply_defaults: bool):
+def normalize_options(options, schema, *, data_dir: Path, apply_defaults: bool):
     """Only explicit schema annotations identify paths and credential fields."""
     if apply_defaults:
-        validate_instance(defaults, schema, partial=True)
-        options = {**schema_defaults(schema), **defaults, **options}
+        options = {**schema_defaults(schema), **options}
 
     def normalize(value, rule):
         if not isinstance(rule, dict):
@@ -53,9 +52,8 @@ def expand_source(
     *,
     collector: Collector,
     template: SetterTemplate | None = None,
-    options_defaults: JSONObject | None = None,
 ) -> SourceConfig:
-    """Expand schema/plugin options and a referenced template without mutating inputs.
+    """Expand schema options and a referenced template without mutating inputs.
 
     Same-name values replace a whole value, including compound values and empty
     lists. The returned configuration no longer needs to look up its template.
@@ -78,9 +76,7 @@ def expand_source(
     setters_schema = deepcopy(collector.setters_schema)
     validate_schema(options_schema)
     validate_schema(setters_schema)
-    defaults = deepcopy(options_defaults) if options_defaults is not None else {}
-    validate_instance(defaults, options_schema, path=["defaults"], partial=True)
-    options = {**schema_defaults(options_schema), **defaults, **source.options}
+    options = {**schema_defaults(options_schema), **source.options}
     setters = deepcopy(template.setters) if template is not None else {}
     if template is not None:
         validate_instance(setters, setters_schema, path=["template", "setters"], partial=True)

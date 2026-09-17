@@ -43,7 +43,6 @@ async def run(args: argparse.Namespace) -> int:
             id="example_source", collector=args.collector, options=options, timeout=args.timeout
         ),
         collector=registry.collectorRegister.get(args.collector),
-        options_defaults=registry.collectorRegister.options_defaults(args.collector),
     )
     manager.validate(source)
     result = await manager.collect(

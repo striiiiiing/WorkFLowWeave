@@ -9,7 +9,6 @@ import inspect
 import re
 import sys
 from collections.abc import Iterable, Mapping
-from copy import deepcopy
 from importlib.machinery import ModuleSpec
 from pathlib import Path, PureWindowsPath
 from types import ModuleType
@@ -39,7 +38,6 @@ from logagent.models import (
     copy_model,
 )
 from logagent.protocols import ChannelType, Collector
-from logagent.schema import validate_instance
 
 _Registration = _CollectorRegistration | _ChannelRegistration
 _IDENTIFIER = re.compile(r"[A-Za-z0-9_-]{1,80}\Z")
@@ -53,7 +51,6 @@ _KNOWN_REASONS = frozenset(
         "plugin_id_conflict",
         "registration_conflict",
         "registration_aborted",
-        "unknown_defaults",
     }
 )
 
@@ -93,37 +90,40 @@ class _RegistrationTransaction:
             self.failed = True
             raise
 
-    def finish(self, defaults: Mapping[str, JSONObject]) -> dict[str, _Registration]:
+    def finish(self) -> dict[str, _Registration]:
         self.closed = True
         if self.failed or not self.pending:
             raise LogAgentError("registration_aborted", "插件未提交完整有效的能力声明")
-        if not defaults.keys() <= self.pending.keys():
-            raise LogAgentError("unknown_defaults", "插件 defaults 引用了未声明的能力")
-        for name, value in defaults.items():
-            validate_instance(
-                value,
-                self.pending[name].description.options_schema,
-                path=["defaults", name],
-                partial=True,
-            )
         return dict(self.pending)
 
 
 class CollectorPluginApi:
-    __slots__ = ("_transaction",)
+    __slots__ = ("_transaction", "_config_path")
 
-    def __init__(self, transaction: _RegistrationTransaction):
+    def __init__(self, transaction: _RegistrationTransaction, config_path: Path):
         self._transaction = transaction
+        self._config_path = config_path
+
+    @property
+    def config_path(self) -> Path:
+        """Private JSON belongs to the plugin; the registry never reads it."""
+        return self._config_path
 
     def register_collector(self, collector: Collector) -> None:
         self._transaction.add(collector)
 
 
 class ChannelPluginApi:
-    __slots__ = ("_transaction",)
+    __slots__ = ("_transaction", "_config_path")
 
-    def __init__(self, transaction: _RegistrationTransaction):
+    def __init__(self, transaction: _RegistrationTransaction, config_path: Path):
         self._transaction = transaction
+        self._config_path = config_path
+
+    @property
+    def config_path(self) -> Path:
+        """Private JSON belongs to the plugin; the registry never reads it."""
+        return self._config_path
 
     def register_channel(self, channel: ChannelType) -> None:
         self._transaction.add(channel)
@@ -283,7 +283,6 @@ class PluginRegistry:
 
             builtins = tuple(builtin_collectors())
         entries: dict[PluginKind, dict[str, _Registration]] = {"collector": {}, "channel": {}}
-        defaults: dict[PluginKind, dict[str, JSONObject]] = {"collector": {}, "channel": {}}
         for kind, capabilities in (("collector", builtins), ("channel", self._builtin_channels)):
             if not capabilities:
                 continue
@@ -291,7 +290,7 @@ class PluginRegistry:
             try:
                 for capability in capabilities:
                     transaction.add(capability)
-                entries[kind].update(transaction.finish({}))
+                entries[kind].update(transaction.finish())
             except Exception as exc:
                 raise LogAgentError(
                     "builtin_registration_failed",
@@ -302,9 +301,6 @@ class PluginRegistry:
         # A targeted reload removes only the selected owners. Their replacement
         # is committed below as a per-owner transaction; all other published
         # registrations remain available during the rebuild.
-        retained_defaults: dict[PluginKind, dict[str, JSONObject]] = {
-            "collector": {}, "channel": {}
-        }
         if reload_owners is not None:
             for kind, view in (("collector", self._collector_register), ("channel", self._channel_register)):
                 for name, registration in view._registrations.items():
@@ -312,8 +308,6 @@ class PluginRegistry:
                     if owner == "builtin" or owner in reload_owners:
                         continue
                     entries[kind][name] = registration
-                    retained_defaults[kind][name] = view.options_defaults(name)
-            defaults = retained_defaults
 
         root = Path(config.plugin_dir)
         settings = read_plugin_configuration(root / "config.json")
@@ -354,9 +348,9 @@ class PluginRegistry:
                 module = _import_entry(directory, entry, prefix)
                 transaction = _RegistrationTransaction(kind, plugin_id, entries[kind])
                 api = (
-                    CollectorPluginApi(transaction)
+                    CollectorPluginApi(transaction, directory.resolve() / "config.json")
                     if kind == "collector"
-                    else ChannelPluginApi(transaction)
+                    else ChannelPluginApi(transaction, directory.resolve() / "config.json")
                 )
                 stage = "register"
                 plugin = getattr(module, "plugin", None)
@@ -372,10 +366,8 @@ class PluginRegistry:
                     raise LogAgentError(
                         "invalid_declaration", "plugin.register 只提交声明并返回 None"
                     )
-                stage = "defaults"
-                new_entries = transaction.finish(plugin_settings.defaults)
+                new_entries = transaction.finish()
                 entries[kind].update(new_entries)
-                defaults[kind].update(deepcopy(plugin_settings.defaults))
             except Exception as exc:
                 if transaction is not None:
                     transaction.closed = True
@@ -392,12 +384,10 @@ class PluginRegistry:
 
         collectors = CollectorRegister(
             entries["collector"],
-            defaults=defaults["collector"],
             errors=(error for error in errors if error.details.get("kind") in (None, "collector")),
         )
         channels = ChannelRegister(
             entries["channel"],
-            defaults=defaults["channel"],
             errors=(error for error in errors if error.details.get("kind") in (None, "channel")),
         )
         report = DiscoveryReport(

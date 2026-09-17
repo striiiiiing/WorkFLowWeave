@@ -18,7 +18,7 @@ from logagent.models import (
     ErrorInfo,
     Notification,
 )
-from logagent.schema import validate_instance
+from logagent.schema import split_options, validate_instance
 
 _LOGGER = logging.getLogger(__name__)
 _STOP_TIMEOUT = 5.0
@@ -83,11 +83,17 @@ class ChannelManager:
             raise ValueError("channel_not_notification")
         validate_instance(config.options, channel.options_schema, path=["options"])
 
-    @staticmethod
-    def _key(config: ChannelConfig) -> tuple[str, str]:
+    def _instance_config(self, config: ChannelConfig) -> ChannelConfig:
+        channel = self._register.get(config.channel)
+        if channel is None:
+            raise LogAgentError("channel_missing", "通知渠道未注册")
+        instance_options, _ = split_options(config.options, channel.options_schema)
+        return config.model_copy(update={"options": instance_options}, deep=True)
+
+    def _key(self, config: ChannelConfig) -> tuple[str, str]:
         # Invocation-only fields do not change the resident target. In particular,
         # different send budgets must still join the same one-time initialization.
-        effective = config.model_dump(mode="json", exclude={"enabled", "timeout"})
+        effective = self._instance_config(config).model_dump(mode="json", exclude={"enabled", "timeout"})
         return (
             config.id,
             json.dumps(effective, sort_keys=True, separators=(",", ":")),
@@ -157,7 +163,7 @@ class ChannelManager:
                     return entry
             instance = None
             try:
-                instance = await channel.create(deepcopy(config), self._credentials)
+                instance = await channel.create(self._instance_config(config), self._credentials)
                 if asyncio.get_running_loop().time() >= deadline:
                     raise _BudgetExhausted
                 await instance.start()
@@ -311,10 +317,11 @@ class ChannelManager:
                         raise _BudgetExhausted
                     if asyncio.current_task().cancelling():
                         raise asyncio.CancelledError
+                    _, options = split_options(config.options, channel.options_schema)
                     entered = True
                     budget_token = delivery_deadline.set(deadline)
                     try:
-                        await send(notification)
+                        await send(notification, options=options)
                     finally:
                         delivery_deadline.reset(budget_token)
                     if asyncio.current_task().cancelling():

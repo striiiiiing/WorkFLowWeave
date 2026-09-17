@@ -53,7 +53,7 @@ Collector 插件处理单个来源内部的字段、过滤、分组和计数；�
 
 ### 1.4 插件、能力与实例
 
-插件提供能力，实例配置描述一次具体使用方式。一个 Collector 插件可以注册多个来源类型，同一类型可以配置多个来源实例；Channel 插件可以声明不同能力，同一通知类型可以配置多个目标。
+配置遵循[Manager 四层设计](modules/manager%20design.md)：作者构造、插件私有 JSON、可复用实例、Workflow 调用。插件提供能力，实例保存账户和调用默认值，Workflow 按声明覆盖查询范围、Setter 和收件人。一个 Collector 插件可以注册多个来源类型，同一类型可以配置多个来源实例；Channel 插件可以声明不同能力，同一通知类型可以配置多个目标。
 
 插件发现、manifest 读取、入口导入、注册原子性和 owner 清理统一归配置模块管理。配置模块完成注册后，向其他模块发布只读的 `collectorRegister` 和 `channelRegister`；数据采集模块与 Channel 网关只消费对应注册结果，不再各自扫描插件目录。单个插件无效不影响其他有效插件。Setter 模板由配置模块保存，其可用能力仍以 `collectorRegister` 中的声明为准。
 

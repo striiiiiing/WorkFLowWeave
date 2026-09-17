@@ -4,6 +4,8 @@
 
 网关把 Workflow 已确定的单条 Notification 发送到指定目标。它管理渠道类型、配置校验和实例调用；平台协议由渠道实现，输出顺序及部分失败策略由 Workflow 决定。
 
+配置遵循[Manager 四层设计](../manager%20design.md)：插件自行读取私有 JSON，ChannelConfig 保存账户，Workflow.channel_overrides 提供本次调用选项。
+
 ## 类型、实例与能力
 
 | 对象 | 含义 |
@@ -19,7 +21,7 @@
 
 channel以插件形式导入，通过config模块向 Manager 注入只读 `channelRegister`
 
-这个模块需要负责读取ChannelConfig，这个是可复用的，诸如channel的key这些信息
+Manager 接收快照 ChannelConfig，按 options_schema 的 x-logagent-workflow 注解分离实例配置与调用选项；host/key 只需在可复用实例保存一次。
 
 ChannelConfig 的公共字段由公共模型校验，options 由注册类型解释。目标只能来自配置，通知 text/metadata 不能覆盖收件人、路径或凭据。校验阶段不连接远端或发送测试消息。
 
@@ -27,7 +29,7 @@ ChannelConfig 的公共字段由公共模型校验，options 由注册类型解�
 
 对外入口是 `await ChannelManager.send(config, notification)`。config 必须来自本次 WorkflowSnapshot，不能只按 channel_id 查最新配置，否则修改目标地址会改变活动 session 的投递位置。
 
-渠道实例由 ChannelManager 持有并持续整个程序生命周期，首次使用快照配置时创建并 start，后续发送复用，服务关闭时统一 stop。实例按 channel_id 与有效配置版本区分；资源更新创建新版本，旧实例继续服务旧快照，不能原地修改其目标。显式替换或卸载可在旧实例没有活动引用后关闭；历史恢复仍按原快照绑定实例。
+渠道实例由 ChannelManager 持有并持续整个程序生命周期，首次使用快照配置时创建并 start，后续发送复用，服务关闭时统一 stop。实例按 channel_id、类型和实例 options 版本区分；调用选项不进入身份键。create 只接收实例配置，send(notification, *, options) 显式接收本次调用选项；资源更新创建新版本，旧实例继续服务旧快照，不能原地修改其目标。显式替换或卸载可在旧实例没有活动引用后关闭；历史恢复仍按原快照绑定实例。
 
 同一实例的初始化只执行一次，不能因并发首发重复创建；不支持并发发送的实例串行调用 send。每次发送的 timeout 覆盖等待实例可用、必要准备和发送，关闭单独有界。输出和目标顺序由 Workflow 依次 await 保证。
 
@@ -43,7 +45,7 @@ sequenceDiagram
         opt 该配置版本首次使用
             M->>P: await create / start
         end
-        M->>P: await send(notification)
+        M->>P: await send(notification, options=本次调用选项)
         P-->>M: accepted 或结构化失败
         M-->>W: DeliveryResult
         W-->>W: 保存回执

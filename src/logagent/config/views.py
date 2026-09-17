@@ -176,17 +176,15 @@ class _RegisteredChannel:
 class _RegisterView:
     """Private storage is copied at publication; all public data reads are copies."""
 
-    __slots__ = ("_defaults", "_errors", "_registrations")
+    __slots__ = ("_errors", "_registrations")
 
     def __init__(
         self,
         registrations: Mapping[str, _CollectorRegistration | _ChannelRegistration] | None = None,
         *,
-        defaults: Mapping[str, JSONObject] | None = None,
         errors: Iterable[ErrorInfo] = (),
     ) -> None:
         self._registrations = MappingProxyType(dict(registrations or {}))
-        self._defaults = MappingProxyType(deepcopy(dict(defaults or {})))
         self._errors = tuple(error.model_copy(deep=True) for error in errors)
 
     def describe(self) -> list[CapabilityDescription]:
@@ -194,10 +192,6 @@ class _RegisterView:
             registration.description.model_copy(deep=True)
             for registration in self._registrations.values()
         ]
-
-    def options_defaults(self, name: str) -> JSONObject:
-        """Defaults are consumed when saving/importing, never while collecting."""
-        return deepcopy(self._defaults.get(name, {}))
 
     def diagnostics(self, name: str) -> list[ErrorInfo]:
         return [
