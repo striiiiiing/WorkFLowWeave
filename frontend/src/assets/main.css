@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* [Design Decision DEC-TYPO-01 & DEC-TYPO-02] 基础字体与排版基线 */
+:root {
+  --color-primary: #2563eb;
+  --color-surface: #ffffff;
+  --color-border: #e2e8f0;
+}
+
+.dark {
+  --color-primary: #3b82f6;
+  --color-surface: #1e293b;
+  --color-border: #334155;
+}
+
+/* [Design Decision DEC-MOTION-01] 尊重用户的减少动效偏好 */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* 统一代码块高亮样式 */
+code, pre {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* 移动端触控优化 */
+button, a, input, select, textarea {
+  touch-action: manipulation;
+}
