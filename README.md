@@ -154,8 +154,8 @@ plugin = Plugin()
 
 插件作者通过构造函数注入内部依赖；`plugin.register(api)` 可自行读取
 `api.config_path` 指向的插件目录 `config.json`，验证后构造能力。
-框架仅解释根 `plugins/config.json` 的 `enabled`。旧 `defaults` 字段已移除，
-需要迁移到实例 `options` 或由插件自行解释的私有文件，不做隐式迁移。
+框架仅解释根 `plugins/config.json` 的 `enabled`，不接受 `defaults`。
+插件以现行设计文档为准直接更新；不提供旧接口兼容层或迁移机制。
 
 实例 `SourceConfig` / `ChannelConfig` 保存一套账户及可选调用默认值。
 `options_schema.properties` 中标记 `"x-logagent-workflow": true` 的字段可以被
@@ -180,4 +180,4 @@ Setter 按实例模板、实例 Setter、Workflow template、Workflow Setter 覆
 显式空列表有效。保存 Workflow 时校验完整配置，运行快照固定合并值和路径。
 渠道插件的 `create(config, credentials)` 只接收实例 options；
 `send(notification, *, options)` 接收本次调用 options。邮件 recipient 属于调用层，
-不同收件人复用账户连接；Mock 文件 path 属于实例层。旧渠道插件需要更新 send 签名。
+不同收件人复用账户连接；Mock 文件 path 属于实例层。所有渠道插件直接实现上述 send 契约。
