@@ -4,7 +4,9 @@ import asyncio
 import sqlite3
 from contextlib import asynccontextmanager
 
-from logagent.ai import AIService, MockProvider
+from ai_helpers import TestModelFactory
+
+from logagent.ai import AIService
 from logagent.channel import ChannelManager, MockFileChannelType
 from logagent.collection.manager import CollectorManager
 from logagent.collection.mock import MockCollector
@@ -30,7 +32,7 @@ async def _application(tmp_path, *, provider=None):
     )
     assert not report.errors
     resources = ResourceStore(tmp_path / "resources.json", collector_register=registry.collectorRegister, channel_register=registry.channelRegister)
-    ai = AIService(providers={"mock": provider or MockProvider()})
+    ai = AIService(model_factories={"mock": provider or TestModelFactory()})
     channels = ChannelManager(registry.channelRegister)
     service = WorkflowService(
         CollectorManager(registry.collectorRegister),
@@ -165,7 +167,7 @@ async def test_real_ai_cancellation_resumes_saved_snapshot_after_resource_change
 
     original_path = tmp_path / "original.jsonl"
     changed_path = tmp_path / "changed.jsonl"
-    async with _application(tmp_path, provider=MockProvider(pause_second)) as (
+    async with _application(tmp_path, provider=TestModelFactory(pause_second)) as (
         registry,
         resources,
         service,

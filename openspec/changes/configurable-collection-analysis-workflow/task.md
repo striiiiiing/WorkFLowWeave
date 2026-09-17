@@ -9,7 +9,7 @@
 | 1 | [公共模型与协议](./contracts/task.md) | 备份、只读 session 协议、全局容量 | 已完成 |
 | 2 | [Workflow](./modules/workflow/task.md) | 1及现有注入接口；checkpoint执行进度、幂等存档节点、只读SessionView、恢复与备份 | 已完成 |
 | 3 | [配置](./modules/config/task.md) | 1；JSON 原子资源视图、凭据、引用、reload | 已提交 `6adffca` |
-| 4 | [AI](./modules/ai/task.md) | 1、3；600秒/5重试、共享连接多模型、开放扩展参数 | 本次修正完成并通过主代理审查；取代 `5b90965` 兼容实现 |
+| 4 | [AI](./modules/ai/task.md) | 1、3；LangChain Model 异步调用、共享连接多模型、600秒/5重试 | LangChain 迁移完成，最终全套590项通过；详见重写后的模块任务 |
 | 5 | [Channel](./modules/channel/task.md) | 1、3；常驻实例、快照绑定、有界关闭 | 修正完成；主代理审查、专项与全套验证通过 |
 | 6 | [Mock](./modules/channel/mock/task.md) | 5；可读文本、专用Handler、调用后检查 | 修正完成；主代理审查、专项与全套验证通过 |
 | 7 | [Email](./modules/channel/email/task.md) | 3、5；异步SMTP、真实受理回执 | 完成；常驻实例、真实受理语义、本地 SMTP 验证与主代理审查通过 |
@@ -36,3 +36,6 @@
 主代理复核：本轮过程中新增的 `d273cfb`（Channel）与 `7cfa9b9`（Mock）已按相应 design/task 审查；Channel 发现的生命周期问题由 `ad75c7b` 修正。Mock 当前代码含线程归属、完整写入计数及共享 Handler 关闭竞争回归，验证结果见模块 task。
 
 主代理复核：AI 由 `9bbda93` 按 AI design 收敛为单一 `models` 来源并限定 5xx/断连不重试；Channel/Mock 的实例复用、总时限、写入完成检查与共享 Handler 生命周期由 `ad75c7b`、`ebebb13`、`340aae9` 收口；Email 按 Email design 实现常驻 SMTP 实例、按需连接、DATA 肯定接受才成功、其余网络结果为不确定投递，未引入重试或隐式降级。Email 验证为专项 27 passed、全套 519 passed（33.73s，exit 0）、lint/build/本地 SMTP 烟测通过，详见模块 task。
+
+
+2026-09-17 AI 后续修正：按当前 AI design 及 `3f4ab74` 重写模块 task，对照 `5b90965`/`9bbda93` 删除 Provider.complete、HTTPProvider 和生产 Mock，改为模型工厂注入与 BaseChatModel.ainvoke。HTTP 408/429/5xx 可重试并即时记录诊断，取代上文历史审查中“5xx 不重试”的状态。最终全套590项通过（51.59秒、exit 0），Ruff/build/本地真实HTTP烟测通过；子代理停止后由主代理独立完成。Lifecycle 文件随 AI 装配与日志迁移一并提交；Interaction 及其他设计草稿保留工作区，不据此变更其他模块的独立验收状态。
