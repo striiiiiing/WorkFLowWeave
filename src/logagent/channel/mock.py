@@ -115,7 +115,9 @@ class MockFileChannel:
     async def start(self) -> None:
         await self._run_io(self.handler.start)
 
-    async def send(self, notification: Notification) -> None:
+    async def send(self, notification: Notification, *, options: dict) -> None:
+        if options:
+            raise ChannelDeliveryError("invalid_config", "Mock 渠道没有调用选项")
         result = _WriteResult()
         try:
             await self._run_io(

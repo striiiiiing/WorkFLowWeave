@@ -53,10 +53,9 @@ def _save_resources(registry, resources, output_path, version):
     template = SetterTemplate(id="messages", collector="mock", setters={"fields": ["message"]})
     defaults = {"records": [{"message": version, "level": "INFO"}]}
     source = expand_source(
-        SourceConfig(id="source", collector="mock", template="messages"),
+        SourceConfig(id="source", collector="mock", template="messages", options=defaults),
         collector=registry.collectorRegister.get("mock"),
         template=template,
-        options_defaults=defaults,
     )
     assert source.template is None and source.options["mode"] == "success"
     # Mutating caller inputs cannot affect the expanded source saved below.

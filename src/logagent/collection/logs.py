@@ -329,6 +329,7 @@ class LogsCollector:
         "description": "日志路径来自 CollectionContext.log_path；读取最多指定字节和最近完整行。",
         "properties": {
             "max_lines": {
+                "x-logagent-workflow": True,
                 "type": "integer",
                 "minimum": 1,
                 "maximum": _MAX_LINES,
@@ -336,6 +337,7 @@ class LogsCollector:
                 "description": "选择尾部最近多少条完整事件（最多 10000）；先限行再应用 Setter。",
             },
             "max_bytes": {
+                "x-logagent-workflow": True,
                 "type": "integer",
                 "minimum": 1,
                 "maximum": _MAX_BYTES,

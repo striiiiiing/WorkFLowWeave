@@ -20,6 +20,10 @@ Workflow 拥有跨来源和跨任务的编排规则，以 LangGraph 管理执行
 
 编排器可以实现为函数。依赖注入 CollectorManager、AIService、ChannelManager、资源服务、SessionStore 和 SQLite checkpointer，不读取它们的私有状态。SessionView 是 Workflow 内的只读查询实现，可通过窄接口注入历史 Collector，无需让采集模块反向依赖 WorkflowService 或 LangGraph 存储结构。
 
+## 调用层配置
+
+sources/channels 保留有序 ID 引用；source_overrides[id] 包含 options、setters、可选 template，channel_overrides[id] 包含 options。默认空对象表示无覆盖；显式空列表覆盖同名值。遵循[Manager 四层设计](../manager%20design.md)，配置模块统一解析、校验并固定有效快照，执行/恢复只使用快照。
+
 ## LangGraph 执行图
 
 首版以 LangGraph 的异步 StateGraph 包装固定业务阶段。阶段内部使用协程和各自 semaphore 处理有限 fan-out；每个 session 使用持久化 graph/checkpoint，支持状态展示、历史读取和未完成运行恢复。

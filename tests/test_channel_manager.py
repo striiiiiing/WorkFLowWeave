@@ -100,7 +100,7 @@ async def test_concurrent_first_send_initializes_once():
             start_entered.set()
             await release_start.wait()
 
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             self.sends.append(notification.text)
 
         async def stop(self):
@@ -140,7 +140,7 @@ async def test_old_snapshot_and_new_config_keep_separate_instances():
         async def start(self):
             return None
 
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             self.sends.append(notification.text)
 
         async def stop(self):
@@ -176,7 +176,7 @@ async def test_total_timeout_covers_waiting_for_instance_initialization():
             start_entered.set()
             await release_start.wait()
 
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             return None
 
         async def stop(self):
@@ -234,7 +234,7 @@ async def test_timeout_after_plugin_send_starts_is_uncertain():
         async def start(self):
             return None
 
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             send_entered.set()
             await asyncio.Future()
 
@@ -271,7 +271,7 @@ async def test_cancelled_plugin_send_propagates_and_instance_is_reused():
         async def start(self):
             self.start_calls += 1
 
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             self.send_calls += 1
             if self.send_calls == 1:
                 send_entered.set()
@@ -319,7 +319,7 @@ async def test_cancelled_create_propagates_and_retry_creates_instance():
         async def start(self):
             self.start_calls += 1
 
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             self.sends.append(notification.text)
 
         async def stop(self):
@@ -372,7 +372,7 @@ async def test_cancelled_start_propagates_and_retry_creates_instance():
                 start_entered.set()
                 await asyncio.Future()
 
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             self.sends.append(notification.text)
 
         async def stop(self):
@@ -419,7 +419,7 @@ async def test_stop_after_cancelled_send_completes_and_blocks_later_send():
         async def start(self):
             return None
 
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             self.send_calls += 1
             send_entered.set()
             await asyncio.Future()
@@ -461,7 +461,7 @@ async def test_blocking_prepare_past_budget_is_a_timeout_receipt():
         async def start(self):
             return None
 
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             raise AssertionError("send must not be called")
 
         async def stop(self):
@@ -490,7 +490,7 @@ async def test_plugin_timeout_error_stays_a_delivery_failure():
         async def start(self):
             return None
 
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             raise TimeoutError("provider deadline")
 
         async def stop(self):
@@ -523,7 +523,7 @@ async def test_stop_waits_for_in_flight_send_and_repeat_stop():
         async def start(self):
             return None
 
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             self.events.append("send")
             send_entered.set()
             await release_send.wait()
@@ -572,7 +572,7 @@ async def test_initialization_failure_releases_instance_and_preserves_cleanup_er
         async def start(self):
             raise RuntimeError("start failed")
 
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             raise AssertionError("send must not be called")
 
         async def stop(self):
@@ -606,7 +606,7 @@ async def test_send_after_admission_closes_does_not_reach_stopped_instance():
         async def start(self):
             return None
 
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             self.send_calls += 1
 
         async def stop(self):
@@ -645,7 +645,7 @@ async def test_same_instance_sends_are_serialized():
         async def start(self):
             return None
 
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             self.send_calls += 1
             self.active += 1
             self.max_active = max(self.max_active, self.active)
@@ -705,7 +705,7 @@ async def test_total_timeout_covers_waiting_for_send_lock():
         async def start(self):
             return None
 
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             self.send_calls += 1
             send_entered.set()
             await release_send.wait()
@@ -741,7 +741,7 @@ async def test_channel_delivery_error_preserves_code_message_and_details():
         async def start(self):
             return None
 
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             raise ChannelDeliveryError(
                 "rate_limited",
                 "provider rejected the request",
@@ -776,7 +776,7 @@ async def test_stop_preserves_every_cleanup_error():
         async def start(self):
             return None
 
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             return None
 
         async def stop(self):
@@ -814,7 +814,7 @@ async def test_release_waits_for_active_send_and_allows_a_new_instance():
         async def start(self):
             return None
 
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             if notification.text == "slow":
                 send_entered.set()
                 await release_send.wait()
@@ -863,7 +863,7 @@ async def test_reload_register_only_releases_removed_types_after_send():
         async def start(self):
             return None
 
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             if self.name == "drop" and notification.text == "slow":
                 send_entered.set()
                 await release_send.wait()
@@ -921,7 +921,7 @@ async def test_unload_owner_waits_for_active_send():
         async def start(self):
             return None
 
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             send_entered.set()
             await release_send.wait()
 
@@ -964,7 +964,7 @@ async def test_same_name_replacement_releases_old_implementation():
         class Instance:
             async def start(self):
                 events.append((version, "start"))
-            async def send(self, notification):
+            async def send(self, notification, *, options):
                 events.append((version, "send"))
             async def stop(self):
                 events.append((version, "stop"))
@@ -986,7 +986,7 @@ async def test_unload_owner_rejects_new_sends_while_draining():
     class Instance:
         async def start(self):
             pass
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             calls.append(notification.text)
             entered.set()
             await finish.wait()
@@ -1015,7 +1015,7 @@ async def test_stop_cancels_overdue_send_then_closes_instance():
     class Instance:
         async def start(self):
             pass
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             entered.set()
             try:
                 await asyncio.Future()
@@ -1042,7 +1042,7 @@ async def test_cleanup_timeout_retains_ownership_until_later_stop():
     class Instance:
         async def start(self):
             pass
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             pass
         async def stop(self):
             calls.append("stop")
@@ -1090,7 +1090,7 @@ async def test_start_that_swallows_cancellation_cannot_send():
                 await asyncio.Future()
             except asyncio.CancelledError:
                 return
-        async def send(self, notification):
+        async def send(self, notification, *, options):
             calls.append("send")
         async def stop(self):
             calls.append("stop")

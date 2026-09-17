@@ -53,12 +53,14 @@ class MockCollector:
         "type": "object",
         "properties": {
             "mode": {
+                "x-logagent-workflow": True,
                 "type": "string",
                 "enum": ["success", "empty", "failed", "timeout"],
                 "default": "success",
                 "description": "success 处理记录；其余模式用于验证空、失败和调用方超时。",
             },
             "records": {
+                "x-logagent-workflow": True,
                 "type": "array",
                 "maxItems": 1000,
                 "items": {"type": "object"},

@@ -152,8 +152,8 @@ async def test_actual_data_mime_and_resident_connection():
         channel = EmailChannel(config(server.port), None)
         await channel.start()
         assert server.connections == 0
-        await channel.send(note())
-        await channel.send(note(text="next", output_id="second"))
+        await channel.send(note(), options={"recipient": "to@example.test"})
+        await channel.send(note(text="next", output_id="second"), options={"recipient": "to@example.test"})
         assert server.connections == 1 and len(server.messages) == 2
         first = BytesParser(policy=policy.default).parsebytes(server.messages[0])
         assert first["From"] == "from@example.test" and first["To"] == "to@example.test"
@@ -166,6 +166,47 @@ async def test_actual_data_mime_and_resident_connection():
         await channel.stop()
         await channel.stop()
         assert server.commands.count(b"DATA") == 2 and server.commands.count(b"QUIT") == 1
+
+
+async def test_same_account_concurrent_recipients_reuse_connection_and_do_not_drift(tmp_path):
+    class AccountType(EmailChannelType):
+        def __init__(self):
+            self.created = []
+
+        async def create(self, config, credentials):
+            assert "recipient" not in config.options
+            self.created.append(config)
+            return await super().create(config, credentials)
+
+    account = AccountType()
+    registry = PluginRegistry([], builtin_channels=[account])
+    await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
+    manager = ChannelManager(registry.channelRegister)
+    async with smtp_server() as server:
+        first = config(server.port)
+        second = config(server.port)
+        second.options["recipient"] = "second@example.test"
+        try:
+            results = await asyncio.gather(
+                manager.send(first, note()),
+                manager.send(second, note(output_id="second")),
+            )
+            assert [result.status for result in results] == ["success", "success"]
+            assert server.connections == len(account.created) == 1
+            recipients = [BytesParser(policy=policy.default).parsebytes(raw)["To"]
+                          for raw in server.messages]
+            assert sorted(recipients) == ["second@example.test", "to@example.test"]
+            assert (await manager.send(first, note(output_id="original"))).status == "success"
+            assert BytesParser(policy=policy.default).parsebytes(server.messages[-1])["To"] == "to@example.test"
+        finally:
+            await manager.stop()
+
+
+async def test_direct_email_call_requires_explicit_recipient_even_with_saved_default():
+    channel = EmailChannel(config(2525), None)
+    with pytest.raises(LogAgentError):
+        await channel.send(note(), options={})
+    assert channel._client is None
 
 
 @pytest.mark.parametrize("mode,uncertain,submissions", [
@@ -191,7 +232,7 @@ async def test_authentication_rejection_is_definite_and_redacted():
         channel = EmailChannel(config(server.port, username="user", password={"kind": "env", "name": "KEY"}), Credentials())
         await channel.start()
         with pytest.raises(ChannelDeliveryError) as error:
-            await channel.send(note())
+            await channel.send(note(), options={"recipient": "to@example.test"})
         assert not error.value.uncertain
         assert error.value.details["stage"] == "authenticate"
         assert error.value.details["smtp_code"] == 535
@@ -205,7 +246,7 @@ async def test_starttls_is_required_and_never_silently_downgraded():
         channel = EmailChannel(config(server.port, tls="starttls"), None)
         await channel.start()
         with pytest.raises(ChannelDeliveryError) as error:
-            await channel.send(note())
+            await channel.send(note(), options={"recipient": "to@example.test"})
         assert not error.value.uncertain
         assert not server.messages and b"MAIL" not in server.commands
         await channel.stop()
@@ -215,11 +256,11 @@ async def test_accepted_then_disconnected_remains_success_and_next_send_reconnec
     async with smtp_server("accepted_drop") as server:
         channel = EmailChannel(config(server.port), None)
         await channel.start()
-        await channel.send(note())
+        await channel.send(note(), options={"recipient": "to@example.test"})
         for _ in range(5):
             await asyncio.sleep(0)
         assert not channel._client.is_connected
-        await channel.send(note(output_id="second"))
+        await channel.send(note(output_id="second"), options={"recipient": "to@example.test"})
         for _ in range(5):
             await asyncio.sleep(0)
         assert len(server.messages) == 2 and server.connections == 2
@@ -230,7 +271,7 @@ async def test_cancellation_after_data_never_submits_again():
     async with smtp_server("timeout") as server:
         channel = EmailChannel(config(server.port), None)
         await channel.start()
-        sending = asyncio.create_task(channel.send(note()))
+        sending = asyncio.create_task(channel.send(note(), options={"recipient": "to@example.test"}))
         await server.data_received.wait()
         sending.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -245,7 +286,7 @@ async def test_title_header_injection_fails_before_connect():
         channel = EmailChannel(config(server.port), None)
         await channel.start()
         with pytest.raises(ChannelDeliveryError) as error:
-            await channel.send(note(title="test\r\nBcc: injected@example.test"))
+            await channel.send(note(title="test\r\nBcc: injected@example.test"), options={"recipient": "to@example.test"})
         assert not error.value.uncertain and server.connections == 0
         await channel.stop()
 
@@ -263,7 +304,7 @@ async def test_implicit_tls_never_sends_plaintext_smtp():
     try:
         await channel.start()
         with pytest.raises(ChannelDeliveryError) as error:
-            await channel.send(note())
+            await channel.send(note(), options={"recipient": "to@example.test"})
         assert not error.value.uncertain and error.value.details["stage"] == "connect"
         assert await received == b"\x16"  # TLS handshake record, never an SMTP command.
     finally:
@@ -277,7 +318,7 @@ async def test_missing_resolver_never_authenticates_or_submits():
         channel = EmailChannel(config(server.port, username="user", password={"kind": "env", "name": "KEY"}), None)
         await channel.start()
         with pytest.raises(ChannelDeliveryError) as error:
-            await channel.send(note())
+            await channel.send(note(), options={"recipient": "to@example.test"})
         assert error.value.code == "credential_resolver_missing"
         assert b"AUTH" not in server.commands and not server.messages
         await channel.stop()
@@ -287,9 +328,9 @@ async def test_cancelling_queued_send_does_not_close_active_smtp_transaction():
     async with smtp_server("hold") as server:
         channel = EmailChannel(config(server.port), None)
         await channel.start()
-        first = asyncio.create_task(channel.send(note()))
+        first = asyncio.create_task(channel.send(note(), options={"recipient": "to@example.test"}))
         await server.data_received.wait()
-        queued = asyncio.create_task(channel.send(note(output_id="queued")))
+        queued = asyncio.create_task(channel.send(note(output_id="queued"), options={"recipient": "to@example.test"}))
         await asyncio.sleep(0)
         queued.cancel()
         with pytest.raises(asyncio.CancelledError):
