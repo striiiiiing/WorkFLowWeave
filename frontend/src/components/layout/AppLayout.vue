@@ -50,7 +50,7 @@
           :to="item.path"
           :class="[
             'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors min-h-[44px]',
-            $route.path === item.path
+            isRouteActive(item.path)
               ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 font-semibold'
               : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50'
           ]"
@@ -104,7 +104,7 @@
             :to="item.path"
             :class="[
               'flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors min-h-[44px]',
-              $route.path === item.path
+              isRouteActive(item.path)
                 ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 font-semibold'
                 : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
             ]"
@@ -128,8 +128,10 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useRoute } from 'vue-router'
 import AppIcon from '@/components/icons/AppIcon.vue'
 
+const route = useRoute()
 const mobileDrawerOpen = ref(false)
 const isDark = ref(false)
 
@@ -140,6 +142,11 @@ const navItems = [
   { name: '资源配置', path: '/resources', icon: 'database' },
   { name: '插件与能力', path: '/plugins', icon: 'cpu' },
 ]
+
+function isRouteActive(path: string) {
+  if (path === '/') return route.path === '/'
+  return route.path.startsWith(path)
+}
 
 function toggleDarkMode() {
   isDark.value = !isDark.value
