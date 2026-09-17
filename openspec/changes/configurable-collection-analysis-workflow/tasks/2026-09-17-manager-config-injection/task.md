@@ -27,7 +27,7 @@
 - options_schema 使用 x-logagent-workflow 顶层注解，未标字段保持实例属性；声明错误及调用层凭据明确拒绝。资源保存只延后必填调用字段，账户必填及条件凭据仍校验；完整调用语义校验在 Workflow 绑定时执行。
 - 注册 API 提供只读绝对 config_path；插件自行读取、验证私有 JSON 并注入构造参数，异常撤销整个插件临时注册。移除 PluginSettings.defaults、注册视图 defaults 缓存及 expand_source.options_defaults；示例和测试同步迁移。
 - ChannelManager 只按账户配置版本复用实例，工厂不接收 recipient，send 显式传调用选项；Email 每次取得收件人，账户中不保存调用选项。Mock path 保持实例配置。保留一次发送预算、回执、取消、关闭及卸载行为。
-- 兼容边界：现有资源 options 可继续作为调用默认值；旧插件根 defaults 不再接受，旧渠道插件 send 必须增加 keyword-only options 参数。无静默兼容或默认收件人回退。README 已记录迁移。
+- 插件契约直接破坏性更新：以现行设计文档为依据，删除旧根 defaults 和旧 send 签名，不提供兼容层或迁移机制。实例 options 可含调用默认值是 Manager 设计明确要求，不是为旧插件保留的兼容行为；send 必须显式接收 keyword-only options，不回退到实例收件人。README 同步现行契约。
 - 原计划并行实现代理未返回结果，主代理接手完成并审查全部实现；设计审查代理另行请求为 GPT-5.5/high。未把未返回的审查算作完成证据。
 
 ## 验证
@@ -37,3 +37,10 @@
 - 单次全套测试触及 60 秒硬超时（exit 124），未放宽时限；分组完整覆盖：配置/采集/AI/渠道等 437 passed（25.05 秒），Workflow/Session/Lifecycle/Interaction 170 passed（50.08 秒），均 exit 0。最后新增“直接 Email 调用不得回退到实例收件人”测试修正测试工厂缺少 port 后，Email 专项 30 passed（2.67 秒），当前共 608 项通过。
 - Ruff 全目录检查、uv build、独立 examples/collect.py --collector mock 烟测通过；隔离临时插件目录的烟测返回 success/count=1；默认工作区 plugins 含同名 mock 声明，首次烟测明确报告既有注册冲突，内置采集仍成功，未修改该用户插件。修改范围 git diff --check 通过。第三方 LangGraph/Starlette 弃用警告保留，不属于本次配置变更。
 - 主代理审查 schema 单一来源、候选事务原子性、调用层字段权限、缺失插件、账户实例身份与旧快照、明文与异常边界、测试真实性及兼容说明；既有无关 interaction/frontend/IDE 工作区变更不纳入本次提交。
+
+
+## 用户补充确认：插件直接更新
+
+- 用户明确“原先插件直接破坏级更新，只有文档是第一现实”。以现行 design 为事实来源，旧插件代码直接适配设计，不让历史实现反向约束设计。
+- 检查确认当前代码没有 defaults 或旧 send 签名的兼容分支；本轮只纠正 README 和任务中的迁移/兼容措辞，设计行为与实现不变，继续在本任务记录。
+- 验证：检查插件注册、公开协议和内置渠道入口；文档差异检查通过。本轮无代码变化，不重复执行测试。
