@@ -200,6 +200,7 @@ class WorkflowService:
         resource_store=None,
         *,
         session_store=None,
+        session_view=None,
         checkpointer=None,
         database=None,
         max_concurrent_runs=4,
@@ -215,12 +216,13 @@ class WorkflowService:
         self.session_store = session_store or SessionStore(location)
         self._owns_store = session_store is None
         self.database = str(database or self.session_store.location)
-        self.session_view = SessionView(self.session_store)
+        self.session_view = session_view or SessionView(self.session_store)
         self.coordinator = RunCoordinator(max_concurrent_runs=max_concurrent_runs)
         self._checkpointer, self._saver_context = checkpointer, None
         self._start_lock = asyncio.Lock()
         self._admission_lock = asyncio.Lock()
         self._shutdown = False
+        self._shutdown_task: asyncio.Task | None = None
 
     async def start(self):
         async with self._start_lock:
@@ -235,6 +237,16 @@ class WorkflowService:
                     await self._saver_context.__aexit__(None, None, None)
                     self._checkpointer, self._saver_context = None, None
                     raise
+
+    async def pause_admission(self):
+        """Close admission and wait until every in-flight trigger has submitted or failed."""
+        async with self._admission_lock:
+            self.coordinator.accepting = False
+            return self.coordinator.active
+
+    def resume_admission(self):
+        if not self._shutdown:
+            self.coordinator.accepting = True
 
     async def validate(self, workflow):
         value = copy_model(workflow)
@@ -398,12 +410,20 @@ class WorkflowService:
             offset += len(records)
 
     async def shutdown(self):
-        if self._shutdown:
-            return
-        self._shutdown = True
+        if self._shutdown_task is None or (
+            self._shutdown_task.done() and self._shutdown_task.exception() is not None
+        ):
+            self._shutdown_task = asyncio.create_task(self._shutdown_once())
+        await asyncio.shield(self._shutdown_task)
+
+    async def _shutdown_once(self):
+        async with self._start_lock:
+            await self.pause_admission()
+            self._shutdown = True
         await self.coordinator.shutdown()
         if self._saver_context is not None:
             await self._saver_context.__aexit__(None, None, None)
+            self._saver_context = None
         if self._owns_store:
             await asyncio.to_thread(self.session_store.close)
 

@@ -9,3 +9,7 @@ build/
 .coverage
 htmlcov/
 .mindfs/
+.agents/
+.codex/
+
+Typora_Hook_Log.txt

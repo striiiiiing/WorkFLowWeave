@@ -35,6 +35,10 @@ class CollectorManager:
     def __init__(self, collector_register: CollectorRegistryView) -> None:
         self._register = collector_register
 
+    def reload_register(self, collector_register: CollectorRegistryView) -> None:
+        """Install one atomically published registry view for future calls."""
+        self._register = collector_register
+
     def describe(self) -> list[CapabilityDescription]:
         return [copy_model(description) for description in self._register.describe()]
 
