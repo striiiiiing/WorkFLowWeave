@@ -30,7 +30,7 @@ SessionView 只读取 SessionStore，列表返回每个 session 的最新业务�
 
 ## AI 与 Channel
 
-`AIService.execute(config, prompt, input_text, *, model, task_id="task", context=None)` 接收显式模型选择并返回 AnalysisResult。validate 检查全部模型参数与所选模型；provider 可注入。OpenAI-compatible HTTP 请求使用独立 system/user 消息，单一总预算覆盖凭据解析、请求及退避；连接前失败或限流可重试，5xx/读写中断等不确定受理结果不重复请求。close 幂等且有界，清理错误单独报告。
+`AIService.execute(config, prompt, input_text, *, model, task_id="task", context=None)` 接收显式模型选择并返回 AnalysisResult。validate 检查全部模型参数与所选模型；`model_factories` 注入按渠道接口创建 `BaseChatModel` 的工厂。内置仅 `http` 对应 OpenAI-compatible `ChatOpenAI`，直接异步 `ainvoke`，无生产 Mock 或旧 Provider.complete 协议。独立 SystemMessage/HumanMessage，模型参数来自唯一的 models[model] 并通过 extra_body 传递。单一 600 秒默认预算覆盖凭据解析、请求及退避，默认最多 6 次尝试，SDK 重试关闭；连接前失败和 HTTP 408/429/5xx 可重试，每次错误立即汇报，认证/协议错误及读写中断不重试。模块无会话/结果存储，close 幂等且有界，清理错误单独报告。
 
 ChannelManager 依据 channel ID 与有效配置版本复用长期实例；首次发送前只初始化一次，在卸载或系统关闭时 stop。并发发送、配置替换及旧快照使用保持相应实例生命周期。每次 send 只处理一条 Notification 并返回 DeliveryResult，不排队、不缓存消息、不自动重试。Mock 专用持久 logging Handler 追加 UTF-8 标题和正文文本；不得混入应用诊断日志或将其改成 JSON 记录。
 
