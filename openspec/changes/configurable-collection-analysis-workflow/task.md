@@ -16,6 +16,7 @@
 | 8 | [Collection](./modules/collection/task.md) | 2、3；history复用SessionView | 已实现并经主代理审查、验证 |
 | 9 | [Lifecycle](./modules/lifecycle/task.md) | 1–8；启停、定时、reload、健康 | 待执行 |
 | 10 | [Interaction](./modules/interaction/task.md) | 1–9；FastAPI、Typer、完整HTTP链路 | 待执行 |
+| 11 | [Frontend](./modules/frontend/task.md) | 10；Vue 3 + Tailwind CSS、无画布流式阶梯编排、设计语言系统、响应式与AAA对比度 | 实现完成，待主代理审查与全套集成验证 |
 
 业务校验、SessionView和API装配以注入接口解除反向依赖，不额外增加资源或运行事实来源。旧SQLite资源仓库及直读CLI按所属任务替换；运行表按新职责收敛为 SessionStore，不再承担独立调度。
 
