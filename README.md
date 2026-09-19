@@ -17,6 +17,8 @@ uv run python examples/collect.py
 
 Workflow 默认使用 `data/workflows.sqlite3`，也可注入 `SessionStore` 或指定 `database`。LangGraph checkpointer 保存执行位置；SessionStore 独立保存原配置快照、业务结果、状态、通知意图与回执。父图和子图使用同一存档节点工厂，以闭包绑定阶段和条目标识，提交业务事务后再返回图状态。重放相同逻辑写入复用原版本，冲突报错。
 
+项目自有 SQL 存储统一使用 SQLModel 定义表、查询和事务；SQLite 仍是当前数据库，LangGraph 官方 checkpointer 管理其内部存储。SessionStore 兼容已有 `session_headers` / `session_entries` 表及数据，连接层保留 WAL、完整同步、外键、安全删除和立即事务。
+
 `SessionView` 提供只读列表、详情和固定业务 `version` 的阶段内容，不读取 checkpoint 内部表。`BackupPolicy` 默认保存全部正文；关闭备份时正文仅在当前运行内存中使用。到期删除全部历史正文并保留摘要、可用性及幂等键，避免重放复活内容。
 
 ```python
