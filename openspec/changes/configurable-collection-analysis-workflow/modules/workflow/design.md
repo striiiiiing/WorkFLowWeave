@@ -76,4 +76,64 @@ RunCoordinator 持有 session 任务；手动与定时触发共用容量、快�
 
 ## 设计细节
 
-ID需要用户自己填写，如此即可容许名称重名，OpenWebUI就是类似的设计
+ID可以用户自己填写，如此即可容许名称重名，OpenWebUI就是类似的设计
+
+但是如果没有填写，那么就采用默认生成的uuid，我想其实用户更多会期望采用uuid来处理，而非再写一份
+
+## LangGraph 组件拆分约束（2026-09-19）
+
+Workflow 的图定义采用“父图装配、子图执行、State 传递”的结构。`WorkflowService` 只负责运行准入、session 创建、恢复校验、取消和生命周期，不实现阶段节点，也不在图运行期间驱动子图的内部步骤。
+
+### 组件边界
+
+| 文件/组件 | 职责 | 不负责的内容 |
+| --- | --- | --- |
+| `workflow/graph.py` / `WorkflowGraph` | 定义父图节点、边、条件路由并注入 checkpointer | 采集器调用、AI 调用、Channel 发送、阶段业务规则 |
+| `workflow/subgraphs.py` | 构造 collect 和 analyze fan-out/fan-in 子图；按声明顺序汇合 `items` | 父图准入、session 查询、通知投递 |
+| `workflow/stages.py` | 提供阶段汇合节点：整理来源、整理分析、aggregate、finish，以及阶段存档节点 | 运行任务句柄、父图调度、HTTP/API 行为 |
+| `workflow/notification.py` | 构造 notify 子图；为每个 output/channel 注册独立 intent、receipt 节点 | 采集、分析和外部运行准入 |
+| `workflow/nodes.py` | 提供通用幂等存档节点和 `ArchiveRuntime` | 选择下一个 LangGraph 节点或解释业务策略 |
+| `workflow/service.py` / `WorkflowService` | 固定快照、创建 session、编译并提交父图、恢复原 thread、取消任务 | 具体阶段节点实现和通知子图内部控制 |
+
+依赖注入只提供静态运行能力（CollectorManager、AIService、ChannelManager、SessionStore 和 checkpointer）。运行期间变化的业务数据必须通过 LangGraph state 传递，节点不得依赖父图外部变量来决定已经完成的条目或下一阶段。
+
+### 父图和子图
+
+父图只表达阶段拓扑：
+
+```mermaid
+flowchart LR
+    S[snapshot] --> SC[start_collect] --> C[collect 子图]
+    C --> SA[start_analyze] --> A[analyze 子图]
+    A --> SG[start_aggregate] --> G[aggregate 节点]
+    G --> SN[start_notify] --> N[notify 子图]
+    N --> SF[start_finish] --> F[finish 节点]
+    C -. stopped .-> SF
+    A -. stopped .-> SF
+    G -. stopped .-> SF
+```
+
+collect 和 analyze 是独立子图。每个分支节点只负责一个来源或一个分析任务，并将业务正文写入 SessionStore 后把稳定存档 key 发布到子图 state 的 `items`。`arrange` 节点只从 state 读取 `items`，按 Workflow 声明顺序读取正文并生成阶段引用；父图不能通过调用子图私有方法来拼装分支结果。
+
+notify 也是子图，而不是 aggregate 或 Service 中的循环。每个输出和目标按声明顺序生成两类节点：
+
+1. `intent`：写入稳定的发送意图 key；事务提交成功后才允许后继节点继续。
+2. `receipt`：读取冻结通知，调用 Channel，并把回执写入稳定的 delivery key；已有意图但没有确定回执时写入 `delivery_uncertain`，不自动补发。
+
+### State 约束
+
+父图 state 只包含控制数据和业务存档引用：
+
+- `session_id`：对应 LangGraph `thread_id`。
+- `phases`：阶段到 SessionStore key 的映射。
+- `items`：collect/analyze 子图中各来源或任务到 SessionStore key 的映射。
+- `stopped`、`status`：条件边使用的阶段状态。
+- `generation`、`retry_stage`：恢复失败阶段时使用的显式控制信息。
+
+完整采集正文、模型输出、通知正文、客户端、凭据和任务句柄不得进入 checkpoint state。节点通过 state 中的 key 调用 `ArchiveRuntime.read()` 获取正文；阶段完成后只发布新的 phase key。这样重放时可以按相同 key 复用业务事实，恢复时可以验证 checkpoint 引用是否仍然存在。
+
+子图的输入、输出和边界必须能够单独阅读：子图不读取 WorkflowService 的私有状态，也不由 Service 在运行期间逐步驱动；父图仅根据子图返回的 state 运行条件边。构建阶段可以闭包绑定静态能力和阶段节点工厂，节点运行时的动态结果必须全部来自输入 state 和其引用的业务存档。
+
+### 维护规则
+
+新增阶段时，先在对应子图或阶段节点模块中定义节点和 state 变化，再在 `graph.py` 添加节点及边。不要把外部调用、重试、存档和条件路由重新塞回 `WorkflowService` 或父图构造器。新增通知目标时只扩展 notify 子图的节点生成逻辑，必须保留 intent 在 receipt 之前的边和稳定幂等 key。
