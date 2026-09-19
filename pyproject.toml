@@ -22,6 +22,7 @@ dependencies = [
   "openai>=3.4,<4",
   "orjson>=3.12.0",
   "pydantic>=2.10,<3",
+  "sqlmodel>=0.0.42,<0.1",
   "typer>=0.15,<1",
   "uvicorn>=0.34,<1",
 ]
