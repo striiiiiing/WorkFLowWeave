@@ -1,9 +1,10 @@
 """Exercise durable workflows through the real registry, managers, and local plugins."""
 
 import asyncio
-import sqlite3
 from contextlib import asynccontextmanager
 
+from sqlalchemy import URL, inspect
+from sqlmodel import Session, create_engine, func, select
 from workflow_ai_helpers import TestChannelFactory
 
 from logagent.ai import AIService
@@ -22,6 +23,7 @@ from logagent.models import (
     WorkflowDefinition,
 )
 from logagent.workflow import WorkflowService
+from logagent.workflow.session_models import SessionHeader
 
 
 @asynccontextmanager
@@ -148,11 +150,15 @@ async def test_real_modules_recovery_preserves_original_output(tmp_path):
         changed_notes = _notifications(changed_path)
         assert changed_notes == f"Report changed\n{changed.outputs['final']}\n"
 
-    with sqlite3.connect(tmp_path / "sessions.sqlite3") as db:
-        tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    engine = create_engine(URL.create("sqlite", database=str(tmp_path / "sessions.sqlite3")))
+    try:
+        tables = set(inspect(engine).get_table_names())
         assert {"session_headers", "session_entries", "checkpoints"} <= tables
         assert not {"run_sessions", "run_items", "run_stages"} & tables
-        assert db.execute("SELECT count(*) FROM session_headers").fetchone()[0] == 2
+        with Session(engine) as db:
+            assert db.exec(select(func.count()).select_from(SessionHeader)).one() == 2
+    finally:
+        engine.dispose()
 
 
 async def test_real_ai_cancellation_resumes_saved_snapshot_after_resource_changes(tmp_path):

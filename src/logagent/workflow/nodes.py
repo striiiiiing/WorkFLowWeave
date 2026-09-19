@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-import sqlite3
 from collections.abc import Callable
 from copy import deepcopy
+
+from sqlalchemy.exc import DBAPIError
 
 from logagent.errors import LogAgentError
 
@@ -70,7 +71,7 @@ class ArchiveRuntime:
                 summary=summary, body=body if persist else None, category=category,
                 availability="available" if persist else "not_saved",
             )
-        except (sqlite3.Error, OSError):
+        except (DBAPIError, OSError):
             if body is None or category is None:
                 raise
             result = await _commit(
