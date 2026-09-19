@@ -1,4 +1,4 @@
-"""One-shot analysis with explicit model selection and a single request budget."""
+"""向 Workflow 提供异步单次分析，统一请求预算、重试与取消通知。"""
 
 from __future__ import annotations
 
@@ -6,233 +6,269 @@ import asyncio
 import logging
 import math
 import time
-from collections.abc import Mapping
-from typing import Any
-from urllib.parse import urlparse
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from typing import Protocol
 
-import httpx
-from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from openai import APIConnectionError, APIError, APIStatusError
+from langchain_core.messages import AIMessage
 from pydantic import ValidationError
 
-from logagent.ai.models import ModelFactory
-from logagent.errors import LogAgentError, exception_error, validation_error
-from logagent.models import AIConfig, AnalysisResult, ErrorInfo, ExecutionContext, copy_model
+from logagent.ai.channels import ChannelFactory
+from logagent.ai.errors import ModelError, error_info, model_error
+from logagent.ai.manager import ChannelManager
+from logagent.ai.options import validate_config
+from logagent.ai.prompts import build_messages
+from logagent.errors import LogAgentError, validation_error
+from logagent.models import (
+    AIConfig,
+    AnalysisResult,
+    Credential,
+    ErrorInfo,
+    ExecutionContext,
+    copy_model,
+)
 
-# Model extensions cannot replace service-owned request or connection settings.
-_MANAGED_OPTIONS = frozenset({
-    "temperature", "top_k", "model", "messages", "api_key", "base_url", "timeout",
-    "retries", "max_retries", "stream", "stream_options", "headers", "extra_headers",
-    "authorization", "auth", "http_client", "extra_body", "extra_query",
-})
 _RETRY_DELAY = 0.25
-_CLOSE_TIMEOUT = 5.0  # Local client cleanup only; separate from paid request budgets.
+_CLOSE_TIMEOUT = 5.0
 _LOGGER = logging.getLogger(__name__)
 
 
-class ModelError(Exception):
-    def __init__(
-        self, code: str, message: str, *, retryable: bool = False,
-        uncertain: bool = False, status_code: int | None = None,
-    ):
-        super().__init__(message)
-        self.code, self.retryable, self.uncertain = code, retryable, uncertain
-        self.status_code = status_code
+class CredentialResolver(Protocol):
+    """将配置中的凭据引用异步解析为明文的注入协议。"""
+
+    async def resolve(self, credential: Credential) -> str:
+        """解析一个凭据引用；解析失败由实现抛出异常，不能返回伪造凭据。"""
+        ...
 
 
-def _prompt(prompt: str, input_text: str) -> str:
-    # 等一下扩张
-    return prompt.replace("{input}", input_text) if "{input}" in prompt else f"{prompt}\n\n{input_text}"
+@dataclass(frozen=True)
+class CancellationNotice:
+    """取消确认时交给同步回调的通知信封。
+
+    包含渠道配置 ID、模型名、分析任务 ID 和可选执行上下文；不包含输入或凭据。
+    数据类字段不可重新赋值，context 仍是调用方传入的上下文对象。
+    """
+
+    channel_id: str
+    model: str
+    task_id: str
+    context: ExecutionContext | None
 
 
 def _check_cancelled() -> None:
+    """检查当前任务的取消计数，防止下游吞掉取消后仍返回成功或继续重试。"""
     if asyncio.current_task().cancelling():
         raise asyncio.CancelledError
 
 
-async def _invoke(model: BaseChatModel, messages) -> AIMessage:
-    # 同时需要有展开原文，服务器可能不会按规则走，甚至可能只是因为欠费了
-    try:
-        return await model.ainvoke([message.model_copy(deep=True) for message in messages])
-    except APIStatusError as exc:
-        status = exc.status_code
-        code = {
-            401: "authentication_failed", 403: "authentication_failed",
-            408: "provider_timeout", 429: "rate_limited",
-        }.get(status, "provider_unavailable" if 500 <= status < 600 else "provider_rejected")
-        raise ModelError(
-            code, "模型服务返回错误状态", status_code=status,
-            retryable=status in (408, 429) or 500 <= status < 600,
-        ) from exc
-    except APIConnectionError as exc:
-        cause = exc.__cause__
-        # LangChain normalizes SDK exceptions, retaining the transport cause underneath.
-        while isinstance(cause, APIConnectionError):
-            cause = cause.__cause__
-        unaccepted = isinstance(
-            cause, (httpx.ConnectTimeout, httpx.PoolTimeout, httpx.ConnectError),
-        )
-        raise ModelError(
-            "network_error", "模型服务连接失败", retryable=unaccepted,
-            uncertain=not unaccepted,
-        ) from exc
-    except (APIError, ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
-        raise ModelError("invalid_response", "模型服务响应结构无效") from exc
+def _result(message: AIMessage, task_id: str) -> AnalysisResult:
+    """把单条文本 AIMessage 转为成功分析结果，并保留可用 token usage。
 
-
-def _analysis_result(message: AIMessage, task_id: str) -> AnalysisResult:
+    拒绝生成、错误元数据、工具调用或非文本消息不能当作成功结果。空白正文
+    及非法 usage 由 AnalysisResult 数据校验拒绝，异常交给调用层统一处理。
+    """
     if not isinstance(message, AIMessage) or not isinstance(message.content, str):
         raise ModelError("invalid_response", "模型服务必须返回文本消息")
     if message.additional_kwargs.get("refusal") or message.response_metadata.get("error"):
-        raise ModelError("provider_rejected", "模型服务拒绝生成结果")
+        raise ModelError("provider_rejected", "模型服务拒绝生成结果",
+                         response_body=message.model_dump_json())
     if message.tool_calls or message.invalid_tool_calls or message.additional_kwargs.get("tool_calls"):
-        raise ModelError("invalid_response", "单次分析不能执行工具调用")
+        raise ModelError("invalid_response", "单次分析不能执行工具调用",
+                         response_body=message.model_dump_json())
     usage = message.response_metadata.get("token_usage", message.usage_metadata)
-    try:
-        return AnalysisResult(
-            task_id=task_id, status="success", text=message.content,
-            usage={} if usage is None else usage,
-        )
-    except (ValueError, TypeError) as exc:
-        raise ModelError("invalid_response", "模型服务响应结构无效") from exc
+    return AnalysisResult(task_id=task_id, status="success", text=message.content,
+                          usage={} if usage is None else usage)
 
 
 class AIService:
+    """组合渠道、凭据、提示词与模型调用的无会话分析服务。
+
+    服务只保留渠道资源，不保存对话或分析结果。依赖通过工厂和凭据协议注入，
+    Workflow 负责分析分支、汇总与结果持久化。
+    """
+
     def __init__(
-        self, *, model_factories: Mapping[str, ModelFactory],
-        credential_resolver: Any = None, close_timeout: float = _CLOSE_TIMEOUT,
+        self, *, channel_factories: Mapping[str, ChannelFactory],
+        credential_resolver: CredentialResolver | None = None,
+        close_timeout: float = _CLOSE_TIMEOUT,
     ):
+        """建立服务依赖及渠道管理器。
+
+        Args:
+            channel_factories: 渠道类型到工厂的映射；正式装配注册 http 类型。
+            credential_resolver: 可选凭据解析器；配置引用凭据时必须提供。
+            close_timeout: 每个渠道清理预算，单位秒，与模型请求预算分开。
+
+        Raises:
+            ValueError: 清理预算不是有限正数。
+        """
         if not math.isfinite(close_timeout) or close_timeout <= 0:
             raise ValueError("close_timeout must be positive and finite")
-        self.model_factories = dict(model_factories)
+        self.channels = ChannelManager(channel_factories, close_timeout)
         self.credential_resolver = credential_resolver
-        self._close_timeout = close_timeout
-        self._close_task: asyncio.Task | None = None
 
     def validate(self, config: AIConfig, model: str | None = None) -> None:
+        """重新校验配置副本及全部模型参数，不解析凭据或访问网络。
+
+        传入 model 时同时检查显式模型选择；校验失败统一抛出 LogAgentError。
+        """
         try:
-            config = copy_model(config)
+            validate_config(copy_model(config), self.channels.factories, model)
         except ValidationError as exc:
             raise validation_error(exc) from None
-        if config.provider not in self.model_factories:
-            raise LogAgentError("provider_missing", "AI provider 不可用", {"field": "provider"})
-        if config.provider == "http":
-            parsed = urlparse(config.base_url or "")
-            if (
-                parsed.scheme not in {"http", "https"} or not parsed.hostname
-                or parsed.username is not None or parsed.password is not None
-                or parsed.query or parsed.fragment
-            ):
-                raise LogAgentError("invalid_config", "HTTP base_url 无效", {"field": "base_url"})
-        if model is not None and model not in config.models:
-            raise LogAgentError("invalid_config", "选择的 AI model 不存在", {"field": "model"})
-        for options in config.models.values():
-            bad = sorted(_MANAGED_OPTIONS & options.keys())
-            if bad:
-                raise LogAgentError("invalid_config", "模型参数覆盖管理字段", {"fields": bad})
+
+    async def _credential(self, config: AIConfig) -> str | None:
+        """解析本次配置的凭据；未配置认证时返回 None，不读取环境默认密钥。
+
+        配置了凭据引用却没有解析器，或解析结果不是非空字符串时明确失败。
+        """
+        if config.api_key is None:
+            return None
+        if self.credential_resolver is None:
+            raise LogAgentError("credential_resolver_missing", "AI 凭据解析器未配置")
+        credential = await self.credential_resolver.resolve(config.api_key)
+        if not isinstance(credential, str) or not credential:
+            raise LogAgentError("credential_invalid", "AI 凭据解析结果无效")
+        return credential
+
+    async def start_channel(self, config: AIConfig) -> None:
+        """在配置的总预算内显式启动或重新打开渠道，不执行远端模型发现。"""
+        config = copy_model(config)
+        self.validate(config)
+        async with asyncio.timeout(config.timeout):
+            await self.channels.start(config)
+
+    async def close_channel(self, config: AIConfig) -> None:
+        """校验配置后关闭对应连接，取消其活动调用；再次使用须显式启动。"""
+        self.validate(config)
+        await self.channels.stop(copy_model(config))
+
+    async def list_models(self, config: AIConfig) -> list[str]:
+        """使用渠道凭据查询上游模型 ID，不改写 config.models。
+
+        模型发现、凭据解析和重试共用 config.timeout；失败以带完整诊断的
+        LogAgentError 报告，超时使用 ai_timeout。调用者取消保持协程取消语义。
+        """
+        config = copy_model(config)
+        self.validate(config)
+
+        async def discover():
+            """在独立任务中借用渠道，使渠道关闭能够取消模型发现操作。"""
+            credential = None
+            try:
+                async with asyncio.timeout(config.timeout), self.channels.lease(config) as channel:
+                    credential = await self._credential(config)
+                    return await self._retry(
+                        lambda: channel.list_models(credential), config,
+                        credential=credential, task_id="models", context=None,
+                    )
+            except ModelError as exc:
+                raise LogAgentError(exc.code, str(exc), (exc.report or error_info(exc)).details) from None
+            except TimeoutError:
+                raise LogAgentError("ai_timeout", "模型发现总时限已耗尽") from None
+
+        return await asyncio.create_task(discover())
 
     async def execute(
         self, config: AIConfig, prompt: str, input_text: str, *, model: str,
         task_id: str = "task", context: ExecutionContext | None = None,
+        on_cancel: Callable[[CancellationNotice], None] | None = None,
     ) -> AnalysisResult:
+        """执行一次显式模型分析，返回成功、失败、超时或取消结果。
+
+        Args:
+            config: 渠道和模型参数配置；执行使用经过校验的深拷贝。
+            prompt: 任务提示词，支持字面占位符 {input}。
+            input_text: 本次完整输入，不保存为对话历史。
+            model: 必须存在于 config.models 的模型 ID。
+            task_id: 分析结果及诊断日志的关联标识。
+            context: 可选 Workflow/session 上下文，用于日志和取消通知。
+            on_cancel: 可选同步回调，取消确认后调用一次；回调异常记录到取消结果。
+
+        Returns:
+            AnalysisResult，包含状态、成功正文或结构化错误，以及总耗时。模型调用
+            的取消转为 cancelled 结果；凭据、请求和退避共享 config.timeout。
+        """
         started = time.perf_counter()
         try:
             _check_cancelled()
-            if self._close_task is not None:
-                raise LogAgentError("ai_closed", "AI 服务已关闭")
             config = copy_model(config)
             self.validate(config, model)
-            async with asyncio.timeout(config.timeout):
-                credential = None
-                if config.api_key is not None:
-                    if self.credential_resolver is None:
-                        raise LogAgentError("credential_resolver_missing", "AI 凭据解析器未配置")
-                    credential = await self.credential_resolver.resolve(config.api_key)
-                    if not isinstance(credential, str) or not credential:
-                        raise LogAgentError("credential_invalid", "AI 凭据解析结果无效")
-                result = await self._request(
-                    config, model, _prompt(prompt, input_text), credential, task_id, context,
-                )
+            messages = build_messages(config.system_prompt, prompt, input_text)
+            result = await asyncio.create_task(self._execute(config, model, messages, task_id, context))
+            _check_cancelled()
             return result.model_copy(update={"elapsed_ms": (time.perf_counter() - started) * 1000})
         except asyncio.CancelledError:
             status, error = "cancelled", ErrorInfo(code="ai_cancelled", message="AI 调用已取消")
+            if on_cancel is not None:
+                try:
+                    on_cancel(CancellationNotice(config.id, model, task_id, context))
+                except Exception as exc:
+                    error.details["notification_error"] = error_info(exc).model_dump(mode="json")
         except TimeoutError:
             status, error = "timeout", ErrorInfo(code="ai_timeout", message="AI 调用总时限已耗尽")
-        except ValidationError:
-            status, error = "failed", ErrorInfo(code="invalid_config", message="AI 配置无效")
+        except ValidationError as exc:
+            status, error = "failed", validation_error(exc).info
         except LogAgentError as exc:
-            # A resolver is injectable; its arbitrary message/details may contain credentials.
-            status, error = "failed", ErrorInfo(code=exc.code, message="AI 配置或凭据不可用")
+            status, error = "failed", exc.info
         except ModelError as exc:
-            status, error = "failed", ErrorInfo(
-                code=exc.code, message="AI 模型调用失败",
-                details={"uncertain": exc.uncertain, "status_code": exc.status_code},
-            )
+            status, error = "failed", exc.report or error_info(exc)
         except Exception as exc:
-            status, error = "failed", exception_error(exc, code="ai_failed", message="AI 调用失败")
-        _LOGGER.warning(
-            "ai_call_failed",
-            extra={
-                "event": "ai_call_failed", "task_id": task_id, "status": status,
-                "error_code": error.code,
-                "workflow_id": context.workflow_id if context else None,
-                "session_id": context.session_id if context else None,
-            },
-        )
-        return AnalysisResult(
-            task_id=task_id, status=status, error=error,
-            elapsed_ms=(time.perf_counter() - started) * 1000,
-        )
+            status, error = "failed", error_info(exc)
+        self._log("ai_call_cancelled" if status == "cancelled" else "ai_call_failed",
+                  task_id, context, status=status, error_code=error.code)
+        return AnalysisResult(task_id=task_id, status=status, error=error,
+                              elapsed_ms=(time.perf_counter() - started) * 1000)
 
-    async def _request(self, config, model, user, credential, task_id, context):
-        factory = self.model_factories[config.provider]
-        messages = [SystemMessage(content=config.system_prompt), HumanMessage(content=user)]
+    async def _execute(self, config, model, messages, task_id, context):
+        """在同一请求预算和渠道借用期内解析凭据、构造模型并执行重试。"""
+        async with asyncio.timeout(config.timeout), self.channels.lease(config) as channel:
+            credential = await self._credential(config)
+
+            async def invoke():
+                """用独立配置和消息副本发起一次 ainvoke，检查取消后再转换结果。"""
+                chat = channel.create_model(copy_model(config), model=model, credential=credential)
+                message = await chat.ainvoke([item.model_copy(deep=True) for item in messages])
+                _check_cancelled()
+                return _result(message, task_id)
+
+            return await self._retry(invoke, config, credential=credential,
+                                     task_id=task_id, context=context)
+
+    async def _retry(self, operation, config, *, credential, task_id, context):
+        """按服务层分类有限重试，所有等待受外层总预算约束。
+
+        最多尝试 1 + config.retries 次；只有 retryable 且非 uncertain 的错误
+        可继续。每次失败立即记录日志并保存脱敏诊断，取消不进入异常重试分支。
+        """
         for attempt in range(config.retries + 1):
             _check_cancelled()
             try:
-                chat_model = factory.create(copy_model(config), model=model, credential=credential)
-                message = await _invoke(chat_model, messages)
-                _check_cancelled()
-                return _analysis_result(message, task_id)
-            except ModelError as exc:
-                retry = exc.retryable and not exc.uncertain and attempt < config.retries
-                _LOGGER.warning(
-                    "ai_attempt_failed",
-                    extra={
-                        "event": "ai_attempt_failed", "task_id": task_id,
-                        "error_code": exc.code, "status_code": exc.status_code,
-                        "attempt": attempt + 1, "will_retry": retry,
-                        "uncertain": exc.uncertain,
-                        "workflow_id": context.workflow_id if context else None,
-                        "session_id": context.session_id if context else None,
-                    },
-                )
+                return await operation()
+            except Exception as exc:
+                error = model_error(exc)
+                error.report = error_info(exc, credential=credential)
+                retry = error.retryable and not error.uncertain and attempt < config.retries
+                self._log("ai_attempt_failed", task_id, context, error_code=error.code,
+                          status_code=error.status_code, attempt=attempt + 1,
+                          will_retry=retry, uncertain=error.uncertain)
                 if not retry:
-                    raise
+                    if error is exc:
+                        raise
+                    raise error from exc
                 _check_cancelled()
                 await asyncio.sleep(_RETRY_DELAY * 2 ** min(attempt, 5))
         raise AssertionError("Unreachable retry state")
 
+    @staticmethod
+    def _log(event, task_id, context, **fields):
+        """记录任务和 Workflow/session 关联字段，不将输入或错误正文放入摘要日志。"""
+        _LOGGER.warning(event, extra={
+            "event": event, "task_id": task_id,
+            "workflow_id": context.workflow_id if context else None,
+            "session_id": context.session_id if context else None, **fields,
+        })
+
     async def close(self) -> None:
-        if self._close_task is None:
-            self._close_task = asyncio.create_task(self._close_models())
-        await asyncio.shield(self._close_task)
-
-    async def _close_models(self) -> None:
-        async def close_one(factory):
-            try:
-                async with asyncio.timeout(self._close_timeout):
-                    await factory.close()
-            except Exception as exc:
-                return type(exc).__name__
-            return None
-
-        # A factory can be registered under several names but is still owned once.
-        factories = {id(factory): factory for factory in self.model_factories.values()}
-        failures = await asyncio.gather(*(close_one(factory) for factory in factories.values()))
-        if any(failures):
-            raise LogAgentError(
-                "ai_cleanup_failed", "AI 客户端清理失败",
-                {"failures": [failure for failure in failures if failure]},
-            )
+        """关闭全部渠道并拒绝新操作；重复调用等待同一清理结果。"""
+        await self.channels.close()

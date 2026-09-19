@@ -36,3 +36,16 @@
 Email 实施中复核到一处预算缺陷：常驻实例按 channel_id 与有效配置复用，timeout 被排除在缓存键之外，因此适配器若沿用创建时的 timeout，后续发送会继续使用旧快照的时限。设计第 32 行要求“每次发送的 timeout 覆盖等待实例可用、必要准备和发送”，故由 Manager 在调用 send 前把本次绝对 deadline 放入 `logagent.channel.context` 的 ContextVar，内置适配器据此读取剩余预算；插件 send(notification) 签名与语义不变，不读取该上下文也不会改变行为。Email 新增常驻连接复用下的当前快照时限回归（`tests/test_email_channel.py::test_reused_connection_obeys_current_snapshot_timeout`）。
 
 主代理验证：全套 520 passed，35.07 秒，exit 0；本地 SMTP 端到端烟测一次 DATA 受理、正常收尾，exit 0。
+
+## Manager 精简与设计对齐（2026-09-19）
+
+依据：本模块 [design.md](./design.md) 的“实例绑定与发送”“验证要点”，以及 [Manager 四层设计](../manager%20design.md) 的“调用与实例身份”。本次设计不变，实施记录追加在当前任务内。
+
+- [x] 合并初始化与入表失败的清理路径、重复实例查询和发送失败回执；配置校验只在本次发送总预算内执行一次。保留插件自身 TimeoutError 与总预算耗尽的区别，以及取消传播、失败日志和投递不确定性。
+- [x] 活动发送统一存入一份任务映射，删除并行维护的按键计数、渠道信息及空闲事件。每次发送有独立完成信号，release/unload/stop 等待发送结束，不等待外层 Workflow task 结束；初始化中的发送同样计入活动引用。
+- [x] 释放状态直接使用唯一 release task，删除重复释放事件。新发送只等待该任务结束再重新准入，释放异常仍由 release 调用方接收；释放排空超时不连带失败仍可用实例上的发送，已进入关闭的实例仍拒绝发送。等待者超时或取消不会取消清理任务。
+- [x] 保留快照身份、实例/调用 options 分离、并发单次初始化、串行发送、旧实例复用和一次投递语义。删除入表前的重复注册查询，依据为 replace_register 先阻止准入、排空活动引用，再切换只读注册视图。
+- [x] 新增 options/timeout 复用隔离、释放等待者超时/取消、释放排空失败隔离，以及真实 mock 追加文件与调用方生命周期隔离的回归测试。
+- 默认值沿用已有实现：stop_timeout=5 秒仍是每个清理步骤的预算，依据本任务 2026-09-17 的清理预算说明；发送预算使用本次 ChannelConfig.timeout，不引入新默认值。
+- 验证：`timeout 60s uv run pytest -q tests/test_channel_manager.py tests/test_channel_mock.py tests/test_email_channel.py tests/test_workflow_integration.py tests/test_workflow_overrides.py`：99 passed，15.48 秒，exit 0；有一条第三方 LangGraph 反序列化默认值将变更的预告警告。相关 Ruff、`git diff --check` 及 `uv build` 均通过。
+- 独立验收：真实 PluginRegistry → ChannelManager → MockFileChannel，单次发送回执为 `status=success, attempts=1, error=null`；逐字验证保留已有内容、UTF-8 标题和多行正文追加，metadata 不改变路径，重复 stop 成功。输出保留在 `/tmp/logagent-channel-acceptance-mzzzapzs/notification.txt`。
