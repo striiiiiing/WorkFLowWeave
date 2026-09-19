@@ -80,6 +80,16 @@ flowchart LR
 
 `WorkflowDefinition` 是可重复执行的配置，`WorkflowSnapshot` 固定本次运行引用的有效资源。session_id 对应 LangGraph thread_id。checkpointer 管理父图和子图的执行进度；SessionStore 保存图运行时产出的业务内容，包括原快照、状态摘要、阶段结果、发送意图和回执。二者可以共用 SQLite 文件，但各自管理自己的表与接口。SessionStore 不决定下一个节点，不作为缺失 checkpoint 时另起执行的替代调度器。
 
+**SQL 存储统一采用 SQLModel。** 项目自有的 SQL 表定义、查询、写入、更新、删除和事务统一使用 SQLModel。SessionStore 的业务表以 SQLModel 模型作为唯一结构定义，不维护平行的 sqlite3 业务实现或另一份建表脚本；所有外部值通过模型或参数绑定进入查询，不能拼接 SQL。
+
+SQLite 继续作为当前数据库。LangGraph 官方 SQLite checkpointer 通过官方接口接入，其第三方内部 SQL 不在本次替换范围；不复制 checkpoint 私有表模型或另建恢复协议。资源配置继续使用设计规定的 JSON 仓库。
+
+SessionStore 保留已有 session_headers / session_entries 的表名、字段类型、主键、唯一键、外键、JSON 编码与内容摘要格式，既有业务数据无需转换；更早的 run_sessions 格式仍要求显式迁移。嵌套调用共享同一 SQLModel Session，只由最外层提交或回滚，创建头记录及 created 事件必须原子完成；不同存储实例的幂等检查和版本分配必须串行化。
+
+SQLite 驱动配置与事务开启语句集中在 SQLModel engine / Session 边界：沿用 WAL、synchronous=FULL、foreign_keys=ON、secure_delete=ON 和 BEGIN IMMEDIATE，分别保障并发读写、提交持久性、引用约束、正文删除及写入序列。实例内使用锁串行访问单连接，允许现有线程调用；数据库异常通过 SQLModel 底层 DBAPIError 进入既定备份失败策略，管理记录失败继续向上传播。
+
+SQLModel 迁移及后续存储修改须验证旧数据兼容、并发幂等、嵌套回滚、数据库约束、正文过期、取消及进程恢复；测试依据与执行方法见 [Workflow SQL 存储测试](./modules/workflow/test.md)。故障注入的 trigger DDL 与冻结旧 schema 的兼容性测试可通过 SQLModel Session 执行必要的参数化 SQL，不作为业务存储实现。
+
 SessionView 只读取 SessionStore，为 API 与历史 Collector 提供 session 列表、状态、历史版本和正文可用性，无需解释 checkpoint 内部结构。SessionRecord 是该只读业务视图。可读内容由 LangGraph 的可复用节点维护；通过节点工厂闭包绑定存储、阶段、逻辑作用域、结果选择器和业务标识，父图与子图复用同一写入逻辑。对外不开放 session 写入 API。
 
 节点写入使用稳定的业务幂等键（session、逻辑作用域、阶段、条目、事件及必要的执行代次），不能使用重放时新生成的时间或随机 ID。相同键与相同内容重复提交返回原结果，不增加历史版本、不推进状态；相同不可变键的不同内容明确冲突。正文、可用性和可读摘要在同一业务事务发布；子图只提交自身条目，不能用旧整份 session 覆盖父图或其他分支的状态。SessionStore 提交后 checkpoint 尚未提交的窗口，通过节点重放和相同幂等键收敛，不假设两者存在跨存储事务。
