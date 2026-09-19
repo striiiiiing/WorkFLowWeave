@@ -102,4 +102,3 @@ class WorkflowGraph:
         graph.add_edge("notify", "start_finish")
         graph.add_edge("finish", END)
         return graph.compile(checkpointer=self.checkpointer)
-
