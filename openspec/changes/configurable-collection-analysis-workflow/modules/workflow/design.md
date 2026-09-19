@@ -6,17 +6,18 @@ Workflow 拥有跨来源和跨任务的编排规则，以 LangGraph 管理执行
 
 ## 内部组织
 
-| 组件 | 职责 |
-| --- | --- |
-| `WorkflowService` | validate/save/trigger/recover/cancel/shutdown 应用入口，暴露 session 查询能力。 |
-| `RunCoordinator` | session 的容量、任务句柄、快照及 LangGraph 执行生命周期。 |
-| `SessionStore` | 接收图节点的幂等业务写入，保存原快照、阶段结果、状态摘要、意图及回执，不承担图调度。 |
-| `SessionView` | 从 SessionStore 查询 session 列表、状态、历史版本和正文可用性，供 API 与历史 Collector 共用。 |
-| 存档节点工厂 | 通过闭包绑定阶段、逻辑作用域、条目标识及结果选择器，供父图和子图复用。 |
-| `CollectionOrchestrator` | 来源并发、失败策略、声明顺序、共享输入。 |
-| `AnalysisOrchestrator` | 分支并发、结果排序、可选汇总。 |
-| `NotificationOrchestrator` | 冻结输出、按输出与目标顺序发送、逐条记账。 |
-| `IntervalTrigger` | 定时产生 trigger 调用，复用手动入口规则。 |
+
+| 组件                       | 职责                                                                                          |
+| -------------------------- | --------------------------------------------------------------------------------------------- |
+| `WorkflowService`          | validate/save/trigger/recover/cancel/shutdown 应用入口，暴露 session 查询能力。               |
+| `RunCoordinator`           | session 的容量、任务句柄、快照及 LangGraph 执行生命周期。                                     |
+| `SessionStore`             | 接收图节点的幂等业务写入，保存原快照、阶段结果、状态摘要、意图及回执，不承担图调度。          |
+| `SessionView`              | 从 SessionStore 查询 session 列表、状态、历史版本和正文可用性，供 API 与历史 Collector 共用。 |
+| 存档节点工厂               | 通过闭包绑定阶段、逻辑作用域、条目标识及结果选择器，供父图和子图复用。                        |
+| `CollectionOrchestrator`   | 来源并发、失败策略、声明顺序、共享输入。                                                      |
+| `AnalysisOrchestrator`     | 分支并发、结果排序、可选汇总。                                                                |
+| `NotificationOrchestrator` | 冻结输出、按输出与目标顺序发送、逐条记账。                                                    |
+| `IntervalTrigger`          | 定时产生 trigger 调用，复用手动入口规则。                                                     |
 
 编排器可以实现为函数。依赖注入 CollectorManager、AIService、ChannelManager、资源服务、SessionStore 和 SQLite checkpointer，不读取它们的私有状态。SessionView 是 Workflow 内的只读查询实现，可通过窄接口注入历史 Collector，无需让采集模块反向依赖 WorkflowService 或 LangGraph 存储结构。
 
@@ -72,3 +73,7 @@ RunCoordinator 持有 session 任务；手动与定时触发共用容量、快�
 ## 验证要点
 
 验证父子图使用相同存档闭包、同键重复写入不增加 version、冲突与并发写入、存档提交后 checkpoint 提交前强退、成功分支不重跑、意图已保存但回执未知时不补发。验证 API/history 使用同一只读 SessionView 且不依赖 checkpoint 表、固定 version、备份关闭/到期实际删除、缺少 checkpoint 拒绝恢复、独立 HTTP 取消定时运行。保留用户指定的 M/A/T 图及所有失败/空/汇总策略。
+
+## 设计细节
+
+ID需要用户自己填写，如此即可容许名称重名，OpenWebUI就是类似的设计

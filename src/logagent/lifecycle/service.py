@@ -1,22 +1,19 @@
-"""Application assembly, reload coordination, health and bounded shutdown."""
+"""协调应用装配、重载、健康准入与分步限时清理，持有各组件的生命周期。"""
 
 from __future__ import annotations
 
 import asyncio
-import inspect
 import logging
 import math
 import time
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-from pydantic import ValidationError
 
-from logagent.ai import AIService, ModelFactory, OpenAIModelFactory
+from logagent.ai import AIService, ChannelFactory, OpenAIChannelFactory
 from logagent.channel import ChannelManager, builtin_channels
 from logagent.collection import CollectorManager, builtin_collectors
 from logagent.config import (
@@ -25,22 +22,19 @@ from logagent.config import (
     PluginRegistry,
     ResourceStore,
 )
-from logagent.errors import LogAgentError, validation_error
+from logagent.errors import LogAgentError
 from logagent.lifecycle.logging import JsonLogSink
 from logagent.models import (
-    AIConfig,
-    ChannelConfig,
-    ComponentHealth,
     DiscoveryReport,
     ErrorInfo,
     HealthReport,
-    SourceConfig,
-    StrictModel,
     SystemConfig,
-    copy_model,
 )
-from logagent.protocols import ChannelRegistryView, CollectorRegistryView
 from logagent.workflow import IntervalTrigger, SessionStore, SessionView, WorkflowService
+
+from .health import capability_diagnostics, component_health, health_components, plugin_health
+from .resources import LifecycleResourceStore, effective_config, resource_validators
+from .services import ApplicationServices
 
 logger = logging.getLogger("logagent.lifecycle")
 
@@ -50,69 +44,32 @@ ReloadScope = Literal["resources", "plugins"]
 CheckpointerContextFactory = Callable[[str], Any]
 
 
-@dataclass(frozen=True, slots=True)
-class ApplicationServices:
-    """Concrete, already-assembled services for Interaction to inject."""
-
-    system_config: SystemConfig
-    credentials: CredentialManager
-    plugins: PluginRegistry
-    resources: ResourceStore
-    session_store: SessionStore
-    session_view: SessionView
-    checkpointer: Any
-    collectors: CollectorManager
-    ai: AIService
-    channels: ChannelManager
-    workflow: WorkflowService
-    intervals: IntervalTrigger
-    log_path: str | None
-
-
-class _LifecycleResourceStore(ResourceStore):
-    """Resource store that rebuilds interval plans after an atomic publish."""
-
-    def __init__(self, *args: Any, on_change: Callable[[], None], **kwargs: Any) -> None:
-        self._on_change = on_change
-        self._loop = asyncio.get_running_loop()
-        super().__init__(*args, **kwargs)
-
-    def _published(self) -> None:
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-        if loop is self._loop:
-            self._on_change()
-        else:
-            self._loop.call_soon_threadsafe(self._on_change)
-
-    def save(self, kind: str, resource: Any, *, mode: str = "upsert") -> StrictModel:
-        value = super().save(kind, resource, mode=mode)
-        self._published()
-        return value
-
-    def delete(self, kind: str, ident: str) -> None:
-        super().delete(kind, ident)
-        self._published()
-
-
 class ApplicationLifecycle:
-    """Own startup, reload, health and shutdown for one single-process application."""
+    """管理单进程应用的资源所有权与运行准入。
+
+    启动、重载和关闭通过同一把锁串行执行；健康检查独立运行并调整准入。
+    对外异步入口复用内部任务，调用方取消等待不会取消已开始的生命周期操作。
+    """
 
     def __init__(
         self,
         config: SystemConfig,
         *,
-        model_factories: Mapping[str, ModelFactory] | None = None,
+        channel_factories: Mapping[str, ChannelFactory] | None = None,
         clock: Callable[[], float] = time.monotonic,
         shutdown_timeout: float = _SHUTDOWN_TIMEOUT,
         checkpointer_context_factory: CheckpointerContextFactory | None = None,
     ) -> None:
+        """规范化配置并初始化所有权记录，资源由 start 创建。
+
+        shutdown_timeout 是暂停准入、停止调度和关闭 Workflow 各步骤的秒数预算，
+        不是整个关闭过程的时限；其余组件使用 _CLEANUP_TIMEOUT。
+        channel_factories 为 None 时启动默认 HTTP 工厂，显式空映射保持为空。
+        """
         if not math.isfinite(shutdown_timeout) or shutdown_timeout <= 0:
             raise ValueError("shutdown_timeout must be positive and finite")
-        self.config = self._effective_config(config)
-        self._model_factories = model_factories
+        self.config = effective_config(config)
+        self._channel_factories = channel_factories
         self._clock = clock
         self._shutdown_timeout = shutdown_timeout
         self._checkpointer_context_factory = (
@@ -122,13 +79,12 @@ class ApplicationLifecycle:
         self._start_task: asyncio.Task[ApplicationServices] | None = None
         self._shutdown_task: asyncio.Task[None] | None = None
         self._reload_tasks: dict[ReloadScope, asyncio.Task[Any]] = {}
-        self._cleanup_tasks: dict[str, asyncio.Task[None]] = {}
+        self._cleanup_tasks: dict[str, asyncio.Task[Any]] = {}
         self._services: ApplicationServices | None = None
         self._resources: ResourceStore | None = None
         self._log_sink: JsonLogSink | None = None
         self._session_store: SessionStore | None = None
         self._checkpointer_context: Any = None
-        self._checkpointer: Any = None
         self._ai: AIService | None = None
         self._channels: ChannelManager | None = None
         self._workflow: WorkflowService | None = None
@@ -137,9 +93,7 @@ class ApplicationLifecycle:
         self._reload_diagnostic: ErrorInfo | None = None
         self._reload_in_progress = False
         self._reload_requires_recovery = False
-        self._started = False
         self._shutdown_requested = False
-        self._shutdown = False
         self._shutdown_complete = False
         self.failure: ErrorInfo | None = None
 
@@ -148,81 +102,41 @@ class ApplicationLifecycle:
         cls,
         location: str | Path,
         *,
-        model_factories: Mapping[str, ModelFactory] | None = None,
+        channel_factories: Mapping[str, ChannelFactory] | None = None,
         clock: Callable[[], float] = time.monotonic,
         shutdown_timeout: float = _SHUTDOWN_TIMEOUT,
         checkpointer_context_factory: CheckpointerContextFactory | None = None,
     ) -> ApplicationLifecycle:
+        """读取系统配置并构造尚未启动的实例，保留调用方注入的依赖。"""
         config = await ConfigurationReader().load_system(location)
         return cls(
             config,
-            model_factories=model_factories,
+            channel_factories=channel_factories,
             clock=clock,
             shutdown_timeout=shutdown_timeout,
             checkpointer_context_factory=checkpointer_context_factory,
         )
 
-    @staticmethod
-    def _effective_config(config: SystemConfig) -> SystemConfig:
-        try:
-            result = copy_model(config)
-        except ValidationError as exc:
-            raise validation_error(exc) from None
-        base = Path.cwd()
-
-        def resolved(value: str) -> str:
-            try:
-                path = Path(value)
-                return str((path if path.is_absolute() else base / path).resolve())
-            except (OSError, ValueError, RuntimeError):
-                raise LogAgentError("invalid_config", "系统路径无法解析") from None
-
-        result.data_dir = resolved(result.data_dir)
-        result.plugin_dir = resolved(result.plugin_dir)
-        result.log_file = resolved(result.log_file) if result.log_file is not None else None
-        return result
-
     @property
     def services(self) -> ApplicationServices:
+        """返回已发布的服务容器；容器尚不存在时抛出 not_ready。"""
         if self._services is None:
             raise LogAgentError("not_ready", "应用尚未完成启动")
         return self._services
 
     @property
     def plugin_report(self) -> DiscoveryReport:
+        """返回插件发现报告的深拷贝，避免外部修改内部诊断。"""
         return self._plugin_report.model_copy(deep=True)
 
-    def _validators(
-        self,
-        collector_register: CollectorRegistryView,
-        channel_register: ChannelRegistryView,
-        collectors: CollectorManager,
-        channels: ChannelManager,
-        ai: AIService,
-    ) -> dict[str, Callable[[StrictModel], None]]:
-        def source_validator(value: StrictModel) -> None:
-            source = SourceConfig.model_validate(value)
-            if collector_register.get(source.collector) is not None:
-                collectors.validate(source)
-
-        def channel_validator(value: StrictModel) -> None:
-            channel = ChannelConfig.model_validate(value)
-            if channel_register.get(channel.channel) is not None:
-                channels.validate(channel)
-
-        def ai_validator(value: StrictModel) -> None:
-            ai.validate(AIConfig.model_validate(value))
-
-        return {
-            "sources": source_validator,
-            "channels": channel_validator,
-            "ai": ai_validator,
-        }
-
     async def start(self) -> ApplicationServices:
-        if self._services is not None and self._started and not self._shutdown_requested:
+        """共享一次启动并返回服务容器，已收到关闭请求的实例不能重新启动。
+
+        调用方取消仅结束自身等待；内部启动继续执行并负责失败清理。
+        """
+        if self._services is not None and not self._shutdown_requested:
             return self._services
-        if self._shutdown_requested or self._shutdown:
+        if self._shutdown_requested:
             raise LogAgentError("shutdown", "应用生命周期已经关闭")
 
         task = self._start_task
@@ -233,10 +147,15 @@ class ApplicationLifecycle:
         return await asyncio.shield(task)
 
     async def _start_once(self) -> ApplicationServices:
+        """在生命周期锁内按依赖顺序装配，整理中断会话后开放准入。
+
+        逐步记录取得的资源，启动失败时复用关闭流程清理，并保留失败阶段诊断。
+        装配本身不执行采集、消息发送或模型调用。
+        """
         async with self._lifecycle_lock:
             if self._shutdown_requested:
                 raise LogAgentError("shutdown", "应用生命周期已经关闭")
-            if self._services is not None and self._started:
+            if self._services is not None:
                 return self._services
             if self.failure is not None:
                 raise LogAgentError(self.failure.code, self.failure.message, self.failure.details)
@@ -256,7 +175,7 @@ class ApplicationLifecycle:
                 stage = "checkpointer"
                 context = self._checkpointer_context_factory(database)
                 checkpointer = await context.__aenter__()
-                self._checkpointer_context, self._checkpointer = context, checkpointer
+                self._checkpointer_context = context
                 await checkpointer.setup()
 
                 stage = "plugins"
@@ -269,8 +188,10 @@ class ApplicationLifecycle:
 
                 stage = "ai"
                 ai = AIService(
-                    model_factories=self._model_factories if self._model_factories is not None else {
-                        "http": OpenAIModelFactory(),
+                    channel_factories=self._channel_factories
+                    if self._channel_factories is not None
+                    else {
+                        "http": OpenAIChannelFactory(),
                     },
                     credential_resolver=credentials,
                 )
@@ -284,11 +205,11 @@ class ApplicationLifecycle:
                 self._channels = channels
 
                 stage = "resources"
-                resources = _LifecycleResourceStore(
+                resources = LifecycleResourceStore(
                     Path(self.config.data_dir) / "resources.json",
                     collector_register=plugins.collectorRegister,
                     channel_register=plugins.channelRegister,
-                    validators=self._validators(
+                    validators=resource_validators(
                         plugins.collectorRegister,
                         plugins.channelRegister,
                         collectors,
@@ -342,7 +263,6 @@ class ApplicationLifecycle:
                     log_path=self.config.log_file,
                 )
                 self._services = services
-                self._started = True
                 intervals.start()
                 if self._shutdown_requested:
                     raise LogAgentError("shutdown", "应用启动期间收到关闭请求")
@@ -386,9 +306,14 @@ class ApplicationLifecycle:
                 raise LogAgentError(failure.code, failure.message, failure.details) from None
 
     async def reload(self, scope: ReloadScope = "resources") -> DiscoveryReport | None:
+        """共享同一 scope 的在途重载，调用方取消不会中断内部发布。
+
+        resources 重新读取资源并更新后续调度，返回 None；plugins 更新插件依赖，
+        返回发现报告。插件重载的冲突、恢复要求由内部操作处理。
+        """
         if scope not in ("resources", "plugins"):
             raise LogAgentError("invalid_argument", "reload scope 必须为 resources 或 plugins")
-        if self._shutdown_requested or self._shutdown:
+        if self._shutdown_requested:
             raise LogAgentError("shutdown", "应用已经关闭")
 
         task = self._reload_tasks.get(scope)
@@ -403,6 +328,7 @@ class ApplicationLifecycle:
                 self._reload_tasks.pop(scope, None)
 
     async def _reload_once(self, scope: ReloadScope) -> DiscoveryReport | None:
+        """串行化重载与启动、关闭；资源文件读取移至工作线程。"""
         async with self._lifecycle_lock:
             if self._shutdown_requested:
                 raise LogAgentError("shutdown", "应用已经关闭")
@@ -418,6 +344,12 @@ class ApplicationLifecycle:
             return await self._reload_plugins(services)
 
     async def _reload_plugins(self, services: ApplicationServices) -> DiscoveryReport:
+        """暂停调度和准入，在没有活动运行时替换插件及其依赖。
+
+        活动运行冲突时恢复原准入与调度状态，关闭请求优先。
+        其他失败或内部任务取消会保留恢复标记，阻止健康检查重新开放准入；
+        只有后续插件重载成功才清除标记。单个插件发现错误可作为降级报告返回。
+        """
         old_channels = services.plugins.channelRegister
         old_owners = sorted(
             {item.plugin for item in old_channels.describe() if item.plugin != "builtin"}
@@ -462,7 +394,7 @@ class ApplicationLifecycle:
             services.resources.update_dependencies(
                 collector_register=services.plugins.collectorRegister,
                 channel_register=services.plugins.channelRegister,
-                validators=self._validators(
+                validators=resource_validators(
                     services.plugins.collectorRegister,
                     services.plugins.channelRegister,
                     services.collectors,
@@ -495,28 +427,13 @@ class ApplicationLifecycle:
                 details={"stage": stage},
             )
             raise
-        except LogAgentError as exc:
-            if exc.code != "plugin_reload_conflict":
-                self._reload_requires_recovery = True
-                self._reload_diagnostic = ErrorInfo(
-                    code=exc.code,
-                    message="插件重载失败",
-                    details={"stage": stage, "exception_type": type(exc).__name__},
-                )
-                logger.error(
-                    "plugin_reload_failed",
-                    extra={
-                        "event": "plugin_reload_failed",
-                        "scope": "plugins",
-                        "error_code": exc.code,
-                        "stage": stage,
-                    },
-                )
-            raise
         except Exception as exc:
+            if isinstance(exc, LogAgentError) and exc.code == "plugin_reload_conflict":
+                raise
             self._reload_requires_recovery = True
+            code = exc.code if isinstance(exc, LogAgentError) else "plugin_reload_failed"
             self._reload_diagnostic = ErrorInfo(
-                code="plugin_reload_failed",
+                code=code,
                 message="插件重载失败",
                 details={"stage": stage, "exception_type": type(exc).__name__},
             )
@@ -525,7 +442,7 @@ class ApplicationLifecycle:
                 extra={
                     "event": "plugin_reload_failed",
                     "scope": "plugins",
-                    "error_code": self._reload_diagnostic.code,
+                    "error_code": code,
                     "stage": stage,
                 },
             )
@@ -534,68 +451,31 @@ class ApplicationLifecycle:
             self._reload_in_progress = False
 
     async def health(self) -> HealthReport:
+        """执行本地探测并据必需组件状态调整新运行准入，返回健康报告。
+
+        此方法不持有生命周期锁，也不取消活动会话；探测后读取最新重载状态，
+        以免覆盖关闭、重载进行中或等待显式恢复时的准入限制。
+        """
         now = datetime.now(UTC)
-        if self._services is None:
+        services = self._services
+        if services is None:
             error = self.failure or ErrorInfo(code="not_started", message="应用尚未启动")
             return HealthReport(
                 status="unavailable",
                 accepting_runs=False,
                 checked_at=now,
-                components=[
-                    ComponentHealth(
-                        component="lifecycle",
-                        status="unavailable",
-                        required=True,
-                        error=error,
-                        checked_at=now,
-                    )
-                ],
+                components=[component_health("lifecycle", now, error)],
             )
 
-        services = self._services
-        diagnostics = self._capability_diagnostics(services)
-        components = await self._health_components(services, now)
-        if self._plugin_report.errors or diagnostics or self._reload_diagnostic:
-            details = {
-                "discovery_errors": [
-                    item.model_dump(mode="json") for item in self._plugin_report.errors
-                ],
-                "capability_errors": [item.model_dump(mode="json") for item in diagnostics],
-                "reload_error": (
-                    self._reload_diagnostic.model_dump(mode="json")
-                    if self._reload_diagnostic
-                    else None
-                ),
-            }
-            components.append(
-                ComponentHealth(
-                    component="plugins",
-                    status="degraded",
-                    required=False,
-                    error=ErrorInfo(
-                        code="plugin_degraded",
-                        message="可选插件存在诊断",
-                        details=details,
-                    ),
-                    checked_at=now,
-                )
-            )
-        else:
-            components.append(
-                ComponentHealth(
-                    component="plugins",
-                    status="available",
-                    required=False,
-                    checked_at=now,
-                )
-            )
-
+        diagnostics = capability_diagnostics(services)
+        components = await health_components(services, self._log_sink, now)
+        plugins = plugin_health(self._plugin_report, diagnostics, self._reload_diagnostic, now)
+        components.append(plugins)
         required_healthy = all(
             component.status == "available" for component in components if component.required
         )
         allowed = (
             not self._shutdown_requested
-            and not self._shutdown
             and not self._reload_in_progress
             and not self._reload_requires_recovery
             and required_healthy
@@ -605,18 +485,7 @@ class ApplicationLifecycle:
         elif allowed and not services.workflow.coordinator.accepting:
             services.workflow.resume_admission()
         accepting = allowed and services.workflow.coordinator.accepting
-
-        status: Literal["ready", "degraded", "unavailable"] = "ready"
-        if (
-            self._shutdown_requested
-            or self._shutdown
-            or self._reload_in_progress
-            or self._reload_requires_recovery
-            or not accepting
-        ):
-            status = "unavailable"
-        elif diagnostics or self._plugin_report.errors or self._reload_diagnostic:
-            status = "degraded"
+        status = "unavailable" if not accepting else ("degraded" if plugins.error else "ready")
         return HealthReport(
             status=status,
             accepting_runs=accepting,
@@ -624,258 +493,16 @@ class ApplicationLifecycle:
             components=components,
         )
 
-    async def _health_components(
-        self, services: ApplicationServices, checked_at: datetime
-    ) -> list[ComponentHealth]:
-        return [
-            await self._health_component(
-                "system_config",
-                True,
-                checked_at,
-                self._required_paths_error,
-            ),
-            await self._health_component(
-                "credentials",
-                True,
-                checked_at,
-                lambda: (
-                    None
-                    if services.credentials is not None
-                    else ErrorInfo(
-                        code="component_unavailable",
-                        message="凭据管理组件不可用",
-                    )
-                ),
-            ),
-            await self._health_component(
-                "resource_store",
-                True,
-                checked_at,
-                lambda: self._probe_resource_store(services),
-            ),
-            await self._health_component(
-                "session_store",
-                True,
-                checked_at,
-                lambda: self._probe_session_store(services),
-            ),
-            await self._health_component(
-                "checkpointer",
-                True,
-                checked_at,
-                lambda: self._probe_checkpointer(services),
-            ),
-            await self._health_component(
-                "workflow",
-                True,
-                checked_at,
-                lambda: self._probe_workflow(services),
-            ),
-            await self._health_component(
-                "intervals",
-                True,
-                checked_at,
-                lambda: self._probe_intervals(services),
-            ),
-            await self._health_component(
-                "ai",
-                True,
-                checked_at,
-                lambda: self._probe_ai(services),
-            ),
-            await self._health_component(
-                "channels",
-                True,
-                checked_at,
-                lambda: self._probe_channels(services),
-            ),
-            await self._health_component(
-                "logging",
-                self.config.log_file is not None,
-                checked_at,
-                self._probe_log_sink,
-            ),
-        ]
-
-    async def _health_component(
-        self,
-        name: str,
-        required: bool,
-        checked_at: datetime,
-        check: Callable[[], Any],
-    ) -> ComponentHealth:
-        error: ErrorInfo | None
-        try:
-            error = check()
-            if inspect.isawaitable(error):
-                error = await error
-        except Exception as exc:
-            error = self._component_error(name, exc)
-        if error is None:
-            return ComponentHealth(
-                component=name,
-                status="available",
-                required=required,
-                checked_at=checked_at,
-            )
-        return ComponentHealth(
-            component=name,
-            status="unavailable" if required else "degraded",
-            required=required,
-            error=error,
-            checked_at=checked_at,
-        )
-
-    def _required_paths_error(self) -> ErrorInfo | None:
-        if not self.config.data_dir or not self.config.plugin_dir:
-            return ErrorInfo(
-                code="component_unavailable",
-                message="系统配置缺少必要路径",
-            )
-        return None
-
-    @staticmethod
-    def _probe_resource_store(services: ApplicationServices) -> ErrorInfo | None:
-        services.resources.list("workflows")
-        return None
-
-    @staticmethod
-    async def _probe_session_store(services: ApplicationServices) -> ErrorInfo | None:
-        await asyncio.to_thread(services.session_store.session_ids)
-        return None
-
-    @staticmethod
-    async def _probe_checkpointer(services: ApplicationServices) -> ErrorInfo | None:
-        checkpointer = services.checkpointer
-        if checkpointer is None or getattr(checkpointer, "is_setup", True) is not True:
-            return ErrorInfo(
-                code="component_unavailable",
-                message="Workflow checkpointer 未就绪",
-            )
-        check = getattr(checkpointer, "check", None)
-        if callable(check):
-            result = check()
-            if inspect.isawaitable(result):
-                result = await result
-            if isinstance(result, ErrorInfo):
-                return result
-        aget_tuple = getattr(checkpointer, "aget_tuple", None)
-        if callable(aget_tuple):
-            await aget_tuple({"configurable": {"thread_id": "__lifecycle_health__"}})
-        return None
-
-    @staticmethod
-    def _probe_workflow(services: ApplicationServices) -> ErrorInfo | None:
-        if getattr(services.workflow, "_shutdown", False):
-            return ErrorInfo(
-                code="component_unavailable",
-                message="Workflow 已关闭",
-            )
-        return None
-
-    @staticmethod
-    def _probe_intervals(services: ApplicationServices) -> ErrorInfo | None:
-        task = getattr(services.intervals, "_task", None)
-        if task is None or task.done():
-            return ErrorInfo(
-                code="component_unavailable",
-                message="定时触发任务未运行",
-            )
-        return None
-
-    @staticmethod
-    def _probe_ai(services: ApplicationServices) -> ErrorInfo | None:
-        if getattr(services.ai, "_close_task", None) is not None:
-            return ErrorInfo(
-                code="component_unavailable",
-                message="AI 服务已关闭",
-            )
-        return None
-
-    @staticmethod
-    def _probe_channels(services: ApplicationServices) -> ErrorInfo | None:
-        if getattr(services.channels, "_stopping", False):
-            return ErrorInfo(
-                code="component_unavailable",
-                message="ChannelManager 正在关闭",
-            )
-        return None
-
-    async def _probe_log_sink(self) -> ErrorInfo | None:
-        if self.config.log_file is None:
-            return None
-        sink = self._log_sink
-        if sink is None:
-            return ErrorInfo(
-                code="component_unavailable",
-                message="日志 sink 未初始化",
-            )
-        check = getattr(sink, "check", None)
-        if callable(check):
-            result = check()
-            if inspect.isawaitable(result):
-                result = await result
-            if isinstance(result, ErrorInfo):
-                return result
-            if result is False:
-                return ErrorInfo(
-                    code="component_unavailable",
-                    message="日志 sink 本地检查失败",
-                )
-        error = getattr(sink, "error", None)
-        if isinstance(error, ErrorInfo):
-            return error
-        handler = getattr(sink, "_handler", None)
-        if handler is None or getattr(getattr(handler, "stream", None), "closed", False):
-            return ErrorInfo(
-                code="component_unavailable",
-                message="日志 sink 未打开",
-            )
-        return None
-
-    @staticmethod
-    def _component_error(component: str, exc: Exception) -> ErrorInfo:
-        details: dict[str, Any] = {
-            "component": component,
-            "exception_type": type(exc).__name__,
-        }
-        if isinstance(exc, LogAgentError):
-            details["reason"] = exc.code
-        return ErrorInfo(
-            code="component_check_failed",
-            message="组件本地状态检查失败",
-            details=details,
-        )
-
-    @staticmethod
-    def _capability_diagnostics(services: ApplicationServices) -> list[ErrorInfo]:
-        collectors = {item.name for item in services.collectors.describe()}
-        channels = {item.name for item in services.channels.describe()}
-        missing: dict[tuple[str, str], list[str]] = {}
-        for value in services.resources.list("sources"):
-            source = SourceConfig.model_validate(value)
-            if source.collector not in collectors:
-                missing.setdefault(("source", source.collector), []).append(source.id)
-        for value in services.resources.list("channels"):
-            channel = ChannelConfig.model_validate(value)
-            if channel.channel not in channels:
-                missing.setdefault(("channel", channel.channel), []).append(channel.id)
-        return [
-            ErrorInfo(
-                code="capability_missing",
-                message="已保存资源引用的插件能力不可用",
-                details={"kind": kind, "name": name, "resources": sorted(resources)},
-            )
-            for (kind, name), resources in sorted(missing.items())
-        ]
-
     async def shutdown(self) -> None:
+        """记录关闭意图并暂停定时触发，共享可重试的内部清理任务。
+
+        准入关闭由清理流程调用 Workflow.pause_admission，与 trigger 使用同一把锁，
+        避免直接改标记打断已通过首次检查但尚未提交的触发。调用方取消不终止清理，
+        完全关闭后重复调用无副作用。
+        """
         self._shutdown_requested = True
         services = self._services
         if services is not None:
-            # pause_admission must queue on the same lock as trigger before it
-            # closes admission; setting the flag here would reject a trigger that
-            # is already past its first admission check but has not submitted yet.
             services.intervals.paused = True
         if self._shutdown_complete:
             return
@@ -887,6 +514,7 @@ class ApplicationLifecycle:
         await asyncio.shield(task)
 
     async def _shutdown_once(self) -> None:
+        """持锁执行清理；未完成时以 lifecycle_shutdown_failed 暴露逐步诊断。"""
         async with self._lifecycle_lock:
             if self._shutdown_complete:
                 return
@@ -897,26 +525,25 @@ class ApplicationLifecycle:
                     "应用关闭时存在清理失败",
                     {"errors": errors},
                 )
-            self._shutdown = True
             self._shutdown_complete = True
 
     async def _cleanup_startup(self) -> list[dict[str, Any]]:
+        """清理启动已取得的资源并撤下服务容器，返回诊断供原始失败附带。"""
         errors: list[dict[str, Any]] = []
         await self._cleanup_owned(errors, emit_stopped=False)
         self._services = None
-        self._started = False
         return errors
 
     async def _cleanup_owned(self, errors: list[dict[str, Any]], *, emit_stopped: bool) -> bool:
+        """先停准入与运行，再释放 AI、通道、存储，最后关闭日志。
+
+        任一步失败或超时即停止后续清理并向 errors 追加诊断，保留仍被依赖的资源。
+        只有成功释放的组件才清空所有权引用；全部完成返回 True。
+        """
         if self._intervals is not None and self._workflow is not None:
-            workflow = self._workflow
-
-            async def pause_workflow() -> None:
-                await workflow.pause_admission()
-
             if not await self._cleanup(
                 "workflow_pause_admission",
-                pause_workflow,
+                self._workflow.pause_admission,
                 errors,
                 self._shutdown_timeout,
             ):
@@ -950,6 +577,7 @@ class ApplicationLifecycle:
             context = self._checkpointer_context
 
             async def close_checkpointer() -> None:
+                """通过创建时的异步上下文释放 checkpointer。"""
                 await context.__aexit__(None, None, None)
 
             if not await self._cleanup(
@@ -957,7 +585,6 @@ class ApplicationLifecycle:
             ):
                 return False
             self._checkpointer_context = None
-            self._checkpointer = None
 
         if self._session_store is not None:
             store = self._session_store
@@ -993,6 +620,7 @@ class ApplicationLifecycle:
         return True
 
     async def _close_sink(self) -> None:
+        """将日志 sink 的同步关闭接入统一的异步清理接口。"""
         sink = self._log_sink
         if sink is not None:
             sink.close()
@@ -1000,10 +628,15 @@ class ApplicationLifecycle:
     async def _cleanup(
         self,
         name: str,
-        operation: Callable[[], Awaitable[None]],
+        operation: Callable[[], Awaitable[Any]],
         errors: list[dict[str, Any]],
         budget: float,
     ) -> bool:
+        """在 budget 秒内等待具名清理任务，将失败诊断追加到 errors。
+
+        超时不取消任务，下次调用继续等待同一任务；已结束的失败任务则允许重建。
+        外部取消等待同样不取消实际清理，避免提前释放仍在使用的下游依赖。
+        """
         task = self._cleanup_tasks.get(name)
         if task is None:
             task = asyncio.create_task(operation(), name=f"lifecycle:cleanup:{name}")
@@ -1032,10 +665,12 @@ class ApplicationLifecycle:
 
     @staticmethod
     def _consume_task_exception(task: asyncio.Task[Any]) -> None:
+        """提取无人等待的任务异常以免产生警告；后续 await 仍会抛出该异常。"""
         if not task.cancelled():
             task.exception()
 
     def _resource_view_changed(self) -> None:
+        """依据最新资源重建未来的定时计划；关闭意图出现后停止刷新。"""
         if (
             not self._shutdown_requested
             and self._resources is not None

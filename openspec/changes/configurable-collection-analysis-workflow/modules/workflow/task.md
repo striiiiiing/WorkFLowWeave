@@ -40,3 +40,10 @@
 - `git diff --check` 通过；src/tests/README 不再引用 SQLiteRunStore、run_store 或旧 workflow.__main__。旧存储实现专属测试与旧 CLI 测试删除，业务恢复和强退语义迁移到新存储/查询接口。
 
 当前限制：本模块单进程协调，不提供多进程执行器；真实 HTTP 查询/取消及完整启动装配由后续 Interaction/Lifecycle 模块实施。LangGraph 依赖产生现有弃用/序列化警告，测试无失败。
+
+## 中文 docstring 补充（2026-09-19）
+
+- 依据：用户要求对 Workflow 模块逐个补充中文 docstring，采用文档字符串而非行间注释；职责及边界参照本目录 design.md，具体行为以当前实现为准。
+- 覆盖 workflow 包入口、service、nodes、session_store、session_view 和 interval 的模块、类、函数及方法（包括嵌套节点函数）；原英文说明与行间实现意图整合进相应 docstring。
+- 注释重点为固定快照、阶段路由、并发与顺序、幂等提交、正文备份、恢复材料、通知意图/回执及取消边界；没有增加配置默认值或改变业务逻辑，未修改 proposal.md 或 design.md。
+- 验证：6 个 Python 文件共 107 处模块/类/函数/方法均具备中文 docstring；去除 docstring 后与编辑前 AST 完全一致，源码编译、Ruff 和限定范围 git diff --check 均通过。仅文档变更，未新增或运行业务测试。

@@ -1,4 +1,4 @@
-"""The shared read-only view of business archives, independent of checkpoints."""
+"""独立于 LangGraph checkpoint 的只读业务视图，供 API 和历史采集共用。"""
 
 from __future__ import annotations
 
@@ -12,11 +12,18 @@ from logagent.models import ArtifactInfo, PhaseContent, SessionRecord, WorkflowS
 
 
 class SessionView:
+    """从业务条目计算 session 摘要及阶段正文，不提供运行调度或写入接口。"""
     def __init__(self, store):
+        """绑定业务存储，由调用方负责其生命周期。"""
         self._store = store
 
     @staticmethod
     def _record(header: dict, entries: list[dict]) -> SessionRecord:
+        """按业务版本顺序合并状态摘要与各阶段可用性。
+
+        只有 parent/phase 作用域推进 session 状态；子项不会覆盖父级状态。
+        终态事件设置结束时间，后续 running 事件清除结束时间。
+        """
         state = {"status": "created", "stage": None, "error": None}
         phases = {}
         snapshot = "pending"
@@ -48,6 +55,7 @@ class SessionView:
         )
 
     async def get_session(self, session_id: str, *, version: int | None = None) -> SessionRecord:
+        """在线程中读取最新或指定版本的条目，返回该版本的 session 摘要。"""
         header, entries = await asyncio.to_thread(self._store.entries, session_id, version)
         return self._record(header, entries)
 
@@ -56,6 +64,11 @@ class SessionView:
         after: datetime | None = None, before: datetime | None = None,
         exclude_session_id: str | None = None,
     ) -> list[SessionRecord]:
+        """校验分页与带时区的时间边界，筛选 session 后分页返回。
+
+        时间筛选基于创建时间且包含端点；可排除当前 session，供历史采集使用。
+        每条记录独立读取，不提供跨 session 的全局事务快照。
+        """
         if type(limit) is not int or not 1 <= limit <= 1000 or type(offset) is not int or offset < 0:
             raise LogAgentError("invalid_argument", "分页参数无效")
         if any(value is not None and value.tzinfo is None for value in (after, before)):
@@ -79,6 +92,11 @@ class SessionView:
     async def get_phase_content(
         self, session_id: str, stage: WorkflowStage, *, version: int,
     ) -> PhaseContent:
+        """读取指定业务版本之前最近一次该阶段正文及可用性。
+
+        无阶段条目时返回 pending；未保存或过期正文返回对应可用性和空内容，
+        非法阶段或不存在的业务版本由查询边界明确报错。
+        """
         if stage not in {"collect", "analyze", "aggregate", "notify", "finish"}:
             raise LogAgentError("invalid_argument", "阶段无效")
         _, entries = await asyncio.to_thread(self._store.entries, session_id, version)

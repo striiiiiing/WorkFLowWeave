@@ -1,210 +1,27 @@
-"""Owned standard-library JSON logging with bounded rotation and redaction."""
+"""管理应用日志 handler 的独占所有权、按字节轮转和脱敏写入诊断。"""
 
 from __future__ import annotations
 
 import logging
-import math
-import re
 import sys
 import threading
 from collections.abc import Callable
-from datetime import UTC, datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
 
-import orjson
-
 from logagent.models import ErrorInfo
 
-_MAX_BYTES = 10 * 1024 * 1024
+from .formatting import _MAX_BYTES, _MIN_MAX_BYTES, RedactingJsonFormatter
+
 _BACKUP_COUNT = 5
-_MIN_MAX_BYTES = 128
-_FIELD_MAX_BYTES = 256
 _HANDLER_MARKER = "_logagent_lifecycle_handler"
-_HANDLER_OWNER = "_logagent_lifecycle_owner"
 _LOGGER_NAME = "logagent"
 _OWNERSHIP_LOCK = threading.RLock()
-_SUMMARY = re.compile(r"^[A-Za-z][A-Za-z0-9_.:-]{0,159}$")
-_CORRELATION_FIELDS = (
-    "workflow_id",
-    "session_id",
-    "stage",
-    "source_id",
-    "task_id",
-    "channel_id",
-    "output_id",
-    "error_code",
-    "delivery_status",
-    "delivery_uncertain",
-    "status",
-    "scope",
-    "active_runs",
-    "attempt",
-    "will_retry",
-    "status_code",
-    "uncertain",
-)
-_AUTHORIZATION = re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/\-=]+")
-_NAMED_SECRET = re.compile(
-    r"(?i)\b(api[_-]?key|password|secret|token|authorization|credential|master[_-]?key)"
-    r"\b\s*[:=]\s*([^\s,;]+)"
-)
-_URL_CREDENTIAL = re.compile(r"(?i)(https?://)([^/\s:@]+):([^@\s/]+)@")
-
-
-def _truncate_text(value: str, max_bytes: int) -> str:
-    encoded = value.encode("utf-8")
-    if len(encoded) <= max_bytes:
-        return value
-    if max_bytes <= 3:
-        return encoded[:max_bytes].decode("utf-8", "ignore")
-    return encoded[: max_bytes - 3].decode("utf-8", "ignore") + "..."
-
-
-def _redact_text(value: str) -> str:
-    value = _AUTHORIZATION.sub(lambda match: f"{match.group(1)} [REDACTED]", value)
-    value = _NAMED_SECRET.sub(lambda match: f"{match.group(1)}=[REDACTED]", value)
-    return _URL_CREDENTIAL.sub(lambda match: f"{match.group(1)}[REDACTED]@", value)
-
-
-def _safe_value(value: Any, *, max_bytes: int = _FIELD_MAX_BYTES) -> Any:
-    """Return only bounded primitives; arbitrary objects are never stringified."""
-    if type(value) is str:
-        return _truncate_text(_redact_text(value), max_bytes)
-    if type(value) is bool:
-        return value
-    if type(value) is int:
-        if -(2**63) <= value <= 2**64 - 1:
-            return value
-        return "[integer omitted]"
-    if type(value) is float:
-        return value if math.isfinite(value) else None
-    if value is None:
-        return None
-    return "[unsupported value omitted]"
-
-
-def _safe_summary(record: logging.LogRecord) -> str:
-    # record.getMessage() can invoke arbitrary __str__ methods on arguments.
-    if type(record.args) is not tuple or record.args:
-        return "[formatted arguments omitted]"
-    if type(record.msg) is str and _SUMMARY.fullmatch(record.msg):
-        return _redact_text(record.msg)
-    return "[message omitted]"
-
-
-def _safe_event(record: logging.LogRecord) -> str:
-    event = record.__dict__.get("event")
-    if type(event) is str and _SUMMARY.fullmatch(event):
-        return _redact_text(event)
-    return "log"
-
-
-def _safe_timestamp(created: Any) -> str:
-    if type(created) is int:
-        if not -(2**63) <= created <= 2**63 - 1:
-            return "1970-01-01T00:00:00Z"
-    elif type(created) is float and math.isfinite(created):
-        pass
-    else:
-        return "1970-01-01T00:00:00Z"
-    try:
-        timestamp = datetime.fromtimestamp(created, UTC)
-    except (OSError, OverflowError, TypeError, ValueError):
-        return "1970-01-01T00:00:00Z"
-    return timestamp.isoformat().replace("+00:00", "Z")
-
-
-def _bounded_json(payload: dict[str, Any], limit: int) -> str:
-    candidate = dict(payload)
-    encoded = orjson.dumps(candidate)
-    if len(encoded) <= limit:
-        return encoded.decode("utf-8")
-
-    candidate.pop("message", None)
-    encoded = orjson.dumps(candidate)
-    if len(encoded) <= limit:
-        return encoded.decode("utf-8")
-
-    for field in reversed(_CORRELATION_FIELDS):
-        candidate.pop(field, None)
-        encoded = orjson.dumps(candidate)
-        if len(encoded) <= limit:
-            return encoded.decode("utf-8")
-    candidate.pop("exception_type", None)
-    encoded = orjson.dumps(candidate)
-    if len(encoded) <= limit:
-        return encoded.decode("utf-8")
-
-    event = candidate.get("event", "log")
-    module = candidate.get("module", "logagent")
-    level = candidate.get("level", "INFO")
-    timestamp = candidate.get("time", "1970-01-01T00:00:00Z")
-    for event_bytes in (64, 32, 16, 8):
-        candidate["event"] = (
-            _truncate_text(event, event_bytes) if type(event) is str else "log"
-        )
-        candidate["module"] = (
-            _truncate_text(module, 16) if type(module) is str else "logagent"
-        )
-        candidate["level"] = (
-            _truncate_text(level, 8) if type(level) is str else "INFO"
-        )
-        candidate["time"] = (
-            _truncate_text(timestamp, 32)
-            if type(timestamp) is str
-            else "1970-01-01T00:00:00Z"
-        )
-        encoded = orjson.dumps(candidate)
-        if len(encoded) <= limit:
-            return encoded.decode("utf-8")
-
-    fallback = {
-        "time": _truncate_text(str(timestamp), 24),
-        "level": _truncate_text(str(level), 8),
-        "module": "log",
-        "event": "log",
-    }
-    encoded = orjson.dumps(fallback)
-    if len(encoded) > limit:
-        raise ValueError("max_bytes is too small for a bounded JSON log record")
-    return encoded.decode("utf-8")
-
-
-class RedactingJsonFormatter(logging.Formatter):
-    """Serialize bounded diagnostic summaries without formatting record arguments."""
-
-    def __init__(self, max_bytes: int = _MAX_BYTES) -> None:
-        if type(max_bytes) is not int or max_bytes < _MIN_MAX_BYTES:
-            raise ValueError(f"max_bytes must be an integer at least {_MIN_MAX_BYTES}")
-        super().__init__()
-        self._limit = max_bytes - 1
-
-    def format(self, record: logging.LogRecord) -> str:
-        payload: dict[str, Any] = {
-            "time": _safe_timestamp(record.created),
-            "level": _safe_value(record.levelname, max_bytes=16),
-            "module": _safe_value(record.name, max_bytes=128),
-            "event": _safe_event(record),
-            "message": _safe_summary(record),
-        }
-        for field in _CORRELATION_FIELDS:
-            if field in record.__dict__:
-                payload[field] = _safe_value(record.__dict__[field])
-
-        exc_info = record.__dict__.get("exc_info")
-        if exc_info:
-            exception_type = getattr(exc_info[0], "__name__", None)
-            if type(exception_type) is str:
-                payload["exception_type"] = _redact_text(
-                    _truncate_text(exception_type, 128)
-                )
-        return _bounded_json(payload, self._limit)
 
 
 class _SafeRotatingFileHandler(RotatingFileHandler):
-    """Capture write failures locally without writing the original record to stderr."""
+    """本地记录写入失败，避免标准错误处理将原始日志输出到 stderr。"""
 
     def __init__(
         self,
@@ -212,21 +29,24 @@ class _SafeRotatingFileHandler(RotatingFileHandler):
         on_error: Callable[[ErrorInfo], None],
         **kwargs: Any,
     ) -> None:
+        """注册脱敏错误回调，其余文件与轮转参数交给标准库初始化。"""
         self._on_error = on_error
         self._last_error: ErrorInfo | None = None
         super().__init__(*args, **kwargs)
 
     @property
     def last_error(self) -> ErrorInfo | None:
+        """返回最近一次写入诊断的深拷贝，成功写入后为 None。"""
         error = self._last_error
         return error.model_copy(deep=True) if error is not None else None
 
     def emit(self, record: logging.LogRecord) -> None:
+        """开始新的写入尝试，清除上次诊断并由 handleError 捕获本次失败。"""
         self._last_error = None
         super().emit(record)
 
     def shouldRollover(self, record: logging.LogRecord) -> bool:
-        # The stdlib counts characters; our on-disk budget counts UTF-8 bytes.
+        """按包含行结束符的 UTF-8 字节数判断轮转，避免标准库字符计数低估大小。"""
         if self.stream is None:
             self.stream = self._open()
         self.stream.seek(0, 2)
@@ -235,6 +55,7 @@ class _SafeRotatingFileHandler(RotatingFileHandler):
         return size > 0 and size + length > self.maxBytes
 
     def handleError(self, record: logging.LogRecord) -> None:
+        """保存异常类型并通知 sink，不转储原始记录、异常正文或堆栈。"""
         del record
         exc_type = sys.exc_info()[0]
         exception_type = (
@@ -252,7 +73,10 @@ class _SafeRotatingFileHandler(RotatingFileHandler):
 
 
 class JsonLogSink:
-    """Own one package logger handler so repeated lifecycle creation is deterministic."""
+    """独占一个应用日志 handler，并在关闭时恢复 logger 原配置。
+
+    所有权锁协调多个 sink，实例锁保护启停和探测，独立错误锁保护诊断快照。
+    """
 
     def __init__(
         self,
@@ -261,6 +85,7 @@ class JsonLogSink:
         max_bytes: int = _MAX_BYTES,
         backup_count: int = _BACKUP_COUNT,
     ) -> None:
+        """校验轮转字节上限和备份数量，文件与目录推迟到 start 创建。"""
         if type(max_bytes) is not int or max_bytes < _MIN_MAX_BYTES:
             raise ValueError(f"max_bytes must be an integer at least {_MIN_MAX_BYTES}")
         if type(backup_count) is not int or backup_count < 1:
@@ -279,20 +104,24 @@ class JsonLogSink:
 
     @property
     def error(self) -> ErrorInfo | None:
+        """在线程锁内读取诊断深拷贝，避免调用方修改 sink 状态。"""
         with self._error_lock:
             error = self._error
             return error.model_copy(deep=True) if error is not None else None
 
     def _set_error(self, error: ErrorInfo | None) -> None:
+        """以深拷贝替换诊断快照，None 表示清除当前错误。"""
         with self._error_lock:
             self._error = error.model_copy(deep=True) if error is not None else None
 
     def _record_error(self, error: ErrorInfo) -> None:
+        """仅在 sink 正式持有 handler 时接收其写入错误。"""
         if self._state == "started" and self._handler is not None:
             self._set_error(error)
 
     @staticmethod
     def _generic_error(code: str, message: str, exc: Exception) -> ErrorInfo:
+        """用固定消息和异常类型构造诊断，省略原始异常内容。"""
         return ErrorInfo(
             code=code,
             message=message,
@@ -300,12 +129,17 @@ class JsonLogSink:
         )
 
     def _conflicting_handler(self) -> logging.Handler | None:
+        """查找已带生命周期所有权标记的 handler，供持锁启动时检查冲突。"""
         for handler in self._logger.handlers:
             if getattr(handler, _HANDLER_MARKER, False):
                 return handler
         return None
 
     def start(self) -> None:
+        """创建日志文件并取得 handler 所有权，启用 INFO 且关闭向父 logger 传播。
+
+        已启动时无副作用，关闭后允许重新启动；另一生命周期 sink 已占用时显式失败。
+        """
         with _OWNERSHIP_LOCK:
             with self._lock:
                 if self._state == "started":
@@ -329,7 +163,6 @@ class JsonLogSink:
                         on_error=self._record_error,
                     )
                     setattr(handler, _HANDLER_MARKER, True)
-                    setattr(handler, _HANDLER_OWNER, id(self))
                     handler.setFormatter(RedactingJsonFormatter(self._max_bytes))
                     self._logger.addHandler(handler)
                     self._logger.setLevel(logging.INFO)
@@ -351,12 +184,13 @@ class JsonLogSink:
                 self._state = "started"
 
     def check(self) -> ErrorInfo | None:
-        """Run a local write probe; never logs recursively or performs remote I/O."""
+        """直接向 handler 写入本地探测记录，返回诊断或表示成功的 None。
+
+        绕过 logger 避免递归，不执行远程 I/O；成功探测会清除之前的写入错误。
+        """
         with self._lock:
             if self._state == "closed":
-                self._set_error(
-                    ErrorInfo(code="logging_closed", message="日志 sink 已关闭")
-                )
+                self._set_error(ErrorInfo(code="logging_closed", message="日志 sink 已关闭"))
                 return self.error
             if self._state != "started" or self._handler is None:
                 return ErrorInfo(
@@ -385,6 +219,10 @@ class JsonLogSink:
             return self.error
 
     def close(self) -> None:
+        """移除并关闭 handler，恢复原日志级别与传播设置；重复关闭无副作用。
+
+        关闭失败仍恢复 logger 配置并记录诊断，同时抛出脱敏后的 RuntimeError。
+        """
         with _OWNERSHIP_LOCK:
             with self._lock:
                 if self._state == "closed":

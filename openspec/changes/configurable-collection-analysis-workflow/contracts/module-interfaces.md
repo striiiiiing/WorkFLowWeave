@@ -30,7 +30,9 @@ SessionView 只读取 SessionStore，列表返回每个 session 的最新业务�
 
 ## AI 与 Channel
 
-`AIService.execute(config, prompt, input_text, *, model, task_id="task", context=None)` 接收显式模型选择并返回 AnalysisResult。validate 检查全部模型参数与所选模型；`model_factories` 注入按渠道接口创建 `BaseChatModel` 的工厂。内置仅 `http` 对应 OpenAI-compatible `ChatOpenAI`，直接异步 `ainvoke`，无生产 Mock 或旧 Provider.complete 协议。独立 SystemMessage/HumanMessage，模型参数来自唯一的 models[model] 并通过 extra_body 传递。单一 600 秒默认预算覆盖凭据解析、请求及退避，默认最多 6 次尝试，SDK 重试关闭；连接前失败和 HTTP 408/429/5xx 可重试，每次错误立即汇报，认证/协议错误及读写中断不重试。模块无会话/结果存储，close 幂等且有界，清理错误单独报告。
+`AIService.execute(config, prompt, input_text, *, model, task_id="task", context=None, on_cancel=None)` 接收显式模型选择并返回 AnalysisResult。validate 检查全部模型参数与所选模型；`channel_factories` 注入 `ChannelFactory.create(config) -> AIChannel`，渠道提供 start/create_model/list_models/close。正式仅注册 `http` 对应 OpenAI-compatible Chat Completions，模型通过 LangChain `ChatOpenAI.ainvoke` 调用。AIService 提供 start_channel/close_channel/list_models；模型发现 GET base_url/models，不修改用户配置的 models。相同 provider/base_url/凭据引用共享连接，关闭会取消活动操作，重新使用须显式启动；URL 或凭据引用变化保持已有快照的连接独立。
+
+SystemMessage/HumanMessage 分离；`models[model]` 是 JSON 参数唯一来源，通过 extra_body 传递，enable_thinking 为布尔值，reasoning_effort 为 low/medium/high/xhigh/max，关闭思考不能同时指定强度。沿用 AIConfig 的默认 timeout=600 秒/retries=5，总预算覆盖渠道启动、凭据、请求及退避，SDK 重试关闭。连接前失败和 HTTP 408/429/5xx 可重试，认证/协议错误及读写中断不重试。错误结果保留异常全文、traceback 与上游 HTTP 错误正文，已解析凭据与 Authorization 脱敏；日志保留结构化摘要。取消返回 cancelled，调用可选同步 on_cancel(CancellationNotice) 并记录取消事件。无会话/结果存储；close 幂等且有界，清理错误单独报告。
 
 ChannelManager 按 x-logagent-workflow 注解分离 options，依据 channel ID、类型及实例 options 版本复用长期实例；create(config, credentials) 只接收实例 options，send(notification, *, options) 接收本次调用 options；首次发送前只初始化一次，在卸载或系统关闭时 stop。并发发送、配置替换及旧快照使用保持相应实例生命周期。每次 send 只处理一条 Notification 并返回 DeliveryResult，不排队、不缓存消息、不自动重试。Mock 专用持久 logging Handler 追加 UTF-8 标题和正文文本；不得混入应用诊断日志或将其改成 JSON 记录。
 
