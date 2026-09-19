@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 import pytest
-from ai_helpers import TestModelFactory
+from workflow_ai_helpers import TestChannelFactory
 
 from logagent.channel import builtin_channels
 from logagent.collection import LogsCollector, builtin_collectors
@@ -102,7 +102,7 @@ plugin = Plugin()
 """
 
 
-class BlockingModelFactory(TestModelFactory):
+class BlockingChannelFactory(TestChannelFactory):
     def __init__(self) -> None:
         super().__init__(self.respond)
         self.calls = 0
@@ -210,7 +210,7 @@ def _rewrite_workflow(config: SystemConfig, **updates) -> None:
     path.write_text(json.dumps(data), encoding="utf-8")
 
 
-async def _wait_for_calls(provider: BlockingModelFactory, count: int) -> None:
+async def _wait_for_calls(provider: BlockingChannelFactory, count: int) -> None:
     async with asyncio.timeout(5):
         while provider.calls < count:
             provider.updated.clear()
@@ -246,7 +246,7 @@ async def test_start_failure_retains_diagnostic_and_cleans_owned_resources(tmp_p
     context = CheckpointerContext()
     lifecycle = ApplicationLifecycle(
         _config(tmp_path),
-        model_factories={"mock": TestModelFactory()},
+        channel_factories={"mock": TestChannelFactory()},
         checkpointer_context_factory=lambda _: context,
     )
 
@@ -285,7 +285,7 @@ async def test_temporary_config_full_assembly_health_and_idempotent_shutdown(tmp
     )
     lifecycle = await ApplicationLifecycle.from_file(
         system_file,
-        model_factories={"mock": TestModelFactory()},
+        channel_factories={"mock": TestChannelFactory()},
     )
 
     services = await lifecycle.start()
@@ -323,7 +323,7 @@ async def test_resources_reload_rebuilds_future_plan_and_disabled_rejects_manual
     clock = [0.0]
     lifecycle = ApplicationLifecycle(
         config,
-        model_factories={"mock": TestModelFactory()},
+        channel_factories={"mock": TestChannelFactory()},
         clock=lambda: clock[0],
     )
     services = await lifecycle.start()
@@ -346,11 +346,11 @@ async def test_resources_reload_rebuilds_future_plan_and_disabled_rejects_manual
 async def test_interval_and_manual_share_capacity_snapshot_and_cancel(tmp_path):
     config = _config(tmp_path, max_concurrent_runs=1)
     await _seed_resources(config)
-    provider = BlockingModelFactory()
+    provider = BlockingChannelFactory()
     clock = [0.0]
     lifecycle = ApplicationLifecycle(
         config,
-        model_factories={"mock": provider},
+        channel_factories={"mock": provider},
         clock=lambda: clock[0],
     )
     services = await lifecycle.start()
@@ -395,7 +395,7 @@ async def test_shutdown_waits_for_admitted_interval_archive_before_stopping(tmp_
     )
     lifecycle = ApplicationLifecycle(
         config,
-        model_factories={"mock": TestModelFactory()},
+        channel_factories={"mock": TestChannelFactory()},
         shutdown_timeout=5.0,
     )
     services = await lifecycle.start()
@@ -463,8 +463,8 @@ async def test_plugin_reload_conflict_restores_admission_and_later_success_recov
     config = _config(tmp_path, max_concurrent_runs=1)
     _write_plugin(config.plugin_dir, "external", _COLLECTOR_PLUGIN)
     await _seed_resources(config, collector="external")
-    provider = BlockingModelFactory()
-    lifecycle = ApplicationLifecycle(config, model_factories={"mock": provider})
+    provider = BlockingChannelFactory()
+    lifecycle = ApplicationLifecycle(config, channel_factories={"mock": provider})
     services = await lifecycle.start()
 
     await services.workflow.trigger("timed", session_id="active")
@@ -491,7 +491,7 @@ async def test_invalid_plugin_degrades_and_fixed_reload_recovers_saved_resource(
     await _seed_resources(config, collector="external")
     entry.write_text("raise RuntimeError('broken plugin')\n", encoding="utf-8")
 
-    lifecycle = ApplicationLifecycle(config, model_factories={"mock": TestModelFactory()})
+    lifecycle = ApplicationLifecycle(config, channel_factories={"mock": TestChannelFactory()})
     services = await lifecycle.start()
     degraded = await lifecycle.health()
     assert degraded.status == "degraded"
@@ -521,7 +521,7 @@ async def test_plugin_reload_unloads_old_owner_and_injects_new_view(tmp_path):
         kind="channel",
     )
     await _seed_resources(config, channel="external_channel", channel_path=events)
-    lifecycle = ApplicationLifecycle(config, model_factories={"mock": TestModelFactory()})
+    lifecycle = ApplicationLifecycle(config, channel_factories={"mock": TestChannelFactory()})
     services = await lifecycle.start()
 
     await services.workflow.trigger("timed", session_id="old-run")
@@ -592,7 +592,7 @@ async def test_json_logging_rotates_redacts_and_logs_collector_reads(tmp_path):
 
 async def test_log_file_none_disables_logging_without_default_path(tmp_path):
     config = _config(tmp_path).model_copy(update={"log_file": None})
-    lifecycle = ApplicationLifecycle(config, model_factories={"mock": TestModelFactory()})
+    lifecycle = ApplicationLifecycle(config, channel_factories={"mock": TestChannelFactory()})
 
     services = await lifecycle.start()
     try:
@@ -615,7 +615,7 @@ async def test_resource_save_rebuilds_future_interval_plan(tmp_path):
     clock = [0.0]
     lifecycle = ApplicationLifecycle(
         config,
-        model_factories={"mock": TestModelFactory()},
+        channel_factories={"mock": TestChannelFactory()},
         clock=lambda: clock[0],
     )
     services = await lifecycle.start()
@@ -660,7 +660,7 @@ async def test_concurrent_start_and_shutdown_do_not_leak_resources(tmp_path):
     context = CheckpointerContext()
     lifecycle = ApplicationLifecycle(
         config,
-        model_factories={"mock": TestModelFactory()},
+        channel_factories={"mock": TestChannelFactory()},
         checkpointer_context_factory=lambda _: context,
     )
 
@@ -781,7 +781,7 @@ async def test_pause_admission_timeout_does_not_stop_intervals_or_close_dependen
 async def test_health_failure_rejects_runs_and_recovers_after_local_check(tmp_path):
     config = _config(tmp_path).model_copy(update={"log_file": None})
     await _seed_resources(config)
-    lifecycle = ApplicationLifecycle(config, model_factories={"mock": TestModelFactory()})
+    lifecycle = ApplicationLifecycle(config, channel_factories={"mock": TestChannelFactory()})
     services = await lifecycle.start()
     try:
         original_session_ids = services.session_store.session_ids
@@ -824,7 +824,7 @@ async def test_cancelled_plugin_reload_finishes_without_partial_publish(tmp_path
         kind="channel",
     )
     await _seed_resources(config, channel="external_channel", channel_path=events)
-    lifecycle = ApplicationLifecycle(config, model_factories={"mock": TestModelFactory()})
+    lifecycle = ApplicationLifecycle(config, channel_factories={"mock": TestChannelFactory()})
     services = await lifecycle.start()
     try:
         await services.workflow.trigger("timed", session_id="old-run")
@@ -869,7 +869,7 @@ async def test_plugin_publish_failure_requires_explicit_successful_reload(tmp_pa
     config = _config(tmp_path)
     _write_plugin(config.plugin_dir, "external", _COLLECTOR_PLUGIN)
     await _seed_resources(config, collector="external")
-    lifecycle = ApplicationLifecycle(config, model_factories={"mock": TestModelFactory()})
+    lifecycle = ApplicationLifecycle(config, channel_factories={"mock": TestChannelFactory()})
     services = await lifecycle.start()
     try:
         original_reload = services.channels.reload_register
@@ -897,5 +897,51 @@ async def test_plugin_publish_failure_requires_explicit_successful_reload(tmp_pa
         assert services.workflow.coordinator.accepting is True
         assert services.intervals.paused is False
         assert (await lifecycle.health()).status == "ready"
+    finally:
+        await lifecycle.shutdown()
+
+
+@pytest.mark.parametrize("component", ["ai", "logging"])
+async def test_health_reports_closed_component_and_disables_admission(tmp_path, component):
+    lifecycle = ApplicationLifecycle(_config(tmp_path), channel_factories={})
+    services = await lifecycle.start()
+    try:
+        if component == "ai":
+            await services.ai.close()
+        else:
+            lifecycle._log_sink.close()
+
+        report = await lifecycle.health()
+        health = next(item for item in report.components if item.component == component)
+        assert health.status == "unavailable"
+        assert health.required is True
+        assert health.error.code == (
+            "logging_closed" if component == "logging" else "component_unavailable"
+        )
+        assert report.status == "unavailable"
+        assert report.accepting_runs is False
+        assert services.workflow.coordinator.accepting is False
+    finally:
+        await lifecycle.shutdown()
+
+
+async def test_health_reports_log_probe_exception_and_recovers(tmp_path, monkeypatch):
+    lifecycle = ApplicationLifecycle(_config(tmp_path), channel_factories={})
+    services = await lifecycle.start()
+
+    def broken_check():
+        raise OSError("sensitive local path")
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(lifecycle._log_sink, "check", broken_check)
+            report = await lifecycle.health()
+        health = next(item for item in report.components if item.component == "logging")
+        assert health.error.code == "component_check_failed"
+        assert health.error.details == {"component": "logging", "exception_type": "OSError"}
+        assert report.accepting_runs is False
+        assert services.workflow.coordinator.accepting is False
+        assert (await lifecycle.health()).status == "ready"
+        assert services.workflow.coordinator.accepting is True
     finally:
         await lifecycle.shutdown()

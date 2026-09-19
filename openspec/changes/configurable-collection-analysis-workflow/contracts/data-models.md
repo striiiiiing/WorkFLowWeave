@@ -8,7 +8,7 @@
 
 `SystemConfig` 包含 data_dir、plugin_dir、host、port、max_concurrent_runs、log_file、master_key_env 和 master_key_file。全局容量默认 4；日志路径只是标准 logging 输出配置，不是 Collection 自有数据库。
 
-`SourceConfig` 描述来源、options、setters、template、timeout 和来源策略；`AIConfig` 描述模型请求配置；`ChannelConfig` 描述通知实例配置。AIConfig 以非空 `models: {模型名: JSON参数}` 映射作为模型选项的唯一来源，共享 provider/base_url/api_key/system_prompt/timeout/retries。模型名允许供应商路径，但不能为空或全为空白。默认 timeout=600 秒、retries=5，依据 AI design 的非流式长思考场景。旧 model/model_options 字段不再接受，旧配置须显式迁移，不能隐式猜选模型。
+`SourceConfig` 描述来源、options、setters、template、timeout 和来源策略；`AIConfig` 描述模型请求配置；`ChannelConfig` 描述通知实例配置。AIConfig 以非空 `models: {模型名: JSON参数}` 映射作为模型选项的唯一来源，共享 provider/base_url/api_key/system_prompt/timeout/retries。模型名允许供应商路径，但不能为空或全为空白。默认 timeout=600 秒、retries=5，沿用现有 AIConfig 请求预算；当前 AI design 未指定这些数值。模型 JSON 参数中的 enable_thinking 为布尔值，reasoning_effort 为 low/medium/high/xhigh/max，关闭思考与指定强度互斥。旧 model/model_options 字段不再接受，旧配置须显式迁移，不能隐式猜选模型。
 
 AnalysisTask 必填 model；FanInConfig 的 ai/model 同时提供或同时省略，省略表示纯拼接。WorkflowSnapshot 校验所有所选模型存在；资源更新若删除被引用模型，整个候选资源视图拒绝发布。
 

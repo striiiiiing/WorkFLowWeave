@@ -31,3 +31,25 @@
 - `rtk proxy uv run ruff format --check src/logagent/lifecycle/service.py src/logagent/lifecycle/__init__.py tests/test_lifecycle.py`：通过。
 
 未在此模块执行全量构建或全量测试；`logging.py`/独立日志测试和 Workflow 接口分别由对应代理负责，Lifecycle 专项测试中使用的接口已通过集成测试。
+
+## 2026-09-19 可读性重构
+
+依据：用户要求拆分并精简 lifecycle；[Lifecycle 设计](./design.md) 的依赖装配、本地健康检查、reload 与有序清理职责保持一致。本次为实现层结构性重构，设计不变，更新当前 task。
+
+- [x] `services.py` 集中定义装配结果；`resources.py` 承担路径解析、资源校验适配和发布后调度通知。公共导出和构造注入参数沿用当前实现。
+- [x] `health.py` 集中本地探针、组件结果构造和插件诊断。`service.py` 继续唯一负责准入变更及重载恢复状态，避免辅助模块持有第二份生命周期状态。
+- [x] 删除可由 `_services` 推导的 `_started`、与关闭完成同步的 `_shutdown`、仅赋值和清空的 `_checkpointer`；合并插件重载的重复错误处理。保留明确的清理依赖顺序及超时任务复用。
+- [x] 日志健康状态直接取 `JsonLogSink.check()`，移除生命周期层对其 handler/stream/error 的重复判定，依据本任务既有日志接口约定。AI 关闭状态从当前 `AIService.channels` 管理器取得，适配工作区已完成的 [AI Channel 拆分](../ai/task.md)，移除旧字段缺失时误报可用的路径。
+- [x] 日志脱敏/格式化拆入 `formatting.py`，sink 留在 `logging.py`，保留原公共导入路径；重复序列化分支按原字段裁剪顺序合并。
+- [x] 完成生命周期、日志、Workflow 及 Interaction 回归、lint/format、包构建和临时目录完整装配烟测。
+
+默认值依据：沿用本 task 原有 30 秒关闭预算、10 秒组件清理预算和日志 10 MiB / 5 份轮转配置；本次不增加超时、后台任务或新的恢复策略。重构前专项基线：23 passed（60 秒硬超时）。
+
+验证结果：
+
+- `timeout 60s uv run pytest tests/test_lifecycle.py tests/test_lifecycle_logging.py tests/test_workflow_lifecycle.py -q`：26 passed，包含新增 AI/日志关闭健康状态及日志探针异常恢复验证。
+- `timeout 60s uv run pytest tests/test_interaction.py tests/test_workflow_lifecycle.py tests/test_workflow_interval.py tests/test_workflow_integration.py tests/test_workflow_overrides.py tests/test_workflow_recovery.py tests/test_resource_store.py -q`：98 passed。
+- `uv run ruff check src/logagent/lifecycle tests/test_lifecycle.py` 和对应 `ruff format --check`：通过。
+- `uv build --out-dir /tmp/logagent-lifecycle-build`：sdist/wheel 构建成功，wheel 包含所有新拆分模块。
+- 临时目录下真实 Lifecycle + FastAPI TestClient：健康检查 ready、resources/plugins 两种重载、恢复准入、幂等关闭及 JSON 启停日志均通过；未访问远端服务。
+- 测试仅出现 LangGraph/Starlette 已有弃用警告；本次变更范围内 `git diff --check` 通过。主文件由 1044 行缩减至 621 行，模块总行数由 1475 行缩减至 1381 行（含新增模块和导入）。

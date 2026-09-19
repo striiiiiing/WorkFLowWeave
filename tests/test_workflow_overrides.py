@@ -4,8 +4,8 @@ import asyncio
 from copy import deepcopy
 
 import pytest
-from ai_helpers import TestModelFactory
 from pydantic import ValidationError
+from workflow_ai_helpers import TestChannelFactory
 
 from logagent.ai import AIService
 from logagent.channel import ChannelManager, MockFileChannelType
@@ -233,7 +233,7 @@ async def test_real_workflows_persist_distinct_inputs_and_recover_original_bindi
     store.save("ai", AIConfig(id="ai", provider="test", models={"model": {}}))
     output = tmp_path / "notifications.txt"
     store.save("channels", ChannelConfig(id="file", channel="mock", options={"path": str(output)}))
-    ai = AIService(model_factories={"test": TestModelFactory()})
+    ai = AIService(channel_factories={"test": TestChannelFactory()})
     channels = ChannelManager(registry.channelRegister)
     service = WorkflowService(CollectorManager(registry.collectorRegister), ai, channels, store,
                               database=tmp_path / "sessions.sqlite3")

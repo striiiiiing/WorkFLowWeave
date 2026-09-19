@@ -1,4 +1,9 @@
-"""LangGraph execution with idempotent, independently readable business archives."""
+"""Workflow 运行编排：固定快照、执行阶段图、记录业务事实并恢复原运行。
+
+LangGraph checkpoint 管理控制进度，SessionStore 保存独立可读的业务存档；
+两者通过稳定引用衔接，不假设跨存储事务。阅读顺序可从 trigger、_execute、
+_graph 进入各阶段，再检查 recover 与通知意图/回执的恢复边界。
+"""
 
 from __future__ import annotations
 
@@ -40,6 +45,11 @@ _ID = TypeAdapter(ID)
 
 
 class WorkflowResult(StrictModel):
+    """一次运行的业务结果，按阶段存档逐步组装。
+
+    collection、analyses 保持定义顺序；outputs 是通知使用的冻结输出。
+    stopped 表示不再进入下游业务阶段，并不必然表示失败，例如全空跳过。
+    """
     session_id: ID
     workflow_id: ID
     stage: Literal["collect", "analyze", "aggregate", "notify", "finish"] = "collect"
@@ -59,18 +69,26 @@ class WorkflowResult(StrictModel):
 
     @property
     def collection_results(self):
+        """返回采集结果列表，作为 collection 字段的访问别名。"""
         return self.collection
 
     @property
     def analysis_results(self):
+        """返回分析结果列表，作为 analyses 字段的访问别名。"""
         return self.analyses
 
 
 def _merge(left, right):
+    """合并并行分支的引用映射；相同键使用右侧值。"""
     return {**left, **right}
 
 
 class _State(TypedDict):
+    """父图控制状态，仅保存存档引用及运行控制字段。
+
+    phases 按阶段关联业务存档；generation 区分失败重试代次，
+    retry_stage 记录允许重新进入的阶段，恢复不靠业务摘要猜测进度。
+    """
     session_id: str
     phases: Annotated[dict[str, str], _merge]
     stopped: bool
@@ -80,16 +98,20 @@ class _State(TypedDict):
 
 
 class _ChildState(_State):
+    """在父图状态上增加逐项存档引用，供采集和分析子图汇合使用。"""
     items: Annotated[dict[str, str], _merge]
 
 
 async def _call(fn: Callable, *args, **kwargs):
+    """调用注入的同步或异步接口，统一返回实际结果。"""
     value = fn(*args, **kwargs)
     return await value if inspect.isawaitable(value) else value
 
 
 def _safe_node(operation):
+    """包装图节点，将非业务异常转换为脱敏的 Workflow 错误。"""
     async def node(state):
+        """执行原节点并保留已有业务错误；取消不在普通异常捕获范围内。"""
         try:
             return await operation(state)
         except LogAgentError:
@@ -104,6 +126,7 @@ def _safe_node(operation):
 
 
 def _archive_references(value):
+    """递归提取 checkpoint 或待提交写入中的 items、phases 存档引用。"""
     if isinstance(value, dict):
         for key, child in value.items():
             if key in {"items", "phases"} and isinstance(child, dict):
@@ -116,11 +139,15 @@ def _archive_references(value):
 
 
 class RunCoordinator:
-    # Retain a small, explicit wait window, including errors. Business history lives
-    # in SessionStore; completed tasks must not accumulate for the service lifetime.
+    """管理进程内运行任务、容量与取消，不承担持久历史查询。
+
+    最近 32 个完成任务保留为有限等待窗口，包含运行异常；
+    长期业务历史由 SessionStore 保存，避免任务正文在内存中无界积累。
+    """
     COMPLETED_LIMIT = 32
 
     def __init__(self, *, max_concurrent_runs=4):
+        """初始化任务集合和准入状态；并发容量必须为正整数。"""
         if type(max_concurrent_runs) is not int or max_concurrent_runs < 1:
             raise ValueError("max_concurrent_runs must be positive")
         self._max = max_concurrent_runs
@@ -131,12 +158,15 @@ class RunCoordinator:
 
     @property
     def active(self):
+        """返回仍在活动任务集合中的运行数量。"""
         return len(self._tasks)
 
     def contains(self, sid):
+        """判断指定 session 是否仍由活动任务集合持有。"""
         return sid in self._tasks
 
     def check(self, sid):
+        """检查准入开关、同 session 互斥和全局容量，拒绝时抛出业务错误。"""
         if not self.accepting:
             raise LogAgentError("not_ready", "Workflow 未开放运行准入")
         if sid in self._tasks:
@@ -145,17 +175,19 @@ class RunCoordinator:
             raise LogAgentError("capacity_exhausted", "运行容量已满")
 
     def submit(self, sid, operation):
+        """创建并持有后台任务；完成后移入有界等待窗口。"""
         self.check(sid)
         started = self._started[sid] = asyncio.Event()
 
         async def run():
+            """标记协程已启动，再进入实际运行的异常处理边界。"""
             started.set()
             return await operation()
 
         def done(task):
+            """清理活动句柄并取出异常，避免无人等待的任务异常丢失诊断。"""
             self._tasks.pop(sid, None)
             self._started.pop(sid, None)
-            # Retrieve exceptions even when no HTTP client waits for this task.
             if not task.cancelled():
                 task.exception()
             self._completed[sid] = task
@@ -168,22 +200,30 @@ class RunCoordinator:
         task.add_done_callback(done)
 
     async def wait(self, sid):
+        """等待活动或近期完成任务；调用者取消等待不会取消后台运行。
+
+        结果离开内存窗口后抛出 session_not_active，应改用 session 查询。
+        """
         task = self._tasks.get(sid) or self._completed.get(sid)
         if task is None:
             raise LogAgentError("session_not_active", "运行结果已离开内存等待窗口，请查询 session")
         return await asyncio.shield(task)
 
     async def cancel(self, sid):
+        """请求取消活动任务，返回是否发出了取消请求。
+
+        先等待任务启动，使其有机会进入异常处理边界并记录取消事件；
+        返回 True 不代表任务已结束，结束结果由 wait 获取。
+        """
         task = self._tasks.get(sid)
         if task is None or task.done():
             return False
-        # A coroutine cancelled before its first instruction cannot persist a
-        # cancelled event. Let its exception boundary become active first.
         await self._started[sid].wait()
         task.cancel()
         return True
 
     async def shutdown(self):
+        """关闭准入，取消全部活动任务并等待它们收尾。"""
         self.accepting = False
         tasks = list(self._tasks.values())
         for sid in list(self._tasks):
@@ -192,6 +232,11 @@ class RunCoordinator:
 
 
 class WorkflowService:
+    """编排采集、分析、汇总和通知，提供运行及只读查询入口。
+
+    LangGraph 保存执行进度，SessionStore 保存业务事实；两者通过稳定
+    存档引用关联。外部能力由构造参数注入，当前协调范围为单执行器进程。
+    """
     def __init__(
         self,
         collector_manager,
@@ -207,6 +252,11 @@ class WorkflowService:
         credentials=None,
         log_path=None,
     ):
+        """绑定业务依赖、存储和运行协调器。
+
+        未注入业务存储时创建持久化 SQLite 文件，并在关闭时负责释放；
+        调用方注入的存储由调用方关闭。默认最多同时执行 4 个运行。
+        """
         self.collector_manager, self.ai_service = collector_manager, ai_service
         self.channel_manager, self.resource_store = channel_manager, resource_store
         self.credentials, self.log_path = credentials, log_path
@@ -225,6 +275,7 @@ class WorkflowService:
         self._shutdown_task: asyncio.Task | None = None
 
     async def start(self):
+        """串行初始化自有 checkpointer；初始化失败释放上下文并继续抛错。"""
         async with self._start_lock:
             if self._shutdown:
                 raise LogAgentError("shutdown", "Workflow 已关闭")
@@ -239,16 +290,21 @@ class WorkflowService:
                     raise
 
     async def pause_admission(self):
-        """Close admission and wait until every in-flight trigger has submitted or failed."""
+        """关闭准入并等待已进入准入区的请求提交或失败，返回活动运行数。"""
         async with self._admission_lock:
             self.coordinator.accepting = False
             return self.coordinator.active
 
     def resume_admission(self):
+        """服务尚未关闭时重新允许新运行进入。"""
         if not self._shutdown:
             self.coordinator.accepting = True
 
     async def validate(self, workflow):
+        """复制输入，并对完整快照中的来源、AI 和渠道配置调用各自校验器。
+
+        当前实现仅处理 WorkflowSnapshot，其他输入类型不执行校验。
+        """
         value = copy_model(workflow)
         if isinstance(value, WorkflowSnapshot):
             for source in value.sources.values():
@@ -259,11 +315,13 @@ class WorkflowService:
                 self.channel_manager.validate(channel)
 
     async def save(self, workflow, **kwargs):
+        """委托资源仓库保存 Workflow；未注入仓库时明确报错。"""
         if self.resource_store is None:
             raise LogAgentError("configuration_unavailable", "未注入资源仓库")
         return await _call(self.resource_store.save, "workflows", workflow, **kwargs)
 
     async def _snapshot(self, workflow):
+        """复制完整快照或按已保存 ID 生成快照，拒绝直接触发裸定义。"""
         if isinstance(workflow, WorkflowSnapshot):
             return copy_model(workflow)
         if self.resource_store is None:
@@ -275,6 +333,11 @@ class WorkflowService:
         return copy_model(await _call(self.resource_store.snapshot, workflow))
 
     async def trigger(self, workflow, *, session_id=None, context=None):
+        """固定配置、建立业务记录并提交后台运行，返回 session_id。
+
+        准入锁覆盖容量检查、快照存档和任务提交；返回前 session 已可查询。
+        已有 session、禁用定义或不匹配的上下文会被拒绝。
+        """
         sid = session_id or uuid.uuid4().hex
         _ID.validate_python(sid)
         await self.start()
@@ -301,6 +364,12 @@ class WorkflowService:
         return sid
 
     async def recover(self, session_id, *, context=None):
+        """验证恢复材料后，在原 session 对应的 LangGraph thread 上继续运行。
+
+        必须具备原 checkpoint、快照和引用条目；输出冻结后要求冻结正文可用，
+        否则检查已存采集及分析正文。缺失材料时报错，不通过重新采集补齐。
+        恢复沿用原日志路径，提交后返回原 session_id。
+        """
         _ID.validate_python(session_id)
         await self.start()
         async with self._admission_lock:
@@ -373,22 +442,31 @@ class WorkflowService:
     resume = recover
 
     async def wait(self, session_id):
+        """通过协调器等待运行结果或抛出运行错误，不查询持久历史。"""
         return await self.coordinator.wait(session_id)
 
     async def get_session(self, session_id, *, version=None):
+        """通过只读视图取得最新或指定业务版本的 session 摘要。"""
         return await self.session_view.get_session(session_id, version=version)
 
     async def list_sessions(self, workflow_id=None, **kwargs):
+        """将过滤和分页条件交给只读 session 视图。"""
         return await self.session_view.list_sessions(workflow_id, **kwargs)
 
     async def history(self, session_id):
+        """返回按版本排序的业务存档条目，移除内部完整性摘要 digest。"""
         _, entries = await asyncio.to_thread(self.session_store.entries, session_id)
         return [{k: value for k, value in entry.items() if k != "digest"} for entry in entries]
 
     async def cancel(self, session_id):
+        """按 session_id 转交显式取消请求，返回是否请求到活动任务。"""
         return await self.coordinator.cancel(session_id)
 
     async def reconcile_interrupted(self):
+        """将未被本进程持有的 created/running 记录标记为 interrupted。
+
+        供应用启动协调使用，只补记中断事实，不自动恢复或重跑。
+        """
         from logagent.models import BackupPolicy
 
         offset = 0
@@ -410,6 +488,7 @@ class WorkflowService:
             offset += len(records)
 
     async def shutdown(self):
+        """共享关闭任务，调用者取消等待不会打断资源释放；失败后允许重试。"""
         if self._shutdown_task is None or (
             self._shutdown_task.done() and self._shutdown_task.exception() is not None
         ):
@@ -417,6 +496,7 @@ class WorkflowService:
         await asyncio.shield(self._shutdown_task)
 
     async def _shutdown_once(self):
+        """先停止准入和活动运行，再释放自有 checkpointer 与业务存储。"""
         async with self._start_lock:
             await self.pause_admission()
             self._shutdown = True
@@ -428,7 +508,9 @@ class WorkflowService:
             await asyncio.to_thread(self.session_store.close)
 
     async def _event(self, runtime, key, stage, status, error=None):
+        """复用存档节点写入具有稳定事件键的状态或错误管理记录。"""
         async def value(state):
+            """生成事件正文，将业务错误转换为可序列化数据。"""
             return {"status": status, "error": error.model_dump(mode="json") if error else None}
 
         node = archive_node(
@@ -443,6 +525,11 @@ class WorkflowService:
         await node({})
 
     async def _result(self, runtime, snapshot, state, *, required=()):
+        """按阶段顺序读取存档引用并组装结果。
+
+        required 指定本次操作必须读取的阶段；其他阶段正文不可用时允许跳过，
+        存储损坏等其他错误仍向上传播。后续阶段字段覆盖此前值。
+        """
         result = WorkflowResult(session_id=runtime.session_id, workflow_id=snapshot.workflow.id)
         for stage in _STAGES:
             key = state.get("phases", {}).get(stage)
@@ -466,6 +553,7 @@ class WorkflowService:
         return result
 
     async def _final_result(self, runtime, snapshot, state):
+        """读取最终结果，并在终态存档与可读状态不一致时追加收敛事件。"""
         result = await self._result(runtime, snapshot, state)
         record = await self.get_session(runtime.session_id)
         if result.status in {"completed", "partial", "failed"} and record.status != result.status:
@@ -473,6 +561,12 @@ class WorkflowService:
         return result
 
     async def _execute(self, sid, snapshot, context, *, resume):
+        """执行首次运行或恢复，并记录运行、取消和中断事件。
+
+        恢复已结束的失败图时，依据原 checkpoint 的 retry_stage 开启新代次；
+        已结束且无重试边界的图直接返回结果。图调用使用同步持久化边界。
+        取消返回 cancelled 结果；执行或存档异常记录 interrupted 后抛出错误。
+        """
         runtime = ArchiveRuntime(self.session_store, sid, snapshot.workflow.backup)
         ctx = context or CollectionContext(
             snapshot.workflow.id, sid, self.log_path, self.credentials, self.session_view
@@ -495,8 +589,6 @@ class WorkflowService:
                     retry_stage = state.get("retry_stage")
                     if state.get("status") != "failed" or retry_stage is None:
                         return await self._final_result(runtime, snapshot, state)
-                    # The retry boundary is explicit control state in the original
-                    # checkpoint, never inferred from the business archive's stage.
                     record = await self.get_session(sid)
                     clear = {stage: "" for stage in _STAGES[_STAGES.index(retry_stage) :]}
                     await graph.aupdate_state(
@@ -539,7 +631,9 @@ class WorkflowService:
             raise LogAgentError(error.code, error.message, error.details) from None
 
     def _snapshot_node(self, runtime, snapshot, ctx):
+        """构造快照存档节点，绑定本次有效配置和日志路径。"""
         async def body(_):
+            """生成可序列化快照正文，不包含上下文中的运行时依赖。"""
             return {"snapshot": snapshot.model_dump(mode="json"), "log_path": ctx.log_path}
 
         return archive_node(
@@ -554,6 +648,11 @@ class WorkflowService:
         )
 
     def _graph(self, runtime, snapshot, ctx):
+        """构造父图及阶段入口：采集、分析、汇总、通知、结束。
+
+        采集、分析或汇总要求停止时直接进入 finish；阶段入口单独记录开始事实，
+        父图注入 checkpointer，子图继承其持久化能力。
+        """
         graph = StateGraph(_State)
         graph.add_node("snapshot", _safe_node(self._snapshot_node(runtime, snapshot, ctx)))
         for stage in ("collect", "analyze"):
@@ -564,6 +663,7 @@ class WorkflowService:
         for stage in _STAGES:
 
             async def start_body(state, stage=stage):
+                """生成阶段开始摘要，阶段身份由节点闭包绑定。"""
                 return {"status": "running"}
 
             graph.add_node(
@@ -597,6 +697,10 @@ class WorkflowService:
         return graph.compile(checkpointer=self._checkpointer)
 
     def _subgraph(self, stage, runtime, snapshot, ctx):
+        """为每个来源或分析任务建立独立分支，汇合后按定义顺序整理。
+
+        semaphore 同时覆盖外部调用和本项存档，保证并发限制也约束提交边界。
+        """
         wf = snapshot.workflow
         graph = StateGraph(_ChildState)
         keys = wf.sources if stage == "collect" else [task.id for task in wf.analyses]
@@ -605,6 +709,10 @@ class WorkflowService:
         for ident in keys:
 
             async def operation(state, ident=ident):
+                """执行单个采集或分析任务，并返回可存档结果。
+
+                采集异常和超时保留为对应状态；分析分支读取同一份完整共享输入。
+                """
                 if stage == "collect":
                     config = snapshot.sources[ident]
                     try:
@@ -653,6 +761,7 @@ class WorkflowService:
             )
 
             async def bounded(state, archived=archived, ident=ident):
+                """取得并发许可后选择本项幂等键，执行或复用存档节点。"""
                 async with semaphore:
                     key = await asyncio.to_thread(self._item_key, runtime, stage, ident, state)
                     return await archived({**state, "archive_key": key})
@@ -666,6 +775,7 @@ class WorkflowService:
 
     @staticmethod
     def _item_key(runtime, stage, ident, state):
+        """选择条目存档键：初次使用基础键，重试复用成功项或生成代次键。"""
         base = f"{stage}:item:{ident}"
         generation = state.get("generation", 0)
         if not generation:
@@ -686,7 +796,12 @@ class WorkflowService:
         return successful["write_key"] if successful else f"{base}:attempt:{generation}"
 
     def _phase_node(self, stage, runtime, snapshot):
+        """构造阶段汇合节点，将业务结果存档后发布引用和路由摘要。
+
+        采集、分析和汇总失败时发布 retry_stage，供显式恢复定位重试边界。
+        """
         async def operation(state):
+            """读取必要前置正文，按声明顺序组装条目并调用对应阶段编排方法。"""
             required = {
                 "analyze": ("collect",),
                 "aggregate": ("analyze",),
@@ -723,6 +838,7 @@ class WorkflowService:
         categories = {"collect": "collection", "analyze": "analysis", "aggregate": "final"}
 
         def summarize(body):
+            """从阶段正文提取停止、状态及降级摘要，供图控制状态使用。"""
             return {
                 "stopped": body.get("stopped", False),
                 "status": body.get("status", "running"),
@@ -757,10 +873,16 @@ class WorkflowService:
 
     @staticmethod
     def _halt(result, code, message):
+        """将本次结果标记为失败并阻止下游，同时追加明确的策略错误。"""
         result.stopped, result.status = True, "failed"
         result.errors.append(ErrorInfo(code=code, message=message))
 
     def _arrange_collection(self, result, snapshot):
+        """按来源顺序拼接成功正文，再应用各来源策略和全空策略。
+
+        failed/timeout 共用 on_error，其余非成功状态使用对应策略；
+        全空 skip 只停止下游，是否降级由 finish 根据原始结果判断。
+        """
         wf = snapshot.workflow
         valid = [item.text for item in result.collection if item.status == "success"]
         result.shared_input = wf.input_separator.join(valid)
@@ -789,6 +911,7 @@ class WorkflowService:
         }
 
     def _arrange_analysis(self, result, snapshot):
+        """保留所有分支结果，并按失败策略及部分发送开关决定是否停止下游。"""
         wf = snapshot.workflow
         failed = [item for item in result.analyses if item.status != "success"]
         if len(failed) == len(result.analyses) or (
@@ -803,6 +926,10 @@ class WorkflowService:
         }
 
     async def _analysis_call(self, config, prompt, text, task_id, result, model):
+        """执行一次带超时的 AI 服务调用，校验结果身份并保留取消传播。
+
+        超时及普通异常转换为 AnalysisResult，具体重试由注入的 AI 服务负责。
+        """
         try:
             async with asyncio.timeout(config.timeout):
                 kwargs = {"model": model, "task_id": task_id, "context": ExecutionContext(
@@ -831,6 +958,11 @@ class WorkflowService:
             )
 
     async def _aggregate(self, result, snapshot):
+        """生成通知前的冻结输出：成功分支分别输出，或按 fan-in 顺序汇总。
+
+        汇总可插入完整共享输入及缺失标记，也可再调用指定 AI。
+        AI 汇总失败时停止，不改用拼接文本或分支输出替代。
+        """
         wf = snapshot.workflow
         if wf.fan_in is None:
             result.outputs = {
@@ -879,6 +1011,7 @@ class WorkflowService:
 
     @staticmethod
     def _uncertain(cid, oid):
+        """生成投递不确定的失败回执，保留不得自动补发的错误原因。"""
         return DeliveryResult(
             channel_id=cid,
             output_id=oid,
@@ -892,6 +1025,12 @@ class WorkflowService:
         )
 
     def _notification_graph(self, runtime, snapshot):
+        """按输出、渠道声明顺序建立串行意图与回执节点。
+
+        意图先落档，再进入发送节点；已有回执由存档包装器直接复用。
+        fresh_intents 仅记录本次图实例新建意图，旧意图无回执时不自动补发。
+        节点名使用顺序序号，避免合法业务 ID 拼接产生名称碰撞。
+        """
         graph = StateGraph(_State)
         wf = snapshot.workflow
         output_ids = ["final"] if wf.fan_in else [task.id for task in wf.analyses]
@@ -903,6 +1042,7 @@ class WorkflowService:
                 receipt_key = f"delivery:{output_id}:{cid}"
 
                 async def intention(state, oid=output_id, cid=cid, key=intent_key):
+                    """记录本次新建意图身份，返回不含通知正文的管理事实。"""
                     fresh_intents.add(key)
                     return {"output_id": oid, "channel_id": cid}
 
@@ -917,12 +1057,18 @@ class WorkflowService:
                 )
 
                 async def intent_node(state, oid=output_id, archived=intent_archive):
+                    """仅为冻结输出中实际存在的输出建立或复用发送意图。"""
                     result = await self._result(runtime, snapshot, state, required=("aggregate",))
                     if oid not in result.outputs:
                         return {}
                     return await archived(state)
 
                 async def delivery(state, oid=output_id, cid=cid, ikey=intent_key):
+                    """对本次新意图发送原冻结通知，并返回待存档回执。
+
+                    禁用渠道记 skipped；旧意图、发送异常或超时记不确定，
+                    不在此处重试。正常返回还须校验输出与渠道身份。
+                    """
                     result = await self._result(runtime, snapshot, state, required=("aggregate",))
                     note = next(note for note in result.notifications if note.output_id == oid)
                     config = snapshot.channels[cid]
@@ -965,6 +1111,7 @@ class WorkflowService:
                 )
 
                 async def receipt_node(state, oid=output_id, archived=receipt_archive):
+                    """对实际存在的冻结输出执行或复用回执节点。"""
                     result = await self._result(runtime, snapshot, state, required=("aggregate",))
                     if oid not in result.outputs:
                         return {}
@@ -985,6 +1132,7 @@ class WorkflowService:
         return graph.compile()
 
     async def _notify(self, result, snapshot, runtime):
+        """按通知与渠道顺序读取已存回执，形成通知阶段正文，不执行发送。"""
         receipts = []
         for note in result.notifications:
             for cid in snapshot.workflow.channels:
@@ -992,6 +1140,10 @@ class WorkflowService:
         return {"deliveries": receipts}
 
     async def _finish(self, result, runtime):
+        """汇总最终状态：策略失败优先，否则按局部失败或备份降级判定 partial。
+
+        合法空结果、禁用渠道跳过和主动关闭正文备份本身不构成降级。
+        """
         _, entries = await asyncio.to_thread(runtime.store.entries, runtime.session_id)
         degraded = any(e["summary"].get("backup_failed") for e in entries)
         degraded |= any(

@@ -1,4 +1,4 @@
-"""Idempotent business archives; execution checkpoints belong to LangGraph."""
+"""SQLite 业务存档：保存不可变逻辑写入及独立业务版本，不决定图执行进度。"""
 
 from __future__ import annotations
 
@@ -21,22 +21,29 @@ _TERMINAL = {"completed", "partial", "failed", "cancelled", "interrupted"}
 
 
 def _json(value: dict) -> str:
+    """校验 JSON 对象并按键排序编码，提供稳定的内容摘要输入。"""
     checked = _JSON.validate_python(value)
     return orjson.dumps(checked, option=orjson.OPT_SORT_KEYS).decode()
 
 
 def _hash(value: str) -> str:
+    """计算 UTF-8 文本的 SHA-256 摘要，用于完整性及幂等冲突检查。"""
     return hashlib.sha256(value.encode()).hexdigest()
 
 
 class SessionStore:
-    """Append immutable logical writes and expose consistent business versions.
+    """以追加条目保存业务历史，事务内发布版本、摘要、正文和可用性。
 
-    A single transaction assigns a version and publishes its summary and body.
-    Replay checks the original digest even after the body has expired.
+    相同逻辑键重复提交复用原版本，内容冲突明确报错；正文过期后仍保留
+    原摘要与幂等键，避免重放把旧正文重新插入。
     """
 
     def __init__(self, location: str | Path):
+        """打开 SQLite 业务连接并初始化表和事务配置。
+
+        启用 WAL、外键及完整同步；发现旧 run_sessions 表时要求显式迁移。
+        连接可由工作线程使用，实例内通过可重入锁串行访问。
+        """
         self.location = str(location)
         if not self.location or "\x00" in self.location:
             raise LogAgentError("invalid_argument", "session 数据库路径无效")
@@ -69,6 +76,10 @@ class SessionStore:
 
     @contextmanager
     def _transaction(self):
+        """在实例锁内复用现有事务，或开启并负责提交新的立即事务。
+
+        嵌套调用不提前提交；异常时只有事务拥有者执行回滚，随后继续抛出异常。
+        """
         with self._lock:
             if self._db is None:
                 raise LogAgentError("storage_closed", "session 数据库已关闭")
@@ -85,6 +96,10 @@ class SessionStore:
                 raise
 
     def create(self, session_id: str, workflow_id: str, policy: BackupPolicy) -> None:
+        """原子创建 session 头与 created 事件，重复创建相同绑定时直接返回。
+
+        同一 session 已绑定不同 Workflow 或备份策略时抛出 storage_conflict。
+        """
         _ID.validate_python(session_id)
         _ID.validate_python(workflow_id)
         policy_json = _json(policy.model_dump(mode="json"))
@@ -106,6 +121,11 @@ class SessionStore:
         self, session_id: str, key: str, *, stage: str | None, scope: str,
         summary: dict, body: dict | None = None, availability: str = "available", category: str | None = None,
     ) -> dict:
+        """追加业务条目并返回存档内容，同一 session 内版本递增。
+
+        稳定 key 已存在时比较原 digest：相同内容复用原版本，不同内容报冲突。
+        新版本、摘要、正文及可用性在同一事务内发布。
+        """
         encoded_summary = _json(summary)
         encoded_body = _json(body) if body is not None else None
         digest = _hash(_json({
@@ -142,6 +162,10 @@ class SessionStore:
 
     @staticmethod
     def _entry(row: sqlite3.Row) -> dict:
+        """解码数据库条目并检查内容摘要；非法数据转换为 storage_corrupt。
+
+        expired 条目正文已清除，保留的是清理前摘要，因此不再按当前正文验算。
+        """
         value = dict(row)
         try:
             value["summary"] = _JSON.validate_python(orjson.loads(value["summary"]))
@@ -161,6 +185,7 @@ class SessionStore:
         return value
 
     def entry(self, session_id: str, key: str) -> dict | None:
+        """按 session 和稳定业务键读取单条存档，不存在时返回 None。"""
         with self._transaction():
             row = self._db.execute(
                 "SELECT * FROM session_entries WHERE session_id=? AND write_key=?",
@@ -169,6 +194,10 @@ class SessionStore:
             return self._entry(row) if row else None
 
     def entries(self, session_id: str, version: int | None = None) -> tuple[dict, list[dict]]:
+        """一致读取 session 头及截至指定版本的全部条目，按版本升序返回。
+
+        省略 version 表示最新历史；session 或指定版本不存在时明确报错。
+        """
         with self._transaction():
             header = self._db.execute(
                 "SELECT * FROM session_headers WHERE session_id=?", (session_id,)
@@ -187,12 +216,18 @@ class SessionStore:
             return dict(header), [self._entry(row) for row in rows]
 
     def session_ids(self) -> list[str]:
+        """按创建时间降序列出 session ID，同一创建时间按 ID 排序。"""
         with self._transaction():
             return [row[0] for row in self._db.execute(
                 "SELECT session_id FROM session_headers ORDER BY created_at DESC,session_id"
             )]
 
     def expire(self, now: datetime | None = None) -> int:
+        """按终态事件时间和保留天数清除到期业务正文，返回更新条目数。
+
+        仅清理 category 非空的正文，保留管理事实、摘要、幂等键及 expired 原因；
+        没有期限或最新状态未终结时不清理。调用方负责触发此操作。
+        """
         now = now or datetime.now(UTC)
         changed = 0
         with self._transaction():
@@ -214,6 +249,7 @@ class SessionStore:
         return changed
 
     def close(self) -> None:
+        """在实例锁内关闭连接；重复关闭不重复操作。"""
         with self._lock:
             if self._db is not None:
                 self._db.close()

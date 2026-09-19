@@ -1134,3 +1134,172 @@ async def test_failure_diagnostics_log_identity_without_notification_or_exceptio
     assert records[0].error_code == "channel_prepare_failed"
     assert "private" not in str(records[0].__dict__)
     await manager.stop()
+
+
+async def test_call_options_and_budgets_reuse_instance_without_leaking_into_create():
+    created = []
+    delivered = []
+
+    class Instance:
+        async def start(self):
+            pass
+
+        async def send(self, notification, *, options):
+            delivered.append(options)
+
+        async def stop(self):
+            pass
+
+    async def create(config):
+        created.append(config.options)
+        return Instance()
+
+    channel_type = _ChannelType(create)
+    channel_type.options_schema = {
+        "type": "object",
+        "properties": {
+            "target": {"type": "string"},
+            "recipient": {"type": "string", "x-logagent-workflow": True},
+        },
+        "required": ["target", "recipient"],
+        "additionalProperties": False,
+    }
+    manager = _manager(channel_type)
+    try:
+        for recipient, timeout in (("first", 1.0), ("second", 2.0)):
+            config = _config(timeout=timeout).model_copy(
+                update={"options": {"target": "account", "recipient": recipient}}
+            )
+            result = await manager.send(config, _notification(recipient))
+            assert result.status == "success" and result.attempts == 1
+        assert created == [{"target": "account"}]
+        assert delivered == [{"recipient": "first"}, {"recipient": "second"}]
+    finally:
+        await manager.stop()
+
+
+@pytest.mark.parametrize("cancel_waiter", [False, True])
+async def test_waiting_send_does_not_cancel_instance_release(cancel_waiter):
+    stopping = asyncio.Event()
+    finish_stop = asyncio.Event()
+    calls = []
+
+    class Instance:
+        async def start(self):
+            pass
+
+        async def send(self, notification, *, options):
+            calls.append(notification.text)
+
+        async def stop(self):
+            calls.append("stop")
+            stopping.set()
+            await finish_stop.wait()
+
+    async def create(config):
+        return Instance()
+
+    channel_type = _ChannelType(create)
+    manager = _manager(channel_type)
+    assert (await manager.send(_config(), _notification("first"))).status == "success"
+    release = asyncio.create_task(manager.release(_config()))
+    await stopping.wait()
+    try:
+        waiting = asyncio.create_task(manager.send(
+            _config(timeout=1.0 if cancel_waiter else 0.01), _notification("waiting")
+        ))
+        if cancel_waiter:
+            await asyncio.sleep(0)
+            waiting.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await waiting
+        else:
+            result = await waiting
+            assert result.status == "timeout" and result.attempts == 0
+            assert result.error.details["delivery_uncertain"] is False
+        assert not release.done()
+        assert channel_type.create_calls == 1
+        assert calls == ["first", "stop"]
+    finally:
+        finish_stop.set()
+        await release
+        await manager.stop()
+
+
+async def test_release_drain_timeout_does_not_fail_waiting_send():
+    sending = asyncio.Event()
+    finish_send = asyncio.Event()
+    delivered = []
+
+    class Instance:
+        async def start(self):
+            pass
+
+        async def send(self, notification, *, options):
+            sending.set()
+            await finish_send.wait()
+            delivered.append(notification.text)
+
+        async def stop(self):
+            pass
+
+    async def create(config):
+        return Instance()
+
+    channel_type = _ChannelType(create)
+    manager = _manager(channel_type, stop_timeout=0.02)
+    first = asyncio.create_task(manager.send(_config(), _notification("first")))
+    await sending.wait()
+    release = asyncio.create_task(manager.release(_config()))
+    await asyncio.sleep(0)
+    waiting = asyncio.create_task(manager.send(_config(), _notification("waiting")))
+    try:
+        with pytest.raises(TimeoutError):
+            await release
+        assert not waiting.done()
+    finally:
+        finish_send.set()
+        results = await asyncio.gather(first, waiting)
+        await manager.stop()
+    assert all(result.status == "success" for result in results)
+    assert delivered == ["first", "waiting"]
+    assert channel_type.create_calls == 1
+
+
+async def test_stop_waits_for_send_completion_not_caller_task_lifetime(tmp_path):
+    from logagent.channel import MockFileChannelType
+    from logagent.config import PluginRegistry
+    from logagent.models import SystemConfig
+
+    registry = PluginRegistry([], builtin_channels=[MockFileChannelType()])
+    await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
+    manager = ChannelManager(registry.channelRegister)
+    path = tmp_path / "notifications.txt"
+    path.write_text("existing\n", encoding="utf-8")
+    config = ChannelConfig(id="file", channel="mock", options={"path": str(path)})
+    sent = asyncio.Event()
+    finish_caller = asyncio.Event()
+
+    async def caller():
+        receipt = await manager.send(config, Notification(
+            session_id="acceptance", output_id="report", title="验收",
+            text="第一行\n第二行", metadata={"path": str(tmp_path / "wrong.txt")},
+        ))
+        sent.set()
+        await finish_caller.wait()
+        return receipt
+
+    task = asyncio.create_task(caller())
+    try:
+        await asyncio.wait_for(sent.wait(), 1.0)
+        await asyncio.wait_for(manager.stop(), 1.0)
+        assert not task.done()
+        assert path.read_text(encoding="utf-8") == "existing\n验收\n第一行\n第二行\n"
+        assert not (tmp_path / "wrong.txt").exists()
+    finally:
+        finish_caller.set()
+        receipt = await task
+        await manager.stop()
+    assert receipt.status == "success" and receipt.attempts == 1
+    assert receipt.channel_id == "file" and receipt.output_id == "report"
+    assert receipt.error is None
