@@ -14,10 +14,9 @@ import uuid
 from collections import OrderedDict
 from collections.abc import Callable
 from pathlib import Path
-from typing import Annotated, Literal, TypedDict
+from typing import Literal
 
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-from langgraph.graph import END, START, StateGraph
 from pydantic import Field, TypeAdapter
 
 from logagent.errors import LogAgentError, exception_error
@@ -28,7 +27,6 @@ from logagent.models import (
     CollectionResult,
     DeliveryResult,
     ErrorInfo,
-    ExecutionContext,
     Notification,
     StrictModel,
     WorkflowDefinition,
@@ -78,51 +76,12 @@ class WorkflowResult(StrictModel):
         return self.analyses
 
 
-def _merge(left, right):
-    """合并并行分支的引用映射；相同键使用右侧值。"""
-    return {**left, **right}
-
-
-class _State(TypedDict):
-    """父图控制状态，仅保存存档引用及运行控制字段。
-
-    phases 按阶段关联业务存档；generation 区分失败重试代次，
-    retry_stage 记录允许重新进入的阶段，恢复不靠业务摘要猜测进度。
-    """
-    session_id: str
-    phases: Annotated[dict[str, str], _merge]
-    stopped: bool
-    status: str
-    generation: int
-    retry_stage: str | None
-
-
-class _ChildState(_State):
-    """在父图状态上增加逐项存档引用，供采集和分析子图汇合使用。"""
-    items: Annotated[dict[str, str], _merge]
-
 
 async def _call(fn: Callable, *args, **kwargs):
     """调用注入的同步或异步接口，统一返回实际结果。"""
     value = fn(*args, **kwargs)
     return await value if inspect.isawaitable(value) else value
 
-
-def _safe_node(operation):
-    """包装图节点，将非业务异常转换为脱敏的 Workflow 错误。"""
-    async def node(state):
-        """执行原节点并保留已有业务错误；取消不在普通异常捕获范围内。"""
-        try:
-            return await operation(state)
-        except LogAgentError:
-            raise
-        except Exception as exc:
-            error = exception_error(
-                exc, code="workflow_failed", message="Workflow 节点执行或存档失败"
-            )
-            raise LogAgentError(error.code, error.message, error.details) from None
-
-    return node
 
 
 def _archive_references(value):
@@ -524,34 +483,6 @@ class WorkflowService:
         )
         await node({})
 
-    async def _result(self, runtime, snapshot, state, *, required=()):
-        """按阶段顺序读取存档引用并组装结果。
-
-        required 指定本次操作必须读取的阶段；其他阶段正文不可用时允许跳过，
-        存储损坏等其他错误仍向上传播。后续阶段字段覆盖此前值。
-        """
-        result = WorkflowResult(session_id=runtime.session_id, workflow_id=snapshot.workflow.id)
-        for stage in _STAGES:
-            key = state.get("phases", {}).get(stage)
-            if not key:
-                continue
-            try:
-                body = await runtime.read(key)
-            except LogAgentError as exc:
-                if stage in required or exc.code != "recovery_unavailable":
-                    raise
-                continue
-            errors = body.pop("errors", [])
-            result = WorkflowResult.model_validate(
-                {
-                    **result.model_dump(mode="json"),
-                    **body,
-                    "stage": stage,
-                    "errors": errors or [e.model_dump(mode="json") for e in result.errors],
-                }
-            )
-        return result
-
     async def _final_result(self, runtime, snapshot, state):
         """读取最终结果，并在终态存档与可读状态不一致时追加收敛事件。"""
         result = await self._result(runtime, snapshot, state)
@@ -559,6 +490,7 @@ class WorkflowService:
         if result.status in {"completed", "partial", "failed"} and record.status != result.status:
             await self._event(runtime, f"settled:{record.version}", result.stage, result.status)
         return result
+
 
     async def _execute(self, sid, snapshot, context, *, resume):
         """执行首次运行或恢复，并记录运行、取消和中断事件。
@@ -630,526 +562,36 @@ class WorkflowService:
                 logger.exception("Unable to persist interrupted session", extra={"session_id": sid})
             raise LogAgentError(error.code, error.message, error.details) from None
 
-    def _snapshot_node(self, runtime, snapshot, ctx):
-        """构造快照存档节点，绑定本次有效配置和日志路径。"""
-        async def body(_):
-            """生成可序列化快照正文，不包含上下文中的运行时依赖。"""
-            return {"snapshot": snapshot.model_dump(mode="json"), "log_path": ctx.log_path}
-
-        return archive_node(
-            runtime,
-            scope="parent",
-            stage=None,
-            key="snapshot",
-            category="snapshot",
-            operation=body,
-            summarize=lambda _: {"status": "created"},
-            publish=lambda key, summary: {},
-        )
 
     def _graph(self, runtime, snapshot, ctx):
-        """构造父图及阶段入口：采集、分析、汇总、通知、结束。
+        """创建本次运行的 LangGraph；图节点实现位于 workflow.graph。"""
+        from logagent.workflow.graph import WorkflowGraph
 
-        采集、分析或汇总要求停止时直接进入 finish；阶段入口单独记录开始事实，
-        父图注入 checkpointer，子图继承其持久化能力。
-        """
-        graph = StateGraph(_State)
-        graph.add_node("snapshot", _safe_node(self._snapshot_node(runtime, snapshot, ctx)))
-        for stage in ("collect", "analyze"):
-            graph.add_node(stage, self._subgraph(stage, runtime, snapshot, ctx))
-        graph.add_node("notify", self._notification_graph(runtime, snapshot))
-        for stage in ("aggregate", "finish"):
-            graph.add_node(stage, self._phase_node(stage, runtime, snapshot))
-        for stage in _STAGES:
+        return WorkflowGraph(
+            runtime=runtime, snapshot=snapshot, context=ctx,
+            checkpointer=self._checkpointer,
+            collector_manager=self.collector_manager,
+            ai_service=self.ai_service, channel_manager=self.channel_manager,
+        ).compile()
 
-            async def start_body(state, stage=stage):
-                """生成阶段开始摘要，阶段身份由节点闭包绑定。"""
-                return {"status": "running"}
+    def _snapshot_node(self, runtime, snapshot, ctx):
+        """返回快照存档节点；快照节点与执行图共用图组件。"""
+        from logagent.workflow.graph import WorkflowGraph
 
-            graph.add_node(
-                f"start_{stage}",
-                archive_node(
-                    runtime,
-                    scope="parent",
-                    stage=stage,
-                    key=f"started:{stage}",
-                    operation=start_body,
-                    category=None,
-                    summarize=lambda body: body,
-                    publish=lambda key, summary: {},
-                ),
-            )
-            graph.add_edge(f"start_{stage}", stage)
-        graph.add_edge(START, "snapshot")
-        graph.add_edge("snapshot", "start_collect")
-        for before, after in (
-            ("collect", "analyze"),
-            ("analyze", "aggregate"),
-            ("aggregate", "notify"),
-        ):
-            graph.add_conditional_edges(
-                before,
-                lambda state, after=after: "finish" if state["stopped"] else after,
-                {"finish": "start_finish", after: f"start_{after}"},
-            )
-        graph.add_edge("notify", "start_finish")
-        graph.add_edge("finish", END)
-        return graph.compile(checkpointer=self._checkpointer)
+        return WorkflowGraph(
+            runtime=runtime, snapshot=snapshot, context=ctx,
+            checkpointer=self._checkpointer,
+            collector_manager=self.collector_manager,
+            ai_service=self.ai_service, channel_manager=self.channel_manager,
+        ).snapshot_node()
 
-    def _subgraph(self, stage, runtime, snapshot, ctx):
-        """为每个来源或分析任务建立独立分支，汇合后按定义顺序整理。
+    async def _result(self, runtime, snapshot, state, *, required=()):
+        """从图组件读取阶段存档并组装对外结果。"""
+        from logagent.workflow.graph import WorkflowGraph
 
-        semaphore 同时覆盖外部调用和本项存档，保证并发限制也约束提交边界。
-        """
-        wf = snapshot.workflow
-        graph = StateGraph(_ChildState)
-        keys = wf.sources if stage == "collect" else [task.id for task in wf.analyses]
-        concurrency = wf.collection_concurrency if stage == "collect" else wf.analysis_concurrency
-        semaphore = asyncio.Semaphore(concurrency)
-        for ident in keys:
-
-            async def operation(state, ident=ident):
-                """执行单个采集或分析任务，并返回可存档结果。
-
-                采集异常和超时保留为对应状态；分析分支读取同一份完整共享输入。
-                """
-                if stage == "collect":
-                    config = snapshot.sources[ident]
-                    try:
-                        async with asyncio.timeout(config.timeout):
-                            raw = await self.collector_manager.collect(copy_model(config), ctx)
-                        if asyncio.current_task().cancelling():
-                            raise asyncio.CancelledError
-                        result = CollectionResult.model_validate(
-                            raw.model_dump(mode="json")
-                            if isinstance(raw, CollectionResult)
-                            else raw
-                        )
-                        if result.source_id != ident:
-                            raise ValueError("Collector identity mismatch")
-                    except TimeoutError:
-                        result = CollectionResult(
-                            source_id=ident,
-                            status="timeout",
-                            error=ErrorInfo(code="collection_timeout", message="来源采集超时"),
-                        )
-                    except Exception as exc:
-                        result = CollectionResult(
-                            source_id=ident,
-                            status="failed",
-                            error=exception_error(
-                                exc, code="collection_failed", message="来源采集失败"
-                            ),
-                        )
-                else:
-                    incoming = await self._result(runtime, snapshot, state, required=("collect",))
-                    task = next(task for task in wf.analyses if task.id == ident)
-                    result = await self._analysis_call(
-                        snapshot.ai[task.ai], task.prompt, incoming.shared_input, ident, incoming, task.model
-                    )
-                return result.model_dump(mode="json")
-
-            archived = archive_node(
-                runtime,
-                scope=stage,
-                stage=stage,
-                key=lambda state: state["archive_key"],
-                operation=operation,
-                category="collection" if stage == "collect" else "analysis",
-                summarize=lambda body: {"item_status": body["status"]},
-                publish=lambda key, summary, ident=ident: {"items": {ident: key}},
-            )
-
-            async def bounded(state, archived=archived, ident=ident):
-                """取得并发许可后选择本项幂等键，执行或复用存档节点。"""
-                async with semaphore:
-                    key = await asyncio.to_thread(self._item_key, runtime, stage, ident, state)
-                    return await archived({**state, "archive_key": key})
-
-            graph.add_node(f"work_{ident}", _safe_node(bounded))
-            graph.add_edge(START, f"work_{ident}")
-            graph.add_edge(f"work_{ident}", "arrange")
-        graph.add_node("arrange", self._phase_node(stage, runtime, snapshot))
-        graph.add_edge("arrange", END)
-        return graph.compile()
-
-    @staticmethod
-    def _item_key(runtime, stage, ident, state):
-        """选择条目存档键：初次使用基础键，重试复用成功项或生成代次键。"""
-        base = f"{stage}:item:{ident}"
-        generation = state.get("generation", 0)
-        if not generation:
-            return base
-        _, entries = runtime.store.entries(runtime.session_id)
-        successful = next(
-            (
-                entry
-                for entry in entries
-                if entry["scope"] == stage
-                and (
-                    entry["write_key"] == base or entry["write_key"].startswith(base + ":attempt:")
-                )
-                and entry["summary"].get("item_status") == "success"
-            ),
-            None,
-        )
-        return successful["write_key"] if successful else f"{base}:attempt:{generation}"
-
-    def _phase_node(self, stage, runtime, snapshot):
-        """构造阶段汇合节点，将业务结果存档后发布引用和路由摘要。
-
-        采集、分析和汇总失败时发布 retry_stage，供显式恢复定位重试边界。
-        """
-        async def operation(state):
-            """读取必要前置正文，按声明顺序组装条目并调用对应阶段编排方法。"""
-            required = {
-                "analyze": ("collect",),
-                "aggregate": ("analyze",),
-                "notify": ("aggregate",),
-            }.get(stage, ())
-            incoming = await self._result(runtime, snapshot, state, required=required)
-            if (
-                stage == "aggregate"
-                and snapshot.workflow.fan_in
-                and "$input" in snapshot.workflow.fan_in.order
-            ):
-                incoming = await self._result(
-                    runtime, snapshot, state, required=("collect", "analyze")
-                )
-            incoming.stage = stage
-            if stage == "collect":
-                incoming.collection = [
-                    CollectionResult.model_validate(await runtime.read(state["items"][ident]))
-                    for ident in snapshot.workflow.sources
-                ]
-                return self._arrange_collection(incoming, snapshot)
-            if stage == "analyze":
-                incoming.analyses = [
-                    AnalysisResult.model_validate(await runtime.read(state["items"][task.id]))
-                    for task in snapshot.workflow.analyses
-                ]
-                return self._arrange_analysis(incoming, snapshot)
-            if stage == "aggregate":
-                return await self._aggregate(incoming, snapshot)
-            if stage == "notify":
-                return await self._notify(incoming, snapshot, runtime)
-            return await self._finish(incoming, runtime)
-
-        categories = {"collect": "collection", "analyze": "analysis", "aggregate": "final"}
-
-        def summarize(body):
-            """从阶段正文提取停止、状态及降级摘要，供图控制状态使用。"""
-            return {
-                "stopped": body.get("stopped", False),
-                "status": body.get("status", "running"),
-                "degraded": body.get("degraded", False),
-            }
-
-        return _safe_node(
-            archive_node(
-                runtime,
-                scope="phase",
-                stage=stage,
-                key=lambda state: (
-                    f"phase:{stage}"
-                    + (f":attempt:{state['generation']}" if state.get("generation") else "")
-                ),
-                operation=operation,
-                category=categories.get(stage),
-                summarize=summarize,
-                publish=lambda key, summary: {
-                    "phases": {stage: key},
-                    "stopped": summary["stopped"],
-                    "status": summary["status"],
-                    **(
-                        {"retry_stage": stage}
-                        if summary["status"] == "failed"
-                        and stage in {"collect", "analyze", "aggregate"}
-                        else {}
-                    ),
-                },
-            )
-        )
-
-    @staticmethod
-    def _halt(result, code, message):
-        """将本次结果标记为失败并阻止下游，同时追加明确的策略错误。"""
-        result.stopped, result.status = True, "failed"
-        result.errors.append(ErrorInfo(code=code, message=message))
-
-    def _arrange_collection(self, result, snapshot):
-        """按来源顺序拼接成功正文，再应用各来源策略和全空策略。
-
-        failed/timeout 共用 on_error，其余非成功状态使用对应策略；
-        全空 skip 只停止下游，是否降级由 finish 根据原始结果判断。
-        """
-        wf = snapshot.workflow
-        valid = [item.text for item in result.collection if item.status == "success"]
-        result.shared_input = wf.input_separator.join(valid)
-        if wf.include_counts and valid:
-            result.shared_input += "\n\n" + "\n".join(
-                f"{item.source_id}: {item.status} ({item.count})" for item in result.collection
-            )
-        for item in result.collection:
-            if item.status == "success":
-                continue
-            policy = "error" if item.status in {"failed", "timeout"} else item.status
-            if getattr(snapshot.sources[item.source_id], "on_" + policy) == "stop":
-                self._halt(result, "collection_stopped", "来源策略要求停止下游阶段")
-                break
-        if not valid and not result.stopped:
-            if wf.on_all_empty == "stop":
-                self._halt(result, "all_empty", "所有来源均无有效内容")
-            else:
-                result.stopped = True
-        return {
-            "collection": [item.model_dump(mode="json") for item in result.collection],
-            "shared_input": result.shared_input,
-            "stopped": result.stopped,
-            "status": result.status,
-            "errors": [e.model_dump(mode="json") for e in result.errors],
-        }
-
-    def _arrange_analysis(self, result, snapshot):
-        """保留所有分支结果，并按失败策略及部分发送开关决定是否停止下游。"""
-        wf = snapshot.workflow
-        failed = [item for item in result.analyses if item.status != "success"]
-        if len(failed) == len(result.analyses) or (
-            failed and (wf.analysis_failure == "stop" or not wf.send_partial)
-        ):
-            self._halt(result, "analysis_stopped", "分析失败策略阻止下游阶段")
-        return {
-            "analyses": [item.model_dump(mode="json") for item in result.analyses],
-            "stopped": result.stopped,
-            "status": result.status,
-            "errors": [e.model_dump(mode="json") for e in result.errors],
-        }
-
-    async def _analysis_call(self, config, prompt, text, task_id, result, model):
-        """执行一次带超时的 AI 服务调用，校验结果身份并保留取消传播。
-
-        超时及普通异常转换为 AnalysisResult，具体重试由注入的 AI 服务负责。
-        """
-        try:
-            async with asyncio.timeout(config.timeout):
-                kwargs = {"model": model, "task_id": task_id, "context": ExecutionContext(
-                    workflow_id=result.workflow_id, session_id=result.session_id, stage=result.stage,
-                )}
-                raw = await self.ai_service.execute(copy_model(config), prompt, text, **kwargs)
-            if asyncio.current_task().cancelling():
-                raise asyncio.CancelledError
-            output = AnalysisResult.model_validate(
-                raw.model_dump(mode="json") if isinstance(raw, AnalysisResult) else raw
-            )
-            if output.task_id != task_id:
-                raise ValueError("Analysis identity mismatch")
-            return output
-        except TimeoutError:
-            return AnalysisResult(
-                task_id=task_id,
-                status="timeout",
-                error=ErrorInfo(code="ai_timeout", message="AI 调用超时"),
-            )
-        except Exception as exc:
-            return AnalysisResult(
-                task_id=task_id,
-                status="failed",
-                error=exception_error(exc, code="ai_failed", message="AI 调用失败"),
-            )
-
-    async def _aggregate(self, result, snapshot):
-        """生成通知前的冻结输出：成功分支分别输出，或按 fan-in 顺序汇总。
-
-        汇总可插入完整共享输入及缺失标记，也可再调用指定 AI。
-        AI 汇总失败时停止，不改用拼接文本或分支输出替代。
-        """
-        wf = snapshot.workflow
-        if wf.fan_in is None:
-            result.outputs = {
-                item.task_id: item.text for item in result.analyses if item.status == "success"
-            }
-        else:
-            by_id = {item.task_id: item for item in result.analyses}
-            parts = []
-            for key in wf.fan_in.order or [task.id for task in wf.analyses]:
-                if key == "$input":
-                    parts.append(result.shared_input)
-                elif by_id[key].status == "success":
-                    parts.append(by_id[key].text)
-                elif wf.fan_in.mark_incomplete:
-                    parts.append(f"[{key}: incomplete]")
-            text = wf.fan_in.separator.join(parts)
-            if not text.strip():
-                self._halt(result, "aggregate_empty", "汇总未产生有效正文")
-            elif wf.fan_in.ai:
-                result.aggregate = await self._analysis_call(
-                    snapshot.ai[wf.fan_in.ai], wf.fan_in.prompt, text, "final", result, wf.fan_in.model
-                )
-                if result.aggregate.status != "success":
-                    self._halt(result, "aggregate_failed", "AI 汇总失败")
-                else:
-                    text = result.aggregate.text
-            if not result.stopped:
-                result.outputs = {"final": text}
-        result.notifications = [
-            Notification(
-                session_id=result.session_id,
-                output_id=key,
-                title=wf.name or wf.id,
-                text=text,
-            )
-            for key, text in result.outputs.items()
-        ]
-        return {
-            "aggregate": result.aggregate.model_dump(mode="json") if result.aggregate else None,
-            "outputs": result.outputs,
-            "notifications": [note.model_dump(mode="json") for note in result.notifications],
-            "stopped": result.stopped,
-            "status": result.status,
-            "errors": [e.model_dump(mode="json") for e in result.errors],
-        }
-
-    @staticmethod
-    def _uncertain(cid, oid):
-        """生成投递不确定的失败回执，保留不得自动补发的错误原因。"""
-        return DeliveryResult(
-            channel_id=cid,
-            output_id=oid,
-            status="failed",
-            attempts=1,
-            error=ErrorInfo(
-                code="delivery_uncertain",
-                message="既有发送未获得可靠回执，不自动补发",
-                details={"delivery_uncertain": True},
-            ),
-        )
-
-    def _notification_graph(self, runtime, snapshot):
-        """按输出、渠道声明顺序建立串行意图与回执节点。
-
-        意图先落档，再进入发送节点；已有回执由存档包装器直接复用。
-        fresh_intents 仅记录本次图实例新建意图，旧意图无回执时不自动补发。
-        节点名使用顺序序号，避免合法业务 ID 拼接产生名称碰撞。
-        """
-        graph = StateGraph(_State)
-        wf = snapshot.workflow
-        output_ids = ["final"] if wf.fan_in else [task.id for task in wf.analyses]
-        fresh_intents = set()
-        previous = START
-        for output_index, output_id in enumerate(output_ids):
-            for channel_index, cid in enumerate(wf.channels):
-                intent_key = f"intent:{output_id}:{cid}"
-                receipt_key = f"delivery:{output_id}:{cid}"
-
-                async def intention(state, oid=output_id, cid=cid, key=intent_key):
-                    """记录本次新建意图身份，返回不含通知正文的管理事实。"""
-                    fresh_intents.add(key)
-                    return {"output_id": oid, "channel_id": cid}
-
-                intent_archive = archive_node(
-                    runtime,
-                    scope="notification",
-                    stage="notify",
-                    key=intent_key,
-                    category=None,
-                    operation=intention,
-                    publish=lambda key, summary: {},
-                )
-
-                async def intent_node(state, oid=output_id, archived=intent_archive):
-                    """仅为冻结输出中实际存在的输出建立或复用发送意图。"""
-                    result = await self._result(runtime, snapshot, state, required=("aggregate",))
-                    if oid not in result.outputs:
-                        return {}
-                    return await archived(state)
-
-                async def delivery(state, oid=output_id, cid=cid, ikey=intent_key):
-                    """对本次新意图发送原冻结通知，并返回待存档回执。
-
-                    禁用渠道记 skipped；旧意图、发送异常或超时记不确定，
-                    不在此处重试。正常返回还须校验输出与渠道身份。
-                    """
-                    result = await self._result(runtime, snapshot, state, required=("aggregate",))
-                    note = next(note for note in result.notifications if note.output_id == oid)
-                    config = snapshot.channels[cid]
-                    if not config.enabled:
-                        receipt = DeliveryResult(
-                            channel_id=cid, output_id=oid, status="skipped", attempts=0
-                        )
-                    elif ikey not in fresh_intents:
-                        receipt = self._uncertain(cid, oid)
-                    else:
-                        try:
-                            async with asyncio.timeout(config.timeout):
-                                raw = await self.channel_manager.send(
-                                    copy_model(config), copy_model(note)
-                                )
-                            if asyncio.current_task().cancelling():
-                                raise asyncio.CancelledError
-                            receipt = DeliveryResult.model_validate(
-                                raw.model_dump(mode="json")
-                                if isinstance(raw, DeliveryResult)
-                                else raw
-                            )
-                            if receipt.channel_id != cid or receipt.output_id != oid:
-                                raise ValueError("Delivery identity mismatch")
-                        except TimeoutError:
-                            receipt = self._uncertain(cid, oid)
-                            receipt.status = "timeout"
-                        except Exception:
-                            receipt = self._uncertain(cid, oid)
-                    return receipt.model_dump(mode="json")
-
-                receipt_archive = archive_node(
-                    runtime,
-                    scope="notification",
-                    stage="notify",
-                    key=receipt_key,
-                    category=None,
-                    operation=delivery,
-                    publish=lambda key, summary: {},
-                )
-
-                async def receipt_node(state, oid=output_id, archived=receipt_archive):
-                    """对实际存在的冻结输出执行或复用回执节点。"""
-                    result = await self._result(runtime, snapshot, state, required=("aggregate",))
-                    if oid not in result.outputs:
-                        return {}
-                    return await archived(state)
-
-                intent_name, receipt_name = (
-                    f"intent_{output_index}_{channel_index}",
-                    f"receipt_{output_index}_{channel_index}",
-                )
-                graph.add_node(intent_name, _safe_node(intent_node))
-                graph.add_node(receipt_name, _safe_node(receipt_node))
-                graph.add_edge(previous, intent_name)
-                graph.add_edge(intent_name, receipt_name)
-                previous = receipt_name
-        graph.add_node("arrange", self._phase_node("notify", runtime, snapshot))
-        graph.add_edge(previous, "arrange")
-        graph.add_edge("arrange", END)
-        return graph.compile()
-
-    async def _notify(self, result, snapshot, runtime):
-        """按通知与渠道顺序读取已存回执，形成通知阶段正文，不执行发送。"""
-        receipts = []
-        for note in result.notifications:
-            for cid in snapshot.workflow.channels:
-                receipts.append(await runtime.read(f"delivery:{note.output_id}:{cid}"))
-        return {"deliveries": receipts}
-
-    async def _finish(self, result, runtime):
-        """汇总最终状态：策略失败优先，否则按局部失败或备份降级判定 partial。
-
-        合法空结果、禁用渠道跳过和主动关闭正文备份本身不构成降级。
-        """
-        _, entries = await asyncio.to_thread(runtime.store.entries, runtime.session_id)
-        degraded = any(e["summary"].get("backup_failed") for e in entries)
-        degraded |= any(
-            item.status in {"failed", "missing", "timeout"} for item in result.collection
-        )
-        degraded |= any(item.status != "success" for item in result.analyses)
-        degraded |= any(item.status in {"failed", "timeout"} for item in result.deliveries)
-        status = "failed" if result.status == "failed" else "partial" if degraded else "completed"
-        return {"status": status, "stopped": result.stopped}
+        return await WorkflowGraph(
+            runtime=runtime, snapshot=snapshot, context=None,
+            checkpointer=self._checkpointer,
+            collector_manager=self.collector_manager,
+            ai_service=self.ai_service, channel_manager=self.channel_manager,
+        ).result(state, required=required)
