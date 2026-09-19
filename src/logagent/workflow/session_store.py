@@ -1,9 +1,8 @@
-"""SQLite 业务存档：保存不可变逻辑写入及独立业务版本，不决定图执行进度。"""
+"""SQLModel 业务存档：保存不可变逻辑写入及独立业务版本，不决定图执行进度。"""
 
 from __future__ import annotations
 
 import hashlib
-import sqlite3
 import threading
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
@@ -11,9 +10,14 @@ from pathlib import Path
 
 import orjson
 from pydantic import TypeAdapter
+from sqlalchemy import URL, event, inspect
+from sqlalchemy.pool import StaticPool
+from sqlmodel import Session, SQLModel, create_engine, func, select
 
 from logagent.errors import LogAgentError
 from logagent.models import ID, BackupPolicy, JSONObject
+
+from .session_models import SessionEntry, SessionHeader
 
 _JSON = TypeAdapter(JSONObject)
 _ID = TypeAdapter(ID)
@@ -29,6 +33,22 @@ def _json(value: dict) -> str:
 def _hash(value: str) -> str:
     """计算 UTF-8 文本的 SHA-256 摘要，用于完整性及幂等冲突检查。"""
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def _configure_sqlite(connection, _record) -> None:
+    """仅连接配置使用驱动语句；业务表和查询由 SQLModel 定义。
+
+    沿用 WAL/FULL、外键和安全删除设置；事务由 _transaction 显式开启。
+    """
+    connection.isolation_level = None
+    cursor = connection.cursor()
+    try:
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA secure_delete=ON")
+        cursor.execute("PRAGMA synchronous=FULL")
+    finally:
+        cursor.close()
 
 
 class SessionStore:
@@ -49,51 +69,46 @@ class SessionStore:
             raise LogAgentError("invalid_argument", "session 数据库路径无效")
         Path(location).parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
-        self._db = sqlite3.connect(self.location, check_same_thread=False)
-        self._db.row_factory = sqlite3.Row
-        tables = {row[0] for row in self._db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        if "run_sessions" in tables:
-            self._db.close()
-            raise LogAgentError("storage_version", "旧 Workflow 数据库需要显式迁移，不能隐去原 session")
-        self._db.execute("PRAGMA journal_mode=WAL")
-        self._db.execute("PRAGMA foreign_keys=ON")
-        self._db.execute("PRAGMA secure_delete=ON")
-        self._db.execute("PRAGMA synchronous=FULL")
-        self._db.executescript("""
-            CREATE TABLE IF NOT EXISTS session_headers (
-                session_id TEXT PRIMARY KEY, workflow_id TEXT NOT NULL,
-                created_at TEXT NOT NULL, policy TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS session_entries (
-                session_id TEXT NOT NULL REFERENCES session_headers(session_id),
-                version INTEGER NOT NULL, write_key TEXT NOT NULL,
-                stage TEXT, scope TEXT NOT NULL, summary TEXT NOT NULL,
-                body TEXT, availability TEXT NOT NULL, category TEXT, digest TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                PRIMARY KEY(session_id, version), UNIQUE(session_id, write_key)
-            );
-        """)
+        self._session: Session | None = None
+        self._closed = False
+        self._engine = create_engine(
+            URL.create("sqlite", database=self.location),
+            connect_args={"check_same_thread": False}, poolclass=StaticPool,
+        )
+        event.listen(self._engine, "connect", _configure_sqlite)
+        try:
+            if "run_sessions" in inspect(self._engine).get_table_names():
+                raise LogAgentError("storage_version", "旧 Workflow 数据库需要显式迁移，不能隐去原 session")
+            SQLModel.metadata.create_all(
+                self._engine, tables=[SessionHeader.__table__, SessionEntry.__table__]
+            )
+        except BaseException:
+            self._engine.dispose()
+            raise
 
     @contextmanager
     def _transaction(self):
-        """在实例锁内复用现有事务，或开启并负责提交新的立即事务。
+        """锁内复用外层 Session；立即事务串行化不同实例的版本分配。
 
-        嵌套调用不提前提交；异常时只有事务拥有者执行回滚，随后继续抛出异常。
+        SQLModel Session 只在最外层提交或回滚，嵌套业务写入不能提前发布。
         """
         with self._lock:
-            if self._db is None:
+            if self._closed:
                 raise LogAgentError("storage_closed", "session 数据库已关闭")
-            owned = not self._db.in_transaction
-            if owned:
-                self._db.execute("BEGIN IMMEDIATE")
-            try:
-                yield
-                if owned:
-                    self._db.commit()
-            except BaseException:
-                if owned:
-                    self._db.rollback()
-                raise
+            if self._session is not None:
+                yield self._session
+                return
+            with Session(self._engine) as session:
+                self._session = session
+                try:
+                    session.connection().exec_driver_sql("BEGIN IMMEDIATE")
+                    yield session
+                    session.commit()
+                except BaseException:
+                    session.rollback()
+                    raise
+                finally:
+                    self._session = None
 
     def create(self, session_id: str, workflow_id: str, policy: BackupPolicy) -> None:
         """原子创建 session 头与 created 事件，重复创建相同绑定时直接返回。
@@ -103,18 +118,17 @@ class SessionStore:
         _ID.validate_python(session_id)
         _ID.validate_python(workflow_id)
         policy_json = _json(policy.model_dump(mode="json"))
-        with self._transaction():
-            row = self._db.execute(
-                "SELECT * FROM session_headers WHERE session_id=?", (session_id,)
-            ).fetchone()
+        with self._transaction() as session:
+            row = session.get(SessionHeader, session_id)
             if row:
-                if row["workflow_id"] != workflow_id or row["policy"] != policy_json:
+                if row.workflow_id != workflow_id or row.policy != policy_json:
                     raise LogAgentError("storage_conflict", "session 标识已绑定其他配置")
                 return
-            self._db.execute(
-                "INSERT INTO session_headers VALUES(?,?,?,?)",
-                (session_id, workflow_id, datetime.now(UTC).isoformat(), policy_json),
-            )
+            session.add(SessionHeader(
+                session_id=session_id, workflow_id=workflow_id,
+                created_at=datetime.now(UTC).isoformat(), policy=policy_json,
+            ))
+            session.flush()
             self.write(session_id, "created", stage=None, scope="parent", summary={"status": "created"})
 
     def write(
@@ -132,41 +146,36 @@ class SessionStore:
             "stage": stage, "scope": scope, "summary": summary,
             "body": body, "availability": availability, "category": category,
         }))
-        with self._transaction():
-            previous = self._db.execute(
-                "SELECT * FROM session_entries WHERE session_id=? AND write_key=?",
-                (session_id, key),
-            ).fetchone()
+        with self._transaction() as session:
+            previous = session.exec(select(SessionEntry).where(
+                SessionEntry.session_id == session_id, SessionEntry.write_key == key,
+            )).first()
             if previous:
-                if previous["digest"] != digest:
+                if previous.digest != digest:
                     raise LogAgentError("storage_conflict", "幂等键对应的 session 内容不同")
                 return self._entry(previous)
-            if not self._db.execute(
-                "SELECT 1 FROM session_headers WHERE session_id=?", (session_id,)
-            ).fetchone():
+            if session.get(SessionHeader, session_id) is None:
                 raise LogAgentError("session_not_found", "session 不存在")
-            version = self._db.execute(
-                "SELECT COALESCE(MAX(version),0)+1 FROM session_entries WHERE session_id=?",
-                (session_id,),
-            ).fetchone()[0]
-            self._db.execute(
-                "INSERT INTO session_entries VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                (session_id, version, key, stage, scope, encoded_summary, encoded_body,
-                 availability, category, digest, datetime.now(UTC).isoformat()),
+            latest = session.exec(select(func.max(SessionEntry.version)).where(
+                SessionEntry.session_id == session_id,
+            )).one()
+            row = SessionEntry(
+                session_id=session_id, version=(latest or 0) + 1, write_key=key,
+                stage=stage, scope=scope, summary=encoded_summary, body=encoded_body,
+                availability=availability, category=category, digest=digest,
+                created_at=datetime.now(UTC).isoformat(),
             )
-            row = self._db.execute(
-                "SELECT * FROM session_entries WHERE session_id=? AND version=?",
-                (session_id, version),
-            ).fetchone()
+            session.add(row)
+            session.flush()
             return self._entry(row)
 
     @staticmethod
-    def _entry(row: sqlite3.Row) -> dict:
+    def _entry(row: SessionEntry) -> dict:
         """解码数据库条目并检查内容摘要；非法数据转换为 storage_corrupt。
 
         expired 条目正文已清除，保留的是清理前摘要，因此不再按当前正文验算。
         """
-        value = dict(row)
+        value = row.model_dump()
         try:
             value["summary"] = _JSON.validate_python(orjson.loads(value["summary"]))
             value["body"] = (
@@ -186,41 +195,34 @@ class SessionStore:
 
     def entry(self, session_id: str, key: str) -> dict | None:
         """按 session 和稳定业务键读取单条存档，不存在时返回 None。"""
-        with self._transaction():
-            row = self._db.execute(
-                "SELECT * FROM session_entries WHERE session_id=? AND write_key=?",
-                (session_id, key),
-            ).fetchone()
+        with self._transaction() as session:
+            row = session.exec(select(SessionEntry).where(
+                SessionEntry.session_id == session_id, SessionEntry.write_key == key,
+            )).first()
             return self._entry(row) if row else None
 
     def entries(self, session_id: str, version: int | None = None) -> tuple[dict, list[dict]]:
-        """一致读取 session 头及截至指定版本的全部条目，按版本升序返回。
-
-        省略 version 表示最新历史；session 或指定版本不存在时明确报错。
-        """
-        with self._transaction():
-            header = self._db.execute(
-                "SELECT * FROM session_headers WHERE session_id=?", (session_id,)
-            ).fetchone()
+        """一致读取 session 头及截至指定版本的全部条目，按版本升序返回。"""
+        with self._transaction() as session:
+            header = session.get(SessionHeader, session_id)
             if header is None:
                 raise LogAgentError("session_not_found", "session 不存在")
             if version is not None and (type(version) is not int or version < 1):
                 raise LogAgentError("invalid_argument", "session version 必须为正整数")
-            rows = self._db.execute(
-                "SELECT * FROM session_entries WHERE session_id=? "
-                "AND (? IS NULL OR version<=?) ORDER BY version",
-                (session_id, version, version),
-            ).fetchall()
-            if not rows or (version is not None and rows[-1]["version"] != version):
+            statement = select(SessionEntry).where(SessionEntry.session_id == session_id)
+            if version is not None:
+                statement = statement.where(SessionEntry.version <= version)
+            rows = session.exec(statement.order_by(SessionEntry.version)).all()
+            if not rows or (version is not None and rows[-1].version != version):
                 raise LogAgentError("version_not_found", "session 业务版本不存在")
-            return dict(header), [self._entry(row) for row in rows]
+            return header.model_dump(), [self._entry(row) for row in rows]
 
     def session_ids(self) -> list[str]:
         """按创建时间降序列出 session ID，同一创建时间按 ID 排序。"""
-        with self._transaction():
-            return [row[0] for row in self._db.execute(
-                "SELECT session_id FROM session_headers ORDER BY created_at DESC,session_id"
-            )]
+        with self._transaction() as session:
+            return list(session.exec(select(SessionHeader.session_id).order_by(
+                SessionHeader.created_at.desc(), SessionHeader.session_id,
+            )).all())
 
     def expire(self, now: datetime | None = None) -> int:
         """按终态事件时间和保留天数清除到期业务正文，返回更新条目数。
@@ -230,7 +232,7 @@ class SessionStore:
         """
         now = now or datetime.now(UTC)
         changed = 0
-        with self._transaction():
+        with self._transaction() as session:
             for sid in self.session_ids():
                 header, entries = self.entries(sid)
                 policy = BackupPolicy.model_validate_json(header["policy"])
@@ -242,15 +244,20 @@ class SessionStore:
                     continue
                 if now < datetime.fromisoformat(last["created_at"]) + timedelta(days=policy.retention_days):
                     continue
-                changed += self._db.execute(
-                    "UPDATE session_entries SET body=NULL,availability='expired' "
-                    "WHERE session_id=? AND body IS NOT NULL AND category IS NOT NULL", (sid,),
-                ).rowcount
+                rows = session.exec(select(SessionEntry).where(
+                    SessionEntry.session_id == sid,
+                    SessionEntry.body.is_not(None), SessionEntry.category.is_not(None),
+                )).all()
+                for row in rows:
+                    row.body = None
+                    row.availability = "expired"
+                    session.add(row)
+                changed += len(rows)
         return changed
 
     def close(self) -> None:
         """在实例锁内关闭连接；重复关闭不重复操作。"""
         with self._lock:
-            if self._db is not None:
-                self._db.close()
-                self._db = None
+            if not self._closed:
+                self._engine.dispose()
+                self._closed = True

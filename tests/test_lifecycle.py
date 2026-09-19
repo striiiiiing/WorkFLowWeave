@@ -3,12 +3,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import sqlite3
 import threading
 import time
 from pathlib import Path
 
 import pytest
+from sqlalchemy import URL
+from sqlmodel import Session, create_engine, func, select
 from workflow_ai_helpers import TestChannelFactory
 
 from logagent.channel import builtin_channels
@@ -25,6 +26,7 @@ from logagent.models import (
     SystemConfig,
     WorkflowDefinition,
 )
+from logagent.workflow.session_models import SessionEntry, SessionHeader
 
 _COLLECTOR_PLUGIN = """
 from logagent.models import CollectorOutput
@@ -445,16 +447,17 @@ async def test_shutdown_waits_for_admitted_interval_archive_before_stopping(tmp_
     assert not notifications.exists()
 
     database = Path(config.data_dir) / "workflows.sqlite3"
-    with sqlite3.connect(database) as connection:
-        session_count = connection.execute("SELECT COUNT(*) FROM session_headers").fetchone()[0]
-        parent_states = [
-            json.loads(row[0])["status"]
-            for row in connection.execute(
-                "SELECT summary FROM session_entries "
-                "WHERE scope='parent' AND json_extract(summary, '$.status') IS NOT NULL "
-                "ORDER BY version"
-            )
-        ]
+    engine = create_engine(URL.create("sqlite", database=str(database)))
+    try:
+        with Session(engine) as connection:
+            session_count = connection.exec(select(func.count()).select_from(SessionHeader)).one()
+            summaries = connection.exec(select(SessionEntry.summary).where(
+                SessionEntry.scope == "parent",
+            ).order_by(SessionEntry.version)).all()
+            parent_states = [value["status"] for summary in summaries
+                             if "status" in (value := json.loads(summary))]
+    finally:
+        engine.dispose()
     assert session_count == 1
     assert parent_states[-1] == "cancelled"
 

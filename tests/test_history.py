@@ -2,12 +2,14 @@ from datetime import UTC, datetime, timedelta
 
 import orjson
 import pytest
+from sqlmodel import select
 
 from logagent.collection import CollectorManager, HistoryCollector, builtin_collectors
 from logagent.config import PluginRegistry, ResourceStore
 from logagent.errors import LogAgentError
 from logagent.models import BackupPolicy, CollectionContext, SourceConfig, SystemConfig
 from logagent.workflow import SessionStore, SessionView
+from logagent.workflow.session_models import SessionEntry
 
 
 @pytest.fixture
@@ -89,8 +91,12 @@ async def test_empty_missing_expired_corrupt_are_distinct(store):
     result = await collector.collect({"session_id": "expiring"}, {}, context(store))
     assert result.status == "missing" and result.error.details["availability"] == "expired"
     save(store, "broken")
-    store._db.execute("UPDATE session_entries SET body=? WHERE session_id=? AND write_key=?",
-                      ('{"text":"private-corrupt"}', "broken", "collect"))
+    with store._transaction() as session:
+        row = session.exec(select(SessionEntry).where(
+            SessionEntry.session_id == "broken", SessionEntry.write_key == "collect",
+        )).one()
+        row.body = '{"text":"private-corrupt"}'
+        session.add(row)
     result = await collector.collect({"session_id": "broken"}, {}, context(store))
     assert result.status == "failed" and "private-corrupt" not in result.model_dump_json()
     missing = await collector.collect({}, {}, CollectionContext("w", "current"))

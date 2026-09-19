@@ -2,10 +2,11 @@
 
 import json
 import os
-import sqlite3
 import subprocess
 import sys
 from pathlib import Path
+
+from langgraph.checkpoint.sqlite import SqliteSaver
 
 from logagent.workflow import SessionStore
 
@@ -160,11 +161,8 @@ def test_hard_exit_during_analysis_recovers_only_unfinished_branch(tmp_path):
         assert store.entry("run", "analyze:item:first") is not None
     finally:
         store.close()
-    with sqlite3.connect(database) as db:
-        assert (
-            db.execute("SELECT count(*) FROM checkpoints WHERE thread_id=?", ("run",)).fetchone()[0]
-            > 0
-        )
+    with SqliteSaver.from_conn_string(str(database)) as saver:
+        assert saver.get_tuple({"configurable": {"thread_id": "run"}}) is not None
 
     _run_child(tmp_path, "recover", 0)
     events = _ledger(tmp_path)

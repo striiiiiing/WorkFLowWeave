@@ -1,14 +1,17 @@
 import asyncio
-import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import URL, inspect
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import Session, create_engine, select, text
 
 from logagent.errors import LogAgentError
 from logagent.models import BackupPolicy
 from logagent.workflow import SessionStore, SessionView
 from logagent.workflow.nodes import ArchiveRuntime, archive_node
+from logagent.workflow.session_models import SessionEntry, SessionHeader
 
 
 @pytest.fixture
@@ -17,6 +20,11 @@ def store(tmp_path):
     value.create("s", "w", BackupPolicy(retention_days=1))
     yield value
     value.close()
+
+
+def _ddl(store, statement):
+    with store._transaction() as session:
+        session.connection().exec_driver_sql(statement)
 
 
 def write(store, key="phase:collect", text="原始业务正文"):
@@ -54,10 +62,10 @@ def test_separate_connections_serialize_idempotent_writes(store):
 
 
 def test_failed_transaction_does_not_publish_a_version(store):
-    store._db.execute("CREATE TRIGGER fail BEFORE INSERT ON session_entries BEGIN SELECT RAISE(ABORT,'fault'); END")
-    with pytest.raises(sqlite3.IntegrityError):
+    _ddl(store, "CREATE TRIGGER fail BEFORE INSERT ON session_entries BEGIN SELECT RAISE(ABORT,'fault'); END")
+    with pytest.raises(IntegrityError):
         write(store)
-    store._db.execute("DROP TRIGGER fail")
+    _ddl(store, "DROP TRIGGER fail")
     assert write(store)["version"] == 2
 
 
@@ -75,7 +83,10 @@ def test_expiry_retains_idempotence_and_management_records(store):
 
 def test_corrupt_archives_are_reported_without_exposing_body(store):
     write(store)
-    store._db.execute("UPDATE session_entries SET body=?", ('{"text":"secret"}',))
+    with store._transaction() as session:
+        for row in session.exec(select(SessionEntry)).all():
+            row.body = '{"text":"secret"}'
+            session.add(row)
     with pytest.raises(LogAgentError) as caught:
         store.entry("s", "phase:collect")
     assert caught.value.code == "storage_corrupt"
@@ -94,7 +105,7 @@ async def test_read_view_pins_version_and_never_uses_checkpoints(store):
     assert await view.list_sessions(exclude_session_id="s") == []
     with pytest.raises(LogAgentError):
         await view.get_session("s", version=99)
-    tables = {r[0] for r in store._db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    tables = set(inspect(store._engine).get_table_names())
     assert "checkpoints" not in tables
 
 
@@ -163,8 +174,13 @@ async def test_failed_backup_cannot_be_replayed_past_stop_policy(store):
 
 def test_legacy_database_is_not_silently_hidden(tmp_path):
     path = tmp_path / "legacy.sqlite3"
-    with sqlite3.connect(path) as connection:
-        connection.execute("CREATE TABLE run_sessions(session_id TEXT)")
+    engine = create_engine(URL.create("sqlite", database=str(path)))
+    try:
+        with Session(engine) as session:
+            session.execute(text("CREATE TABLE run_sessions(session_id TEXT)"))
+            session.commit()
+    finally:
+        engine.dispose()
     with pytest.raises(LogAgentError) as caught:
         SessionStore(path)
     assert caught.value.code == "storage_version"
@@ -179,7 +195,7 @@ def test_close_is_idempotent_and_use_after_close_is_explicit(store):
 
 
 async def test_backup_failure_continue_records_missing_body_and_retains_runtime_value(store):
-    store._db.execute("CREATE TRIGGER fail_body BEFORE INSERT ON session_entries WHEN NEW.body IS NOT NULL BEGIN SELECT RAISE(ABORT,'fault'); END")
+    _ddl(store, "CREATE TRIGGER fail_body BEFORE INSERT ON session_entries WHEN NEW.body IS NOT NULL BEGIN SELECT RAISE(ABORT,'fault'); END")
     runtime = ArchiveRuntime(store, "s", BackupPolicy(on_failure="continue"))
     saved = await runtime.save("key", stage="analyze", scope="phase", summary={"status": "running"},
                                body={"text": "input"}, category="analysis")
@@ -190,9 +206,9 @@ async def test_backup_failure_continue_records_missing_body_and_retains_runtime_
 
 
 async def test_management_write_failure_always_propagates(store):
-    store._db.execute("CREATE TRIGGER fail BEFORE INSERT ON session_entries BEGIN SELECT RAISE(ABORT,'fault'); END")
+    _ddl(store, "CREATE TRIGGER fail BEFORE INSERT ON session_entries BEGIN SELECT RAISE(ABORT,'fault'); END")
     runtime = ArchiveRuntime(store, "s", BackupPolicy(on_failure="continue"))
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(IntegrityError):
         await runtime.save("intent", stage="notify", scope="notification", summary={}, body={"target": "mail"})
     assert len(store.entries("s")[1]) == 1
 
@@ -207,3 +223,91 @@ async def test_expiration_removes_all_historical_bodies_and_keeps_version(store)
         content = await view.get_phase_content("s", "collect", version=version)
         assert content.content is None and content.availability == "expired"
         assert (await view.get_session("s", version=version)).version == version
+
+
+def test_create_event_failure_rolls_back_header_and_allows_retry(store):
+    _ddl(store, "CREATE TRIGGER fail BEFORE INSERT ON session_entries BEGIN SELECT RAISE(ABORT,'fault'); END")
+    with pytest.raises(IntegrityError):
+        store.create("new", "w", BackupPolicy())
+    with store._transaction() as session:
+        assert session.get(SessionHeader, "new") is None
+    _ddl(store, "DROP TRIGGER fail")
+    store.create("new", "w", BackupPolicy())
+    assert store.entry("new", "created")["version"] == 1
+
+
+async def test_memory_database_survives_calls_from_worker_threads():
+    store = SessionStore(":memory:")
+    try:
+        await asyncio.to_thread(store.create, "s", "w", BackupPolicy())
+        await asyncio.to_thread(write, store)
+        assert store.entry("s", "phase:collect")["version"] == 2
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("violation", ["foreign_key", "write_key", "version"])
+def test_database_constraints_reject_invalid_archive_rows(store, violation):
+    original = write(store)
+    values = {**original, "summary": "{}", "body": None}
+    if violation == "foreign_key":
+        values["session_id"] = "absent"
+    elif violation == "write_key":
+        values["version"] += 1
+    else:
+        values["write_key"] = "different"
+    with pytest.raises(IntegrityError), store._transaction() as session:
+        session.add(SessionEntry(**values))
+        session.flush()
+    assert store.entry("s", "phase:collect") == original
+
+
+def test_pre_sqlmodel_schema_preserves_data_and_accepts_new_writes(tmp_path):
+    import hashlib
+    import json
+
+    path = tmp_path / "existing.sqlite3"
+    summary = {"status": "created"}
+    digest_input = {"stage": None, "scope": "parent", "summary": summary,
+                    "body": None, "availability": "available", "category": None}
+    digest = hashlib.sha256(json.dumps(digest_input, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    engine = create_engine(URL.create("sqlite", database=str(path)))
+    try:
+        with Session(engine) as session:
+            # Freeze the previous schema independently of the new SQLModel metadata.
+            session.execute(text("""CREATE TABLE session_headers (
+                session_id TEXT PRIMARY KEY, workflow_id TEXT NOT NULL,
+                created_at TEXT NOT NULL, policy TEXT NOT NULL)"""))
+            session.execute(text("""CREATE TABLE session_entries (
+                session_id TEXT NOT NULL REFERENCES session_headers(session_id),
+                version INTEGER NOT NULL, write_key TEXT NOT NULL,
+                stage TEXT, scope TEXT NOT NULL, summary TEXT NOT NULL,
+                body TEXT, availability TEXT NOT NULL, category TEXT, digest TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY(session_id, version), UNIQUE(session_id, write_key))"""))
+            session.execute(text("INSERT INTO session_headers VALUES (:sid,:wid,:at,:policy)"), {
+                "sid": "s", "wid": "w", "at": "2026-09-19T00:00:00+00:00",
+                "policy": json.dumps(BackupPolicy().model_dump(mode="json"), sort_keys=True, separators=(",", ":")),
+            })
+            session.execute(text("""INSERT INTO session_entries VALUES (
+                :sid,1,'created',NULL,'parent',:summary,NULL,'available',NULL,:digest,:at)"""), {
+                "sid": "s", "summary": json.dumps(summary), "digest": digest,
+                "at": "2026-09-19T00:00:00+00:00",
+            })
+            session.commit()
+    finally:
+        engine.dispose()
+    store = SessionStore(path)
+    try:
+        store.create("s", "w", BackupPolicy())
+        assert store.entry("s", "created")["summary"] == summary
+        first = write(store)
+        assert first["version"] == 2
+        assert write(store) == first
+    finally:
+        store.close()
+    reopened = SessionStore(path)
+    try:
+        assert reopened.entry("s", "phase:collect") == first
+    finally:
+        reopened.close()
