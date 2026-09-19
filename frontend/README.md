@@ -1,48 +1,63 @@
-# LogAgent 前端模块 (Frontend Module)
+# LogAgent 前端
 
-本模块是 LogAgent 系统的 Web 交互视图层，采用 **Vue 3 + Tailwind CSS + Vite + Pinia + TypeScript** 构建，提供轻量、现代、零代码且手机端高度友好的交互界面。
+Vue 3 Composition API + TypeScript + Element Plus + Vue Router + Vite。保留蓝灰配色、桌面侧栏、移动抽屉、明暗主题和纵向工作流卡片。
 
-详细设计规范与设计语言定义见：[前端模块设计文档](../openspec/changes/configurable-collection-analysis-workflow/modules/frontend/design.md)。
+## 开发
 
----
+需要同时运行后端和前端。先在仓库根目录启动真实后端（首次生成配置，已有配置不要覆盖）：
 
-## 核心设计决策与索引映射
-
-本项目代码中全面标注了设计语言决策索引，便于审查与校验：
-
-| 决策编号 | 规范名称 | 实施位置与说明 |
-| :--- | :--- | :--- |
-| `DEC-TYPO-01` | 系统字体栈与 14px 基准字阶 | `src/assets/main.css`, `tailwind.config.js` |
-| `DEC-TYPO-02` | 代码/ID 等宽字体与弱灰底色 | `src/components/common/Input.vue`, `src/types/index.ts` |
-| `DEC-COLOR-01`| WCAG AAA 级状态徽标对比度 (≥ 7:1) | `src/components/common/Badge.vue`（深红/浅粉、深绿/浅绿、深天蓝/浅蓝） |
-| `DEC-COLOR-02`| Slate 冷灰深浅双轨暗黑模式 | `src/components/layout/AppLayout.vue`, `src/components/common/Card.vue` |
-| `DEC-LAYOUT-01`| 绝无画布，垂直阶梯流式编排 (Flow Stepper) | `src/views/WorkflowEditView.vue`, `src/components/workflow/*` |
-| `DEC-LAYOUT-02`| 移动端全高抽屉导航与 44px 触控目标 | `src/components/layout/AppLayout.vue`, `src/components/common/Button.vue` |
-| `DEC-ICON-01` | 对象、动作、状态图标三分类与无歧义 | `src/components/icons/AppIcon.vue` (恢复使用 `RotateCcw`，取消使用 `Stop`) |
-| `DEC-ICON-02` | 1.75px 描边圆角线性与光学平衡对齐 | `src/components/icons/AppIcon.vue` (24x24 视框与不对称重心偏移校正) |
-| `DEC-MOTION-01`| 150ms-250ms 微交互与减少动效适配 | `src/assets/main.css` (`prefers-reduced-motion`) |
-| `DEC-SEC-01`  | 凭据前端只读脱敏掩码 | `src/views/ResourcesView.vue`, `src/api/client.ts` |
-
----
-
-## 开发与构建
-
-### 1. 安装依赖
-```bash
-cd frontend
-npm install
-# 或使用 pnpm / bun
-pnpm install
+```sh
+uv sync --group dev
+uv run logagent config-example --output config.json
+uv run logagent start --config config.json
 ```
 
-### 2. 启动本地开发服务
-```bash
+默认后端地址为 `http://127.0.0.1:4300`；配置、数据库与密钥保留在本地，不纳入 Git。另开终端启动前端：
+
+```sh
+cd frontend
+npm ci
 npm run dev
 ```
-开发服务启动于 `http://localhost:3000`，所有 `/api/*` 请求将自动通过 Vite 代理转发至后端 FastAPI 服务的 `http://127.0.0.1:8000`。
 
-### 3. 类型检查与生产构建
-```bash
+开发地址默认 `http://localhost:3000`。`/api` 默认代理到 `http://127.0.0.1:4300`，与后端 `SystemConfig.port` 一致。使用自定义后端端口时，通过 `API_TARGET=http://127.0.0.1:8000 npm run dev` 显式指定目标；修改环境变量后重启 Vite。`npm run dev` 只启动前端，不会自动启动 Python 服务。
+
+启动后用 `curl -i http://127.0.0.1:3000/api/health` 检查完整代理链路，应返回 JSON 健康报告。若返回空的 HTTP 500，检查 Vite 终端的代理错误和目标后端端口；不要将这个响应当作后端 JSON 格式错误。健康报告也可能以 HTTP 503 返回 `unavailable`，应按组件诊断排查。
+
+若在 WSL 的 Windows 挂载目录中修改文件后没有热更新，可用 `CHOKIDAR_USEPOLLING=1 npm run dev` 启用文件轮询；浏览器验收使用生产预览，避免开发依赖重新预构建引起页面重载。
+
+## 代码组织
+
+- `api/`：HTTP 传输、后端错误解析及资源/运行/系统接口，不保存页面状态。
+- `types/`：对应 `src/logagent/models.py` 的 HTTP 数据类型。
+- `domain/`：表单初始值与状态展示元数据，不复制后端业务校验。
+- `composables/`：页面请求生命周期、提交状态和运行轮询。请求结果由页面持有；没有资源列表的全局副本。
+- `components/`：共享导航、语义图标、表格、JSON 字段和工作流分步表单。普通按钮、输入框、弹窗直接使用 Element Plus。
+- `views/`：路由页面，负责组合数据与交互；路由懒加载，Element Plus 组件和样式按需引入。
+
+图标名称在 `components/icons/registry.ts` 一处映射，导航定义在 `router/navigation.ts`，状态文案在 `domain/session.ts`。工作流编辑只有一份草稿，保留已有调用覆盖字段，保存时直接提交后端定义。
+
+## 接口与行为
+
+以 `src/logagent/interaction/routers.py` 和 `models.py` 为准：资源路径为 `/api/{kind}`，运行路径为 `/api/sessions`。资源类型为 `sources`、`setters`、`ai`、`channels`、`workflows`；没有独立凭据 CRUD 接口。AI 凭据支持环境变量引用，编辑时可以保留已有密文，界面不反显密文。
+
+后端目前内置 AI provider 为 `http`，需要有效的 `base_url`。插件参数与模型参数使用带语法校验的 JSON 对象编辑器；参数业务约束由后端验证，插件页可查 Schema。
+
+运行轮询间隔 2 秒，在请求完成后计时，终态和错误都会停止轮询；错误可手动刷新重试。页面销毁会取消请求。阶段内容总是携带明确版本，不跨版本缓存正文。取消响应不会直接伪造本地终态。
+
+## 验证
+
+```sh
+npm test
+npm run typecheck
 npm run build
+npm run format:check
+npx playwright install --with-deps chromium
+npm run test:e2e
 ```
-编译产物输出至 `frontend/dist`，可独立由 Nginx/Caddy 托管，或直接挂载至 FastAPI 静态路由提供访问。
+
+浏览器测试需要根目录已有 `.venv` 及后端依赖，会使用临时目录启动真实 FastAPI（14300）和生产预览（13000），不会修改项目运行数据。通过内置离线采集器验证运行与阶段读取，不调用外部 AI 服务。单元测试覆盖 HTTP 契约、请求竞态、作用域清理、轮询和 JSON 表单校验。
+
+实际环境需另外运行 `npm run test:live`：此检查不启动测试服务器，直接访问当前运行的 `http://127.0.0.1:3000`（可用 `LOGAGENT_FRONTEND_URL` 指定）。验证健康报告、资源/运行/插件列表、页面接收和资源保存；只创建带唯一 ID 的临时采集源，结束时删除，不触发工作流。后端未启动或代理不通会直接失败。隔离测试通过不能替代这项检查。
+
+`proposal.md` 与 `design.md` 未改动；本次取舍和验证结果记录在 OpenSpec 前端 `task.md`。

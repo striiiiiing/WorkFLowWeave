@@ -1,36 +1,93 @@
-# 前端模块任务
+# 前端重构任务
 
-状态：实现完成，待主代理审查与全流程联动验证。
+状态：前端重构已实施；用户反馈的空 HTTP 500 已定位并修复，当前本机链路验证通过。后端仍报告可选 mock 插件重复注册导致的 degraded，未将其记作完全健康。以下清单以实际验证为准，替换旧任务中未经验证的完成声明。
 
-## 依据与决策
+## 依据与边界
 
-- 依据 [前端设计](./design.md)、[交互模块设计](../interaction/design.md)、[总设计](../../design.md)、[提案](../../proposal.md §2.2) 及本次用户确认。
-- 绝不采用画布功能（依据 proposal.md §2.2 与 design.md §1.2），采用垂直流式阶梯编排（Flow Stepper）实现零代码配置，保证移动端体验良好。
-- 统一设计语言：排版采用系统字体栈基准 14px；色彩系统严格保证普通文本达到 WCAG AA 级（≥ 4.5:1），核心状态徽标达到 WCAG AAA 级（≥ 7:1）；图标系统分为对象、动作、状态，消除语义歧义。
-- 前端使用 Vue 3 + Tailwind CSS + Vite + Pinia + Vue Router + TypeScript。
-- 前端不沉淀第二业务事实来源，所有资源与运行数据严格消费后端 FastAPI API。
-- 敏感凭据（如 API Key）前端只读掩码，不提供明文反显，保存采用密文或引用（依据总设计 §5.2）。
-- 轮询间隔默认值设为 2000ms（2秒），AI 分析执行总预算默认 600s（依据 data-models.md），平衡实时性与低资源消耗。
+- 用户 2026-09-18 明确要求：以当前 `main` 为基线，保留现有外观，采用 Vue 3 / Element Plus，消除明显冗余并整理架构。
+- 依据 [前端设计](./design.md)、[总设计](../../design.md)、[提案](../../proposal.md)：保留侧栏、移动抽屉、明暗主题与无画布的纵向卡片编排。
+- 接口事实来源为 `src/logagent/models.py`、`src/logagent/interaction/routers.py`、`schemas.py`、`errors.py`。旧前端设计中的接口示例与当前实现存在偏差，以可运行后端为准；本次未修改 proposal.md 或任何 design.md。
+- 用户明确指定 Element Plus，优先于旧任务中的“自主实现原子组件”。不保留 Ant Design 或并行的静态预览实现。
+- 重构前前端源码及预览已归档至工作区外 `/tmp/logagent-frontend-before-refactor.tar.gz`。不修改用户的后端、IDE 配置或提交分支。
 
-## 清单
+## 根因与结构取舍
 
-- [x] 初始化前端工程结构与配置文件（package.json, vite.config.ts, tailwind.config.js, tsconfig.json）。
-- [x] 构建设计系统基础样式（CSS 变量、暗色模式、文字标尺、WCAG AAA 对比度色盘、44px 触控规范）。
-- [x] 实现规范化图标组件库与状态徽标（区分对象、动作、状态，线性/面性）。
-- [x] 封装类型安全的 API 客户端（严格镜像 interaction 路由：resources, runs, system 与错误映射）。
-- [x] 实现应用外壳（桌面侧边栏与移动端自适应抽屉导航）。
-- [x] 实现零代码工作流编排器（无画布垂直阶梯流：多来源拖拽/排序、Fan-out 分析任务卡、Fan-in 汇聚卡、通知卡、备份矩阵）。
-- [x] 实现运行记录与详情查看器（Session 列表、阶段流式面板、共享输入/分支输出/汇聚/回执查看器、恢复/取消控制）。
-- [x] 实现资源管理中心（Source、AI、Channel、Credential 列表与表单，动态 Schema 支持）。
-- [x] 实现插件能力与 Schema 浏览器（CapabilityDescription 检查）。
-- [x] 验证代码设计规范索引覆盖率、响应式移动端适配与 WCAG AA/AAA 对比度合规。
+局部替换图标条件链只能处理表象。原实现重复维护导航、主题、状态颜色、资源副本和加载状态，且错误处理用空列表/健康状态掩盖接口失败。因此采用结构修复：
 
-## 实现与设计审查记录
+- `components/icons/registry.ts` 是唯一图标映射，`AppIcon.vue` 用动态组件渲染，图标名由 TypeScript 约束；仅导入实际使用的图标。
+- `router/navigation.ts` 是导航定义，桌面与抽屉共用 `AppNavigation`。主题由外壳单点管理，删除 MutationObserver 与重复主题状态。
+- `api/` 仅负责传输与 DTO，页面通过 `useQuery` 持有服务端数据，编辑器只持有一份草稿。删除四个仅复制服务端数据的 Pinia store，并移除 Pinia 依赖。
+- `useQuery` 取消过期请求、忽略迟到结果并在作用域销毁时清理；`useAsyncTask` 管理提交状态且显式暴露错误。错误不是空数据或成功结果。
+- `domain/session.ts` 统一状态、阶段、产物可用性文案；总览和记录页共用 `SessionTable`。工作流步骤复用 `AIModelSelect`，备份与资源策略采用元数据循环。
+- 删除 Button/Input/Modal/Switch 等仅转发参数的包装，直接使用 Element Plus。保留有布局或行为职责的页面标题、卡片、状态徽标和 JSON 字段组件。
+- Element Plus 组件与样式按需引入；生产主入口 JavaScript 约 220KB（gzip 83KB），替代全量注册时约 1.06MB 的入口，无大包警告。
+- 路由懒加载；新增与编辑路由独立挂载草稿，避免参数切换复用旧表单。
 
-- **设计语言统一落地**：
-  - 排版：`src/assets/main.css` 与 `tailwind.config.js` 统一使用系统字体族和等宽代码字体，基准字号为 14px (`DEC-TYPO-01`, `DEC-TYPO-02`)。
-  - 色彩与对比度：`Badge.vue` 实现运行状态高对比度 AAA 配色方案（如 `completed` 绿底绿字对比度 8.1:1，`failed` 红底红字对比度 7.4:1，`partial` 琥珀色对比度 7.3:1），满足严苛运维场景要求 (`DEC-COLOR-01`, `DEC-COLOR-02`)。
-  - 栅格与布局：全面采用响应式自适应布局。`WorkflowEditView.vue` 落实无画布设计，采用垂直流式阶梯编排（Flow Stepper）分步卡片（采集源、并行分析、汇聚汇总、通知分发、备份策略），在移动端 375px 宽度下自适应单列排布，杜绝手势冲突与横向溢出 (`DEC-LAYOUT-01`)。移动端触控按钮统一保证最小 44×44px 命中区 (`DEC-LAYOUT-02`)。
-  - 图标系统：`AppIcon.vue` 严格按照对象（Database/Bot/Mail/Key/Workflow）、动作（Play/RotateCcw/Stop/Trash/Edit）、状态（CheckCircle/Loader/AlertTriangle/XOctagon）三分类设计，统一 24×24 视框与 1.75px 描边圆角，并在 CSS 中进行了光学重心平衡微调 (`DEC-ICON-01`, `DEC-ICON-02`)。
-  - 凭据安全：`ResourcesView.vue` 中对 Credential 进行掩码只读渲染，杜绝明文反显 (`DEC-SEC-01`)。
-- **工程结构**：独立位于项目根目录下的 `frontend/`，包含完整的 Vue 3 SPA 工程代码、TypeScript 类型声明、Pinia 状态仓库及对交互模块的反向代理配置。
+## 契约与默认值决策
+
+- 资源路径 `/api/{kind}`，运行路径 `/api/sessions`。工作流使用 `analyses`、`fan_in`、`backup`，不发送后端没有定义的 description、analysis_tasks、backup_policy。
+- 支持后端已有 sources/setters/ai/channels 的创建、编辑、删除。无独立 credentials 接口，因此凭据作为 AI 配置的环境变量引用处理，保留既有加密值但不反显。
+- 表单初始值逐项依据 `models.py`：采集 60 秒、渠道 30 秒、AI 600 秒/5 次重试、并发 4、备份默认启用、保留期 null 表示不设过期天数。可选汇聚由 null 表示，启用后默认 `{input}` 提示词及双换行分隔。
+- 定时运行默认 null（手动触发），与后端一致。当前内置 AI provider 为 `http`，依据 `lifecycle/service.py` 的工厂注册。
+- 轮询默认 2000ms，沿用原前端任务在实时性与请求负载间的取舍；从请求完成时开始计时，避免重叠。所有终态（含 interrupted）与请求失败均停止，用户可刷新重试。
+- 产物请求携带当前选定版本；弹窗展示响应版本，不随后台轮询更新版本标签，不缓存 pending 或过期正文。取消操作读取 `cancelled` 响应并重新查询状态。
+- `/health` 的 HTTP 503 仍可携带真实 HealthReport；仅该接口接受此状态。总览不虚构运行容量、在线时长或健康状态。
+- Vite 默认代理端口 4300 依据 `SystemConfig.port`，可以用 `API_TARGET` 覆盖。
+- JSON 编辑只验证 JSON 对象语法；资源、模型与插件业务限制由后端唯一验证。字段错误必须使父表单校验失败，避免提交此前的有效值。
+
+## 实施清单
+
+- [x] Vue 3 + Element Plus 替换，保留蓝灰布局、卡片、明暗主题。
+- [x] 图标、导航、状态映射收敛，删除旧 store、冗余包装与静态预览。
+- [x] 后端资源、会话、阶段、健康及错误 DTO 对齐。
+- [x] 工作流真实保存与编辑，保留已存在的 source/channel overrides。
+- [x] 资源 CRUD、插件与 Schema 浏览、运行列表与详情。
+- [x] 请求竞态、销毁清理、串行轮询、JSON 表单校验的自动化测试。
+- [x] 类型检查与生产构建。
+- [x] 真实 FastAPI 浏览器测试：资源编辑、工作流保存/运行/读取产物。
+- [x] 375px 移动端、导航、暗色主题与页面无横向溢出的浏览器检查。
+- [x] 最终 diff 审查与格式检查。
+
+## 明确未声称完成的事项
+
+- 本次保留布局和视觉语言，不声称与旧 Ant Design 版本像素级一致。
+- 插件复杂参数使用 JSON 对象字段及独立 Schema 浏览；不是完整 JSON Schema 自动生成表单。
+- 未进行全站 WCAG AA/AAA 对比度与辅助技术认证；旧任务中的此类断言不再作为验收证据。
+- 仓库原先已跟踪 node_modules；新增忽略规则只阻止新依赖文件进入 Git，没有擅自批量更改已有索引。
+
+## 验证记录（2026-09-18）
+
+- 单元测试共 12 项通过：HTTP 路径、错误映射、503 健康报告、204 删除、取消响应、明确版本读取、请求竞态、作用域清理、终态/错误轮询与 JSON 表单。
+- `npm run typecheck` / `npm run build` 通过；Element Plus 生成的组件类型声明纳入检查。`npm run format:check` 通过。
+- Playwright + Chromium 连接临时目录内的真实 FastAPI，验证资源无效 JSON 拦截与创建/编辑、工作流创建/重新加载/保存/触发/版本化正文读取、375px 导航/主题持久化及各主页面无横向溢出。离线采集器以 empty 模式在分析前结束，不调用外部模型。
+- 表单使用 `novalidate` 将交互校验交给 Element Plus，避免浏览器原生 number step 与小数最小值冲突而阻断合法提交；业务校验仍在后端。
+- Vitest 对 Element Plus 使用 Vite 内联转换，解决外部模块加载时 async-validator 的默认导出差异；同时保留真实浏览器验证。
+- 测试环境缺少 Chromium 动态库，下载并解包到 `/tmp/logagent-browser-libs`，通过 `LD_LIBRARY_PATH` 运行测试；未修改系统安装。常规环境可按 README 安装 Playwright 依赖。
+- 重构范围的 `git diff --check` 通过；仓库全量检查存在用户原有 `.idea/pyLspTools.xml` CRLF 空白差异，未修改。
+- 复查源码：无 Ant Design 引用、图标条件链、重复状态 switch、旧 store 或业务数据失败转空列表的逻辑。保留按不同表单内容展示所需的条件分支。
+
+## 实际环境 HTTP 500 问题（用户反馈后续任务）
+
+用户在实际页面遇到“服务返回了无效 JSON（HTTP 500）”。此前 3 个浏览器测试使用临时 FastAPI 与显式代理地址，只能证明隔离环境中的链路成立，不能作为用户当前启动环境的验收结论；此前完成表述范围过大。
+
+- [x] 先记录实际失败与原有验收证据的边界。
+- [x] 检查当前前端进程、代理目标、后端监听端口与启动配置。
+- [x] 获取失败请求的真实 HTTP 状态、Content-Type、响应正文，区分代理失败与后端业务异常。
+- [x] 修复根因；错误呈现保留 HTTP/代理错误信息，不能把所有非 JSON 错误响应都归为 JSON 解析失败。
+- [x] 针对实际失败增加回归验证，并验证用户当前运行链路。
+- [x] 更新运行说明和验收结论，明确隔离测试与实际环境的分别结果。
+
+约束：沿用现有 proposal/design，不修改用户后端实现；需要改动范围由真实响应与启动配置证据决定，不添加伪造成功或静默回退。
+
+实际证据：用户 Vite 监听 `127.0.0.1:3000`，没有 `API_TARGET` 环境变量及 `.env` 覆盖，使用配置中的 4300。`GET http://127.0.0.1:3000/api/health` 返回 HTTP 500、`Content-Type: text/plain`、空正文；直连 4300/8000 都是连接拒绝，系统没有后端监听。仓库此前既无 `config.json` 也无 `data/`。这是代理没有可连接的后端，再被客户端优先 JSON.parse 误报；不是后端业务返回了坏 JSON。无法读取用户终端历史日志，不以猜测日志作为证据。
+
+修复决策：保留现有 Vite 进程，使用已有 CLI 的 `config-example` 和 `start` 生成本地配置并启动真实持久化后端；默认 4300 不变，不增加端口探测或自动回退。README 写出两个终端的完整命令，不再引用根目录不存在的启动说明；`config.json` 和 `data/` 忽略进 Git，防止本地运行配置及密钥入库。客户端统一保留非 JSON HTTP 失败的状态和响应元数据，只有成功响应解析失败才报无效 JSON；健康接口的 503 错误信封仍应抛错。
+
+后续验证（2026-09-18，本次实际环境）：
+
+- 通过 `.venv/bin/logagent config-example --output config.json` 创建本地配置，`.venv/bin/logagent start --config config.json` 启动真实后端，使用项目 `data/` 持久化。保留运行供用户继续操作；不是临时测试 API，也未触发工作流或模型请求。
+- 经当前 Vite 的 `http://127.0.0.1:3000/api/health` 与 `/api/sources` 均返回 HTTP 200 `application/json`。健康报告 `accepting_runs=true`，整体 `degraded` 原因为可选 `plugins/mock` 与内置 mock 的 `registration_conflict`；各必需组件 available。未修改后端及插件实现来掩盖这个独立诊断。
+- 发现 WSL 挂载目录热更新遗漏，`/src/api/client.ts` 仍返回旧模块。触碰 Vite 配置触发其正常重载后，再次读取确认已提供新错误处理实现，无需终止用户进程。
+- `npm test`：19 项通过，其中 HTTP 契约 13 项，新增空 500、HTML 502、空 503、健康错误信封、成功但无效 JSON、异常错误体格式回归。`npm run typecheck`、`npm run format:check`、`npm run build` 通过；新增文件也通过 Prettier，改动范围 diff 空白检查通过。
+- 新增 `npm run test:live`，配置明确不启动任何服务器，默认直连当前 3000（环境变量 `LOGAGENT_FRONTEND_URL` 可覆盖）。Playwright Chromium 实测 1 项通过：总览实际接收健康数据，七类列表返回 JSON 数组，页面创建唯一 ID 采集源，后端读回确认并删除。无浏览器 pageerror；测试未触发工作流。
+- 此前 `npm run test:e2e` 的 3 项仍是隔离环境的历史结果；本轮新证据为上述实际链路检查，不将二者混同。实际环境测试需先按 README 启动前后端，后端停止时应直接失败，不自动补起测试服务。

@@ -2,35 +2,237 @@
 @tailwind components;
 @tailwind utilities;
 
-/* [Design Decision DEC-TYPO-01 & DEC-TYPO-02] 基础字体与排版基线 */
 :root {
-  --color-primary: #2563eb;
-  --color-surface: #ffffff;
-  --color-border: #e2e8f0;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+  color: #0f172a;
+  background: #f8fafc;
+  --surface: #fff;
+  --border: #e2e8f0;
+  --muted: #64748b;
+  --el-color-primary: #2563eb;
+  --el-border-radius-base: 6px;
 }
-
-.dark {
-  --color-primary: #3b82f6;
-  --color-surface: #1e293b;
-  --color-border: #334155;
+html.dark {
+  color: #f1f5f9;
+  background: #0f172a;
+  --surface: #1e293b;
+  --border: #334155;
+  --muted: #94a3b8;
+  --el-bg-color: #1e293b;
+  --el-bg-color-overlay: #1e293b;
+  --el-fill-color-blank: #1e293b;
+  --el-border-color-light: #334155;
+  --el-color-primary: #60a5fa;
 }
-
-/* [Design Decision DEC-MOTION-01] 尊重用户的减少动效偏好 */
+body {
+  margin: 0;
+}
+a {
+  color: var(--el-color-primary);
+}
+button,
+a,
+input,
+select,
+textarea {
+  touch-action: manipulation;
+}
+code,
+pre,
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.muted {
+  color: var(--muted);
+}
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+.desktop-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+.desktop-sidebar.collapsed {
+  width: 72px;
+}
+.brand {
+  height: 64px;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.brand-mark {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  color: white;
+  background: #2563eb;
+  border-radius: 8px;
+  font-size: 20px;
+  font-weight: 700;
+}
+.brand small {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+}
+.app-nav {
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+}
+.app-nav a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+.app-nav a.active {
+  background: #eff6ff;
+  color: #2563eb;
+  font-weight: 600;
+}
+.dark .app-nav a.active {
+  background: #172554;
+  color: #93c5fd;
+}
+.app-main {
+  flex: 1;
+  min-width: 0;
+}
+.topbar {
+  height: 56px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.page-content {
+  padding: 32px;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+.page-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.page-heading h1 {
+  font-size: 24px;
+  line-height: 1.3;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.el-card {
+  --el-card-border-radius: 8px;
+}
+.el-card__header {
+  padding: 16px 20px;
+}
+.el-alert {
+  margin-bottom: 16px;
+}
+.el-select,
+.el-input-number {
+  max-width: 100%;
+}
+.el-dialog {
+  max-width: calc(100vw - 32px);
+}
+.mobile-toggle {
+  display: none !important;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 20px;
+}
+.flow-stack {
+  display: grid;
+  gap: 24px;
+  position: relative;
+}
+.flow-stack > .el-card {
+  position: relative;
+  overflow: visible;
+}
+.flow-stack > .el-card + .el-card::before {
+  content: '';
+  position: absolute;
+  width: 2px;
+  height: 24px;
+  background: #bfdbfe;
+  top: -25px;
+  left: 50%;
+}
+@media (max-width: 1023px) {
+  .desktop-sidebar,
+  .desktop-toggle {
+    display: none !important;
+  }
+  .mobile-toggle {
+    display: inline-flex !important;
+  }
+}
+@media (max-width: 640px) {
+  .page-content {
+    padding: 16px;
+  }
+  .topbar {
+    padding: 0 12px;
+  }
+  .page-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .page-heading h1 {
+    font-size: 21px;
+  }
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+  .el-button {
+    min-height: 44px;
+  }
+  .el-input__wrapper,
+  .el-select__wrapper {
+    min-height: 44px;
+  }
+  .el-card__body {
+    padding: 16px;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  *, ::before, ::after {
+  *,
+  ::before,
+  ::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
-}
-
-/* 统一代码块高亮样式 */
-code, pre {
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-}
-
-/* 移动端触控优化 */
-button, a, input, select, textarea {
-  touch-action: manipulation;
 }

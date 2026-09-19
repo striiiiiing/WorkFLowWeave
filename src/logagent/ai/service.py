@@ -42,6 +42,7 @@ class ModelError(Exception):
 
 
 def _prompt(prompt: str, input_text: str) -> str:
+    # 等一下扩张
     return prompt.replace("{input}", input_text) if "{input}" in prompt else f"{prompt}\n\n{input_text}"
 
 
@@ -51,6 +52,7 @@ def _check_cancelled() -> None:
 
 
 async def _invoke(model: BaseChatModel, messages) -> AIMessage:
+    # 同时需要有展开原文，服务器可能不会按规则走，甚至可能只是因为欠费了
     try:
         return await model.ainvoke([message.model_copy(deep=True) for message in messages])
     except APIStatusError as exc:

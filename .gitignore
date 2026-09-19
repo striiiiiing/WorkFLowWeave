@@ -13,3 +13,6 @@ htmlcov/
 .codex/
 
 Typora_Hook_Log.txt
+/config.json
+/data/
+/frontend/node_modules/
