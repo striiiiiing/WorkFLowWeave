@@ -1,148 +1,70 @@
-<template>
-  <div class="space-y-6">
-    <!-- 头部仪表盘概览 -->
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-      <div>
-        <h2 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-          监控总览 (Dashboard)
-        </h2>
-        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          当前系统运行状况、活跃工作流执行与容量监控
-        </p>
-      </div>
-
-      <div class="flex items-center gap-3">
-        <Button variant="secondary" icon="rotate-ccw" @click="refreshAll">
-          刷新
-        </Button>
-        <router-link to="/workflows/new">
-          <Button icon="plus">新建工作流</Button>
-        </router-link>
-      </div>
-    </div>
-
-    <!-- 关键指标卡片网格 -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <Card custom-class="p-5">
-        <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">活跃运行数 / 容量</span>
-        <div class="mt-2 flex items-baseline gap-2">
-          <span class="text-3xl font-bold text-slate-900 dark:text-slate-100">
-            {{ systemStore.health?.active_runs ?? 0 }}
-          </span>
-          <span class="text-sm text-slate-400">
-            / {{ systemStore.health?.max_concurrent_runs ?? 4 }}
-          </span>
-        </div>
-        <p class="text-xs text-slate-400 mt-1">全局运行并发控制</p>
-      </Card>
-
-      <Card custom-class="p-5">
-        <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">已保存工作流</span>
-        <div class="mt-2 flex items-baseline gap-2">
-          <span class="text-3xl font-bold text-blue-600 dark:text-blue-400">
-            {{ workflowStore.workflows.length }}
-          </span>
-        </div>
-        <p class="text-xs text-slate-400 mt-1">可随时触发或定时调度</p>
-      </Card>
-
-      <Card custom-class="p-5">
-        <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">已注册插件能力</span>
-        <div class="mt-2 flex items-baseline gap-2">
-          <span class="text-3xl font-bold text-indigo-600 dark:text-indigo-400">
-            {{ systemStore.plugins.length }}
-          </span>
-        </div>
-        <p class="text-xs text-slate-400 mt-1">包含 Collector 与 Channel 扩展</p>
-      </Card>
-
-      <Card custom-class="p-5">
-        <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">系统健康状态</span>
-        <div class="mt-2 flex items-center gap-2">
-          <span class="w-3 h-3 rounded-full bg-green-500 animate-pulse" />
-          <span class="text-lg font-bold text-green-700 dark:text-green-400 uppercase">
-            {{ systemStore.health?.status ?? 'HEALTHY' }}
-          </span>
-        </div>
-        <p class="text-xs text-slate-400 mt-1">运行时间: {{ formatUptime(systemStore.health?.uptime_seconds) }}</p>
-      </Card>
-    </div>
-
-    <!-- 最近执行记录列表 -->
-    <Card title="最近执行历史 (Recent Sessions)" subtitle="只读 Session 视图，直接消费后端业务存档">
-      <template #header-actions>
-        <router-link to="/runs">
-          <Button size="sm" variant="ghost">查看全部</Button>
-        </router-link>
-      </template>
-
-      <div v-if="runStore.sessions.length === 0" class="p-8 text-center text-slate-400 text-sm">
-        暂无运行记录
-      </div>
-
-      <div v-else class="divide-y divide-slate-100 dark:divide-slate-700/60 -mx-5 -my-2">
-        <div
-          v-for="session in runStore.sessions.slice(0, 5)"
-          :key="session.session_id"
-          class="px-5 py-3.5 flex items-center justify-between hover:bg-slate-50/80 dark:hover:bg-slate-700/30 transition-colors"
-        >
-          <div class="flex items-center gap-3">
-            <Badge :status="session.status" />
-            <div>
-              <router-link
-                :to="`/runs/${session.session_id}`"
-                class="text-sm font-semibold font-mono text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                {{ session.session_id }}
-              </router-link>
-              <div class="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
-                <span>所属工作流: <strong class="font-mono text-slate-600 dark:text-slate-300">{{ session.workflow_id }}</strong></span>
-                <span>•</span>
-                <span>阶段: {{ session.current_stage }}</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="text-right">
-            <span class="text-xs text-slate-400">{{ session.created_at }}</span>
-          </div>
-        </div>
-      </div>
-    </Card>
-  </div>
-</template>
-
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import Card from '@/components/common/Card.vue'
-import Button from '@/components/common/Button.vue'
-import Badge from '@/components/common/Badge.vue'
-import { useWorkflowStore } from '@/stores/workflowStore'
-import { useRunStore } from '@/stores/runStore'
-import { useSystemStore } from '@/stores/systemStore'
-
-const workflowStore = useWorkflowStore()
-const runStore = useRunStore()
-const systemStore = useSystemStore()
-
-function formatUptime(seconds?: number) {
-  if (!seconds) return '刚刚启动'
-  const m = Math.floor(seconds / 60)
-  const h = Math.floor(m / 60)
-  if (h > 0) return `${h}小时 ${m % 60}分钟`
-  return `${m}分钟`
-}
-
-async function refreshAll() {
-  await Promise.all([
-    workflowStore.fetchWorkflows(),
-    runStore.fetchSessions({ limit: 10 }),
-    systemStore.fetchHealth(),
-    systemStore.fetchPlugins(),
+import { computed } from 'vue'
+import { resourcesApi } from '@/api/resources'
+import { runsApi } from '@/api/runs'
+import { systemApi } from '@/api/system'
+import { useQuery } from '@/composables/useQuery'
+import PageHeader from '@/components/common/PageHeader.vue'
+import SectionCard from '@/components/common/SectionCard.vue'
+import SessionTable from '@/components/common/SessionTable.vue'
+const { data, pending, error, refresh } = useQuery(async (signal) => {
+  const [workflows, sessions, plugins, health] = await Promise.all([
+    resourcesApi.list('workflows', signal),
+    runsApi.list({ limit: 5 }, signal),
+    systemApi.plugins(signal),
+    systemApi.health(signal),
   ])
-}
-
-onMounted(() => {
-  refreshAll()
+  return { workflows, sessions, plugins, health }
 })
+const healthLabels = { ready: '就绪', degraded: '部分降级', unavailable: '不可用' }
+const metrics = computed(() => [
+  { title: '已保存工作流', value: data.value?.workflows.length ?? '—', note: '可复用的流程编排' },
+  {
+    title: '已注册插件能力',
+    value: data.value?.plugins.length ?? '—',
+    note: 'Collector / Channel',
+  },
+  {
+    title: '系统状态',
+    value: data.value ? healthLabels[data.value.health.status] : '—',
+    note: '后端健康检查',
+  },
+  {
+    title: '接受新运行',
+    value: data.value ? (data.value.health.accepting_runs ? '是' : '否') : '—',
+    note: '当前任务接收状态',
+  },
+])
 </script>
+<template>
+  <PageHeader title="监控总览" description="当前系统运行状况与最近执行记录">
+    <el-button :loading="pending" @click="refresh">刷新</el-button>
+  </PageHeader>
+  <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
+  <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+    <el-card v-for="metric in metrics" :key="metric.title" shadow="hover">
+      <p class="muted">{{ metric.title }}</p>
+      <p class="text-3xl font-bold text-blue-600 dark:text-blue-400 my-3">{{ metric.value }}</p>
+      <p class="muted text-xs">{{ metric.note }}</p>
+    </el-card>
+  </div>
+  <el-alert
+    v-if="data && data.health.status !== 'ready'"
+    :title="`系统${healthLabels[data.health.status]}`"
+    type="warning"
+    :closable="false"
+  />
+  <SectionCard title="最近执行历史">
+    <template #actions><router-link to="/runs">查看全部历史 →</router-link></template>
+    <SessionTable :sessions="data?.sessions ?? []" :loading="pending" />
+  </SectionCard>
+  <SectionCard v-if="data" title="组件健康状态" class="mt-6">
+    <el-table :data="data.health.components">
+      <el-table-column prop="component" label="组件" />
+      <el-table-column prop="status" label="状态" />
+      <el-table-column label="错误信息" min-width="220">
+        <template #default="{ row }">{{ row.error?.message ?? '—' }}</template>
+      </el-table-column>
+    </el-table>
+  </SectionCard>
+</template>

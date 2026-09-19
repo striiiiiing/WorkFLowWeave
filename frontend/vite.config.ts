@@ -1,10 +1,18 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import Components from 'unplugin-vue-components/vite'
+import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 import { fileURLToPath, URL } from 'node:url'
 
-// [Design Decision DEC-LAYOUT-01] 代理转发到 FastAPI 交互模块服务 (默认端口 8000)
-export default defineConfig({
-  plugins: [vue()],
+export default defineConfig(({ mode }) => ({
+  plugins: [
+    vue(),
+    Components({
+      dirs: [],
+      resolvers: [ElementPlusResolver({ importStyle: 'css' })],
+      dts: 'src/components.d.ts',
+    }),
+  ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -14,9 +22,9 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8000',
+        target: loadEnv(mode, process.cwd(), '').API_TARGET || 'http://127.0.0.1:4300',
         changeOrigin: true,
       },
     },
   },
-})
+}))

@@ -1,56 +1,78 @@
 import type { ErrorInfo } from '@/types'
 
 export class ApiError extends Error {
-  public code: string
-  public status: number
-  public details?: Record<string, any>
-
-  constructor(status: number, message: string, code = 'API_ERROR', details?: Record<string, any>) {
-    super(message)
+  constructor(
+    public readonly status: number,
+    public readonly info: ErrorInfo,
+  ) {
+    super(info.message)
     this.name = 'ApiError'
-    this.status = status
-    this.code = code
-    this.details = details
   }
 }
 
-// [Design Decision DEC-SEC-01] 统一网络层封装，拦截处理与脱敏错误映射
-export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const url = path.startsWith('/') ? path : `/${path}`
-  
-  const headers = new Headers(options.headers || {})
-  if (!headers.has('Content-Type') && options.body && typeof options.body === 'string') {
-    headers.set('Content-Type', 'application/json')
+export function errorMessage(error: unknown): string {
+  if (error instanceof ApiError && Array.isArray(error.info.details.errors)) {
+    const issues = error.info.details.errors.flatMap((issue) => {
+      if (!issue || typeof issue !== 'object' || Array.isArray(issue)) return []
+      return Array.isArray(issue.path) && typeof issue.reason === 'string'
+        ? [`${issue.path.join('.')}: ${issue.reason}`]
+        : []
+    })
+    return [error.message, ...issues].join('；')
   }
+  return error instanceof Error ? error.message : String(error)
+}
 
-  const response = await fetch(url, {
+function isErrorInfo(value: unknown): value is ErrorInfo {
+  if (!value || typeof value !== 'object') return false
+  const info = value as Partial<ErrorInfo>
+  return (
+    typeof info.code === 'string' &&
+    typeof info.message === 'string' &&
+    !!info.details &&
+    typeof info.details === 'object' &&
+    !Array.isArray(info.details)
+  )
+}
+
+export async function request<T>(
+  path: string,
+  options: RequestInit = {},
+  acceptedStatuses: number[] = [],
+): Promise<T> {
+  const response = await fetch(`/api${path}`, {
     ...options,
-    headers,
+    headers: {
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...options.headers,
+    },
   })
-
-  if (!response.ok) {
-    let errorData: Partial<ErrorInfo> = {}
-    try {
-      errorData = await response.json()
-    } catch {
-      errorData = {
-        code: `HTTP_${response.status}`,
-        message: response.statusText || '请求异常',
-      }
-    }
-
-    // 对齐交互模块错误码映射 (422 校验失败, 409 冲突, 429 容量已满, 503 未就绪)
-    throw new ApiError(
-      response.status,
-      errorData.message || `请求失败 (${response.status})`,
-      errorData.code || `HTTP_${response.status}`,
-      errorData.details
-    )
+  if (response.status === 204) return undefined as T
+  const httpError = () =>
+    new ApiError(response.status, {
+      code: 'http_error',
+      message: `请求失败（HTTP ${response.status}）；请检查后端服务和代理配置`,
+      details: {
+        path: `/api${path}`,
+        status_text: response.statusText,
+        content_type: response.headers.get('content-type'),
+      },
+    })
+  const text = await response.text()
+  let body: unknown
+  try {
+    body = JSON.parse(text)
+  } catch {
+    if (!response.ok) throw httpError()
+    throw new Error(`服务返回了无效 JSON（HTTP ${response.status}）`)
   }
-
-  if (response.status === 204) {
-    return {} as T
+  if (body && typeof body === 'object' && 'error' in body && isErrorInfo(body.error)) {
+    throw new ApiError(response.status, body.error)
   }
-
-  return response.json()
+  if (!response.ok && !acceptedStatuses.includes(response.status)) {
+    throw httpError()
+  }
+  return body as T
 }
+
+export const segment = (value: string) => encodeURIComponent(value)

@@ -9,7 +9,7 @@ uv run pytest
 uv run python examples/collect.py
 ```
 
-当前提供 Collection、AI、Channel 与 LangGraph Workflow 的 Python 调用接口。Workflow 使用 SQLite 保存运行状态和各阶段历史，支持进程重启后恢复。HTTP API 与完整应用生命周期入口仍按任务计划推进。
+当前提供 Collection、AI、Channel 与 LangGraph Workflow 的 Python 调用接口，以及 FastAPI 服务和 Vue 3 管理界面。Workflow 使用 SQLite 保存运行状态和各阶段历史，支持进程重启后恢复。前后端需要分别启动，完整命令见 [前端运行说明](frontend/README.md#开发)。
 
 示例支持 `--collector logs --log-file app.jsonl`。
 

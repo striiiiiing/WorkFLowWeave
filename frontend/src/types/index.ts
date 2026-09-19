@@ -1,202 +1,165 @@
-/**
- * 契约数据类型定义 (镜像 contracts/data-models.md 与 contracts/module-interfaces.md)
- */
-
-export type ID = string;
-
-export type JSONValue =
-  | string
-  | number
-  | boolean
-  | null
-  | { [key: string]: JSONValue }
-  | JSONValue[];
-
-export type JSONObject = { [key: string]: JSONValue };
-
+// HTTP DTOs mirror src/logagent/models.py; server validation remains authoritative.
+export type JsonValue = string | number | boolean | null | JsonValue[] | JsonObject
+export interface JsonObject {
+  [key: string]: JsonValue
+}
 export interface ErrorInfo {
-  code: string;
-  message: string;
-  details?: JSONObject;
+  code: string
+  message: string
+  details: JsonObject
 }
-
-// ----------------- 资源配置 -----------------
-
+export type SourcePolicy = 'stop' | 'notice' | 'skip'
+export type ContinuePolicy = 'stop' | 'continue'
 export interface SourceConfig {
-  id: ID;
-  collector: string;
-  options: JSONObject;
-  setters: JSONObject;
-  template?: string | null;
-  timeout?: number;
-  on_error?: 'stop' | 'skip';
-  on_empty?: 'stop' | 'skip';
-  on_filtered_empty?: 'stop' | 'skip';
+  id: string
+  collector: string
+  options: JsonObject
+  setters: JsonObject
+  template: string | null
+  timeout: number
+  on_error: SourcePolicy
+  on_missing: SourcePolicy
+  on_empty: SourcePolicy
+  on_filtered_empty: SourcePolicy
 }
-
 export interface SetterTemplate {
-  id: ID;
-  collector: string;
-  setters: JSONObject;
-  description?: string;
+  id: string
+  collector: string
+  setters: JsonObject
 }
-
+export type Credential =
+  | { kind: 'env'; name: string }
+  | { kind: 'encrypted'; format_version: number; key_id: string; ciphertext: string }
 export interface AIConfig {
-  id: ID;
-  provider: string;
-  base_url?: string;
-  api_key?: string;
-  system_prompt?: string;
-  timeout?: number;
-  retries?: number;
-  // models 字典：模型名 -> 额外参数
-  models: Record<string, JSONObject>;
+  id: string
+  provider: string
+  base_url: string | null
+  api_key: Credential | null
+  system_prompt: string
+  models: Record<string, JsonObject>
+  timeout: number
+  retries: number
 }
-
 export interface ChannelConfig {
-  id: ID;
-  type: string;
-  options: JSONObject;
+  id: string
+  channel: string
+  options: JsonObject
+  timeout: number
+  enabled: boolean
 }
-
-export interface Credential {
-  id: ID;
-  type: 'env' | 'encrypted';
-  reference?: string;
-}
-
-// ----------------- Workflow 定义 -----------------
-
-export interface SourceOverride {
-  options?: JSONObject;
-  setters?: JSONObject;
-  template?: string | null;
-}
-
-export interface ChannelOverride {
-  options?: JSONObject;
-}
-
 export interface AnalysisTask {
-  task_id: ID;
-  task_name?: string;
-  ai: ID;
-  model: string;
-  prompt: string;
+  id: string
+  ai: string
+  prompt: string
+  model: string
 }
-
 export interface FanInConfig {
-  enabled: boolean;
-  ai?: ID | null;
-  model?: string | null;
-  prompt?: string | null;
+  order: string[]
+  separator: string
+  ai: string | null
+  prompt: string
+  model: string | null
+  mark_incomplete: boolean
 }
-
 export interface BackupPolicy {
-  enabled: boolean;
-  snapshot: boolean;
-  collection: boolean;
-  analysis: boolean;
-  final: boolean;
-  retention_days?: number | null;
-  on_failure: 'stop' | 'continue';
+  enabled: boolean
+  snapshot: boolean
+  collection: boolean
+  analysis: boolean
+  final: boolean
+  on_failure: ContinuePolicy
+  retention_days: number | null
 }
-
+export interface SourceOverride {
+  options: JsonObject
+  setters: JsonObject
+  template: string | null
+}
+export interface ChannelOverride {
+  options: JsonObject
+}
 export interface WorkflowDefinition {
-  id: ID;
-  name: string;
-  description?: string;
-  sources: ID[];
-  source_overrides?: Record<ID, SourceOverride>;
-  on_error?: 'stop' | 'skip';
-  on_all_empty?: 'stop' | 'skip';
-  analysis_tasks: AnalysisTask[];
-  analysis_failure?: 'stop' | 'continue';
-  send_partial?: boolean;
-  fan_in?: FanInConfig;
-  channels: ID[];
-  channel_overrides?: Record<ID, ChannelOverride>;
-  backup_policy: BackupPolicy;
+  id: string
+  name: string
+  sources: string[]
+  analyses: AnalysisTask[]
+  fan_in: FanInConfig | null
+  channels: string[]
+  source_overrides: Record<string, SourceOverride>
+  channel_overrides: Record<string, ChannelOverride>
+  input_separator: string
+  include_counts: boolean
+  collection_concurrency: number
+  analysis_concurrency: number
+  on_all_empty: SourcePolicy
+  analysis_failure: ContinuePolicy
+  send_partial: boolean
+  interval_seconds: number | null
+  enabled: boolean
+  backup: BackupPolicy
 }
-
-// ----------------- 运行与 Session -----------------
-
+export interface ResourceMap {
+  sources: SourceConfig
+  setters: SetterTemplate
+  ai: AIConfig
+  channels: ChannelConfig
+  workflows: WorkflowDefinition
+}
+export type ResourceKind = keyof ResourceMap
+export type WorkflowStage = 'collect' | 'analyze' | 'aggregate' | 'notify' | 'finish'
 export type SessionStatus =
-  | 'created'
-  | 'running'
-  | 'completed'
-  | 'partial'
-  | 'failed'
-  | 'cancelled'
-  | 'interrupted';
-
-export type StageName =
-  | 'collection'
-  | 'analysis'
-  | 'fan_in'
-  | 'notification'
-  | 'finish';
-
+  'created' | 'running' | 'completed' | 'partial' | 'failed' | 'cancelled' | 'interrupted'
 export type ArtifactAvailability =
-  | 'available'
-  | 'pending'
-  | 'not_saved'
-  | 'expired'
-  | 'missing'
-  | 'corrupt'
-  | 'write_failed';
-
+  'available' | 'pending' | 'not_saved' | 'expired' | 'missing' | 'corrupt' | 'write_failed'
 export interface ArtifactInfo {
-  stage: StageName;
-  availability: ArtifactAvailability;
-  size_bytes?: number;
-  error?: ErrorInfo;
+  stage: WorkflowStage
+  availability: ArtifactAvailability
+  size_bytes: number | null
+  error: ErrorInfo | null
 }
-
+export interface PhaseContent extends ArtifactInfo {
+  session_id: string
+  version: number
+  content: JsonValue
+}
 export interface SessionRecord {
-  workflow_id: ID;
-  session_id: ID;
-  version: number;
-  status: SessionStatus;
-  current_stage: StageName;
-  created_at: string;
-  updated_at: string;
-  error?: ErrorInfo | null;
-  stage_artifacts: Record<string, ArtifactInfo>;
-  snapshot_availability: ArtifactAvailability;
+  session_id: string
+  workflow_id: string
+  version: number
+  status: SessionStatus
+  stage: WorkflowStage | null
+  created_at: string
+  updated_at: string
+  finished_at: string | null
+  error: ErrorInfo | null
+  artifacts: ArtifactInfo[]
+  snapshot_availability: ArtifactAvailability
 }
-
-export interface PhaseContent {
-  session_id: ID;
-  version: number;
-  stage: StageName;
-  content: JSONValue;
-}
-
-export interface DeliveryResult {
-  channel_id: ID;
-  status: 'success' | 'failed' | 'skipped' | 'delivery_uncertain';
-  attempts: number;
-  delivered_at?: string;
-  error?: ErrorInfo;
-}
-
-// ----------------- 插件与系统 -----------------
-
 export interface CapabilityDescription {
-  id: string;
-  kind: 'collector' | 'channel';
-  version: string;
-  owner?: string;
-  options_schema: JSONObject;
-  fields?: string[];
-  description?: string;
+  kind: 'collector' | 'channel'
+  name: string
+  description: string
+  plugin: string
+  capabilities: string[]
+  options_schema: JsonObject
+  setters_schema: JsonObject | null
+  fields: string[]
+  count_unit: string | null
 }
-
-export interface SystemHealth {
-  status: 'healthy' | 'degraded' | 'unhealthy';
-  version: string;
-  uptime_seconds: number;
-  active_runs: number;
-  max_concurrent_runs: number;
+export interface DiscoveryReport {
+  registered: CapabilityDescription[]
+  errors: ErrorInfo[]
+}
+export interface ComponentHealth {
+  component: string
+  status: 'available' | 'degraded' | 'unavailable' | 'unknown'
+  required: boolean
+  error: ErrorInfo | null
+  checked_at: string | null
+}
+export interface HealthReport {
+  status: 'ready' | 'degraded' | 'unavailable'
+  accepting_runs: boolean
+  checked_at: string
+  components: ComponentHealth[]
 }
