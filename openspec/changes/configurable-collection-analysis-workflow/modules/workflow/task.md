@@ -47,3 +47,11 @@
 - 覆盖 workflow 包入口、service、nodes、session_store、session_view 和 interval 的模块、类、函数及方法（包括嵌套节点函数）；原英文说明与行间实现意图整合进相应 docstring。
 - 注释重点为固定快照、阶段路由、并发与顺序、幂等提交、正文备份、恢复材料、通知意图/回执及取消边界；没有增加配置默认值或改变业务逻辑，未修改 proposal.md 或 design.md。
 - 验证：6 个 Python 文件共 107 处模块/类/函数/方法均具备中文 docstring；去除 docstring 后与编辑前 AST 完全一致，源码编译、Ruff 和限定范围 git diff --check 均通过。仅文档变更，未新增或运行业务测试。
+
+
+## 2026-09-19 运行图结构重构记录
+
+- 依据本次用户要求，将 LangGraph 图定义与 WorkflowService 的运行准入、恢复、生命周期职责拆开。父图拓扑位于 `src/logagent/workflow/graph.py`，采集/分析子图位于 `subgraphs.py`，阶段节点位于 `stages.py`，通知子图位于 `notification.py`；Service 只装配图并负责 session 运行入口。
+- 父图仍保持 `snapshot → collect → analyze → aggregate → notify → finish` 阶段边界；采集和分析继续使用独立子图；子图通过 LangGraph state 传递条目和阶段存档引用。
+- 通知图迁移到 `src/logagent/workflow/notification.py`，每个输出/渠道显式注册 `intent` 与 `receipt` 节点，并以 `intent → receipt` 边保证先存档意图再执行外部发送。
+- 选择独立模块而非继续在 Service 增加私有方法，是为了让节点拓扑可直接阅读、节点副作用有明确边界，同时保持现有 SessionStore 幂等键和恢复语义不变。
