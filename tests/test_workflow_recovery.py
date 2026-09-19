@@ -1,8 +1,9 @@
 import asyncio
-import sqlite3
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy.exc import OperationalError
+from sqlmodel import select
 
 from logagent.errors import LogAgentError
 from logagent.models import (
@@ -19,6 +20,7 @@ from logagent.models import (
     WorkflowSnapshot,
 )
 from logagent.workflow import SessionStore, WorkflowService
+from logagent.workflow.session_models import SessionEntry
 
 
 def snapshot(*, channels=True, fan_in=None, tasks=("first", "second"), **options):
@@ -123,11 +125,13 @@ async def test_full_history_native_checkpoint_and_completed_recovery(tmp_path):
     assert record.status == "completed"
     content = await w.session_view.get_phase_content("run", "collect", version=record.version)
     assert content.content["shared_input"] == "original data"
-    with sqlite3.connect(path) as db:
-        namespaces = {row[0] for row in db.execute("SELECT checkpoint_ns FROM checkpoints")}
-        assert "" in namespaces and any(ns.startswith("collect:") for ns in namespaces)
-        assert any(ns.startswith("analyze:") for ns in namespaces)
-        assert any(ns.startswith("notify:") for ns in namespaces)
+    namespaces = {
+        checkpoint.config["configurable"]["checkpoint_ns"]
+        async for checkpoint in w._checkpointer.alist(None)
+    }
+    assert "" in namespaces and any(ns.startswith("collect:") for ns in namespaces)
+    assert any(ns.startswith("analyze:") for ns in namespaces)
+    assert any(ns.startswith("notify:") for ns in namespaces)
     await close(w, store)
     new, reopened, c2, a2, n2 = service(path)
     await new.recover("run")
@@ -377,17 +381,16 @@ async def test_recovery_refuses_missing_corrupt_or_expired_archives(tmp_path, da
         assert await asyncio.to_thread(store.expire, datetime.now(UTC) + timedelta(days=2)) > 0
         assert (await w.get_session("run")).status == "completed"
     else:
-        with sqlite3.connect(path) as db:
+        with store._transaction() as db:
+            key = "analyze:item:first" if damage == "missing" else "phase:aggregate"
+            entry = db.exec(select(SessionEntry).where(
+                SessionEntry.session_id == "run", SessionEntry.write_key == key,
+            )).one()
             if damage == "missing":
-                db.execute(
-                    "DELETE FROM session_entries WHERE session_id=? AND write_key=?",
-                    ("run", "analyze:item:first"),
-                )
+                db.delete(entry)
             else:
-                db.execute(
-                    "UPDATE session_entries SET body=? WHERE session_id=? AND write_key=?",
-                    ('{"text":"private-content"}', "run", "phase:aggregate"),
-                )
+                entry.body = '{"text":"private-content"}'
+                db.add(entry)
     with pytest.raises(LogAgentError) as error:
         await w.recover("run")
     assert error.value.code in {"recovery_unavailable", "storage_corrupt"}
@@ -403,7 +406,7 @@ async def test_body_backup_failure_is_recorded_and_stop_cannot_replay_past_it(tm
     class BodyFailure(SessionStore):
         def write(self, sid, key, **kwargs):
             if key == "collect:item:source" and kwargs.get("body") is not None:
-                raise sqlite3.OperationalError("body unavailable")
+                raise OperationalError(None, None, RuntimeError("body unavailable"))
             return super().write(sid, key, **kwargs)
 
     w, store, _, a, n = service(tmp_path / "runs.sqlite3", store_type=BodyFailure)
