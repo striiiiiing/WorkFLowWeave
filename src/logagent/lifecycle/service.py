@@ -14,6 +14,7 @@ from typing import Any, Literal
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from logagent.ai import AIService, ChannelFactory, OpenAIChannelFactory
+from logagent.ai.options import LEGACY_HTTP_PROVIDER, OPENAI_COMPATIBLE_PROVIDER
 from logagent.channel import ChannelManager, builtin_channels
 from logagent.collection import CollectorManager, builtin_collectors
 from logagent.config import (
@@ -192,7 +193,9 @@ class ApplicationLifecycle:
                     channel_factories=self._channel_factories
                     if self._channel_factories is not None
                     else {
-                        "http": OpenAIChannelFactory(),
+                        OPENAI_COMPATIBLE_PROVIDER: OpenAIChannelFactory(),
+                        # Existing resource files may still use the pre-UI key.
+                        LEGACY_HTTP_PROVIDER: OpenAIChannelFactory(),
                     },
                     credential_resolver=credentials,
                 )

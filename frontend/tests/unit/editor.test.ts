@@ -21,7 +21,7 @@ afterEach(() => vi.clearAllMocks())
 describe('editor task regressions', () => {
   it('leaves new AI provider unset so the provider hint is visible', () => {
     const ai = createResource('ai')
-    expect(ai.provider).toBe('')
+    expect(ai.provider).toBe('openai_compatible_api')
     expect(ai.base_url).toBeNull()
   })
 
@@ -76,7 +76,7 @@ describe('editor task regressions', () => {
       .mockResolvedValueOnce(createResource('ai') as never)
     const wrapper = mount(ResourceEditor, { props: { kind: 'ai' }, global })
     await flushPromises()
-    wrapper.findComponent(ElRadioGroup).vm.$emit('update:modelValue', 'http')
+    wrapper.findComponent(ElRadioGroup).vm.$emit('update:modelValue', 'openai_compatible_api')
     wrapper
       .findAllComponents(ElInput)
       .find((item) => item.props('placeholder') === 'https://api.openai.com/v1')!

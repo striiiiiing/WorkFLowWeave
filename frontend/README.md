@@ -41,7 +41,7 @@ npm run dev
 
 以 `src/logagent/interaction/routers.py` 和 `models.py` 为准：资源路径为 `/api/{kind}`，运行路径为 `/api/sessions`。资源类型为 `sources`、`setters`、`ai`、`channels`、`workflows`；没有独立凭据 CRUD 接口。AI 凭据支持环境变量引用，编辑时可以保留已有密文，界面不反显密文。
 
-后端目前内置 AI provider 为 `http`，需要有效的 `base_url`。插件参数与模型参数使用带语法校验的 JSON 对象编辑器；参数业务约束由后端验证，插件页可查 Schema。
+后端目前内置 AI API 格式为 `OpenAI Compatible API`（provider 值 `openai_compatible_api`），需要有效的 `base_url`。插件参数与模型参数使用带语法校验的 JSON 对象编辑器；参数业务约束由后端验证，插件页可查 Schema。
 
 运行轮询间隔 2 秒，在请求完成后计时，终态和错误都会停止轮询；错误可手动刷新重试。页面销毁会取消请求。阶段内容总是携带明确版本，不跨版本缓存正文。取消响应不会直接伪造本地终态。
 
