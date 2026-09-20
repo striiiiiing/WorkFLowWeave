@@ -32,7 +32,7 @@ export function createResource(kind: EditableKind): EditableResource {
     setters: (): SetterTemplate => ({ id: crypto.randomUUID(), collector: '', setters: {} }),
     ai: (): AIConfig => ({
       id: crypto.randomUUID(),
-      provider: 'http',
+      provider: '',
       base_url: null,
       api_key: null,
       system_prompt: '',

@@ -19,6 +19,12 @@ const global = { plugins: [ElementPlus] }
 afterEach(() => vi.clearAllMocks())
 
 describe('editor task regressions', () => {
+  it('leaves new AI provider unset so the provider hint is visible', () => {
+    const ai = createResource('ai')
+    expect(ai.provider).toBe('')
+    expect(ai.base_url).toBeNull()
+  })
+
   it('generates distinct UUID resource IDs and includes counts for new workflows', () => {
     const values = ['sources', 'setters', 'ai', 'channels'].map((kind) =>
       createResource(kind as 'sources'),
