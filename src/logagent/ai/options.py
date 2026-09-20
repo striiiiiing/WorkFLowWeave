@@ -6,7 +6,8 @@ from logagent.errors import LogAgentError
 from logagent.models import AIConfig
 
 REASONING_EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
-OPENAI_COMPATIBLE_PROVIDER = "http"
+OPENAI_COMPATIBLE_PROVIDER = "openai_compatible_api"
+LEGACY_HTTP_PROVIDER = "http"
 _MANAGED_OPTIONS = frozenset({
     "temperature", "top_k", "model", "messages", "api_key", "base_url", "timeout",
     "retries", "max_retries", "stream", "stream_options", "headers", "extra_headers",
@@ -31,7 +32,7 @@ def validate_config(config: AIConfig, providers, model: str | None = None) -> No
             "provider_missing", "API 格式不可用，请选择 OpenAI Compatible API",
             {"field": "provider", "available": ["OpenAI Compatible API"]},
         )
-    if config.provider == OPENAI_COMPATIBLE_PROVIDER:
+    if config.provider in {OPENAI_COMPATIBLE_PROVIDER, LEGACY_HTTP_PROVIDER}:
         parsed = urlparse(config.base_url or "")
         try:
             port = parsed.port
