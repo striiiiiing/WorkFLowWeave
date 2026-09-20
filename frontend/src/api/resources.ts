@@ -2,6 +2,8 @@ import { request, segment } from './client'
 import type { Credential, ResourceKind, ResourceMap } from '@/types'
 
 export const resourcesApi = {
+  checkAIConnection: (id: string) =>
+    request<string[]>(`/ai/${segment(id)}/check-connection`, { method: 'POST' }),
   protectCredential: (plaintext: string) =>
     request<Extract<Credential, { kind: 'encrypted' }>>('/credentials/protect', {
       method: 'POST',

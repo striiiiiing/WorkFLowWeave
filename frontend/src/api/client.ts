@@ -51,7 +51,11 @@ export async function request<T>(
   const httpError = () =>
     new ApiError(response.status, {
       code: 'http_error',
-      message: `请求失败（HTTP ${response.status}）；请检查后端服务和代理配置`,
+      message:
+        response.status === 405
+          ? `LogAgent 接口不支持 ${options.method ?? 'GET'} /api${path}（HTTP 405）；请确认后端已更新并重启，且 /api 代理指向 LogAgent 服务`
+          : `LogAgent 请求失败（HTTP ${response.status}）：${options.method ?? 'GET'} /api${path}`,
+
       details: {
         path: `/api${path}`,
         status_text: response.statusText,

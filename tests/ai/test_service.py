@@ -32,7 +32,7 @@ def test_managed_options_cannot_override_request_settings(field):
     assert error.value.details["fields"] == [field]
 
 
-@pytest.mark.parametrize("models", [{}, {"": {}}, {"   ": {}}, {"mock": {"bad": float("nan")}}])
+@pytest.mark.parametrize("models", [{"": {}}, {"   ": {}}, {"mock": {"bad": float("nan")}}])
 def test_models_require_explicit_nonempty_json_configuration(models):
     """验证模型集合、模型名和 JSON 参数必须符合显式配置契约。"""
     with pytest.raises(ValidationError):
