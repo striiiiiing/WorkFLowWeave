@@ -32,6 +32,7 @@ from logagent.models import (
 )
 from logagent.workflow import IntervalTrigger, SessionStore, SessionView, WorkflowService
 
+from .defaults import starter_resources
 from .health import capability_diagnostics, component_health, health_components, plugin_health
 from .resources import LifecycleResourceStore, effective_config, resource_validators
 from .services import ApplicationServices
@@ -217,6 +218,7 @@ class ApplicationLifecycle:
                         ai,
                     ),
                     data_dir=self.config.data_dir,
+                    initial_resources=starter_resources(),
                     on_change=self._resource_view_changed,
                 )
                 self._resources = resources

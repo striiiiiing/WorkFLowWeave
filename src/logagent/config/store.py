@@ -84,6 +84,7 @@ class ResourceStore:
         channel_register: ChannelRegistryView | None = None,
         validators: Mapping[ResourceKind, Validator] | None = None,
         data_dir: str | Path | None = None,
+        initial_resources: Mapping[ResourceKind, list[StrictModel]] | None = None,
     ) -> None:
         self.location = str(Path(location).absolute())
         self._data_dir = Path(data_dir or Path(self.location).parent).absolute()
@@ -97,6 +98,15 @@ class ResourceStore:
             self._validate(candidate, changed=set(), normalize=False)
             self._view = candidate
         else:
+            for kind, values in (initial_resources or {}).items():
+                target = getattr(self._view, self._kind(kind))
+                for value in values:
+                    target[value.id] = _MODELS[kind].model_validate(value)
+            self._validate(
+                self._view,
+                changed={(kind, ident) for kind in _MODELS for ident in getattr(self._view, kind)},
+                normalize=True,
+            )
             self._publish(self._view)
 
     @staticmethod
