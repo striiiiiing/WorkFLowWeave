@@ -122,6 +122,9 @@ function submit() {
       :closable="false"
     />
     <template v-if="'collector' in draft">
+      <el-form-item v-if="'enabled' in draft" label="启用数据源">
+        <el-switch v-model="draft.enabled" />
+      </el-form-item>
       <el-form-item label="采集器" prop="collector" :rules="idRule">
         <el-select
           v-model="draft.collector"
