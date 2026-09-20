@@ -2,7 +2,7 @@
 import type { WorkflowDefinition, ChannelConfig } from '@/types'
 import SectionCard from '@/components/common/SectionCard.vue'
 const model = defineModel<WorkflowDefinition>({ required: true })
-defineProps<{ channels: ChannelConfig[] }>()
+defineProps<{ channels: ChannelConfig[]; advanced?: boolean }>()
 function selectChannels(ids: string[]) {
   model.value = {
     ...model.value,
@@ -30,7 +30,7 @@ function selectChannels(ids: string[]) {
         />
       </el-select>
     </el-form-item>
-    <el-form-item label="允许发送部分成功的结果">
+    <el-form-item v-if="advanced" label="允许发送部分成功的结果">
       <el-switch v-model="model.send_partial" />
     </el-form-item>
   </SectionCard>

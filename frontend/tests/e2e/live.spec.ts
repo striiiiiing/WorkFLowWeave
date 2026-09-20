@@ -1,3 +1,6 @@
+/**
+ * 已有前后端服务的浏览器烟测：读取真实健康与资源 API，通过界面保存带唯一 ID 的 mock 采集源，并在 finally 删除测试资源。使用现有服务数据，不启动隔离后端，也不触发模型分析或通知。
+ */
 import { test, expect } from '@playwright/test'
 
 test('existing frontend receives real API data and saves a resource', async ({ page, request }) => {
@@ -22,8 +25,10 @@ test('existing frontend receives real API data and saves a resource', async ({ p
   try {
     await page.goto('/resources')
     await page.getByRole('button', { name: '新建资源' }).click()
-    await page.getByLabel('资源 ID', { exact: true }).fill(id)
-    await page.getByLabel('采集器', { exact: true }).fill('mock')
+    await page.getByRole('switch', { name: '高级模式', exact: true }).locator('..').click()
+    await page.getByLabel('资源 ID（留空自动生成）', { exact: true }).fill(id)
+    await page.getByLabel('采集器', { exact: true }).click()
+    await page.getByRole('option', { name: 'mock', exact: true }).click()
     await page.getByRole('button', { name: '保存资源' }).click()
     await expect(page.getByRole('dialog')).toBeHidden()
     await expect(page.getByRole('heading', { name: id, exact: true })).toBeVisible()

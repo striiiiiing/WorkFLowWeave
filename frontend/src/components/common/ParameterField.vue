@@ -43,6 +43,20 @@ function rule(key: string): JsonObject {
     ? additional
     : {}
 }
+function fieldFormat(key: string): string | undefined {
+  const format = rule(key).format
+  return typeof format === 'string' ? format : undefined
+}
+function isMultiEnum(key: string): boolean {
+  const items = rule(key).items
+  return (
+    rule(key).type === 'array' &&
+    !!items &&
+    typeof items === 'object' &&
+    !Array.isArray(items) &&
+    Array.isArray((items as JsonObject).enum)
+  )
+}
 function allowedTypes(key: string): ValueType[] {
   const field = rule(key)
   const declared = Array.isArray(field.type) ? field.type : field.type ? [field.type] : []
@@ -111,10 +125,17 @@ function rowError(row: Row): string {
   if (!allowedTypes(row.key).includes(row.type)) return '当前值类型不符合字段声明，请调整类型'
   try {
     const value = parse(row)
-    const choices = rule(row.key).enum
+    const choices = isMultiEnum(row.key)
+      ? ((rule(row.key).items as JsonObject).enum as JsonValue[])
+      : rule(row.key).enum
+    if (isMultiEnum(row.key) && !Array.isArray(value)) return '请选择一个或多个值'
     if (
       Array.isArray(choices) &&
-      !choices.some((choice) => JSON.stringify(choice) === JSON.stringify(value))
+      (isMultiEnum(row.key)
+        ? (value as JsonValue[]).some(
+            (item) => !choices.some((choice) => JSON.stringify(choice) === JSON.stringify(item)),
+          )
+        : !choices.some((choice) => JSON.stringify(choice) === JSON.stringify(value)))
     )
       return '请选择字段声明的枚举值'
     return ''
@@ -218,7 +239,37 @@ function toggleMode() {
           </p>
           <template v-else>
             <el-select
-              v-if="Array.isArray(rule(row.key).enum)"
+              v-if="isMultiEnum(row.key)"
+              multiple
+              :model-value="
+                rowError(row)
+                  ? []
+                  : (JSON.parse(row.text) as JsonValue[]).map((choice) => JSON.stringify(choice))
+              "
+              :aria-label="row.key"
+              @update:model-value="
+                (value) => {
+                  Object.assign(
+                    row,
+                    makeRow(
+                      row.key,
+                      true,
+                      (value as string[]).map((choice) => JSON.parse(choice)),
+                    ),
+                  )
+                  publish()
+                }
+              "
+            >
+              <el-option
+                v-for="choice in (rule(row.key).items as JsonObject).enum as JsonValue[]"
+                :key="JSON.stringify(choice)"
+                :value="JSON.stringify(choice)"
+                :label="typeof choice === 'string' ? choice : JSON.stringify(choice)"
+              />
+            </el-select>
+            <el-select
+              v-else-if="Array.isArray(rule(row.key).enum)"
               :model-value="rowError(row) ? undefined : JSON.stringify(parse(row))"
               :aria-label="row.key"
               @update:model-value="setEnum(row, $event)"
@@ -255,11 +306,17 @@ function toggleMode() {
                 v-else
                 v-model="row.text"
                 :type="row.type === 'object' || row.type === 'array' ? 'textarea' : 'text'"
+                :placeholder="
+                  fieldFormat(row.key) === 'date'
+                    ? 'YYYY-MM-DD'
+                    : fieldFormat(row.key) === 'uri' || fieldFormat(row.key) === 'url'
+                      ? 'https://…'
+                      : row.type === 'object' || row.type === 'array'
+                        ? '仅此字段的 JSON 值'
+                        : ''
+                "
                 :rows="3"
                 :aria-label="row.key"
-                :placeholder="
-                  row.type === 'object' || row.type === 'array' ? '仅此字段的 JSON 值' : ''
-                "
                 @input="publish"
               />
             </template>
