@@ -172,6 +172,14 @@ function submit() {
           @update:model-value="draft.base_url = $event || null"
         />
       </el-form-item>
+      <el-form-item label="系统提示词">
+        <el-input
+          v-model="draft.system_prompt"
+          type="textarea"
+          :rows="4"
+          placeholder="可选：发送给模型的系统提示词"
+        />
+      </el-form-item>
       <el-form-item label="凭据">
         <el-select v-model="credentialMode">
           <el-option value="keep" :label="draft.api_key ? '保留现有凭据' : '暂不配置'" />
