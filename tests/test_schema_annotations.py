@@ -1,4 +1,9 @@
-"""Schema annotations follow the same local references as validation."""
+"""共享 Schema 注解遍历测试。
+
+构造含引用、组合分支、递归对象与数组的 schema，注入凭据/路径转换函数，
+断言仅匹配分支转换、同一值不重复转换、未知字段保留给后续校验。
+使用真实 schema 解析与内存数据，不读取凭据或访问网络。
+"""
 
 from copy import deepcopy
 from pathlib import Path

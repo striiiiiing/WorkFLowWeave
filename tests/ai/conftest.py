@@ -1,4 +1,9 @@
-"""提供真实 HTTP 渠道夹具：默认请求 mock，显式启用后追加 Qwen 用例。"""
+"""AI HTTP 渠道验收夹具。
+
+默认参数连接 localhost:19026/v1 的真实 mock 服务，LOGAGENT_AI_LIVE=1
+额外启用 Qwen；从环境文件解析配置与凭据。注入 HTTP 请求观察钩子，
+不替换传输或制造响应；夹具负责关闭 AIService 和外部 HTTP 客户端。
+"""
 
 import os
 from pathlib import Path
@@ -6,9 +11,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-from ai.live_helpers import Credentials, read_settings
 from logagent.ai import AIService, OpenAIChannelFactory
 from logagent.models import AIConfig
+from tests.ai.live_helpers import Credentials, read_settings
 
 MOCK_BASE_URL = "http://localhost:19026/v1"
 

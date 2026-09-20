@@ -1,3 +1,10 @@
+"""共享模型与 JSON Schema 契约测试。
+
+通过参数化非法值和递归、本地引用 schema，验证时间/标识符/JSON 边界、
+默认值展开、字段声明与引用解析；断言错误显式且脱敏，校验不修改输入。
+模型和 schema 为真实实现，远程引用用禁止网络的替身验证，不依赖外部服务。
+"""
+
 import math
 from datetime import UTC, datetime
 

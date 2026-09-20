@@ -1,4 +1,9 @@
-"""Shared boundaries for retention, history reads and delivery receipts."""
+"""跨模块 session、历史与投递数据契约测试。
+
+通过真实 Pydantic 模型和参数矩阵检查备份默认值、保留期限、业务版本、
+投递状态/次数/错误组合，以及正文为空与不可用的区别。断言非法组合被拒绝，
+运行期 SessionReader 不进入持久配置；不涉及数据库或真实投递。
+"""
 
 from datetime import UTC, datetime
 from itertools import product
