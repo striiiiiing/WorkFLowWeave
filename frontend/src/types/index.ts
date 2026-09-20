@@ -13,6 +13,7 @@ export type ContinuePolicy = 'stop' | 'continue'
 export interface SourceConfig {
   id: string
   collector: string
+  enabled: boolean
   options: JsonObject
   setters: JsonObject
   template: string | null

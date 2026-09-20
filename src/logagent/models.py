@@ -128,6 +128,7 @@ class SystemConfig(StrictModel):
 class SourceConfig(StrictModel):
     id: ID
     collector: ID
+    enabled: bool = True
     options: JSONObject = Field(default_factory=dict)
     setters: JSONObject = Field(default_factory=dict)
     template: ID | None = None
