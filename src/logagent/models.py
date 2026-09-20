@@ -169,7 +169,7 @@ class AIConfig(StrictModel):
     base_url: str | None = None
     api_key: Credential | None = None
     system_prompt: str = ""
-    models: dict[ModelName, JSONObject] = Field(min_length=1)
+    models: dict[ModelName, JSONObject] = Field(default_factory=dict)
     timeout: Seconds = 600.0
     retries: int = Field(default=5, ge=0)
 

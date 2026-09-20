@@ -99,6 +99,14 @@ async def create_ai(payload: AIConfig, services: Services):
     return await _save_resource(services, "ai", payload, mode="create")
 
 
+@router.post("/ai/{ident}/check-connection", response_model=list[str])
+async def check_ai_connection(ident: ID, services: Services, response: Response):
+    """Explicit model discovery; saving a provider never calls the upstream server."""
+    response.headers["Cache-Control"] = "no-store"
+    config = await _get_resource(services, "ai", ident)
+    return await services.ai.list_models(config)
+
+
 @router.put("/ai/{ident}", response_model=AIConfig)
 async def replace_ai(ident: ID, payload: AIConfig, services: Services):
     if ident != payload.id:
