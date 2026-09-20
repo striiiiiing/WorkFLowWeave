@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal, Self
 
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 
 from logagent.models import (
     ID,
@@ -65,3 +65,7 @@ class CancelResponse(StrictModel):
 class ReloadResponse(StrictModel):
     scope: Literal["resources", "plugins"]
     report: DiscoveryReport | None = None
+
+
+class ProtectCredentialRequest(StrictModel):
+    plaintext: SecretStr = Field(min_length=1)

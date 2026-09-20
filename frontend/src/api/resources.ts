@@ -1,7 +1,12 @@
 import { request, segment } from './client'
-import type { ResourceKind, ResourceMap } from '@/types'
+import type { Credential, ResourceKind, ResourceMap } from '@/types'
 
 export const resourcesApi = {
+  protectCredential: (plaintext: string) =>
+    request<Extract<Credential, { kind: 'encrypted' }>>('/credentials/protect', {
+      method: 'POST',
+      body: JSON.stringify({ plaintext }),
+    }),
   list: <K extends ResourceKind>(kind: K, signal?: AbortSignal) =>
     request<ResourceMap[K][]>(`/${kind}`, { signal }),
   get: <K extends ResourceKind>(kind: K, id: string, signal?: AbortSignal) =>
