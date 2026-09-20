@@ -72,11 +72,11 @@ describe('editor task regressions', () => {
     await flushPromises()
     const provider = wrapper
       .findAllComponents(ElInput)
-      .find((item) => item.props('placeholder') === 'http')!
+      .find((item) => item.props('placeholder') === 'OpenAI')!
     provider.vm.$emit('update:modelValue', 'http')
     wrapper
       .findAllComponents(ElInput)
-      .find((item) => item.props('placeholder')?.startsWith('HTTP 接口地址'))!
+      .find((item) => item.props('placeholder') === 'https://api.openai.com/v1')!
       .vm.$emit('update:modelValue', 'http://127.0.0.1:1/v1')
     await wrapper.find('input[type="password"]').setValue('test-only-key')
     expect(wrapper.find('input[type="password"]').element.getAttribute('type')).toBe('password')
@@ -100,7 +100,11 @@ describe('editor task regressions', () => {
 
   it('reports credential protection failures without saving an unprotected resource', async () => {
     vi.mocked(resourcesApi.protectCredential).mockRejectedValueOnce(new Error('master key missing'))
-    const initial = { ...createResource('ai'), provider: 'http', base_url: 'http://127.0.0.1:1/v1' }
+    const initial = {
+      ...createResource('ai'),
+      provider: 'http',
+      base_url: 'http://127.0.0.1:1/v1',
+    }
     const wrapper = mount(ResourceEditor, { props: { kind: 'ai', initial }, global })
     await flushPromises()
     wrapper.findComponent(ElSelect).vm.$emit('update:modelValue', 'input')
