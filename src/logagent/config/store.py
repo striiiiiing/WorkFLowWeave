@@ -175,11 +175,14 @@ class ResourceStore:
             channels = {key: copy_model(candidate.channels[key]) for key in workflow.channels}
             for key, override in workflow.channel_overrides.items():
                 channels[key].options = {**channels[key].options, **deepcopy(override.options)}
+            enabled_sources = [key for key in workflow.sources if candidate.sources[key].enabled]
+            snapshot_workflow = copy_model(workflow)
+            snapshot_workflow.sources = enabled_sources
             return WorkflowSnapshot(
-                workflow=copy_model(workflow),
+                workflow=snapshot_workflow,
                 sources={key: self._source(candidate.sources[key], candidate,
                                           workflow.source_overrides.get(key))
-                         for key in workflow.sources},
+                         for key in enabled_sources},
                 ai={key: copy_model(candidate.ai[key]) for key in ai_ids},
                 channels=channels,
                 created_at=datetime.now(UTC),

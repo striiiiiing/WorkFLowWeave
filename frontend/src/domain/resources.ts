@@ -13,6 +13,7 @@ export function createResource(kind: EditableKind): EditableResource {
     sources: (): SourceConfig => ({
       id: crypto.randomUUID(),
       collector: '',
+      enabled: true,
       options: {},
       setters: {},
       template: null,
