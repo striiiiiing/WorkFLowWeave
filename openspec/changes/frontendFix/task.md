@@ -83,6 +83,12 @@
 - 已验证：后端 22 项通过（1 项可选真实供应商测试因未启用跳过，4 项网络调用测试不在本次筛选内）；前端原有 API/编辑器 20 项及新增供应商 UI/API 3 项通过；vue-tsc、生产构建、Ruff 和 diff 检查通过。
 - 运行端修复：确认现有 sessions 为空后重启旧 LogAgent；OpenAPI 已包含凭据保护及独立连接检查入口，凭据接口空请求返回 422 字段校验，不再返回 405。未对用户供应商发送测试请求。
 
+### AI 供应商业务校验提示（2026-09-21）
+
+- `src/logagent/lifecycle/service.py` 当前只注册 `http` OpenAI 兼容渠道；AxonHub 应填写 provider=`http`，并填写包含 `/v1` 的 base URL。自定义供应商名称会触发 `provider_missing`。
+- `ResourceStore` 保留 `LogAgentError` 的结构化错误，前端显示 `provider_missing`、`invalid_config` 等字段提示，不再统一折叠成“资源未通过业务校验”。
+- 系统提示词字段按用户要求不在前端展示。
+
 ### AI 配置默认值修正（2026-09-21）
 
 - 依据 `src/logagent/models.py`，AI 配置的 `provider` 是必填业务字段，后端没有把它默认成 `http`；`src/logagent/lifecycle/service.py` 中的 `http` 仅是内置 OpenAI 兼容渠道工厂注册，保留该注册以支持实际执行。
