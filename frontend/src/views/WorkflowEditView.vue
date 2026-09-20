@@ -20,6 +20,7 @@ const id = computed(() => (route.params.id ? String(route.params.id) : undefined
 const workflow = ref(createWorkflow())
 const form = ref<FormInstance>()
 const save = useAsyncTask()
+const advanced = ref(false)
 const { data, pending, error, refresh } = useQuery(
   async (signal) => {
     const [sources, configs, channels, existing] = await Promise.all([
@@ -77,6 +78,7 @@ function submit() {
       label-position="top"
       @submit.prevent="submit"
     >
+      <el-form-item label="高级模式"><el-switch v-model="advanced" /></el-form-item>
       <div class="flow-stack">
         <SectionCard title="基本信息与运行策略">
           <div class="form-grid">
@@ -96,9 +98,9 @@ function submit() {
             </el-form-item>
           </div>
         </SectionCard>
-        <SourceStepCard v-model="workflow" :sources="data.sources" />
+        <SourceStepCard v-model="workflow" :sources="data.sources" :advanced="advanced" />
         <FanOutTaskCard v-model="workflow" :configs="data.configs" />
-        <FanInCard v-model="workflow" :configs="data.configs" />
+        <FanInCard v-model="workflow" :configs="data.configs" :advanced="advanced" />
         <NotificationCard v-model="workflow" :channels="data.channels" />
         <BackupMatrix v-model="workflow.backup" />
       </div>

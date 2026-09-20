@@ -57,9 +57,6 @@ function toggleTheme() {
           <el-button text :aria-label="dark ? '切换浅色模式' : '切换深色模式'" @click="toggleTheme">
             <AppIcon :name="dark ? 'sun' : 'moon'" />
           </el-button>
-          <router-link to="/workflows/new">
-            <el-button type="primary" size="small">新建工作流</el-button>
-          </router-link>
         </div>
       </header>
       <main class="page-content"><slot /></main>
