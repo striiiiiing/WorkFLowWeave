@@ -1,3 +1,36 @@
+# 当前验收清单
+
+以下清单供 OpenSpec CLI 读取，记录剩余的整体验收，不重复模块详细任务。旧实施记录保留在下文，
+其中历史状态不自动等于当前验收结果。本次只整理规范存放，不重新认证业务实现。
+
+## 1. OpenSpec 目录整理（2026-09-20）
+
+依据：用户要求采用更贴近 OpenSpec 最佳实践的存放方案；
+[官方 Concepts](https://github.com/Fission-AI/OpenSpec/blob/main/docs/concepts.md) 定义
+`specs/<capability>/spec.md`、`changes/<change-id>/specs/`、根 `tasks.md` 及归档职责。
+行为增量依据既有 [proposal](./proposal.md)、[总设计](./design.md) 与各模块设计提取，
+不修改设计决策。模块设计与任务保留原位，以维护既有链接和历史证据。
+当前尚未整体验收，默认保留活动 change，不提前复制为主规范或归档；这是状态判断，不是新增产品默认值。
+独立后续需求采用独立 change，详见 [存放约定](../../README.md)。
+
+- [x] 1.1 将根 task.md 迁移为 tasks.md，更新入口引用并保留原执行记录。
+- [x] 1.2 按能力补齐标准增量规范，配置后续存放规则，保留既有 proposal/design 及模块任务。
+- [x] 1.3 通过 OpenSpec 严格校验、任务发现、链接检查及原文件完整性检查。
+
+验证：OpenSpec 1.13.0 的 `validate --all --strict --no-interactive` 为 1 passed / 0 failed；
+`instructions apply --json` 正确发现 9 份能力增量与根任务清单，状态为 ready。
+本次检查所有 OpenSpec Markdown 及仓库 README 的本地链接目标均存在；SHA-256 比对确认
+原 proposal、全部 design、模块任务和开始时已有的未提交文件内容逐字节不变。
+此次仅变更文档结构，未运行产品单元测试或构建，也不以结构校验替代产品验收。
+
+## 2. 产品整体验收（保留待办）
+
+- [ ] 2.1 依据各模块任务证据，完成全部后端模块的集成审查与验证，核对交互任务的未完成项。
+- [ ] 2.2 依据前端设计与任务，完成浏览器管理界面的主代理审查及前后端集成验收。
+- [ ] 2.3 逐条验证能力增量与已确认设计一致且实现满足场景，再同步主规范并归档。
+
+---
+
 # 实施计划（2026-09-16）
 
 旧实现/任务基线：`4dfa8d0072fc16eda4f1c3da25bac36969327deb`。已确认新设计提交：`97ebd68`。
