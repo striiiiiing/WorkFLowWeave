@@ -3,7 +3,7 @@ import type { SourceConfig, WorkflowDefinition } from '@/types'
 import { sourcePolicies } from '@/domain/forms'
 import SectionCard from '@/components/common/SectionCard.vue'
 const model = defineModel<WorkflowDefinition>({ required: true })
-defineProps<{ sources: SourceConfig[] }>()
+defineProps<{ sources: SourceConfig[]; advanced?: boolean }>()
 function selectSources(ids: string[]) {
   model.value = {
     ...model.value,
@@ -40,7 +40,7 @@ function selectSources(ids: string[]) {
       <el-form-item label="采集并发">
         <el-input-number v-model="model.collection_concurrency" :min="1" :precision="0" />
       </el-form-item>
-      <el-form-item label="全部为空时">
+      <el-form-item v-if="advanced" label="全部为空时">
         <el-select v-model="model.on_all_empty">
           <el-option
             v-for="policy in sourcePolicies"
@@ -50,7 +50,7 @@ function selectSources(ids: string[]) {
           />
         </el-select>
       </el-form-item>
-      <el-form-item label="输入分隔符">
+      <el-form-item v-if="advanced" label="来源之间的输入分隔符">
         <el-input v-model="model.input_separator" type="textarea" :rows="2" />
       </el-form-item>
       <el-form-item label="包含采集数量"><el-switch v-model="model.include_counts" /></el-form-item>
