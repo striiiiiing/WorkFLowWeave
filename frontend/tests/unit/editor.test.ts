@@ -1,6 +1,6 @@
 import { defineComponent, ref } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
-import ElementPlus, { ElInput, ElSelect } from 'element-plus'
+import ElementPlus, { ElInput, ElRadioGroup, ElSelect } from 'element-plus'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ResourceEditor from '@/components/resources/ResourceEditor.vue'
 import SourceStepCard from '@/components/workflow/SourceStepCard.vue'
@@ -76,10 +76,7 @@ describe('editor task regressions', () => {
       .mockResolvedValueOnce(createResource('ai') as never)
     const wrapper = mount(ResourceEditor, { props: { kind: 'ai' }, global })
     await flushPromises()
-    const provider = wrapper
-      .findAllComponents(ElInput)
-      .find((item) => item.props('placeholder') === 'OpenAI')!
-    provider.vm.$emit('update:modelValue', 'http')
+    wrapper.findComponent(ElRadioGroup).vm.$emit('update:modelValue', 'http')
     wrapper
       .findAllComponents(ElInput)
       .find((item) => item.props('placeholder') === 'https://api.openai.com/v1')!

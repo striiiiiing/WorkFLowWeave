@@ -20,7 +20,10 @@ export function errorMessage(error: unknown): string {
         : []
     }) : []
     const field = typeof details.field === 'string' ? `字段 ${details.field}` : ''
-    return [error.message, field, ...issues].filter(Boolean).join('；')
+    const available = Array.isArray(details.available)
+      ? `可用格式：${details.available.filter((item) => typeof item === 'string').join('、')}`
+      : ''
+    return [error.message, field, available, ...issues].filter(Boolean).join('；')
   }
   return error instanceof Error ? error.message : String(error)
 }

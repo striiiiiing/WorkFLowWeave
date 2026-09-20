@@ -89,6 +89,11 @@
 - `ResourceStore` 保留 `LogAgentError` 的结构化错误，前端显示 `provider_missing`、`invalid_config` 等字段提示，不再统一折叠成“资源未通过业务校验”。
 - 系统提示词字段按用户要求不在前端展示。
 
+### API 格式单选（2026-09-21）
+
+- AI 配置界面字段改名为“API 格式”，使用单选框；当前唯一选项为 `OpenAI Compatible API`，提交值仍为后端渠道键 `http`。
+- 后端业务错误改为明确说明 API 格式及可用选项，避免把内部 provider 键直接暴露为用户概念。
+
 ### AI 配置默认值修正（2026-09-21）
 
 - 依据 `src/logagent/models.py`，AI 配置的 `provider` 是必填业务字段，后端没有把它默认成 `http`；`src/logagent/lifecycle/service.py` 中的 `http` 仅是内置 OpenAI 兼容渠道工厂注册，保留该注册以支持实际执行。

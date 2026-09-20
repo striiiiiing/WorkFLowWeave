@@ -53,11 +53,17 @@ describe('HTTP contract', () => {
   })
   it('surfaces structured business validation fields', async () => {
     respond(
-      { error: { code: 'provider_missing', message: 'AI provider 不可用', details: { field: 'provider' } } },
+      {
+        error: {
+          code: 'provider_missing',
+          message: 'API 格式不可用',
+          details: { field: 'provider', available: ['OpenAI Compatible API'] },
+        },
+      },
       422,
     )
     const error = await resourcesApi.list('ai').catch((cause) => cause)
-    expect(errorMessage(error)).toBe('AI provider 不可用；字段 provider')
+    expect(errorMessage(error)).toBe('API 格式不可用；字段 provider；可用格式：OpenAI Compatible API')
   })
   it('reads an unavailable health report from HTTP 503', async () => {
     respond({ status: 'unavailable', accepting_runs: false, components: [] }, 503)

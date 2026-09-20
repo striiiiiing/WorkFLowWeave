@@ -6,6 +6,7 @@ from logagent.errors import LogAgentError
 from logagent.models import AIConfig
 
 REASONING_EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
+OPENAI_COMPATIBLE_PROVIDER = "http"
 _MANAGED_OPTIONS = frozenset({
     "temperature", "top_k", "model", "messages", "api_key", "base_url", "timeout",
     "retries", "max_retries", "stream", "stream_options", "headers", "extra_headers",
@@ -26,8 +27,11 @@ def validate_config(config: AIConfig, providers, model: str | None = None) -> No
             类型、强度及组合不合法。始终检查全部模型，而非只检查所选模型。
     """
     if config.provider not in providers:
-        raise LogAgentError("provider_missing", "AI provider 不可用", {"field": "provider"})
-    if config.provider == "http":
+        raise LogAgentError(
+            "provider_missing", "API 格式不可用，请选择 OpenAI Compatible API",
+            {"field": "provider", "available": ["OpenAI Compatible API"]},
+        )
+    if config.provider == OPENAI_COMPATIBLE_PROVIDER:
         parsed = urlparse(config.base_url or "")
         try:
             port = parsed.port
@@ -36,7 +40,7 @@ def validate_config(config: AIConfig, providers, model: str | None = None) -> No
         if (parsed.scheme not in {"http", "https"} or not parsed.hostname
                 or parsed.username is not None or parsed.password is not None
                 or parsed.query or parsed.fragment or port == -1):
-            raise LogAgentError("invalid_config", "HTTP base_url 无效", {"field": "base_url"})
+            raise LogAgentError("invalid_config", "OpenAI Compatible API 服务地址无效", {"field": "base_url"})
     if model is not None and model not in config.models:
         raise LogAgentError("invalid_config", "选择的 AI model 不存在", {"field": "model"})
     for options in config.models.values():

@@ -158,8 +158,10 @@ function submit() {
       />
     </template>
     <template v-if="'provider' in draft">
-      <el-form-item label="AI 提供商" prop="provider" :rules="idRule">
-        <el-input v-model="draft.provider" placeholder="OpenAI" />
+      <el-form-item label="API 格式" prop="provider" :rules="idRule">
+        <el-radio-group v-model="draft.provider">
+          <el-radio value="http">OpenAI Compatible API</el-radio>
+        </el-radio-group>
       </el-form-item>
       <el-form-item
         label="服务地址"
@@ -173,7 +175,7 @@ function submit() {
         />
       </el-form-item>
       <p class="muted mb-4">
-        OpenAI 兼容服务（包括 AxonHub）请选择 provider 为 <code>http</code>，并填写包含
+        OpenAI 兼容服务（包括 AxonHub）请选择 <code>OpenAI Compatible API</code>，并填写包含
         <code>/v1</code> 的服务地址。
       </p>
       <el-form-item label="凭据">
