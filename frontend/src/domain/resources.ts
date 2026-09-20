@@ -11,7 +11,7 @@ export const resourceKinds = [
 export function createResource(kind: EditableKind): EditableResource {
   const factories = {
     sources: (): SourceConfig => ({
-      id: '',
+      id: crypto.randomUUID(),
       collector: '',
       options: {},
       setters: {},
@@ -22,9 +22,9 @@ export function createResource(kind: EditableKind): EditableResource {
       on_empty: 'notice',
       on_filtered_empty: 'notice',
     }),
-    setters: (): SetterTemplate => ({ id: '', collector: '', setters: {} }),
+    setters: (): SetterTemplate => ({ id: crypto.randomUUID(), collector: '', setters: {} }),
     ai: (): AIConfig => ({
-      id: '',
+      id: crypto.randomUUID(),
       provider: '',
       base_url: null,
       api_key: null,
@@ -34,7 +34,7 @@ export function createResource(kind: EditableKind): EditableResource {
       retries: 5,
     }),
     channels: (): ChannelConfig => ({
-      id: '',
+      id: crypto.randomUUID(),
       channel: '',
       options: {},
       timeout: 30,
