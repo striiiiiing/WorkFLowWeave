@@ -53,3 +53,10 @@
 - `uv build --out-dir /tmp/logagent-lifecycle-build`：sdist/wheel 构建成功，wheel 包含所有新拆分模块。
 - 临时目录下真实 Lifecycle + FastAPI TestClient：健康检查 ready、resources/plugins 两种重载、恢复准入、幂等关闭及 JSON 启停日志均通过；未访问远端服务。
 - 测试仅出现 LangGraph/Starlette 已有弃用警告；本次变更范围内 `git diff --check` 通过。主文件由 1044 行缩减至 621 行，模块总行数由 1475 行缩减至 1381 行（含新增模块和导入）。
+
+### 2026-09-20 默认资源与前端联调
+- 依据 lifecycle/design.md 的启动步骤 3–4，能力注册继续由 PluginRegistry 承担；本次补齐的是供 workflow 引用的资源实例。
+- ResourceStore 接受装配层提供的 initial_resources，仅新文件创建时统一校验并原子写入，已有文件及用户删除保持不变。
+- 默认 mock/history/logs 来源沿用各自 schema 默认参数；文件通知使用 mock 类型和 data_dir 下 notifications.txt，避免虚构邮件账号或 AI 凭据。logs 使用既有 CollectionContext.log_path，需配置 log_file。
+- 当前空资源目录通过已有 save(create) 接口补齐；未修改 proposal/design。
+- 验证新增 API 启动/默认资源/删除后重启测试；浏览器 workflow 测试补充删除与列表复核。
