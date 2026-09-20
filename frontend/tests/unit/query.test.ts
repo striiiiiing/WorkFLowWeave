@@ -1,3 +1,6 @@
+/**
+ * 查询组合函数单元测试：在 Vue effectScope 中控制异步请求、响应顺序和销毁，断言状态更新、错误及过期请求处理；用替身加载器隔离网络。
+ */
 import { effectScope, nextTick, ref } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'

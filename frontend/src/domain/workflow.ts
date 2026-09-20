@@ -2,7 +2,7 @@ import type { WorkflowDefinition, FanInConfig } from '@/types'
 // Defaults match WorkflowDefinition / FanInConfig in src/logagent/models.py.
 export function createWorkflow(): WorkflowDefinition {
   return {
-    id: '',
+    id: crypto.randomUUID(),
     name: '',
     sources: [],
     analyses: [],
@@ -11,7 +11,7 @@ export function createWorkflow(): WorkflowDefinition {
     source_overrides: {},
     channel_overrides: {},
     input_separator: '\n\n',
-    include_counts: false,
+    include_counts: true,
     collection_concurrency: 4,
     analysis_concurrency: 4,
     on_all_empty: 'stop',

@@ -1,3 +1,6 @@
+/**
+ * API 客户端单元测试：用受控 fetch 响应验证请求、响应解析和结构化错误传播；不启动真实后端。
+ */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, errorMessage } from '@/api/client'
 import { resourcesApi } from '@/api/resources'

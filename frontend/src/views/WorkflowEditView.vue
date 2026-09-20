@@ -43,6 +43,7 @@ function submit() {
   const editorForm = form.value
   void save.run(async () => {
     if (!(await editorForm.validate(() => {}))) return
+    if (!workflow.value.id) workflow.value.id = crypto.randomUUID()
     if (id.value) await resourcesApi.replace('workflows', id.value, workflow.value)
     else await resourcesApi.create('workflows', workflow.value)
     ElMessage.success('工作流已保存')
@@ -82,7 +83,12 @@ function submit() {
       <div class="flow-stack">
         <SectionCard title="基本信息与运行策略">
           <div class="form-grid">
-            <el-form-item label="工作流 ID" prop="id" :rules="idRule">
+            <el-form-item
+              v-if="advanced"
+              label="工作流 ID（留空自动生成）"
+              prop="id"
+              :rules="{ ...idRule, required: false }"
+            >
               <el-input v-model="workflow.id" :disabled="!!id" placeholder="nightly_analysis" />
             </el-form-item>
             <el-form-item label="显示名称">
@@ -99,10 +105,10 @@ function submit() {
           </div>
         </SectionCard>
         <SourceStepCard v-model="workflow" :sources="data.sources" :advanced="advanced" />
-        <FanOutTaskCard v-model="workflow" :configs="data.configs" />
+        <FanOutTaskCard v-model="workflow" :configs="data.configs" :advanced="advanced" />
         <FanInCard v-model="workflow" :configs="data.configs" :advanced="advanced" />
-        <NotificationCard v-model="workflow" :channels="data.channels" />
-        <BackupMatrix v-model="workflow.backup" />
+        <NotificationCard v-model="workflow" :channels="data.channels" :advanced="advanced" />
+        <BackupMatrix v-if="advanced" v-model="workflow.backup" />
       </div>
     </el-form>
   </div>

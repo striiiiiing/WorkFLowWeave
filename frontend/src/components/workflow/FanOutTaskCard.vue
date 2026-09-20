@@ -4,7 +4,7 @@ import { idRule } from '@/domain/forms'
 import SectionCard from '@/components/common/SectionCard.vue'
 import AIModelSelect from './AIModelSelect.vue'
 const model = defineModel<WorkflowDefinition>({ required: true })
-defineProps<{ configs: AIConfig[] }>()
+defineProps<{ configs: AIConfig[]; advanced?: boolean }>()
 function add() {
   let index = model.value.analyses.length + 1
   while (model.value.analyses.some((item) => item.id === `task_${index}`)) index++
@@ -63,7 +63,7 @@ function remove(index: number) {
         />
       </el-form-item>
     </div>
-    <div class="form-grid">
+    <div v-if="advanced" class="form-grid">
       <el-form-item label="分析并发">
         <el-input-number v-model="model.analysis_concurrency" :min="1" :precision="0" />
       </el-form-item>

@@ -1,3 +1,6 @@
+/**
+ * JSON 字段组件测试：挂载真实组件并输入非法 JSON，断言阻止保存、显示校验反馈，且保留此前有效对象；不启动后端。
+ */
 import { defineComponent, ref } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
