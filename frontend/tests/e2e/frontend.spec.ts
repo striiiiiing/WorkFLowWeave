@@ -17,7 +17,11 @@ test('resource JSON validation, create and edit use the real API', async ({ page
   await page.getByRole('button', { name: '保存资源' }).click()
   await expect(page.getByRole('dialog')).toBeHidden()
   await expect(page.getByRole('heading', { name: 'browser_source' })).toBeVisible()
-  await page.getByRole('button', { name: '编辑', exact: true }).click()
+  await page
+    .locator('.el-card')
+    .filter({ has: page.getByRole('heading', { name: 'browser_source' }) })
+    .getByRole('button', { name: '编辑', exact: true })
+    .click()
   await expect(page.getByLabel('资源 ID', { exact: true })).toHaveValue('browser_source')
   await expect(page.getByLabel('资源 ID', { exact: true })).toBeDisabled()
   await page.getByRole('button', { name: '保存资源' }).click()
@@ -82,6 +86,12 @@ test('workflow create, reload, run, and versioned phase reading', async ({ page,
   await page.getByRole('button', { name: '查看正文' }).first().click()
   await phaseRequest
   await expect(page.getByRole('dialog')).toContainText('业务版本 v')
+  await page.goto('/workflows')
+  await page.getByRole('button', { name: '删除', exact: true }).click()
+  await page.getByRole('button', { name: '确定', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '浏览器验证工作流' })).toHaveCount(0)
+  expect((await request.get('/api/workflows')).ok()).toBe(true)
+  expect(await (await request.get('/api/workflows')).json()).toEqual([])
   expect(errors).toEqual([])
 })
 

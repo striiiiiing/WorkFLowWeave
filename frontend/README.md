@@ -61,3 +61,7 @@ npm run test:e2e
 实际环境需另外运行 `npm run test:live`：此检查不启动测试服务器，直接访问当前运行的 `http://127.0.0.1:3000`（可用 `LOGAGENT_FRONTEND_URL` 指定）。验证健康报告、资源/运行/插件列表、页面接收和资源保存；只创建带唯一 ID 的临时采集源，结束时删除，不触发工作流。后端未启动或代理不通会直接失败。隔离测试通过不能替代这项检查。
 
 `proposal.md` 与 `design.md` 未改动；本次取舍和验证结果记录在 OpenSpec 前端 `task.md`。
+
+首次创建资源文件时自动生成 `default_mock`、`default_history`、`default_logs` 三个数据源和 `default_file` 文件通知渠道（输出到 data_dir/notifications.txt）。已有资源文件保持原样，删除默认资源后重启不会重新添加。插件页显示采集器类型 mock/logs/history 和渠道类型 mock/email；工作流选择的是资源实例。logs 需要在 config.json 配置 log_file，email 需要自行填写 SMTP 参数；AI 配置也需要真实模型服务。
+
+前端使用顺序：进入“资源管理”查看默认数据源/渠道并添加 AI 配置，再进入“工作流管理 → 新建工作流”，选择数据源、分析任务的 AI/模型及通知渠道，保存后可编辑、立即运行或删除；运行详情中查看阶段结果。
