@@ -1,7 +1,8 @@
 # LogAgent
 
 Python 3.11+ 的异步采集与分析工作流。按模块的实现任务及依赖关系见
-[执行计划](openspec/changes/configurable-collection-analysis-workflow/task.md)。
+[执行计划](openspec/changes/configurable-collection-analysis-workflow/tasks.md)。
+规范目录、变更流程与历史文档说明见 [OpenSpec 存放约定](openspec/README.md)。
 
 ```bash
 uv sync --group dev
