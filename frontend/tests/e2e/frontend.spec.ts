@@ -1,3 +1,6 @@
+/**
+ * 前端完整流程浏览器测试：通过页面操作与真实 API 验证资源 JSON 校验、创建编辑，以及 Workflow 保存、触发和版本化正文查询。使用 Playwright 配置启动的临时后端与本地预览服务；同时检查浏览器运行错误。
+ */
 import { test, expect } from '@playwright/test'
 
 test('resource JSON validation, create and edit use the real API', async ({ page, request }) => {
@@ -5,8 +8,19 @@ test('resource JSON validation, create and edit use the real API', async ({ page
   page.on('pageerror', (error) => errors.push(error.message))
   await page.goto('/resources')
   await page.getByRole('button', { name: '新建资源' }).click()
-  await page.getByLabel('资源 ID', { exact: true }).fill('browser_source')
-  await page.getByLabel('采集器', { exact: true }).fill('mock')
+  await page.getByRole('switch', { name: '高级模式', exact: true }).locator('..').click()
+  await page.getByLabel('资源 ID（留空自动生成）', { exact: true }).fill('browser_source')
+  await page.getByLabel('采集器', { exact: true }).click()
+  await page.getByRole('option', { name: 'mock', exact: true }).click()
+  await page
+    .getByRole('region', { name: '插件参数 (options)', exact: true })
+    .getByRole('button', { name: '编辑 JSON', exact: true })
+    .click()
+  const setters = page.getByRole('region', { name: '处理规则 (setters)', exact: true })
+  await setters.getByRole('switch', { name: '设置 sort_by', exact: true }).locator('..').click()
+  await setters.getByRole('textbox', { name: 'sort_by', exact: true }).fill('message')
+  await setters.getByRole('switch', { name: '设置 descending', exact: true }).locator('..').click()
+  await setters.getByRole('switch', { name: 'descending', exact: true }).locator('..').click()
   const options = page.getByRole('textbox', { name: '插件参数 (options)', exact: true })
   await options.fill('{invalid')
   await page.getByRole('button', { name: '保存资源' }).click()
@@ -17,13 +31,20 @@ test('resource JSON validation, create and edit use the real API', async ({ page
   await page.getByRole('button', { name: '保存资源' }).click()
   await expect(page.getByRole('dialog')).toBeHidden()
   await expect(page.getByRole('heading', { name: 'browser_source' })).toBeVisible()
+  expect((await (await request.get('/api/sources/browser_source')).json()).setters).toEqual({
+    sort_by: 'message',
+    descending: true,
+  })
   await page
-    .locator('.el-card')
+    .locator('.el-card .el-card')
     .filter({ has: page.getByRole('heading', { name: 'browser_source' }) })
     .getByRole('button', { name: '编辑', exact: true })
     .click()
-  await expect(page.getByLabel('资源 ID', { exact: true })).toHaveValue('browser_source')
-  await expect(page.getByLabel('资源 ID', { exact: true })).toBeDisabled()
+  await page.getByRole('switch', { name: '高级模式', exact: true }).locator('..').click()
+  await expect(page.getByLabel('资源 ID（留空自动生成）', { exact: true })).toHaveValue(
+    'browser_source',
+  )
+  await expect(page.getByLabel('资源 ID（留空自动生成）', { exact: true })).toBeDisabled()
   await page.getByRole('button', { name: '保存资源' }).click()
   await expect(page.getByRole('dialog')).toBeHidden()
   expect(errors).toEqual([])
@@ -45,12 +66,30 @@ test('workflow create, reload, run, and versioned phase reading', async ({ page,
     const response = await request.post(`/api/${kind}`, { data: value })
     expect(response.ok(), await response.text()).toBe(true)
   }
+  expect(
+    (
+      await request.post('/api/sources', {
+        data: {
+          id: 'second_source',
+          collector: 'mock',
+          options: { mode: 'empty' },
+          on_empty: 'stop',
+        },
+      })
+    ).ok(),
+  ).toBe(true)
   await page.goto('/workflows/new')
-  await page.getByLabel('工作流 ID', { exact: true }).fill('browser_workflow')
+  await expect(page.getByText('采集并发数', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('允许发送部分成功的结果', { exact: true })).toHaveCount(0)
+  await page.getByRole('switch', { name: '高级模式', exact: true }).locator('..').click()
+  await expect(page.getByText('包含采集数量', { exact: true })).toBeVisible()
+  await page.getByLabel('工作流 ID（留空自动生成）', { exact: true }).fill('browser_workflow')
   await page.getByLabel('显示名称', { exact: true }).fill('浏览器验证工作流')
   await page.getByText('选择数据源', { exact: true }).click()
   await page.getByRole('option', { name: 'offline_source', exact: true }).click()
+  await page.getByRole('option', { name: 'second_source', exact: true }).click()
   await page.getByRole('heading', { name: '1. 数据采集' }).click()
+  await page.getByRole('button', { name: '上移 second_source', exact: true }).click()
   await page.getByRole('button', { name: '添加任务' }).click()
   await page.getByText('选择 AI 配置', { exact: true }).click()
   await page.getByRole('option', { name: 'offline_ai', exact: true }).click()
@@ -60,10 +99,12 @@ test('workflow create, reload, run, and versioned phase reading', async ({ page,
   await page.getByRole('button', { name: '保存工作流' }).click()
   await expect(page).toHaveURL(/\/workflows$/)
   const saved = await (await request.get('/api/workflows/browser_workflow')).json()
+  expect(saved.sources).toEqual(['second_source', 'offline_source'])
   expect(saved.analyses).toEqual([
     { id: 'task_1', ai: 'offline_ai', model: 'offline_model', prompt: '{input}' },
   ])
   expect(saved.backup.enabled).toBe(true)
+  expect(saved.include_counts).toBe(true)
   expect(saved.interval_seconds).toBeNull()
   expect(saved.description).toBeUndefined()
   // The built-in offline collector exits before AI, so this smoke test never calls a model service.
@@ -119,4 +160,39 @@ test('mobile navigation, theme and all primary routes render without overflow', 
   }
   await page.screenshot({ path: 'test-results/mobile-dark.png', fullPage: true })
   expect(errors).toEqual([])
+})
+
+test('AI keys are masked on entry and saved as encrypted credentials with an automatic ID', async ({
+  page,
+  request,
+}) => {
+  await page.goto('/resources')
+  await page.getByRole('tab', { name: 'AI 配置', exact: true }).click()
+  await page.getByRole('button', { name: '新建资源' }).click()
+  await expect(page.getByLabel('资源 ID（留空自动生成）')).toHaveCount(0)
+  await page.getByLabel('AI 提供商', { exact: true }).fill('http')
+  await page.getByLabel('服务地址', { exact: true }).fill('http://127.0.0.1:1/v1')
+  const key = page.getByLabel('API 密钥', { exact: true })
+  await key.fill('browser-test-key')
+  await expect(key).toHaveAttribute('type', 'password')
+  await page.locator('.el-input__password').click()
+  await expect(key).toHaveAttribute('type', 'text')
+  await page.locator('.el-input__password').click()
+  const models = page.getByRole('region', { name: '模型配置（模型名 → 参数对象）', exact: true })
+  await models
+    .getByRole('textbox', { name: '模型配置（模型名 → 参数对象） 新字段名', exact: true })
+    .fill('test-model')
+  await models.getByRole('button', { name: '添加字段', exact: true }).click()
+  const savedResponse = page.waitForResponse(
+    (response) => response.url().endsWith('/api/ai') && response.request().method() === 'POST',
+  )
+  await page.getByRole('button', { name: '保存资源' }).click()
+  const response = await savedResponse
+  expect(response.ok(), await response.text()).toBe(true)
+  const saved = await response.json()
+  expect(saved.id).toMatch(/^[0-9a-f-]{36}$/)
+  expect(saved.api_key.kind).toBe('encrypted')
+  expect(JSON.stringify(saved)).not.toContain('browser-test-key')
+  await expect(page.getByRole('dialog')).toBeHidden()
+  expect((await request.delete(`/api/ai/${saved.id}`)).ok()).toBe(true)
 })
