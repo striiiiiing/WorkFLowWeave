@@ -28,7 +28,7 @@
 - 资源路径 `/api/{kind}`，运行路径 `/api/sessions`。工作流使用 `analyses`、`fan_in`、`backup`，不发送后端没有定义的 description、analysis_tasks、backup_policy。
 - 支持后端已有 sources/setters/ai/channels 的创建、编辑、删除。无独立 credentials 接口，因此凭据作为 AI 配置的环境变量引用处理，保留既有加密值但不反显。
 - 表单初始值逐项依据 `models.py`：采集 60 秒、渠道 30 秒、AI 600 秒/5 次重试、并发 4、备份默认启用、保留期 null 表示不设过期天数。可选汇聚由 null 表示，启用后默认 `{input}` 提示词及双换行分隔。
-- 定时运行默认 null（手动触发），与后端一致。当前内置 AI provider 为 `http`，依据 `lifecycle/service.py` 的工厂注册。
+- 定时运行默认 null（手动触发），与后端一致。当前内置 API 格式为 `openai_compatible_api`，依据 `lifecycle/service.py` 的工厂注册；旧 `http` 仅作兼容别名。
 - 轮询默认 2000ms，沿用原前端任务在实时性与请求负载间的取舍；从请求完成时开始计时，避免重叠。所有终态（含 interrupted）与请求失败均停止，用户可刷新重试。
 - 产物请求携带当前选定版本；弹窗展示响应版本，不随后台轮询更新版本标签，不缓存 pending 或过期正文。取消操作读取 `cancelled` 响应并重新查询状态。
 - `/health` 的 HTTP 503 仍可携带真实 HealthReport；仅该接口接受此状态。总览不虚构运行容量、在线时长或健康状态。

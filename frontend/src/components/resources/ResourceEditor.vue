@@ -11,9 +11,14 @@ import { systemApi } from '@/api/system'
 import { useQuery } from '@/composables/useQuery'
 const props = defineProps<{ kind: EditableKind; initial?: EditableResource }>()
 const emit = defineEmits<{ saved: []; cancel: [] }>()
-const draft = ref(
-  props.initial ? structuredClone(toRaw(props.initial)) : createResource(props.kind),
-)
+const initialDraft = props.initial
+  ? structuredClone(toRaw(props.initial))
+  : createResource(props.kind)
+// Normalize the pre-API-format key when opening an existing resource.
+if ('provider' in initialDraft && initialDraft.provider === 'http') {
+  initialDraft.provider = 'openai_compatible_api'
+}
+const draft = ref(initialDraft)
 const form = ref<FormInstance>()
 const save = useAsyncTask()
 const advanced = ref(false)
@@ -160,13 +165,13 @@ function submit() {
     <template v-if="'provider' in draft">
       <el-form-item label="API 格式" prop="provider" :rules="idRule">
         <el-radio-group v-model="draft.provider">
-          <el-radio value="http">OpenAI Compatible API</el-radio>
+          <el-radio value="openai_compatible_api">OpenAI Compatible API</el-radio>
         </el-radio-group>
       </el-form-item>
       <el-form-item
         label="服务地址"
         prop="base_url"
-        :rules="{ required: draft.provider === 'http', message: '请输入 HTTP 服务地址' }"
+        :rules="{ required: draft.provider === 'openai_compatible_api', message: '请输入 OpenAI Compatible API 服务地址' }"
       >
         <el-input
           :model-value="draft.base_url ?? ''"

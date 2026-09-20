@@ -85,7 +85,7 @@
 
 ### AI 供应商业务校验提示（2026-09-21）
 
-- `src/logagent/lifecycle/service.py` 当前只注册 `http` OpenAI 兼容渠道；AxonHub 应填写 provider=`http`，并填写包含 `/v1` 的 base URL。自定义供应商名称会触发 `provider_missing`。
+- `src/logagent/lifecycle/service.py` 注册 `openai_compatible_api` OpenAI 兼容渠道；AxonHub 使用该 API 格式并填写包含 `/v1` 的 base URL。旧资源中的 provider=`http` 作为兼容别名保留。
 - `ResourceStore` 保留 `LogAgentError` 的结构化错误，前端显示 `provider_missing`、`invalid_config` 等字段提示，不再统一折叠成“资源未通过业务校验”。
 - 系统提示词字段按用户要求不在前端展示。
 
@@ -96,6 +96,6 @@
 
 ### AI 配置默认值修正（2026-09-21）
 
-- 依据 `src/logagent/models.py`，AI 配置的 `provider` 是必填业务字段，后端没有把它默认成 `http`；`src/logagent/lifecycle/service.py` 中的 `http` 仅是内置 OpenAI 兼容渠道工厂注册，保留该注册以支持实际执行。
-- 前端 `createResource('ai')` 不再预填 `http`，改为空字符串，让“OpenAI”等示例作为 placeholder 呈现，避免把实现渠道误当成用户已选择的 provider。
+- 依据 `src/logagent/models.py`，AI 配置的 `provider` 是必填业务字段；后端正式 provider 键为 `openai_compatible_api`，旧 `http` 仅作为兼容别名。
+- 前端 `createResource('ai')` 默认选择唯一的 `OpenAI Compatible API` 格式，提交值为 `openai_compatible_api`。
 - 前端补齐 `AIConfig.system_prompt` 编辑字段；该字段已存在于后端模型，之前界面漏展示会导致用户无法配置。
