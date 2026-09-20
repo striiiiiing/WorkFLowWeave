@@ -1,14 +1,19 @@
-"""校验 AI 配置边界，并观察真实模型请求的角色、凭据和结果使用量。"""
+"""AI 服务配置边界和真实请求契约测试。
+
+纯配置用例参数化检查托管字段冲突、模型名与 JSON 参数；真实调用用例通过
+HTTP 观察钩子核对角色、提示词替换、凭据、usage 和客户端所有权。
+真实调用依赖 conftest 的本地 mock 服务，Qwen 参数由显式环境开关启用。
+"""
 
 import json
 
 import pytest
 from pydantic import ValidationError
 
-from ai.live_helpers import assert_success
 from logagent.ai import AIService, OpenAIChannelFactory
 from logagent.errors import LogAgentError
 from logagent.models import AIConfig
+from tests.ai.live_helpers import assert_success
 
 
 def config():

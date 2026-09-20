@@ -1,4 +1,9 @@
-"""Explicit LangChain test models; never installed as production providers."""
+"""跨模块集成测试复用的 LangChain 模型与渠道替身。
+
+工厂把配置、模型、凭据和提示词传给可同步或异步的 responder，再将结果
+封装为 ChatResult；同步模型入口直接失败，保证测试走 AIService 异步调用链。
+仅替换模型传输层，不注册生产 provider，也不访问外部模型服务。
+"""
 
 import inspect
 from typing import Any
