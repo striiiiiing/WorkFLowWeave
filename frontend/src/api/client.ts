@@ -11,14 +11,16 @@ export class ApiError extends Error {
 }
 
 export function errorMessage(error: unknown): string {
-  if (error instanceof ApiError && Array.isArray(error.info.details.errors)) {
-    const issues = error.info.details.errors.flatMap((issue) => {
+  if (error instanceof ApiError) {
+    const details = error.info.details
+    const issues = Array.isArray(details.errors) ? details.errors.flatMap((issue) => {
       if (!issue || typeof issue !== 'object' || Array.isArray(issue)) return []
       return Array.isArray(issue.path) && typeof issue.reason === 'string'
         ? [`${issue.path.join('.')}: ${issue.reason}`]
         : []
-    })
-    return [error.message, ...issues].join('；')
+    }) : []
+    const field = typeof details.field === 'string' ? `字段 ${details.field}` : ''
+    return [error.message, field, ...issues].filter(Boolean).join('；')
   }
   return error instanceof Error ? error.message : String(error)
 }
