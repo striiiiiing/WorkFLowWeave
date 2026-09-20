@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import { resourcesApi } from '@/api/resources'
-import { resourceKinds, type EditableKind, type EditableResource } from '@/domain/resources'
+import {
+  resourceKinds,
+  resourceNames,
+  type EditableKind,
+  type EditableResource,
+} from '@/domain/resources'
 import { useQuery } from '@/composables/useQuery'
 import { useAsyncTask } from '@/composables/useAsyncTask'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -13,6 +19,13 @@ const { data, pending, error, refresh } = useQuery(
   [kind],
 )
 const action = useAsyncTask()
+const connection = useAsyncTask()
+function checkConnection(id: string) {
+  void connection.run(async () => {
+    const models = await resourcesApi.checkAIConnection(id)
+    ElMessage.success(`连接成功，发现 ${models.length} 个模型`)
+  })
+}
 const editor = ref<{ kind: EditableKind; initial?: EditableResource }>()
 const dialog = ref(false)
 function open(initial?: EditableResource) {
@@ -34,11 +47,11 @@ function saved() {
 <template>
   <PageHeader title="资源配置中心" description="管理可复用的数据源、处理模板、AI 模型与通知渠道">
     <el-button :loading="pending" @click="refresh">刷新</el-button>
-    <el-button type="primary" @click="open()">新建资源</el-button>
+    <el-button type="primary" @click="open()">添加{{ resourceNames[kind] }}</el-button>
   </PageHeader>
   <el-alert
-    v-if="error || action.error.value"
-    :title="error || action.error.value"
+    v-if="error || action.error.value || connection.error.value"
+    :title="error || action.error.value || connection.error.value"
     type="error"
     :closable="false"
     show-icon
@@ -70,6 +83,13 @@ function saved() {
           </div>
         </div>
         <div class="flex justify-end gap-2 mt-5">
+          <el-button
+            v-if="kind === 'ai'"
+            :loading="connection.pending.value"
+            @click="checkConnection(resource.id)"
+          >
+            检查连接
+          </el-button>
           <el-button @click="open(resource)">编辑</el-button>
           <el-popconfirm title="确认删除此资源？" @confirm="remove(resource.id)">
             <template #reference>
@@ -83,7 +103,7 @@ function saved() {
   </el-card>
   <el-dialog
     v-model="dialog"
-    :title="editor?.initial ? '编辑资源' : '新建资源'"
+    :title="(editor?.initial ? '编辑' : '添加') + resourceNames[editor?.kind ?? kind]"
     width="680px"
     destroy-on-close
   >

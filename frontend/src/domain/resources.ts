@@ -1,6 +1,12 @@
 import type { AIConfig, ChannelConfig, SetterTemplate, SourceConfig } from '@/types'
 export type EditableKind = 'sources' | 'setters' | 'ai' | 'channels'
 export type EditableResource = SourceConfig | SetterTemplate | AIConfig | ChannelConfig
+export const resourceNames: Record<EditableKind, string> = {
+  sources: '数据源',
+  setters: '处理模板',
+  ai: '供应商渠道',
+  channels: '通知渠道',
+}
 export const resourceKinds = [
   { key: 'sources', label: '数据源', icon: 'database' },
   { key: 'setters', label: '处理模板', icon: 'settings' },
@@ -26,7 +32,7 @@ export function createResource(kind: EditableKind): EditableResource {
     setters: (): SetterTemplate => ({ id: crypto.randomUUID(), collector: '', setters: {} }),
     ai: (): AIConfig => ({
       id: crypto.randomUUID(),
-      provider: '',
+      provider: 'http',
       base_url: null,
       api_key: null,
       system_prompt: '',
