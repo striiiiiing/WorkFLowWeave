@@ -33,6 +33,7 @@ function update(value: string) {
     error.value = cause instanceof Error ? cause.message : String(cause)
   }
 }
+defineExpose({ isValid: () => !error.value })
 </script>
 <template>
   <el-form-item :label="label" :error="error" :prop="prop" :rules="{ validator: validate }">

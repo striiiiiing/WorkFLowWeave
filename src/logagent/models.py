@@ -234,7 +234,7 @@ class WorkflowDefinition(StrictModel):
     source_overrides: dict[ID, SourceOverride] = Field(default_factory=dict)
     channel_overrides: dict[ID, ChannelOverride] = Field(default_factory=dict)
     input_separator: str = "\n\n"
-    include_counts: bool = False
+    include_counts: bool = True
     collection_concurrency: int = Field(default=4, ge=1)
     analysis_concurrency: int = Field(default=4, ge=1)
     on_all_empty: SourcePolicy = "stop"

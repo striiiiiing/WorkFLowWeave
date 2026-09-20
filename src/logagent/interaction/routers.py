@@ -15,6 +15,7 @@ from logagent.models import (
     CapabilityDescription,
     ChannelConfig,
     DiscoveryReport,
+    EncryptedCredential,
     HealthReport,
     JSONObject,
     PhaseContent,
@@ -32,6 +33,7 @@ from .dependencies import get_lifecycle, get_services
 from .schemas import (
     CancelResponse,
     PhaseQuery,
+    ProtectCredentialRequest,
     ReloadQuery,
     ReloadResponse,
     SessionListQuery,
@@ -246,6 +248,12 @@ async def reload(
     result = await lifecycle.reload(query.scope)
     report = result if isinstance(result, DiscoveryReport) else None
     return ReloadResponse(scope=query.scope, report=report)
+
+
+@router.post("/credentials/protect", response_model=EncryptedCredential)
+async def protect_credential(payload: ProtectCredentialRequest, response: Response, services: Services):
+    response.headers["Cache-Control"] = "no-store"
+    return await asyncio.to_thread(services.credentials.protect, payload.plaintext.get_secret_value())
 
 
 @router.get("/{kind}", response_model=list[JSONObject])
