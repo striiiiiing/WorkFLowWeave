@@ -1,3 +1,10 @@
+"""首次启动默认资源的跨模块集成测试。
+
+以临时目录启动真实 ApplicationLifecycle 和 FastAPI TestClient，检查内置插件、
+默认采集源及文件渠道可通过 API 查询；删除默认源后重启，断言不会重新生成。
+覆盖配置、装配与交互边界，不调用远端模型或发送邮件。
+"""
+
 from fastapi.testclient import TestClient
 
 from logagent.interaction.app import create_app

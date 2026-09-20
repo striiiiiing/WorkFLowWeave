@@ -1,11 +1,16 @@
-"""Four-layer bindings through real resources, managers and durable workflows."""
+"""配置覆盖从资源绑定到采集、通知与恢复的跨模块测试。
+
+用真实 ResourceStore、注册表和管理器验证四层配置优先级、显式空覆盖、
+模板引用完整性、账户/调用字段作用域及失败提交的原子性；再经 Workflow、
+SQLite 和本地文件渠道验证不同绑定相互隔离，恢复仍使用原快照。
+模型使用注入的 LangChain 替身；邮件配置仅校验，不向真实收件人投递。
+"""
 
 import asyncio
 from copy import deepcopy
 
 import pytest
 from pydantic import ValidationError
-from workflow_ai_helpers import TestChannelFactory
 
 from logagent.ai import AIService
 from logagent.channel import ChannelManager, MockFileChannelType
@@ -24,6 +29,7 @@ from logagent.models import (
 )
 from logagent.schema import resource_options_schema, validate_instance, validate_schema
 from logagent.workflow import WorkflowService
+from tests.workflow_ai_helpers import TestChannelFactory
 
 
 @pytest.fixture
@@ -246,7 +252,7 @@ async def test_real_workflows_persist_distinct_inputs_and_recover_original_bindi
             await service.trigger(name, session_id=name)
             result = await service.wait(name)
             assert result.status == "completed"
-            assert result.shared_input == '{"message":"' + name + '"}'
+            assert result.shared_input == '{"message":"' + name + '"}\n\nsource: success (1)'
         written = output.read_text()
         assert "first" in written and "second" in written
         saved = await asyncio.to_thread(service.session_store.entry, "first", "snapshot")
@@ -258,7 +264,7 @@ async def test_real_workflows_persist_distinct_inputs_and_recover_original_bindi
         store.save("workflows", changed)
         await service.recover("first")
         recovered = await service.wait("first")
-        assert recovered.shared_input == '{"message":"first"}'
+        assert recovered.shared_input == '{"message":"first"}\n\nsource: success (1)'
         assert output.read_text() == written
     finally:
         await service.shutdown()

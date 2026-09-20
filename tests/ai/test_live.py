@@ -1,4 +1,9 @@
-"""对服务端 mock 和可选 qwen3.7-flash 执行相同的真实 HTTP 验收。"""
+"""AI 真实 HTTP 调用生命周期验收。
+
+使用本地 mock 服务及显式启用的 Qwen，检查模型发现、thinking 参数、
+并发请求、取消通知和关闭后显式重启；观察真实请求与结果，不伪造响应。
+依赖环境配置、运行中的兼容端点及适用凭据，失败由实际服务状态决定。
+"""
 
 import asyncio
 import json
@@ -6,8 +11,8 @@ import json
 import httpx
 import pytest
 
-from ai.live_helpers import assert_success, call
 from logagent.ai import AIService, OpenAIChannelFactory
+from tests.ai.live_helpers import assert_success, call
 
 
 async def test_model_discovery(channel_service, channel_config):

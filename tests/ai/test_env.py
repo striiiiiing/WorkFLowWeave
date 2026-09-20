@@ -1,8 +1,12 @@
-"""离线校验真实模型测试接受的配置文件格式，不构造模型或 HTTP 响应。"""
+"""AI 验收环境文件解析的离线测试。
+
+向临时文件写入逐行格式和 NAME=VALUE 格式，验证引号、注释和可选密钥；
+对缺项、重复或未知字段断言显式 ValueError，不构造模型或 HTTP 响应。
+"""
 
 import pytest
 
-from ai.live_helpers import read_settings
+from tests.ai.live_helpers import read_settings
 
 
 @pytest.mark.parametrize("body", [

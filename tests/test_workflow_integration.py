@@ -1,11 +1,15 @@
-"""Exercise durable workflows through the real registry, managers, and local plugins."""
+"""采集、AI、通知与 Workflow 持久恢复的跨模块集成测试。
+
+装配真实注册表、资源存储、管理器、AIService、SQLite 与本地文件渠道，
+只替换模型传输层；中断分析或通知后重建服务，核对原快照、输出、调用次数
+及恢复结果，确保已完成步骤不重复执行、资源更新不污染旧 session。
+"""
 
 import asyncio
 from contextlib import asynccontextmanager
 
 from sqlalchemy import URL, inspect
 from sqlmodel import Session, create_engine, func, select
-from workflow_ai_helpers import TestChannelFactory
 
 from logagent.ai import AIService
 from logagent.channel import ChannelManager, MockFileChannelType
@@ -24,6 +28,7 @@ from logagent.models import (
 )
 from logagent.workflow import WorkflowService
 from logagent.workflow.session_models import SessionHeader
+from tests.workflow_ai_helpers import TestChannelFactory
 
 
 @asynccontextmanager
@@ -106,13 +111,13 @@ async def test_real_modules_recovery_preserves_original_output(tmp_path):
         await service.trigger("demo", session_id="original-run")
         original = await service.wait("original-run")
         assert original.status == "completed"
-        assert original.shared_input == '{"message":"original"}'
+        assert original.shared_input == '{"message":"original"}\n\nsource: success (1)'
         assert original.collection[0].items == [{"message": "original"}]
         assert original.collection[0].count == 1
         assert original.aggregate.text == (
-            'original-summary: original-second: {"message":"original"}'
-            '\n--\n{"message":"original"}'
-            '\n--\noriginal-first: {"message":"original"}'
+            'original-summary: original-second: {"message":"original"}\n\nsource: success (1)'
+            '\n--\n{"message":"original"}\n\nsource: success (1)'
+            '\n--\noriginal-first: {"message":"original"}\n\nsource: success (1)'
         )
         assert original.outputs == {"final": original.aggregate.text}
         assert original.deliveries[0].status == "success"
@@ -144,7 +149,7 @@ async def test_real_modules_recovery_preserves_original_output(tmp_path):
         await service.trigger("demo", session_id="changed-run")
         changed = await service.wait("changed-run")
         assert changed.status == "completed"
-        assert changed.shared_input == '{"message":"changed"}'
+        assert changed.shared_input == '{"message":"changed"}\n\nsource: success (1)'
         assert changed.aggregate.text.startswith("changed-summary: changed-second:")
         assert _notifications(original_path) == notifications
         changed_notes = _notifications(changed_path)
@@ -195,9 +200,9 @@ async def test_real_ai_cancellation_resumes_saved_snapshot_after_resource_change
         await service.recover("interrupted")
         recovered = await service.wait("interrupted")
         assert recovered.status == "completed"
-        assert recovered.shared_input == '{"message":"original"}'
+        assert recovered.shared_input == '{"message":"original"}\n\nsource: success (1)'
         assert recovered.analyses[0].model_dump(mode="json") == first
-        assert recovered.analyses[1].text == 'original-second: {"message":"original"}'
+        assert recovered.analyses[1].text == 'original-second: {"message":"original"}\n\nsource: success (1)'
         assert recovered.aggregate.text.startswith("original-summary:")
         notes = _notifications(original_path)
         assert notes.startswith("Report original\n")
