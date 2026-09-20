@@ -159,7 +159,7 @@ function submit() {
     </template>
     <template v-if="'provider' in draft">
       <el-form-item label="AI 提供商" prop="provider" :rules="idRule">
-        <el-input v-model="draft.provider" placeholder="http" />
+        <el-input v-model="draft.provider" placeholder="OpenAI" />
       </el-form-item>
       <el-form-item
         label="服务地址"
@@ -168,7 +168,7 @@ function submit() {
       >
         <el-input
           :model-value="draft.base_url ?? ''"
-          placeholder="HTTP 接口地址，包含 API 路径前缀（如 /v1）"
+          placeholder="https://api.openai.com/v1"
           @update:model-value="draft.base_url = $event || null"
         />
       </el-form-item>
