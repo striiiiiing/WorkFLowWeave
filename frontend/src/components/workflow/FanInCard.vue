@@ -4,7 +4,7 @@ import { createFanIn } from '@/domain/workflow'
 import SectionCard from '@/components/common/SectionCard.vue'
 import AIModelSelect from './AIModelSelect.vue'
 const model = defineModel<WorkflowDefinition>({ required: true })
-defineProps<{ configs: AIConfig[] }>()
+defineProps<{ configs: AIConfig[]; advanced?: boolean }>()
 function toggle(enabled: boolean | string | number) {
   model.value.fan_in = enabled ? createFanIn() : null
 }
@@ -35,10 +35,10 @@ function toggle(enabled: boolean | string | number) {
       <el-form-item v-if="model.fan_in.ai" label="汇总提示词">
         <el-input v-model="model.fan_in.prompt" type="textarea" :rows="3" />
       </el-form-item>
-      <el-form-item label="分隔符">
+      <el-form-item v-if="advanced" label="分隔符">
         <el-input v-model="model.fan_in.separator" type="textarea" :rows="2" />
       </el-form-item>
-      <el-form-item label="标记不完整结果">
+      <el-form-item v-if="advanced" label="标记不完整结果">
         <el-switch v-model="model.fan_in.mark_incomplete" />
       </el-form-item>
     </template>
