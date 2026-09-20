@@ -51,6 +51,14 @@ describe('HTTP contract', () => {
     expect(error).toBeInstanceOf(ApiError)
     expect(errorMessage(error)).toBe('无效配置；body.analyses: too_short')
   })
+  it('surfaces structured business validation fields', async () => {
+    respond(
+      { error: { code: 'provider_missing', message: 'AI provider 不可用', details: { field: 'provider' } } },
+      422,
+    )
+    const error = await resourcesApi.list('ai').catch((cause) => cause)
+    expect(errorMessage(error)).toBe('AI provider 不可用；字段 provider')
+  })
   it('reads an unavailable health report from HTTP 503', async () => {
     respond({ status: 'unavailable', accepting_runs: false, components: [] }, 503)
     expect((await systemApi.health()).status).toBe('unavailable')

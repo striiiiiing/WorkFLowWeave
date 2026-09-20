@@ -63,6 +63,10 @@ def _call_validator(validator: Validator, value: StrictModel) -> None:
             result.close()
         if result is not None:
             raise TypeError("Validator must return None")
+    except LogAgentError:
+        # Preserve structured domain diagnostics so clients can identify the
+        # rejected field or provider instead of seeing a generic wrapper.
+        raise
     except Exception as exc:
         raise LogAgentError(
             "invalid_config", "资源未通过业务校验", {"exception_type": type(exc).__name__}
