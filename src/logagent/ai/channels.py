@@ -26,6 +26,7 @@ class AIChannel(Protocol):
 
     def create_model(
         self, config: AIConfig, *, model: str, credential: str | None,
+        streaming: bool = False, max_output_tokens: int | None = None,
     ) -> BaseChatModel:
         """按已验证的配置和显式模型名创建独立聊天模型；credential 为已解析凭据。"""
         ...
@@ -80,13 +81,23 @@ class OpenAIChannel:
         if not self._started or self._closed:
             raise ModelError("channel_closed", "AI 渠道未启动或已关闭")
 
-    def create_model(self, config, *, model, credential):
-        """创建非流式 ChatOpenAI，将所选模型的参数副本作为 extra_body 传递。
+    def create_model(
+        self, config, *, model, credential, streaming=False, max_output_tokens=None,
+    ):
+        """创建独立 ChatOpenAI，显式控制流式与实际输出预算。
 
         关闭 SDK 内部重试、缓存和阶段超时，避免与服务层重复管理。凭据通过
         异步 supplier 提供；credential 为 None 时显式省略认证头，防止读取环境密钥。
         """
         self._check_started()
+        options = deepcopy(config.models[model])
+        if max_output_tokens is not None:
+            if type(max_output_tokens) is not int or max_output_tokens <= 0:
+                raise ValueError("max_output_tokens must be a positive integer")
+            # A single provider field owns the requested output budget.
+            for key in ("max_tokens", "max_completion_tokens", "max_output_tokens"):
+                options.pop(key, None)
+            options["max_completion_tokens"] = max_output_tokens
 
         async def api_key() -> str:
             """只返回本次已解析凭据，阻止 SDK 隐式使用环境中的 API key。"""
@@ -97,8 +108,8 @@ class OpenAIChannel:
             http_async_client=self.client, openai_proxy=None, http_socket_options=(),
             model_kwargs={"extra_headers": {"Authorization": Omit()}} if credential is None else {},
             timeout=None, max_retries=0, cache=False,
-            streaming=False, disable_streaming=True, use_responses_api=False,
-            extra_body=deepcopy(config.models[model]),
+            streaming=streaming, disable_streaming=not streaming, use_responses_api=False,
+            extra_body=options,
         )
 
     async def list_models(self, credential):
