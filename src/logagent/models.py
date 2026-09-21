@@ -386,6 +386,7 @@ class SessionRecord(StrictModel):
 
     session_id: ID
     workflow_id: ID
+    workflow_name: str | None = None
     version: SessionVersion
     status: SessionStatus
     stage: WorkflowStage | None = None

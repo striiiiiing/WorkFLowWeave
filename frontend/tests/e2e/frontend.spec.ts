@@ -3,11 +3,95 @@
  */
 import { test, expect } from '@playwright/test'
 
+test('resource arrays keep repeated entries and ordered selections after saving', async ({
+  page,
+  request,
+}) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  const record = { message: 'repeatable record', level: 'INFO' }
+  const created = await request.post('/api/sources', {
+    data: { id: 'array_editor_source', collector: 'mock', options: { records: [record] } },
+  })
+  expect(created.ok(), await created.text()).toBe(true)
+  await page.goto('/resources')
+  const card = page
+    .locator('.el-card .el-card')
+    .filter({ has: page.getByRole('heading', { name: 'array_editor_source' }) })
+  await card.getByRole('button', { name: '编辑', exact: true }).click()
+  await expect(page.locator('textarea[aria-label="records"]')).toHaveCount(0)
+  await page.getByRole('button', { name: '重复添加 records 第 1 项', exact: true }).click()
+  await page.getByRole('button', { name: '保存资源', exact: true }).click()
+  await expect(page.getByRole('dialog')).toBeHidden()
+  expect(
+    (await (await request.get('/api/sources/array_editor_source')).json()).options.records,
+  ).toEqual([record, record])
+  await card.getByRole('button', { name: '编辑', exact: true }).click()
+  await expect(
+    page.getByRole('region', { name: 'records 列表', exact: true }).getByRole('textbox'),
+  ).toHaveCount(2)
+  await page.getByRole('button', { name: '删除 records 第 1 项', exact: true }).click()
+  await page.getByRole('button', { name: '保存资源', exact: true }).click()
+  await expect(page.getByRole('dialog')).toBeHidden()
+  expect(
+    (await (await request.get('/api/sources/array_editor_source')).json()).options.records,
+  ).toEqual([record])
+
+  await page.getByRole('button', { name: '添加数据源', exact: true }).click()
+  await page.getByLabel('采集器', { exact: true }).click()
+  await page.getByRole('option', { name: 'history', exact: true }).click()
+  await page.getByRole('switch', { name: '设置 limit', exact: true }).locator('..').click()
+  await expect(page.getByText('limit（数字）', { exact: true })).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'limit 类型', exact: true })).toHaveCount(0)
+  const limit = page.getByRole('textbox', { name: 'limit', exact: true })
+  await limit.fill('12a')
+  await page.getByRole('button', { name: '保存资源', exact: true }).click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await expect(limit).toHaveValue('12a')
+  await expect(page.getByRole('dialog')).toContainText('请输入有效整数，例如 10，不能混入文字。')
+  await expect(page.getByRole('dialog')).not.toContainText('Unexpected')
+  await limit.fill('3')
+  await page.getByRole('switch', { name: '设置 stages', exact: true }).locator('..').click()
+  const stages = page.getByRole('region', { name: 'stages 列表', exact: true })
+  await page.getByRole('button', { name: '添加 stages 项目', exact: true }).click()
+  await stages.locator('.el-select').nth(1).click()
+  await page.getByRole('option', { name: 'aggregate', exact: true }).click()
+  await page.getByRole('button', { name: '上移 stages 第 2 项', exact: true }).click()
+  const savedResponse = page.waitForResponse(
+    (response) => response.url().endsWith('/api/sources') && response.request().method() === 'POST',
+  )
+  await page.getByRole('button', { name: '保存资源', exact: true }).click()
+  const response = await savedResponse
+  expect(response.ok(), await response.text()).toBe(true)
+  const saved = await response.json()
+  expect(response.request().postDataJSON().options).toEqual({
+    limit: 3,
+    stages: ['aggregate', 'collect'],
+  })
+  expect(saved.options).toMatchObject({ limit: 3, stages: ['aggregate', 'collect'] })
+  await expect(page.getByRole('dialog')).toBeHidden()
+  await page
+    .locator('.el-card .el-card')
+    .filter({ has: page.getByRole('heading', { name: saved.id }) })
+    .getByRole('button', { name: '编辑', exact: true })
+    .click()
+  await expect(stages.locator('.el-select').nth(0)).toContainText('aggregate')
+  await expect(stages.locator('.el-select').nth(1)).toContainText('collect')
+  await stages.screenshot({
+    path: 'test-results/resource-array-editor.png',
+    animations: 'disabled',
+  })
+  await page.getByRole('button', { name: '取消', exact: true }).click()
+  expect((await request.delete(`/api/sources/${saved.id}`)).ok()).toBe(true)
+  expect((await request.delete('/api/sources/array_editor_source')).ok()).toBe(true)
+  expect(errors).toEqual([])
+})
+
 test('resource JSON validation, create and edit use the real API', async ({ page, request }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.goto('/resources')
-  await page.getByRole('button', { name: '新建资源' }).click()
+  await page.getByRole('button', { name: '添加数据源' }).click()
   await page.getByRole('switch', { name: '高级模式', exact: true }).locator('..').click()
   await page.getByLabel('资源 ID（留空自动生成）', { exact: true }).fill('browser_source')
   await page.getByLabel('采集器', { exact: true }).click()
@@ -91,7 +175,7 @@ test('workflow create, reload, run, and versioned phase reading', async ({ page,
   await page.getByRole('heading', { name: '1. 数据采集' }).click()
   await page.getByRole('button', { name: '上移 second_source', exact: true }).click()
   await page.getByRole('button', { name: '添加任务' }).click()
-  await page.getByText('选择 AI 配置', { exact: true }).click()
+  await page.getByText('选择供应商渠道', { exact: true }).click()
   await page.getByRole('option', { name: 'offline_ai', exact: true }).click()
   await page.getByText('选择模型', { exact: true }).click()
   await page.getByRole('option', { name: 'offline_model', exact: true }).click()
@@ -162,15 +246,20 @@ test('mobile navigation, theme and all primary routes render without overflow', 
   expect(errors).toEqual([])
 })
 
-test('AI keys are masked on entry and saved as encrypted credentials with an automatic ID', async ({
+test('provider models are configured in the channel and selected by workflows', async ({
   page,
   request,
 }) => {
-  await page.goto('/resources')
-  await page.getByRole('tab', { name: 'AI 配置', exact: true }).click()
-  await page.getByRole('button', { name: '新建资源' }).click()
+  const errors: string[] = []
+  const healthRequests: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  page.on('request', (request) => {
+    if (request.url().endsWith('/check-connection')) healthRequests.push(request.url())
+  })
+  await page.goto('/resources?kind=ai')
+  await page.getByRole('button', { name: '添加供应商渠道' }).click()
   await expect(page.getByLabel('资源 ID（留空自动生成）')).toHaveCount(0)
-  await page.getByLabel('AI 提供商', { exact: true }).fill('http')
+  await expect(page.getByRole('button', { name: '检查健康', exact: true })).toBeDisabled()
   await page.getByLabel('服务地址', { exact: true }).fill('http://127.0.0.1:1/v1')
   const key = page.getByLabel('API 密钥', { exact: true })
   await key.fill('browser-test-key')
@@ -178,21 +267,107 @@ test('AI keys are masked on entry and saved as encrypted credentials with an aut
   await page.locator('.el-input__password').click()
   await expect(key).toHaveAttribute('type', 'text')
   await page.locator('.el-input__password').click()
-  const models = page.getByRole('region', { name: '模型配置（模型名 → 参数对象）', exact: true })
-  await models
-    .getByRole('textbox', { name: '模型配置（模型名 → 参数对象） 新字段名', exact: true })
-    .fill('test-model')
-  await models.getByRole('button', { name: '添加字段', exact: true }).click()
+  const models = page.getByRole('region', { name: '渠道模型', exact: true })
+  await models.getByRole('textbox', { name: '模型名称', exact: true }).fill('openai/test.v1')
+  await models.getByRole('button', { name: '添加模型', exact: true }).click()
+  await expect(models.getByText('openai/test.v1', { exact: true })).toBeVisible()
+  await models.getByRole('textbox', { name: '模型名称', exact: true }).fill('openai/backup.v2')
+  await models.getByRole('button', { name: '添加模型', exact: true }).click()
+  await page.getByRole('switch', { name: '高级模式', exact: true }).locator('..').click()
+  await page.getByLabel('超时 / 秒', { exact: true }).fill('1')
+  await page.getByLabel('重试次数', { exact: true }).fill('0')
   const savedResponse = page.waitForResponse(
     (response) => response.url().endsWith('/api/ai') && response.request().method() === 'POST',
   )
-  await page.getByRole('button', { name: '保存资源' }).click()
+  await page.getByRole('button', { name: '保存渠道', exact: true }).click()
   const response = await savedResponse
   expect(response.ok(), await response.text()).toBe(true)
   const saved = await response.json()
   expect(saved.id).toMatch(/^[0-9a-f-]{36}$/)
   expect(saved.api_key.kind).toBe('encrypted')
   expect(JSON.stringify(saved)).not.toContain('browser-test-key')
+  expect(saved.models).toEqual({ 'openai/test.v1': {}, 'openai/backup.v2': {} })
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await page.screenshot({ path: 'test-results/provider-editor.png', fullPage: true })
+  expect(healthRequests).toEqual([])
+  const healthResponse = page.waitForResponse((response) =>
+    response.url().endsWith('/check-connection'),
+  )
+  await page.getByRole('button', { name: '检查健康', exact: true }).click()
+  expect((await healthResponse).ok()).toBe(false)
+  await expect(
+    page.getByRole('region', { name: '渠道健康检查' }).locator('.el-alert--error'),
+  ).toBeVisible()
+  expect(healthRequests).toHaveLength(1)
+  await expect(models.getByText('openai/test.v1', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '关闭', exact: true }).click()
   await expect(page.getByRole('dialog')).toBeHidden()
+  const card = page
+    .locator('.el-card .el-card')
+    .filter({ has: page.getByRole('heading', { name: saved.id }) })
+  await expect(card).toContainText('2 个已配置模型')
+  await expect(card.getByRole('button', { name: '检查健康' })).toHaveCount(0)
+  await card.getByRole('button', { name: '编辑', exact: true }).click()
+  await expect(
+    page.getByRole('region', { name: '渠道模型' }).getByText('openai/test.v1', { exact: true }),
+  ).toBeVisible()
+  await page.getByRole('button', { name: '配置参数', exact: true }).first().click()
+  const parameters = page
+    .getByRole('region', { name: '额外请求参数（extra_body）', exact: true })
+    .first()
+  await parameters
+    .getByRole('switch', { name: '设置 enable_thinking', exact: true })
+    .locator('..')
+    .click()
+  await parameters
+    .getByRole('switch', { name: 'enable_thinking', exact: true })
+    .locator('..')
+    .click()
+  const updatedResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/ai/${saved.id}`) && response.request().method() === 'PUT',
+  )
+  await page.getByRole('button', { name: '保存渠道', exact: true }).click()
+  const updated = await updatedResponse
+  expect(updated.ok(), await updated.text()).toBe(true)
+  expect((await updated.json()).models).toEqual({
+    'openai/test.v1': { enable_thinking: true },
+    'openai/backup.v2': {},
+  })
+  await page.getByRole('button', { name: '关闭', exact: true }).click()
+
+  const source = await request.post('/api/sources', {
+    data: { id: 'model_flow_source', collector: 'mock', options: {} },
+  })
+  expect(source.ok(), await source.text()).toBe(true)
+  await page.goto('/workflows/new')
+  await page.getByLabel('显示名称', { exact: true }).fill('模型配置流程')
+  await page.getByText('选择数据源', { exact: true }).click()
+  await page.getByRole('option', { name: 'model_flow_source', exact: true }).click()
+  await page.getByRole('heading', { name: '1. 数据采集' }).click()
+  await page.getByRole('button', { name: '添加任务', exact: true }).click()
+  const modelsResponse = page.waitForResponse(
+    (response) => response.url().endsWith('/api/ai') && response.request().method() === 'GET',
+  )
+  await page.getByRole('button', { name: '刷新模型列表', exact: true }).click()
+  expect((await modelsResponse).ok()).toBe(true)
+  await expect(page.getByLabel('显示名称', { exact: true })).toHaveValue('模型配置流程')
+  await expect(page.getByRole('heading', { name: '分析任务 1', exact: true })).toBeVisible()
+  await page.getByText('选择供应商渠道', { exact: true }).click()
+  await page.getByRole('option', { name: saved.id, exact: true }).click()
+  await page.getByText('选择模型', { exact: true }).click()
+  await page.getByRole('option', { name: 'openai/test.v1', exact: true }).click()
+  const workflowResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/workflows') && response.request().method() === 'POST',
+  )
+  await page.getByRole('button', { name: '保存工作流', exact: true }).click()
+  const workflowResult = await workflowResponse
+  expect(workflowResult.ok(), await workflowResult.text()).toBe(true)
+  const workflow = await workflowResult.json()
+  expect(workflow.analyses[0]).toMatchObject({ ai: saved.id, model: 'openai/test.v1' })
+  expect((await request.delete(`/api/workflows/${workflow.id}`)).ok()).toBe(true)
   expect((await request.delete(`/api/ai/${saved.id}`)).ok()).toBe(true)
+  expect((await request.delete('/api/sources/model_flow_source')).ok()).toBe(true)
+  expect(errors).toEqual([])
 })

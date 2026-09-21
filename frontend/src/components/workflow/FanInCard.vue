@@ -30,6 +30,8 @@ function toggle(enabled: boolean | string | number) {
         v-model:ai="model.fan_in.ai"
         v-model:model="model.fan_in.model"
         :configs="configs"
+        ai-prop="fan_in.ai"
+        model-prop="fan_in.model"
         optional
       />
       <el-form-item v-if="model.fan_in.ai" label="汇总提示词">

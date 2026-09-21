@@ -3,6 +3,9 @@ import type { PhaseContent, SessionRecord, WorkflowStage } from '@/types'
 
 export interface SessionQuery {
   workflow_id?: string
+  workflow_name?: string
+  session_id?: string
+  status?: SessionRecord['status']
   limit?: number
   offset?: number
   after?: string

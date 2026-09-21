@@ -13,17 +13,45 @@ export class ApiError extends Error {
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     const details = error.info.details
-    const issues = Array.isArray(details.errors) ? details.errors.flatMap((issue) => {
-      if (!issue || typeof issue !== 'object' || Array.isArray(issue)) return []
-      return Array.isArray(issue.path) && typeof issue.reason === 'string'
-        ? [`${issue.path.join('.')}: ${issue.reason}`]
-        : []
-    }) : []
+    const issues = Array.isArray(details.errors)
+      ? details.errors.flatMap((issue) => {
+          if (!issue || typeof issue !== 'object' || Array.isArray(issue)) return []
+          return Array.isArray(issue.path) && typeof issue.reason === 'string'
+            ? [`${issue.path.join('.')}: ${issue.reason}`]
+            : []
+        })
+      : []
     const field = typeof details.field === 'string' ? `字段 ${details.field}` : ''
     const available = Array.isArray(details.available)
       ? `可用格式：${details.available.filter((item) => typeof item === 'string').join('、')}`
       : ''
-    return [error.message, field, available, ...issues].filter(Boolean).join('；')
+    const fields = Array.isArray(details.fields)
+      ? `相关字段：${details.fields.filter((item) => typeof item === 'string').join('、')}`
+      : ''
+    const reason = typeof details.reason === 'string' ? `原因 ${details.reason}` : ''
+    const exceptionType =
+      typeof details.exception_type === 'string' ? details.exception_type : undefined
+    const staleBusinessError =
+      error.info.code === 'invalid_config' &&
+      error.message === '资源未通过业务校验' &&
+      exceptionType === 'LogAgentError'
+        ? '后端未展开具体校验原因，请重启后端服务后重试'
+        : ''
+    const code = staleBusinessError ? `错误码 ${error.info.code}` : ''
+    const exception = exceptionType && !staleBusinessError ? `异常类型 ${exceptionType}` : ''
+    return [
+      error.message,
+      code,
+      field,
+      available,
+      fields,
+      reason,
+      exception,
+      staleBusinessError,
+      ...issues,
+    ]
+      .filter(Boolean)
+      .join('；')
   }
   return error instanceof Error ? error.message : String(error)
 }

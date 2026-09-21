@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import StatusBadge from './StatusBadge.vue'
-import { formatTime } from '@/domain/session'
+import { formatTime, formatWorkflowName } from '@/domain/session'
 import type { SessionRecord } from '@/types'
 withDefaults(defineProps<{ sessions: SessionRecord[]; loading?: boolean }>(), { loading: false })
 </script>
@@ -11,7 +11,10 @@ withDefaults(defineProps<{ sessions: SessionRecord[]; loading?: boolean }>(), { 
         <router-link :to="`/runs/${row.session_id}`" class="mono">{{ row.session_id }}</router-link>
       </template>
     </el-table-column>
-    <el-table-column prop="workflow_id" label="所属工作流" min-width="160" />
+    <el-table-column label="工作流名称" min-width="160">
+      <template #default="{ row }">{{ formatWorkflowName(row.workflow_name) }}</template>
+    </el-table-column>
+    <el-table-column prop="workflow_id" label="工作流 ID" min-width="160" />
     <el-table-column label="运行状态" width="110">
       <template #default="{ row }"><StatusBadge :status="row.status" /></template>
     </el-table-column>

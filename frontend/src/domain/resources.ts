@@ -10,7 +10,7 @@ export const resourceNames: Record<EditableKind, string> = {
 export const resourceKinds = [
   { key: 'sources', label: '数据源', icon: 'database' },
   { key: 'setters', label: '处理模板', icon: 'settings' },
-  { key: 'ai', label: 'AI 配置', icon: 'bot' },
+  { key: 'ai', label: '供应商渠道', icon: 'bot' },
   { key: 'channels', label: '通知渠道', icon: 'mail' },
 ] as const
 // Initial values follow the backend models, including the AI execution budget.

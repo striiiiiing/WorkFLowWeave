@@ -1,8 +1,16 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { JsonObject } from '@/types'
-const props = defineProps<{ modelValue: JsonObject; label: string; prop: string }>()
+import { ParameterInput } from '@/domain/parameters'
+import { createFieldRule } from '@/adapters/schemaValidation'
+const props = defineProps<{
+  modelValue: JsonObject
+  label: string
+  prop: string | string[]
+  field?: ParameterInput
+}>()
 const emit = defineEmits<{ 'update:modelValue': [value: JsonObject] }>()
+const field = computed(() => props.field ?? new ParameterInput(createFieldRule()))
 const text = ref('')
 const error = ref('')
 let signature = ''
@@ -18,22 +26,18 @@ watch(
   { immediate: true },
 )
 function validate(_rule: unknown, _value: unknown, callback: (error?: Error) => void) {
-  callback(error.value ? new Error(error.value) : undefined)
+  const result = field.value.readObject(text.value)
+  callback(result.ok ? undefined : new Error(result.error))
 }
 function update(value: string) {
   text.value = value
-  try {
-    const parsed: unknown = JSON.parse(value)
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
-      throw new Error('请输入 JSON 对象')
-    error.value = ''
-    signature = JSON.stringify(parsed)
-    emit('update:modelValue', parsed as JsonObject)
-  } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : String(cause)
-  }
+  const result = field.value.readObject(value)
+  error.value = result.ok ? '' : result.error
+  if (!result.ok) return
+  signature = JSON.stringify(result.value)
+  emit('update:modelValue', result.value as JsonObject)
 }
-defineExpose({ isValid: () => !error.value })
+defineExpose({ isValid: () => field.value.readObject(text.value).ok })
 </script>
 <template>
   <el-form-item :label="label" :error="error" :prop="prop" :rules="{ validator: validate }">

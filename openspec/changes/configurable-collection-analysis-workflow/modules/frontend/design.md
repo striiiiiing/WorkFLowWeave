@@ -244,7 +244,7 @@ mindmap
 
 ### 3.3 资源配置中心 (Resource Center)
 - **数据源 (`/resources/sources`)**：选择已注册 Collector 插件类型，根据其 schema 动态渲染配置表单；支持保存 Setter 模板便于复用。
-- **AI 配置 (`/resources/ai`)**：以“API 格式”单选项配置连接协议；当前唯一选项为 `OpenAI Compatible API`（传输值 `openai_compatible_api`，兼容 OpenAI API 的 AxonHub 等服务）。同时配置基础 URL、共享 API 凭据、超时（默认 600s）与重试次数（默认 5 次）；配置多模型字典 `models: {模型名: 参数}`。不在前端展示系统提示词。
+- **AI 配置 (`/resources/ai`)**：以“API 格式”单选项配置连接协议；当前唯一选项为 `OpenAI Compatible API`（传输值 `openai_compatible_api`）。同时配置基础 URL、共享 API 凭据、超时（默认 600s）与重试次数（默认 5 次）；配置多模型字典 `models: {模型名: 参数}`。不在前端展示系统提示词。
 - **渠道配置 (`/resources/channels`)**：配置邮件（SMTP 主机、端口、安全协议、发件人）或 Mock（文件输出路径）；显式区分实例级属性与调用级属性。
 - **凭据管理 (`/resources/credentials`)**：仅显示凭据键名与类型（环境变量引用或加密存储），安全脱敏掩码展示，严禁前端明文反显或在控制台输出秘密。
 

@@ -313,7 +313,11 @@ class WorkflowService:
                 raise LogAgentError("invalid_argument", "运行上下文与 session 不匹配")
             runtime = ArchiveRuntime(self.session_store, sid, snapshot.workflow.backup)
             await asyncio.to_thread(
-                self.session_store.create, sid, snapshot.workflow.id, runtime.policy
+                self.session_store.create,
+                sid,
+                snapshot.workflow.id,
+                runtime.policy,
+                workflow_name=snapshot.workflow.name,
             )
             ctx = context or CollectionContext(
                 snapshot.workflow.id, sid, self.log_path, self.credentials, self.session_view

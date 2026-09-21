@@ -28,3 +28,6 @@ export const availabilityLabels: Record<ArtifactAvailability, string> = {
 export function formatTime(value: string) {
   return new Date(value).toLocaleString('zh-CN')
 }
+export function formatWorkflowName(value: string | null) {
+  return value === null ? '名称未记录' : value || '未命名工作流'
+}
