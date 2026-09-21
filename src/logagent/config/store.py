@@ -15,6 +15,11 @@ from typing import Any, overload
 import orjson
 from pydantic import Field, ValidationError
 
+from logagent.config.calls import (
+    normalize_call_options,
+    resolve_channel_call,
+    resolve_source_call,
+)
 from logagent.config.normalize import normalize_options, validate_effective_source
 from logagent.config.reader import read_json
 from logagent.errors import LogAgentError, validation_error
@@ -35,7 +40,6 @@ from logagent.schema import (
     options_complete,
     resource_options_schema,
     validate_instance,
-    validate_workflow_options,
 )
 
 _MODELS = {
@@ -150,27 +154,6 @@ class ResourceStore:
             raise LogAgentError("capability_missing", "新资源引用的插件能力不可用", {"name": name})
         return registry, capability
 
-    @staticmethod
-    def _source(source: SourceConfig, candidate: _Resources, override=None) -> SourceConfig:
-        source = copy_model(source)
-        templates = [(source.template, source.setters)]
-        if override is not None:
-            templates.append((override.template, override.setters))
-            source.options = {**source.options, **deepcopy(override.options)}
-        setters = {}
-        for template_id, explicit in templates:
-            if template_id is not None:
-                template = candidate.setters.get(template_id)
-                if template is None:
-                    raise LogAgentError("invalid_reference", "来源引用的 Setter 模板不存在")
-                if template.collector != source.collector:
-                    raise LogAgentError("invalid_reference", "Setter 模板与来源的 Collector 不同")
-                setters.update(deepcopy(template.setters))
-            setters.update(deepcopy(explicit))
-        source.setters = setters
-        source.template = None
-        return source
-
     def _snapshot(
         self,
         workflow: WorkflowDefinition,
@@ -182,9 +165,10 @@ class ResourceStore:
         if workflow.fan_in is not None and workflow.fan_in.ai is not None:
             ai_ids.add(workflow.fan_in.ai)
         try:
-            channels = {key: copy_model(candidate.channels[key]) for key in workflow.channels}
-            for key, override in workflow.channel_overrides.items():
-                channels[key].options = {**channels[key].options, **deepcopy(override.options)}
+            channels = {
+                key: resolve_channel_call(candidate.channels[key], workflow.channel_overrides.get(key))
+                for key in workflow.channels
+            }
             enabled_sources = [
                 key for key in workflow.sources
                 if not for_execution or candidate.sources[key].enabled
@@ -203,7 +187,7 @@ class ResourceStore:
             }
             return WorkflowSnapshot(
                 workflow=snapshot_workflow,
-                sources={key: self._source(candidate.sources[key], candidate,
+                sources={key: resolve_source_call(candidate.sources[key], candidate.setters,
                                           workflow.source_overrides.get(key))
                          for key in enabled_sources},
                 ai={key: copy_model(candidate.ai[key]) for key in ai_ids},
@@ -231,10 +215,9 @@ class ResourceStore:
                     continue
                 override = overrides.get(ident)
                 if override is not None:
-                    validate_workflow_options(override.options, capability.options_schema)
-                    override.options = normalize_options(
+                    override.options = normalize_call_options(
                         override.options, capability.options_schema,
-                        data_dir=self._data_dir, apply_defaults=False,
+                        data_dir=self._data_dir,
                     )
                     effective.options.update(deepcopy(override.options))
                 if kind == "sources":
@@ -253,7 +236,7 @@ class ResourceStore:
                 if kind in ("sources", "setters", "channels"):
                     registry, capability = self._capability(kind, value, is_changed)
                     if kind == "sources":
-                        effective = self._source(value, candidate)
+                        effective = resolve_source_call(value, candidate.setters)
                     if capability is None:
                         continue
                     if kind == "setters":
@@ -377,7 +360,7 @@ class ResourceStore:
             candidate = self._parse(data)
             self._validate(candidate, changed={(kind, resource.id)}, normalize=True)
             if kind == "sources":
-                return self._source(candidate.sources[resource.id], candidate)
+                return resolve_source_call(candidate.sources[resource.id], candidate.setters)
             return self._snapshot(candidate.workflows[resource.id], candidate)
 
     def snapshot(self, workflow_id: str) -> WorkflowSnapshot:
@@ -386,6 +369,21 @@ class ResourceStore:
             if workflow is None:
                 raise LogAgentError("not_found", "Workflow 不存在")
             return self._snapshot(workflow, self._view)
+
+    def invocation_snapshot(self) -> dict[str, dict[str, StrictModel]]:
+        """Capture all callable resources under the same publication lock."""
+        with self._lock:
+            return {
+                "sources": {
+                    key: resolve_source_call(value, self._view.setters)
+                    for key, value in self._view.sources.items() if value.enabled
+                },
+                "channels": {
+                    key: copy_model(value) for key, value in self._view.channels.items()
+                    if value.enabled
+                },
+                "ai": {key: copy_model(value) for key, value in self._view.ai.items()},
+            }
 
     def reload_resources(self) -> None:
         with self._lock:

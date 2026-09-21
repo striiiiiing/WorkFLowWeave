@@ -290,6 +290,77 @@ def resource_options_schema(schema: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def call_options_schema(schema: dict[str, Any], fixed_options: JSONObject) -> dict[str, Any]:
+    """Project call fields; the original schema still validates the merged config.
+
+    Local references are relocated into definitions so references to instance
+    property types remain valid without exposing those properties as inputs.
+    Root cross-field rules are deliberately checked only after merging.
+    """
+    graph = _SchemaGraph(schema)
+    names = workflow_option_names(schema)
+    definitions = {}
+    references = {
+        id(rule): name for name, rule in schema.get("$defs", {}).items()
+    }
+
+    def definition(target):
+        key = references.get(id(target))
+        if key is None:
+            key = f"call_ref_{len(references)}"
+            while key in references.values():
+                key += "_"
+            references[id(target)] = key
+        if key not in definitions:
+            definitions[key] = {}
+            definitions[key] = project(target)
+        return "#/$defs/" + key.replace("~", "~0").replace("/", "~1")
+
+    def project(value):
+        if isinstance(value, list):
+            return [project(item) for item in value]
+        if not isinstance(value, dict):
+            return deepcopy(value)
+        is_schema = id(value) in graph.nodes
+        result = {}
+        for key, item in value.items():
+            if is_schema and key in {"$id", "$anchor", "$dynamicAnchor"}:
+                continue
+            if is_schema and key in {"$ref", "$dynamicRef"}:
+                target = graph.resolvers[id(value)].lookup(item).contents
+                result[key] = definition(target)
+            else:
+                result[key] = project(item)
+        return result
+
+    for rule in schema.get("$defs", {}).values():
+        definition(rule)
+    properties = {name: project(schema["properties"][name]) for name in sorted(names)}
+    for name in names & fixed_options.keys():
+        properties[name]["default"] = deepcopy(fixed_options[name])
+    required = set()
+    visited = set()
+
+    def requirements(rule):
+        if not isinstance(rule, dict) or id(rule) in visited:
+            return
+        visited.add(id(rule))
+        required.update(rule.get("required", []))
+        for target in graph.references.get(id(rule), []):
+            requirements(target)
+        for child in rule.get("allOf", []):
+            requirements(child)
+
+    requirements(schema)
+    result = {
+        "type": "object", "properties": properties, "additionalProperties": False,
+        "required": sorted((required & names) - fixed_options.keys()),
+    }
+    if definitions:
+        result["$defs"] = definitions
+    return result
+
+
 def validate_workflow_options(options: JSONObject, schema: dict[str, Any]) -> None:
     unknown = options.keys() - workflow_option_names(schema)
     if unknown:

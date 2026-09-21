@@ -28,7 +28,7 @@
 ### B. 公共接入与插件（对应 2.2–2.4）
 
 - [x] B1 在 AI 模块抽取共享模型 lease，支持显式 streaming/输出限制，文本分析继续原契约，凭据解析/连接/错误脱敏不重复实现。
-- [ ] B2 从 ResourceStore 抽出共享调用解析；新增 call_options_schema，保留引用、类型和合法调用默认值，拒绝实例层覆盖。
+- [x] B2 从 ResourceStore 抽出共享调用解析；新增 call_options_schema，保留引用、类型和合法调用默认值，拒绝实例层覆盖。
 - [ ] B3 Registry/配置/owners/只读视图/发现报告/API/前端 DTO 全面增加 tool kind；五个内置工具懒加载，enabled 仅存插件配置。
 - [ ] B4 logs/history/mock 声明 read，其他未声明 Collector 为 exclusive，Channel 固定 exclusive；验证禁用不导入、冲突和事务回滚。
 
@@ -91,3 +91,5 @@
 - 尚未完成：B–F。
 
 - B1 完成：AIService.lease 与文本 execute 共用 _model_lease/ChannelManager/凭据入口；OpenAIChannel 显式 streaming 与 max_completion_tokens，移除其他重复输出限制键且不改输入配置。模型上游错误脱敏，工具/存储异常原样传播，租约覆盖调用方整个上下文。19 项定向测试通过（5.07s），包括流式 tools HTTP payload、输出限制、连接关闭取消、凭据脱敏、Workflow 分析回归；ruff 和 diff --check 通过。
+
+- B2 完成：config/calls.py 抽取来源模板/覆盖与渠道覆盖，Workflow 原调用路径切换到公共函数；ResourceStore.invocation_snapshot 在同一锁内捕获启用实例和模型。call_options_schema 保留定义并重定位本地引用，只暴露调用属性与非凭据默认值，固定值解除 required，跨字段约束仍由原完整 Schema 校验。47 项配置/Schema/Workflow 覆盖测试通过（8.63s），ruff 与构建通过。
