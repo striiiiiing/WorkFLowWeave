@@ -45,7 +45,7 @@ class TestChannelFactory:
     def create(self, config):
         return TestChannel(self, config)
 
-    def create_model(self, config, *, model, credential=None):
+    def create_model(self, config, *, model, credential=None, streaming=False, max_output_tokens=None):
         return TestChatModel(
             responder=self.responder,
             arguments={"config": config, "model": model, "credential": credential},
@@ -63,8 +63,11 @@ class TestChannel:
     async def start(self):
         pass
 
-    def create_model(self, config, *, model, credential):
-        return self.factory.create_model(config, model=model, credential=credential)
+    def create_model(self, config, *, model, credential, streaming=False, max_output_tokens=None):
+        return self.factory.create_model(
+            config, model=model, credential=credential,
+            streaming=streaming, max_output_tokens=max_output_tokens,
+        )
 
     async def list_models(self, credential):
         return list(self.config.models)

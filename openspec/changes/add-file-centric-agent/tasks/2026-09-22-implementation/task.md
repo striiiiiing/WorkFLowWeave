@@ -27,7 +27,7 @@
 
 ### B. 公共接入与插件（对应 2.2–2.4）
 
-- [ ] B1 在 AI 模块抽取共享模型 lease，支持显式 streaming/输出限制，文本分析继续原契约，凭据解析/连接/错误脱敏不重复实现。
+- [x] B1 在 AI 模块抽取共享模型 lease，支持显式 streaming/输出限制，文本分析继续原契约，凭据解析/连接/错误脱敏不重复实现。
 - [ ] B2 从 ResourceStore 抽出共享调用解析；新增 call_options_schema，保留引用、类型和合法调用默认值，拒绝实例层覆盖。
 - [ ] B3 Registry/配置/owners/只读视图/发现报告/API/前端 DTO 全面增加 tool kind；五个内置工具懒加载，enabled 仅存插件配置。
 - [ ] B4 logs/history/mock 声明 read，其他未声明 Collector 为 exclusive，Channel 固定 exclusive；验证禁用不导入、冲突和事务回滚。
@@ -89,3 +89,5 @@
 - 可持续回归固化为 `tests/agent/test_framework_contracts.py`：3 passed（0.54s）；验证完整摘要输入、未知工具异常传播、pending 工具补齐消息并通过公开 aupdate_state 清理后不重放。ruff 通过，uv build 成功，OpenSpec strict 有效。
 - 框架版本差异的实现依据：1.4.2 middleware 还会读取历史 AI usage 触发摘要，因此应用先按本轮预算判断是否委托；官方摘要内部 with_retry 重试所有 Exception，必须由总 timeout 覆盖，确定性容量错误在委托前校验。向 middleware 传消息副本，避免失败时它补 ID 改动原状态。不改框架私有方法。
 - 尚未完成：B–F。
+
+- B1 完成：AIService.lease 与文本 execute 共用 _model_lease/ChannelManager/凭据入口；OpenAIChannel 显式 streaming 与 max_completion_tokens，移除其他重复输出限制键且不改输入配置。模型上游错误脱敏，工具/存储异常原样传播，租约覆盖调用方整个上下文。19 项定向测试通过（5.07s），包括流式 tools HTTP payload、输出限制、连接关闭取消、凭据脱敏、Workflow 分析回归；ruff 和 diff --check 通过。

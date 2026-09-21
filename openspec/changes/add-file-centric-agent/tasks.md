@@ -50,7 +50,7 @@
 ### 2. 依赖与公共接入
 
 - [x] 2.1 在隔离环境锁定兼容的 LangChain/LangGraph/checkpoint 组合并加入 aiorwlock；验证现有 Workflow 数据库副本可读、父子图及取消恢复，禁止直接在用户库试迁移。
-- [ ] 2.2 抽取共享模型 runtime/lease；文本分析沿用原结果契约，Agent 可绑定工具与流式，凭据/取消/脱敏只有一个入口。
+- [x] 2.2 抽取共享模型 runtime/lease；文本分析沿用原结果契约，Agent 可绑定工具与流式，凭据/取消/脱敏只有一个入口。
 - [ ] 2.3 将调用配置解析从 ResourceStore 现有路径抽成公共函数，验证 options/Setter/default/凭据/路径与 Workflow 语义一致。
 - [ ] 2.4 PluginRegistry 新增 tool kind、工具声明、只读视图及内置五插件；为内置 tool 增加读取 enabled 后才懒导入的注册路径，同时覆盖配置/owners/DiscoveryReport/API/前端类型；验证禁用不导入、事务回滚、名称冲突和 enabled 单一来源。
 

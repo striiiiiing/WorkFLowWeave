@@ -7,6 +7,7 @@ import logging
 import math
 import time
 from collections.abc import Callable, Mapping
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -131,6 +132,46 @@ class AIService:
             raise LogAgentError("credential_invalid", "AI 凭据解析结果无效")
         return credential
 
+    @asynccontextmanager
+    async def _model_lease(self, config, *, model, streaming, max_output_tokens):
+        config = copy_model(config)
+        self.validate(config, model)
+        async with self.channels.lease(config) as channel:
+            credential = await self._credential(config)
+            try:
+                chat = channel.create_model(
+                    config, model=model, credential=credential,
+                    streaming=streaming, max_output_tokens=max_output_tokens,
+                )
+            except Exception as exc:
+                error = model_error(exc)
+                error.report = error_info(exc, credential=credential)
+                raise error from None
+            yield chat, credential
+
+    @asynccontextmanager
+    async def lease(
+        self, config: AIConfig, *, model: str, streaming: bool = False,
+        max_output_tokens: int | None = None,
+    ):
+        """借用模型直到退出上下文；调用方管理每次请求预算和流式重试。
+
+        连接关闭会取消当前借用任务。工具或文件异常不被归类成模型失败。
+        上游模型错误的凭据脱敏由这一共享边界执行。
+        """
+        from httpx import HTTPError
+        from openai import OpenAIError
+
+        async with self._model_lease(
+            config, model=model, streaming=streaming, max_output_tokens=max_output_tokens,
+        ) as (chat, credential):
+            try:
+                yield chat
+            except (ModelError, HTTPError, OpenAIError) as exc:
+                error = model_error(exc)
+                error.report = error_info(exc, credential=credential)
+                raise error from None
+
     async def start_channel(self, config: AIConfig) -> None:
         """在配置的总预算内显式启动或重新打开渠道，不执行远端模型发现。"""
         config = copy_model(config)
@@ -222,12 +263,12 @@ class AIService:
 
     async def _execute(self, config, model, messages, task_id, context):
         """在同一请求预算和渠道借用期内解析凭据、构造模型并执行重试。"""
-        async with asyncio.timeout(config.timeout), self.channels.lease(config) as channel:
-            credential = await self._credential(config)
+        async with asyncio.timeout(config.timeout), self._model_lease(
+            config, model=model, streaming=False, max_output_tokens=None,
+        ) as (chat, credential):
 
             async def invoke():
                 """用独立配置和消息副本发起一次 ainvoke，检查取消后再转换结果。"""
-                chat = channel.create_model(copy_model(config), model=model, credential=credential)
                 message = await chat.ainvoke([item.model_copy(deep=True) for item in messages])
                 _check_cancelled()
                 return _result(message, task_id)
