@@ -79,7 +79,7 @@ NonNegativeInt = Annotated[int, Field(strict=True, ge=0)]
 SessionVersion = Annotated[int, Field(gt=0)]
 
 ResourceKind = Literal["sources", "setters", "ai", "channels", "workflows"]
-PluginKind = Literal["collector", "channel"]
+PluginKind = Literal["collector", "channel", "tool"]
 SaveMode = Literal["create", "replace", "upsert"]
 SourcePolicy = Literal["stop","notice", "skip"]
 ContinuePolicy = Literal["stop", "continue"]
@@ -471,6 +471,8 @@ class CapabilityDescription(StrictModel):
     setters_schema: JSONSchema | None = None
     fields: list[str] = Field(default_factory=list)
     count_unit: str | None = None
+    input_schema: JSONSchema | None = None
+    execution: Literal["read", "exclusive"] = "exclusive"
 
 
 class DiscoveryReport(StrictModel):

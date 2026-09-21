@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol, overload
+from typing import Any, Literal, Protocol, overload
 
 from logagent.models import (
     CapabilityDescription,
@@ -76,6 +76,23 @@ class ChannelType(Protocol):
 
 class ChannelRegistryView(Protocol):
     def get(self, name: str) -> ChannelType | None: ...
+
+    def describe(self) -> list[CapabilityDescription]: ...
+
+    def diagnostics(self, name: str) -> list[ErrorInfo]: ...
+
+
+class Tool(Protocol):
+    name: str
+    description: str
+    input_schema: JSONSchema
+    execution: Literal["read", "exclusive"]
+
+    async def invoke(self, arguments: JSONObject, context: Any) -> JSONObject: ...
+
+
+class ToolRegistryView(Protocol):
+    def get(self, name: str) -> Tool | None: ...
 
     def describe(self) -> list[CapabilityDescription]: ...
 

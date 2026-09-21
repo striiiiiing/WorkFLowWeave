@@ -21,10 +21,13 @@ from logagent.config.reader import read_json, read_plugin_configuration
 from logagent.config.views import (
     ChannelRegister,
     CollectorRegister,
+    ToolRegister,
     _ChannelRegistration,
     _CollectorRegistration,
+    _ToolRegistration,
     channel_registration,
     collector_registration,
+    tool_registration,
 )
 from logagent.errors import LogAgentError, validation_error
 from logagent.models import (
@@ -37,9 +40,13 @@ from logagent.models import (
     SystemConfig,
     copy_model,
 )
-from logagent.protocols import ChannelType, Collector
+from logagent.protocols import ChannelType, Collector, Tool
 
-_Registration = _CollectorRegistration | _ChannelRegistration
+_Registration = _CollectorRegistration | _ChannelRegistration | _ToolRegistration
+BUILTIN_TOOLS = {
+    "agent_" + name: "logagent.agent.builtin." + name
+    for name in ("plugin", "read", "write", "grep", "shell")
+}
 _IDENTIFIER = re.compile(r"[A-Za-z0-9_-]{1,80}\Z")
 _KNOWN_REASONS = frozenset(
     {
@@ -69,18 +76,18 @@ class _RegistrationTransaction:
         self.failed = False
         self.closed = False
 
-    def add(self, capability: Collector | ChannelType) -> None:
+    def add(self, capability: Collector | ChannelType | Tool) -> None:
         if self.closed:
             raise LogAgentError("registration_aborted", "插件声明事务已经关闭")
         try:
             name = _safe_name(getattr(capability, "name", None))
             if name and name not in self.names:
                 self.names.append(name)
-            registration = (
-                collector_registration(capability, self.owner)
-                if self.kind == "collector"
-                else channel_registration(capability, self.owner)
-            )
+            registration = {
+                "collector": collector_registration,
+                "channel": channel_registration,
+                "tool": tool_registration,
+            }[self.kind](capability, self.owner)
             name = registration.description.name
             if name in self.existing or name in self.pending:
                 # 总不能赌读取顺序吧
@@ -127,6 +134,34 @@ class ChannelPluginApi:
 
     def register_channel(self, channel: ChannelType) -> None:
         self._transaction.add(channel)
+
+
+class ToolPluginApi:
+    __slots__ = ("_transaction", "_config_path")
+
+    def __init__(self, transaction: _RegistrationTransaction, config_path: Path):
+        self._transaction, self._config_path = transaction, config_path
+
+    @property
+    def config_path(self) -> Path:
+        return self._config_path
+
+    def register_tool(self, tool: Tool) -> None:
+        self._transaction.add(tool)
+
+
+def _register(plugin, transaction, config_path):
+    api = {"collector": CollectorPluginApi, "channel": ChannelPluginApi,
+           "tool": ToolPluginApi}[transaction.kind](transaction, config_path)
+    register = getattr(plugin, "register", None)
+    if not callable(register) or inspect.iscoroutinefunction(register):
+        raise LogAgentError("invalid_declaration", "插件必须提供同步 plugin.register(api)")
+    result = register(api)
+    if inspect.iscoroutine(result):
+        result.close()
+    if result is not None:
+        raise LogAgentError("invalid_declaration", "plugin.register 只提交声明并返回 None")
+    return transaction.finish()
 
 
 def _entry_path(directory: Path, backend: str) -> Path:
@@ -233,6 +268,8 @@ class PluginRegistry:
         self._builtin_channels = tuple(builtin_channels)
         self._collector_register = CollectorRegister()
         self._channel_register = ChannelRegister()
+        self._tool_register = ToolRegister()
+        self.generation = 0
         self._lock = asyncio.Lock()
 
     @property
@@ -243,15 +280,21 @@ class PluginRegistry:
     def channelRegister(self) -> ChannelRegister:
         return self._channel_register
 
+    @property
+    def toolRegister(self) -> ToolRegister:
+        return self._tool_register
+
     async def discover_plugins(self, config: SystemConfig) -> DiscoveryReport:
         try:
             config = copy_model(config)
         except ValidationError as exc:
             raise validation_error(exc) from None
         async with self._lock:
-            collectors, channels, report = await asyncio.to_thread(self._discover, config)
+            collectors, channels, tool_view, report = await asyncio.to_thread(self._discover, config)
             self._collector_register = collectors
             self._channel_register = channels
+            self._tool_register = tool_view
+            self.generation += 1
             return report.model_copy(deep=True)
 
     async def reload_plugins(
@@ -264,11 +307,13 @@ class PluginRegistry:
             raise validation_error(exc) from None
         selected = None if owners is None else frozenset(owners)
         async with self._lock:
-            collectors, channels, report = await asyncio.to_thread(
+            collectors, channels, tool_view, report = await asyncio.to_thread(
                 self._discover, config, reload_owners=selected
             )
             self._collector_register = collectors
             self._channel_register = channels
+            self._tool_register = tool_view
+            self.generation += 1
             return report.model_copy(deep=True)
 
     def _discover(
@@ -276,13 +321,15 @@ class PluginRegistry:
         config: SystemConfig,
         *,
         reload_owners: frozenset[str] | None = None,
-    ) -> tuple[CollectorRegister, ChannelRegister, DiscoveryReport]:
+    ) -> tuple[CollectorRegister, ChannelRegister, ToolRegister, DiscoveryReport]:
         builtins = self._builtin_collectors
         if builtins is None:
             from logagent.collection import builtin_collectors
 
             builtins = tuple(builtin_collectors())
-        entries: dict[PluginKind, dict[str, _Registration]] = {"collector": {}, "channel": {}}
+        entries: dict[PluginKind, dict[str, _Registration]] = {
+            "collector": {}, "channel": {}, "tool": {},
+        }
         for kind, capabilities in (("collector", builtins), ("channel", self._builtin_channels)):
             if not capabilities:
                 continue
@@ -302,7 +349,8 @@ class PluginRegistry:
         # is committed below as a per-owner transaction; all other published
         # registrations remain available during the rebuild.
         if reload_owners is not None:
-            for kind, view in (("collector", self._collector_register), ("channel", self._channel_register)):
+            for kind, view in (("collector", self._collector_register),
+                               ("channel", self._channel_register), ("tool", self._tool_register)):
                 for name, registration in view._registrations.items():
                     owner = registration.description.plugin
                     if owner == "builtin" or owner in reload_owners:
@@ -321,7 +369,25 @@ class PluginRegistry:
             raise LogAgentError("configuration_unavailable", "插件目录无法读取") from None
 
         errors: list[ErrorInfo] = []
-        owners: set[tuple[PluginKind, str]] = {("collector", "builtin"), ("channel", "builtin")}
+        owners: set[tuple[PluginKind, str]] = {
+            ("collector", "builtin"), ("channel", "builtin"),
+            *(("tool", owner) for owner in BUILTIN_TOOLS),
+        }
+        for owner, module_name in BUILTIN_TOOLS.items():
+            if reload_owners is not None and owner not in reload_owners:
+                continue
+            if not settings.get("tool", {}).get(owner, PluginSettings()).enabled:
+                continue
+            transaction = _RegistrationTransaction("tool", owner, entries["tool"])
+            try:
+                module = importlib.import_module(module_name)
+                entries["tool"].update(_register(
+                    module.plugin, transaction, root / owner / "config.json",
+                ))
+            except Exception as exc:
+                transaction.closed = True
+                errors.append(_failure(exc, plugin=owner, kind="tool", stage="register",
+                                       names=transaction.names))
         for directory in directories:
             kind: PluginKind | None = None
             plugin_id = _safe_name(directory.name) or "unidentified"
@@ -347,26 +413,10 @@ class PluginRegistry:
                 entry = _entry_path(directory, manifest.entry.backend)
                 module = _import_entry(directory, entry, prefix)
                 transaction = _RegistrationTransaction(kind, plugin_id, entries[kind])
-                api = (
-                    CollectorPluginApi(transaction, directory.resolve() / "config.json")
-                    if kind == "collector"
-                    else ChannelPluginApi(transaction, directory.resolve() / "config.json")
-                )
                 stage = "register"
-                plugin = getattr(module, "plugin", None)
-                register = getattr(plugin, "register", None)
-                if not callable(register) or inspect.iscoroutinefunction(register):
-                    raise LogAgentError(
-                        "invalid_declaration", "插件必须提供同步 plugin.register(api)"
-                    )
-                result = register(api)
-                if inspect.iscoroutine(result):
-                    result.close()
-                if result is not None:
-                    raise LogAgentError(
-                        "invalid_declaration", "plugin.register 只提交声明并返回 None"
-                    )
-                new_entries = transaction.finish()
+                new_entries = _register(
+                    getattr(module, "plugin", None), transaction, directory.resolve() / "config.json",
+                )
                 entries[kind].update(new_entries)
             except Exception as exc:
                 if transaction is not None:
@@ -390,7 +440,12 @@ class PluginRegistry:
             entries["channel"],
             errors=(error for error in errors if error.details.get("kind") in (None, "channel")),
         )
-        report = DiscoveryReport(
-            registered=[*collectors.describe(), *channels.describe()], errors=errors
+        tool_view = ToolRegister(
+            entries["tool"],
+            errors=(error for error in errors if error.details.get("kind") in (None, "tool")),
         )
-        return collectors, channels, report
+        report = DiscoveryReport(
+            registered=[*collectors.describe(), *channels.describe(), *tool_view.describe()],
+            errors=errors,
+        )
+        return collectors, channels, tool_view, report

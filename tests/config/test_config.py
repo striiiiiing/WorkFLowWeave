@@ -350,8 +350,8 @@ plugin = Plugin()
 """,
     )
     registry, report = await discover(tmp_path)
-    assert [item.name for item in report.registered] == ["first", "second"]
-    assert all(item.plugin == "demo" for item in report.registered)
+    assert [item.name for item in report.registered if item.kind == "collector"] == ["first", "second"]
+    assert all(item.plugin == "demo" for item in report.registered if item.kind == "collector")
     result = await registry.collectorRegister.get("second").collect(
         {}, {}, CollectionContext("workflow", "session")
     )
@@ -449,7 +449,7 @@ plugin = Plugin()
     )
     write_plugin(tmp_path, "good")
     registry, report = await discover(tmp_path, builtins=[SampleCollector()])
-    assert [item.name for item in report.registered] == ["sample", "good"]
+    assert [item.name for item in report.registered if item.kind == "collector"] == ["sample", "good"]
     assert registry.collectorRegister.get("orphan") is None
     assert registry.collectorRegister.get("sample").description == SampleCollector.description
     errors = registry.collectorRegister.diagnostics("orphan")
@@ -551,7 +551,7 @@ async def test_disabled_plugin_is_not_imported(tmp_path):
     (tmp_path / "config.json").write_text('{"collector": {"disabled": {"enabled": false}}}')
     registry, report = await discover(tmp_path)
     assert not marker.exists()
-    assert report.registered == report.errors == []
+    assert [item for item in report.registered if item.kind == "collector"] == report.errors == []
     assert registry.collectorRegister.get("disabled") is None
 
 
@@ -559,7 +559,7 @@ async def test_duplicate_plugin_ids_use_stable_directory_order(tmp_path):
     write_plugin(tmp_path, "z_last", plugin_id="same")
     write_plugin(tmp_path, "a_first", plugin_id="same")
     _, report = await discover(tmp_path)
-    assert [item.name for item in report.registered] == ["a_first"]
+    assert [item.name for item in report.registered if item.kind == "collector"] == ["a_first"]
     assert report.errors[0].details["reason"] == "plugin_id_conflict"
 
 
@@ -612,7 +612,7 @@ plugin = Plugin()
 """,
     )
     _, report = await discover(tmp_path)
-    assert report.registered == []
+    assert not [item for item in report.registered if item.kind == "collector"]
     assert report.errors[0].details["reason"] == "invalid_declaration"
 
 
@@ -624,7 +624,7 @@ async def test_entry_must_be_a_python_file_inside_plugin(tmp_path, backend):
     (package / "plugin.json").write_text(json.dumps(manifest))
     (tmp_path / "outside.py").write_text("raise AssertionError('must not import')")
     _, report = await discover(tmp_path)
-    assert not report.registered
+    assert not [item for item in report.registered if item.kind == "collector"]
     assert report.errors[0].details["reason"] == "plugin_entry_invalid"
 
 

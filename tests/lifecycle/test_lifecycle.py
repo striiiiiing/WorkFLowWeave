@@ -177,6 +177,7 @@ async def _seed_resources(
     channel_path: Path | None = None,
     interval: float = 10.0,
     enabled: bool = True,
+    include_counts: bool = True,
 ) -> None:
     registry = PluginRegistry(
         builtin_collectors(),
@@ -209,6 +210,7 @@ async def _seed_resources(
             channels=["channel"] if channel else [],
             interval_seconds=interval,
             enabled=enabled,
+            include_counts=include_counts,
         ),
     )
 
@@ -499,7 +501,7 @@ async def test_plugin_reload_conflict_restores_admission_and_later_success_recov
 async def test_invalid_plugin_degrades_and_fixed_reload_recovers_saved_resource(tmp_path):
     config = _config(tmp_path)
     entry = _write_plugin(config.plugin_dir, "external", _COLLECTOR_PLUGIN)
-    await _seed_resources(config, collector="external")
+    await _seed_resources(config, collector="external", include_counts=False)
     entry.write_text("raise RuntimeError('broken plugin')\n", encoding="utf-8")
 
     lifecycle = ApplicationLifecycle(config, channel_factories={"mock": TestChannelFactory()})

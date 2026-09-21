@@ -45,6 +45,7 @@ def _line(record: dict[str, Any]) -> str:
 
 class MockCollector:
     name = "mock"
+    execution = "read"
     id_prefix = "mock"
     description = "有界离线记录；支持过滤、排序、字段投影和分组，以及显式失败/超时演示。"
     fields = ["id", "message", "level", "group"]

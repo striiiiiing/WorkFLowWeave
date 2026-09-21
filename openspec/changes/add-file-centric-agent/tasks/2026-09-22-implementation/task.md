@@ -7,7 +7,7 @@
 - 基线 staged whitespace 检查发现前序 `frontendFix/tasks/2026-09-21-frontend-architecture-review/task.md` 的 EOF 空行；保留原状，不混入 Agent 实施。
 - 仓库 post-commit 钩子自动推送 workflow，基线推送因 non-fast-forward 拒绝，本地提交有效。后续使用钩子已有的 `SKIP_WORKFLOW_PUSH=1`，本任务仅创建本地提交。
 - 权威依据：[proposal](../../proposal.md)、[design](../../design.md)、[frontend](../../frontend.md)、[任务索引及默认值](../../tasks.md)。本轮不修改 proposal/design/frontend；若实现发现必须改变设计，先提出具体差异。
-- 产品代码、任务记录由主代理编写。用户最新修订：上下文依赖少的独立只读分析/测试使用 `gpt-5.5`、推理 `xhigh`；其他允许委派的复杂任务仅在能够明确指定 `gpt-6-astra`、推理 `xhigh` 时派发。此前已启动的依赖审计使用原授权的 Astra xhigh；不追溯改写执行事实。子代理不得写产品代码、设计或任务文档，不提交。当前续接工具未暴露模型派发能力，后续由主代理继续执行。
+- 产品代码、任务记录由主代理编写。用户最新修订：上下文依赖少的独立只读分析/测试使用 `gpt-5.5`、推理 `xhigh`；其他允许委派的复杂任务仅在能够明确指定 `gpt-6-astra`、推理 `xhigh` 时派发。此前已启动的依赖审计使用原授权的 Astra xhigh；不追溯改写执行事实。子代理不得写产品代码、设计或任务文档，不提交。当前续接已恢复指定模型派发能力，独立生命周期回归审计按最新授权使用 GPT-5.5 xhigh。
 
 ## 结构性判断与不变量
 
@@ -29,8 +29,8 @@
 
 - [x] B1 在 AI 模块抽取共享模型 lease，支持显式 streaming/输出限制，文本分析继续原契约，凭据解析/连接/错误脱敏不重复实现。
 - [x] B2 从 ResourceStore 抽出共享调用解析；新增 call_options_schema，保留引用、类型和合法调用默认值，拒绝实例层覆盖。
-- [ ] B3 Registry/配置/owners/只读视图/发现报告/API/前端 DTO 全面增加 tool kind；五个内置工具懒加载，enabled 仅存插件配置。
-- [ ] B4 logs/history/mock 声明 read，其他未声明 Collector 为 exclusive，Channel 固定 exclusive；验证禁用不导入、冲突和事务回滚。
+- [x] B3 Registry/配置/owners/只读视图/发现报告/API/前端 DTO 全面增加 tool kind；五个内置工具懒加载，enabled 仅存插件配置。
+- [x] B4 logs/history/mock 声明 read，其他未声明 Collector 为 exclusive，Channel 固定 exclusive；验证禁用不导入、冲突和事务回滚。
 
 预期改动：src/logagent/{ai,config,schema.py,models.py,protocols.py,lifecycle}、前端插件类型以及对应测试。保留旧 Collector/Channel 内置启停语义。
 
@@ -93,3 +93,7 @@
 - B1 完成：AIService.lease 与文本 execute 共用 _model_lease/ChannelManager/凭据入口；OpenAIChannel 显式 streaming 与 max_completion_tokens，移除其他重复输出限制键且不改输入配置。模型上游错误脱敏，工具/存储异常原样传播，租约覆盖调用方整个上下文。19 项定向测试通过（5.07s），包括流式 tools HTTP payload、输出限制、连接关闭取消、凭据脱敏、Workflow 分析回归；ruff 和 diff --check 通过。
 
 - B2 完成：config/calls.py 抽取来源模板/覆盖与渠道覆盖，Workflow 原调用路径切换到公共函数；ResourceStore.invocation_snapshot 在同一锁内捕获启用实例和模型。call_options_schema 保留定义并重定位本地引用，只暴露调用属性与非凭据默认值，固定值解除 required，跨字段约束仍由原完整 Schema 校验。47 项配置/Schema/Workflow 覆盖测试通过（8.63s），ruff 与构建通过。
+
+- C 的细化约定：History 下单层 `.md` 为可写笔记，子目录映射运行事实并只读，避免尚未创建的会话目录被工具抢先伪造。文件读取/写入使用目录句柄和 O_NOFOLLOW；线程内文件操作在取消时先完成再释放统一调度锁，避免后台写入越过独占窗口。主模型输出预留默认 4096 tokens（可配置），用于首版文本问答和工具参数的单次输出；与真实 provider 限制同步，并在模型容量不足时要求调整，不代表模型窗口。
+
+- B3/B4 完成：工具声明与注册事务、owner 冲突、只读视图、generation、发现/API/前端 DTO 已贯通；五内置工具先查 enabled 后导入，logs/history/mock 声明 read，其余 Collector 默认 exclusive。184 项插件/配置/契约/HTTP/生命周期定向测试通过（12.22s），ruff、前端类型与构建、Python 构建通过。生命周期旧测试预期纯正文但未关闭默认 include_counts；仅使该测试显式声明 False，完整 lifecycle 20 项通过，未改变业务默认。
