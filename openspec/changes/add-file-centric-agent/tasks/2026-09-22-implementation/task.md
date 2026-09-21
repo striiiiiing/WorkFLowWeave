@@ -7,7 +7,7 @@
 - 基线 staged whitespace 检查发现前序 `frontendFix/tasks/2026-09-21-frontend-architecture-review/task.md` 的 EOF 空行；保留原状，不混入 Agent 实施。
 - 仓库 post-commit 钩子自动推送 workflow，基线推送因 non-fast-forward 拒绝，本地提交有效。后续使用钩子已有的 `SKIP_WORKFLOW_PUSH=1`，本任务仅创建本地提交。
 - 权威依据：[proposal](../../proposal.md)、[design](../../design.md)、[frontend](../../frontend.md)、[任务索引及默认值](../../tasks.md)。本轮不修改 proposal/design/frontend；若实现发现必须改变设计，先提出具体差异。
-- 产品代码、任务记录由主代理编写。只读分析和测试允许独立委派；模型指定 `gpt-6-astra`、推理 `xhigh`，明确文件所有权，子代理不得写产品代码、设计或任务文档，不提交。
+- 产品代码、任务记录由主代理编写。用户最新修订：上下文依赖少的独立只读分析/测试使用 `gpt-5.5`、推理 `xhigh`；其他允许委派的复杂任务仅在能够明确指定 `gpt-6-astra`、推理 `xhigh` 时派发。此前已启动的依赖审计使用原授权的 Astra xhigh；不追溯改写执行事实。子代理不得写产品代码、设计或任务文档，不提交。当前续接工具未暴露模型派发能力，后续由主代理继续执行。
 
 ## 结构性判断与不变量
 
@@ -19,9 +19,9 @@
 
 ### A. 依赖兼容（对应 2.1）
 
-- [ ] A1 在独立虚拟环境解析并锁定 LangChain 1.x、LangGraph 1.x、匹配 checkpoint/sqlite、aiorwlock；提交 pyproject.toml 和 uv.lock。
-- [ ] A2 先用旧依赖建立恢复证据，再在现有 Workflow 数据库副本验证新版本读取；不打开原库进行迁移。
-- [ ] A3 回归父子图、取消、恢复与通知去重；核实 create_agent、异步工具包装、摘要中间件公开 API 和 `trim_tokens_to_summarize=None`。
+- [x] A1 在独立虚拟环境解析并锁定 LangChain 1.x、LangGraph 1.x、匹配 checkpoint/sqlite、aiorwlock；提交 pyproject.toml 和 uv.lock。
+- [x] A2 先用旧依赖建立恢复证据，再在现有 Workflow 数据库副本验证新版本读取；不打开原库进行迁移。
+- [x] A3 回归父子图、取消、恢复与通知去重；核实 create_agent、异步工具包装、摘要中间件公开 API 和 `trim_tokens_to_summarize=None`。
 
 预期改动：pyproject.toml、uv.lock、必要的兼容修正及 tests/workflow。升级失败必须查清旧库/框架语义差异，不以重置数据库通过检查。
 
@@ -82,4 +82,10 @@
 ## 执行记录
 
 - 已完成：提交实施前基线，并在任何业务实现之前建立本记录。
-- 尚未完成：A–F 全部实现/验证；本文件的提交只证明计划已冻结供审核。
+- A 已完成（依赖由外部新增提交 `119e486` 收录，保留该提交，不重复提交相同变更）。锁定 langchain 1.4.2、core 1.6.4、langgraph 1.2.12、prebuilt 1.1.0、checkpoint 4.2.0、sqlite 3.1.1、aiorwlock 1.5.1；新环境 `/tmp/logagent-agent-implementation-venv`，原 `.venv` 仍保留旧版本供交叉验证。
+- 旧/新环境 Workflow 恢复、进程退出、生命周期 39 项各通过（47.75s / 24.94s）；主代理额外按两批验证 recovery/lifecycle/interval/availability 40 项、integration/overrides/disabled/session 44 项，旧新均通过。最初合并批次 60s 超时，已拆批而非放宽时限。
+- 真实旧库含 WAL，只复制库与日志后对副本备份；原文件 size/mtime/SHA256 不变。新旧解码 78 checkpoints、231 writes、10 namespaces 完全一致，摘要 `aef6c876035156948b6f52837b8ca84d7337b8f6b0c62c4d03d7a32219e26dea`。
+- 旧解释器生成 crash-analysis/crash-notify/crash-archive 后新解释器恢复均通过；采集不重复、已完成分析不重复、未知发送保留 delivery_uncertain 且只继续下一目标。证据脚本 `/tmp/logagent-cross-version.py`，副本 `/tmp/logagent-db-audit-rb7qhm8j`。
+- 可持续回归固化为 `tests/agent/test_framework_contracts.py`：3 passed（0.54s）；验证完整摘要输入、未知工具异常传播、pending 工具补齐消息并通过公开 aupdate_state 清理后不重放。ruff 通过，uv build 成功，OpenSpec strict 有效。
+- 框架版本差异的实现依据：1.4.2 middleware 还会读取历史 AI usage 触发摘要，因此应用先按本轮预算判断是否委托；官方摘要内部 with_retry 重试所有 Exception，必须由总 timeout 覆盖，确定性容量错误在委托前校验。向 middleware 传消息副本，避免失败时它补 ID 改动原状态。不改框架私有方法。
+- 尚未完成：B–F。
