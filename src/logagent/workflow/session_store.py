@@ -110,7 +110,14 @@ class SessionStore:
                 finally:
                     self._session = None
 
-    def create(self, session_id: str, workflow_id: str, policy: BackupPolicy) -> None:
+    def create(
+        self,
+        session_id: str,
+        workflow_id: str,
+        policy: BackupPolicy,
+        *,
+        workflow_name: str | None = None,
+    ) -> None:
         """原子创建 session 头与 created 事件，重复创建相同绑定时直接返回。
 
         同一 session 已绑定不同 Workflow 或备份策略时抛出 storage_conflict。
@@ -129,7 +136,10 @@ class SessionStore:
                 created_at=datetime.now(UTC).isoformat(), policy=policy_json,
             ))
             session.flush()
-            self.write(session_id, "created", stage=None, scope="parent", summary={"status": "created"})
+            summary = {"status": "created"}
+            if workflow_name is not None:
+                summary["workflow_name"] = workflow_name
+            self.write(session_id, "created", stage=None, scope="parent", summary=summary)
 
     def write(
         self, session_id: str, key: str, *, stage: str | None, scope: str,

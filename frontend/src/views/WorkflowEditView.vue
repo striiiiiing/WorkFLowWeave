@@ -21,17 +21,22 @@ const workflow = ref(createWorkflow())
 const form = ref<FormInstance>()
 const save = useAsyncTask()
 const advanced = ref(false)
+const {
+  data: configs,
+  pending: modelsPending,
+  error: modelsError,
+  refresh: refreshModels,
+} = useQuery((signal) => resourcesApi.list('ai', signal))
 const { data, pending, error, refresh } = useQuery(
   async (signal) => {
-    const [sources, configs, channels, existing] = await Promise.all([
+    const [sources, channels, existing] = await Promise.all([
       resourcesApi.list('sources', signal),
-      resourcesApi.list('ai', signal),
       resourcesApi.list('channels', signal),
       id.value
         ? resourcesApi.get('workflows', id.value, signal)
         : Promise.resolve(createWorkflow()),
     ])
-    return { sources, configs, channels, existing }
+    return { sources, channels, existing }
   },
   [id],
 )
@@ -58,22 +63,28 @@ function submit() {
       description="按步骤配置采集、分析、汇聚与分发"
     >
       <router-link to="/workflows"><el-button>取消</el-button></router-link>
-      <el-button type="primary" :loading="save.pending.value" :disabled="!data" @click="submit">
+      <el-button
+        type="primary"
+        :loading="save.pending.value"
+        :disabled="!data || !configs || modelsPending || !!modelsError"
+        @click="submit"
+      >
         保存工作流
       </el-button>
     </PageHeader>
     <el-alert
-      v-if="error || save.error.value"
-      :title="error || save.error.value"
+      v-if="error || modelsError || save.error.value"
+      :title="error || modelsError || save.error.value"
       type="error"
       :closable="false"
       show-icon
     />
     <el-button v-if="error" @click="refresh">重新加载</el-button>
-    <el-skeleton v-if="pending" :rows="10" animated />
+    <el-button v-if="modelsError" @click="refreshModels">重新加载模型列表</el-button>
+    <el-skeleton v-if="pending || (!configs && modelsPending)" :rows="10" animated />
     <el-form
       novalidate
-      v-if="data"
+      v-if="data && configs"
       ref="form"
       :model="workflow"
       label-position="top"
@@ -105,8 +116,14 @@ function submit() {
           </div>
         </SectionCard>
         <SourceStepCard v-model="workflow" :sources="data.sources" :advanced="advanced" />
-        <FanOutTaskCard v-model="workflow" :configs="data.configs" :advanced="advanced" />
-        <FanInCard v-model="workflow" :configs="data.configs" :advanced="advanced" />
+        <FanOutTaskCard
+          v-model="workflow"
+          :configs="configs"
+          :models-pending="modelsPending"
+          :advanced="advanced"
+          @refresh-models="refreshModels"
+        />
+        <FanInCard v-model="workflow" :configs="configs" :advanced="advanced" />
         <NotificationCard v-model="workflow" :channels="data.channels" :advanced="advanced" />
         <BackupMatrix v-if="advanced" v-model="workflow.backup" />
       </div>

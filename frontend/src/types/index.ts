@@ -126,6 +126,7 @@ export interface PhaseContent extends ArtifactInfo {
 export interface SessionRecord {
   session_id: string
   workflow_id: string
+  workflow_name: string | null
   version: number
   status: SessionStatus
   stage: WorkflowStage | null

@@ -8,7 +8,7 @@ from datetime import datetime
 import orjson
 
 from logagent.errors import LogAgentError
-from logagent.models import ArtifactInfo, PhaseContent, SessionRecord, WorkflowStage
+from logagent.models import ArtifactInfo, PhaseContent, SessionRecord, SessionStatus, WorkflowStage
 
 
 class SessionView:
@@ -25,11 +25,14 @@ class SessionView:
         终态事件设置结束时间，后续 running 事件清除结束时间。
         """
         state = {"status": "created", "stage": None, "error": None}
+        workflow_name = None
         phases = {}
         snapshot = "pending"
         finished_at = None
         for entry in entries:
             summary = entry["summary"]
+            if entry["write_key"] == "created":
+                workflow_name = summary.get("workflow_name")
             if entry["scope"] in {"parent", "phase"}:
                 for key in ("status", "error"):
                     if key in summary:
@@ -42,6 +45,9 @@ class SessionView:
                     finished_at = None
             if entry["write_key"] == "snapshot":
                 snapshot = entry["availability"]
+                # 旧存档尚无创建事件名称时，只读取该次运行已有的快照。
+                if workflow_name is None and entry["body"] is not None:
+                    workflow_name = entry["body"]["snapshot"]["workflow"]["name"]
             if entry["scope"] == "phase":
                 phases[entry["stage"]] = ArtifactInfo(
                     stage=entry["stage"], availability=entry["availability"],
@@ -49,6 +55,7 @@ class SessionView:
                 )
         return SessionRecord(
             session_id=header["session_id"], workflow_id=header["workflow_id"],
+            workflow_name=workflow_name,
             version=entries[-1]["version"], created_at=header["created_at"],
             updated_at=entries[-1]["created_at"], finished_at=finished_at,
             snapshot_availability=snapshot, artifacts=list(phases.values()), **state,
@@ -60,12 +67,20 @@ class SessionView:
         return self._record(header, entries)
 
     async def list_sessions(
-        self, workflow_id: str | None = None, *, limit: int = 100, offset: int = 0,
+        self,
+        workflow_id: str | None = None,
+        *,
+        workflow_name: str | None = None,
+        session_id: str | None = None,
+        status: SessionStatus | None = None,
+        limit: int = 100,
+        offset: int = 0,
         after: datetime | None = None, before: datetime | None = None,
         exclude_session_id: str | None = None,
     ) -> list[SessionRecord]:
         """校验分页与带时区的时间边界，筛选 session 后分页返回。
 
+        名称按不区分大小写的子串匹配，ID 与状态精确匹配。
         时间筛选基于创建时间且包含端点；可排除当前 session，供历史采集使用。
         每条记录独立读取，不提供跨 session 的全局事务快照。
         """
@@ -75,12 +90,21 @@ class SessionView:
             raise LogAgentError("invalid_argument", "时间边界需要时区")
         if after is not None and before is not None and after > before:
             raise LogAgentError("invalid_argument", "时间区间无效")
+        name_query = workflow_name.casefold() if workflow_name is not None else None
         records = []
         for sid in await asyncio.to_thread(self._store.session_ids):
             if sid == exclude_session_id:
                 continue
+            if session_id is not None and sid != session_id:
+                continue
             record = await self.get_session(sid)
             if workflow_id is not None and record.workflow_id != workflow_id:
+                continue
+            if name_query is not None and (
+                record.workflow_name is None or name_query not in record.workflow_name.casefold()
+            ):
+                continue
+            if status is not None and record.status != status:
                 continue
             if after is not None and record.created_at < after:
                 continue

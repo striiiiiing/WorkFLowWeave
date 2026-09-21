@@ -172,6 +172,9 @@ async def list_sessions(
 ):
     return await services.session_view.list_sessions(
         query.workflow_id,
+        workflow_name=query.workflow_name,
+        session_id=query.session_id,
+        status=query.status,
         limit=query.limit,
         offset=query.offset,
         after=query.after,
