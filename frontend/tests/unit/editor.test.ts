@@ -35,7 +35,7 @@ describe('editor task regressions', () => {
     expect(createWorkflow().include_counts).toBe(true)
   })
 
-  it('hides resource IDs normally and saves a generated ID with schema-selected collector', async () => {
+  it('shows the resource ID normally and saves a generated ID with schema-selected collector', async () => {
     vi.mocked(systemApi.plugins).mockResolvedValueOnce([
       {
         kind: 'collector',
@@ -51,7 +51,8 @@ describe('editor task regressions', () => {
     ])
     const wrapper = mount(ResourceEditor, { props: { kind: 'sources' }, global })
     await flushPromises()
-    expect(wrapper.text()).not.toContain('资源 ID')
+    expect(wrapper.text()).toContain('资源编号')
+    expect(wrapper.get('input[placeholder="可自行填写；留空则自动生成"]').isVisible()).toBe(true)
     wrapper.findComponent(ElSelect).vm.$emit('update:modelValue', 'mock')
     await flushPromises()
     await wrapper.find('form').trigger('submit')

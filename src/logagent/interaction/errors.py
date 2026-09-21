@@ -36,6 +36,7 @@ _CONFLICT_CODES = {
     "session_not_active",
     "version_not_found",
     "workflow_disabled",
+    "workflow_no_enabled_sources",
 }
 _UNAVAILABLE_CODES = {
     "checkpoint",

@@ -10,6 +10,7 @@ const props = defineProps<{
   label: string
   prop: string | string[]
   schema?: JsonObject
+  excludedProperties?: string[]
 }>()
 const emit = defineEmits<{ 'update:modelValue': [value: JsonObject] }>()
 type Row = { key: string; enabled: boolean; draft: ValueDraft }
@@ -20,28 +21,40 @@ const rawField = ref<InstanceType<typeof JsonField>>()
 const newKey = ref('')
 const addError = ref('')
 const field = computed(() => new ParameterInput(createFieldRule(props.schema)))
-const properties = computed(() => (props.schema?.properties ?? {}) as Record<string, JsonObject>)
-const required = computed(() => (props.schema?.required ?? []) as string[])
-const canAdd = computed(() => props.schema?.additionalProperties !== false)
+const properties = computed(
+  () => (field.value.schema.properties ?? {}) as Record<string, JsonObject>,
+)
+const required = computed(() => (field.value.schema.required ?? []) as string[])
+const canAdd = computed(() => field.value.schema.additionalProperties !== false)
 let signature = ''
+let previousValue: JsonObject = {}
 function makeRow(key: string, enabled: boolean, value: JsonValue): Row {
   return { key, enabled, draft: field.value.property(key).create(value) }
 }
 function rebuild(value: JsonObject) {
   const keys = [...new Set([...Object.keys(properties.value), ...Object.keys(value)])]
-  rows.value = keys.map((key) =>
-    hasOwn(value, key)
-      ? makeRow(key, true, value[key])
-      : makeRow(key, false, field.value.property(key).initialValue),
-  )
+  rows.value = keys
+    .filter((key) => !props.excludedProperties?.includes(key))
+    .map((key) =>
+      hasOwn(value, key)
+        ? makeRow(key, true, value[key])
+        : makeRow(key, false, field.value.property(key).initialValue),
+    )
 }
 watch(
   () => props.modelValue,
   (value) => {
     const next = JSON.stringify(value)
+    const unchanged = new Map(
+      rows.value
+        .filter((row) => JSON.stringify(previousValue[row.key]) === JSON.stringify(value[row.key]))
+        .map((row) => [row.key, row]),
+    )
+    previousValue = JSON.parse(next)
     if (next === signature) return
     signature = next
     rebuild(value)
+    rows.value = rows.value.map((row) => unchanged.get(row.key) ?? row)
   },
   { immediate: true, deep: true },
 )
@@ -58,7 +71,9 @@ function rowError(row: Row): string {
   return row.enabled ? field.value.property(row.key).error(row.draft) : ''
 }
 const parsed = computed(() => {
-  const entries: [string, JsonValue][] = []
+  const entries: [string, JsonValue][] = Object.entries(props.modelValue).filter(([key]) =>
+    props.excludedProperties?.includes(key),
+  )
   for (const row of rows.value.filter((row) => row.enabled)) {
     const result = field.value.property(row.key).read(row.draft)
     if (!result.ok) return { ok: false as const, error: `${row.key}：${result.error}` }
@@ -88,6 +103,10 @@ function add() {
   const key = newKey.value
   if (!key) {
     addError.value = '请输入字段名'
+    return
+  }
+  if (props.excludedProperties?.includes(key)) {
+    addError.value = '请使用专用凭据输入框填写此字段'
     return
   }
   if (rows.value.some((row) => row.key === key)) {

@@ -44,6 +44,9 @@ function selectSources(ids: string[]) {
     ),
   }
 }
+function sourceById(id: string) {
+  return props.sources.find((source) => source.id === id)
+}
 </script>
 <template>
   <SectionCard title="1. 数据采集" description="多个来源按所选顺序合并为共享输入">
@@ -63,7 +66,8 @@ function selectSources(ids: string[]) {
           v-for="source in sources"
           :key="source.id"
           :value="source.id"
-          :label="source.id"
+          :label="`${source.id}${source.enabled ? '' : '（已停用）'}`"
+          :disabled="!source.enabled && !model.sources.includes(source.id)"
         />
       </el-select>
     </el-form-item>
@@ -75,7 +79,10 @@ function selectSources(ids: string[]) {
       class="border rounded-lg p-4 mb-4"
     >
       <div class="flex flex-wrap items-center gap-2 mb-3">
-        <span class="mono break-all">{{ index + 1 }}. {{ sourceId }}</span>
+        <span class="mono break-all">
+          {{ index + 1 }}. {{ sourceId
+          }}{{ sourceById(sourceId)?.enabled === false ? '（已停用）' : '' }}
+        </span>
         <el-button
           :disabled="index === 0"
           :aria-label="`上移 ${sourceId}`"
@@ -91,6 +98,13 @@ function selectSources(ids: string[]) {
           下移
         </el-button>
       </div>
+      <el-alert
+        v-if="sourceById(sourceId)?.enabled === false"
+        title="此数据源已停用，本次运行不会采集；重新启用后会恢复原设置。"
+        type="warning"
+        :closable="false"
+        class="mb-3"
+      />
       <el-form-item :label="`${sourceId}：自定义本次采集`">
         <el-switch
           :model-value="!!model.source_overrides[sourceId]"

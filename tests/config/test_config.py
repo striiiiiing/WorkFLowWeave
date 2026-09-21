@@ -563,6 +563,59 @@ async def test_duplicate_plugin_ids_use_stable_directory_order(tmp_path):
     assert report.errors[0].details["reason"] == "plugin_id_conflict"
 
 
+async def test_plugin_id_prefix_is_validated_and_published(tmp_path):
+    write_plugin(
+        tmp_path,
+        "prefixed",
+        body="""from logagent.models import CollectorOutput
+class Collector:
+    name = "prefixed"
+    id_prefix = "logs"
+    description = "Prefixed collector"
+    fields = []
+    count_unit = "records"
+    options_schema = {"type": "object", "additionalProperties": False}
+    setters_schema = {"type": "object", "additionalProperties": False}
+    async def collect(self, options, setters, context):
+        return CollectorOutput(status="success", text="", count=0)
+class Plugin:
+    def register(self, api):
+        api.register_collector(Collector())
+plugin = Plugin()
+""",
+    )
+    registry, report = await discover(tmp_path)
+    assert report.registered[0].id_prefix == "logs"
+    assert registry.collectorRegister.describe()[0].id_prefix == "logs"
+
+
+@pytest.mark.parametrize("prefix", [123, "", "has space", "x" * 44])
+async def test_invalid_plugin_id_prefix_is_rejected(tmp_path, prefix):
+    write_plugin(
+        tmp_path,
+        "invalid_prefix",
+        body=f"""from logagent.models import CollectorOutput
+class Collector:
+    name = "invalid_prefix"
+    id_prefix = {prefix!r}
+    description = "Invalid prefix collector"
+    fields = []
+    count_unit = "records"
+    options_schema = {{"type": "object", "additionalProperties": False}}
+    setters_schema = {{"type": "object", "additionalProperties": False}}
+    async def collect(self, options, setters, context):
+        return CollectorOutput(status="success", text="", count=0)
+class Plugin:
+    def register(self, api):
+        api.register_collector(Collector())
+plugin = Plugin()
+""",
+    )
+    _, report = await discover(tmp_path)
+    assert report.registered == []
+    assert report.errors[0].details["reason"] == "invalid_declaration"
+
+
 @pytest.mark.parametrize("backend", ["../outside.py", "/tmp/outside.py", "main.txt"])
 async def test_entry_must_be_a_python_file_inside_plugin(tmp_path, backend):
     package = write_plugin(tmp_path, "bad")

@@ -1,12 +1,34 @@
 <script setup lang="ts">
-import type { WorkflowDefinition, AIConfig } from '@/types'
+import { ref, toRaw, watch } from 'vue'
+import type { WorkflowDefinition, AIConfig, FanInConfig } from '@/types'
 import { createFanIn } from '@/domain/workflow'
 import SectionCard from '@/components/common/SectionCard.vue'
 import AIModelSelect from './AIModelSelect.vue'
 const model = defineModel<WorkflowDefinition>({ required: true })
 defineProps<{ configs: AIConfig[]; advanced?: boolean }>()
+const disabledDraft = ref<FanInConfig | null>(null)
+watch(
+  () => model.value.analyses.map((task) => ({ task, id: task.id })),
+  (current, previous) => {
+    if (!disabledDraft.value) return
+    const renamed = new Map(
+      previous.map((entry) => [entry.id, current.find((item) => item.task === entry.task)?.id]),
+    )
+    disabledDraft.value.order = disabledDraft.value.order.flatMap((id) => {
+      if (id === '$input') return [id]
+      const next = renamed.get(id)
+      return next ? [next] : []
+    })
+  },
+)
 function toggle(enabled: boolean | string | number) {
-  model.value.fan_in = enabled ? createFanIn() : null
+  if (enabled) {
+    model.value.fan_in = structuredClone(toRaw(disabledDraft.value ?? createFanIn()))
+    disabledDraft.value = null
+    return
+  }
+  disabledDraft.value = model.value.fan_in ? structuredClone(toRaw(model.value.fan_in)) : null
+  model.value.fan_in = null
 }
 </script>
 <template>
