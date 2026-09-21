@@ -63,7 +63,52 @@ describe('HTTP contract', () => {
       422,
     )
     const error = await resourcesApi.list('ai').catch((cause) => cause)
-    expect(errorMessage(error)).toBe('API 格式不可用；字段 provider；可用格式：OpenAI Compatible API')
+    expect(errorMessage(error)).toBe(
+      'API 格式不可用；字段 provider；可用格式：OpenAI Compatible API',
+    )
+  })
+  it('explains an unexpanded business error from a stale backend process', async () => {
+    respond(
+      {
+        error: {
+          code: 'invalid_config',
+          message: '资源未通过业务校验',
+          details: { exception_type: 'LogAgentError' },
+        },
+      },
+      422,
+    )
+    const error = await resourcesApi
+      .create('ai', {
+        id: 'provider',
+        provider: 'openai_compatible_api',
+        base_url: 'http://localhost:19026/v1',
+        api_key: null,
+        system_prompt: '',
+        models: {},
+        timeout: 600,
+        retries: 5,
+      })
+      .catch((cause) => cause)
+    expect(errorMessage(error)).toBe(
+      '资源未通过业务校验；错误码 invalid_config；后端未展开具体校验原因，请重启后端服务后重试',
+    )
+  })
+  it('shows model option fields and exception type when supplied by the backend', async () => {
+    respond(
+      {
+        error: {
+          code: 'invalid_config',
+          message: '模型参数无效',
+          details: { fields: ['reasoning_effort'], exception_type: 'ValueError' },
+        },
+      },
+      422,
+    )
+    const error = await resourcesApi.list('ai').catch((cause) => cause)
+    expect(errorMessage(error)).toBe(
+      '模型参数无效；相关字段：reasoning_effort；异常类型 ValueError',
+    )
   })
   it('reads an unavailable health report from HTTP 503', async () => {
     respond({ status: 'unavailable', accepting_runs: false, components: [] }, 503)

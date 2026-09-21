@@ -6,7 +6,7 @@ import { runsApi } from '@/api/runs'
 import { useSession } from '@/composables/useSession'
 import { useQuery } from '@/composables/useQuery'
 import { useAsyncTask } from '@/composables/useAsyncTask'
-import { availabilityLabels, stages, sessionStates } from '@/domain/session'
+import { availabilityLabels, stages, sessionStates, formatWorkflowName } from '@/domain/session'
 import type { WorkflowStage } from '@/types'
 import PageHeader from '@/components/common/PageHeader.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
@@ -66,7 +66,11 @@ function copy() {
   <div class="max-w-5xl mx-auto space-y-6">
     <PageHeader
       :title="id"
-      :description="session ? `所属工作流：${session.workflow_id}` : '运行详情'"
+      :description="
+        session
+          ? `所属工作流：${formatWorkflowName(session.workflow_name)}（${session.workflow_id}）`
+          : '运行详情'
+      "
     >
       <el-button :loading="pending" @click="refresh">刷新</el-button>
       <el-popconfirm

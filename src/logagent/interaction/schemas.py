@@ -10,6 +10,7 @@ from logagent.models import (
     ID,
     DiscoveryReport,
     SessionVersion,
+    SessionStatus,
     StrictModel,
     UTCDateTime,
     WorkflowSnapshot,
@@ -18,6 +19,9 @@ from logagent.models import (
 
 class SessionListQuery(StrictModel):
     workflow_id: ID | None = None
+    workflow_name: str | None = Field(default=None, min_length=1)
+    session_id: ID | None = None
+    status: SessionStatus | None = None
     limit: int = Field(default=100, ge=1, le=1000)
     offset: int = Field(default=0, ge=0)
     after: UTCDateTime | None = None

@@ -4,7 +4,12 @@ import { idRule } from '@/domain/forms'
 import SectionCard from '@/components/common/SectionCard.vue'
 import AIModelSelect from './AIModelSelect.vue'
 const model = defineModel<WorkflowDefinition>({ required: true })
-defineProps<{ configs: AIConfig[]; advanced?: boolean }>()
+const props = defineProps<{
+  configs: AIConfig[]
+  advanced?: boolean
+  modelsPending?: boolean
+}>()
+const emit = defineEmits<{ refreshModels: [] }>()
 function add() {
   let index = model.value.analyses.length + 1
   while (model.value.analyses.some((item) => item.id === `task_${index}`)) index++
@@ -28,7 +33,17 @@ function remove(index: number) {
 </script>
 <template>
   <SectionCard title="2. 并行 AI 分析" description="各任务使用同一份共享输入">
-    <template #actions><el-button size="small" @click="add">添加任务</el-button></template>
+    <template #actions>
+      <el-button
+        size="small"
+        :loading="props.modelsPending"
+        :disabled="props.modelsPending"
+        @click="emit('refreshModels')"
+      >
+        刷新模型列表
+      </el-button>
+      <el-button size="small" @click="add">添加任务</el-button>
+    </template>
     <el-form-item
       prop="analyses"
       :rules="{ type: 'array', required: true, min: 1, message: '至少添加一个分析任务' }"
@@ -51,6 +66,8 @@ function remove(index: number) {
         :ai="task.ai"
         :model="task.model"
         :configs="configs"
+        :ai-prop="`analyses.${index}.ai`"
+        :model-prop="`analyses.${index}.model`"
         @update:ai="task.ai = $event ?? ''"
         @update:model="task.model = $event ?? ''"
       />

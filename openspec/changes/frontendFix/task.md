@@ -99,3 +99,47 @@
 - 依据 `src/logagent/models.py`，AI 配置的 `provider` 是必填业务字段；后端正式 provider 键为 `openai_compatible_api`，旧 `http` 仅作为兼容别名。
 - 前端 `createResource('ai')` 默认选择唯一的 `OpenAI Compatible API` 格式，提交值为 `openai_compatible_api`。
 - 前端补齐 `AIConfig.system_prompt` 编辑字段；该字段已存在于后端模型，之前界面漏展示会导致用户无法配置。
+
+### 供应商业务校验错误的前端诊断（2026-09-21）
+
+- 现场证据：当前 4300 端口仍运行旧后端。提交 `provider=openai_compatible_api`、`base_url=http://localhost:19026/v1` 时返回 `invalid_config / 资源未通过业务校验 / exception_type=LogAgentError`；同一进程提交兼容旧版本的 `provider=http` 可以保存。URL 格式本身通过当前 `ai/options.py::validate_config` 校验，保存供应商也不会访问上游地址。
+- 决策：前端 `errorMessage` 对后端错误详情增加 `fields`、`reason`、`exception_type` 展示；当收到旧进程典型的未展开 `LogAgentError` 时明确提示后端未加载最新版本并要求重启。这样保留服务端结构化错误为唯一事实来源，不在前端猜测上游连接原因或自动改写 provider。
+- 验证：API 单元测试覆盖旧后端未展开错误与模型字段错误，现有前端错误信封测试继续通过。
+
+
+### 固定类型文字与可重复数组编辑（2026-09-21）
+
+- 授权：用户要求资源配置中心的固定字段不再通过单选选择数字/字符串，改为文字；数组采用可重复的多项编辑，不直接输入整个数组。
+- 依据：前端 `design.md` §3.3 要求按插件 Schema 动态渲染；`HistoryCollector` 的 limit 声明为 integer，stages 声明数组枚举及 uniqueItems；`LogsCollector` 的 fields 为数组枚举，levels/modules 是开放字符串数组；`MockCollector.records` 是允许重复的对象数组。因此不能将所有数组强制去重，也不能为没有枚举的字段凭空生成候选值。
+- 根因与分类：`ParameterField.vue` 给所有非枚举字段渲染类型下拉，把非枚举数组交给 JSON 文本框，枚举数组使用自动去重的多选。此为共享控件的结构性修正：抽出 `ParameterValue.vue` 统一渲染每个值，`domain/parameters.ts` 统一保存、读取和校验草稿；删除旧的数组文本及独立多选分支。
+- 交互：只有一种合法类型时显示数字、字符串等文字；联合类型和未声明类型的自定义字段仍可选择类型。数组按项添加/选择、重复添加、删除、上移/下移；枚举项使用选项控件，开放项使用相应类型控件，对象项保留对象编辑器，数组本身不使用文本框。显式的“编辑 JSON”入口保持可用。
+- 不变量：项目有独立标识，重复值可独立移动/删除；只有 `uniqueItems: true` 时禁止重复，不静默去重；数量约束来自 minItems/maxItems，不增加任意上限。无默认值的数组初始为 []，避免自动注入用户尚未选择的数据；可选字段仍在开启后才提交。新增项沿用 Schema default/enum 首项/类型空值的现有初始化顺序，唯一枚举优先下一未选值。
+- 非法草稿阻止提交和模式切换并保留原输入；Schema 后加载时保留现有草稿，新字段采用 Schema 默认值。加载的值类型不符合固定声明时显示错误并提供显式重填操作，不通过隐藏下拉或自动转型掩盖问题。
+- 影响范围：资源配置的 options/setters、模型额外参数以及复用同一控件的工作流覆盖参数。后端 API、proposal.md、design.md 不变。
+- 验证计划：定向参数/资源/供应商回归测试 → 类型和格式检查 → 生产构建 → 真实临时后端浏览器保存和重载；重点覆盖重复项、顺序、唯一性、数目约束、嵌套数组、非法输入保留及可选值省略。
+- 验证完成：参数表单 11 项、资源/工作流编辑器 8 项、供应商编辑器 9 项、模型 Proxy 保存 2 项，合计 30 项分批通过；vue-tsc、本次文件 Prettier 检查、生产构建和本次范围 diff 空白检查通过。
+- 浏览器完成：Chromium + 真实临时后端 1 条新增流程通过。验证 mock 记录重复添加、保存、重新打开、独立删除，以及 history.limit 固定数字文字、stages 逐项选择/排序/保存/重载；无页面运行错误。断言分别检查提交体和后端持久化结果，允许 `config/normalize.py` 的既有服务端默认值补齐。
+- 验证环境：WSL 挂载目录曾偶发 ENOMEM 读取失败，相关用例已用单 worker 及 `UV_THREADPOOL_SIZE=1` 重试通过。Chromium 缺失的 libnspr/libnss/libasound 下载解包到 `/tmp/logagent-browser-libs`，通过 `LD_LIBRARY_PATH` 使用，无系统安装或后端修改。
+
+
+### 字段标题类型后缀与中文输入错误（2026-09-21）
+
+- 授权：用户要求类型放在名称后的中文括号中，例如 `limit（数字）`；数字中混入字母时必须给出能理解的中文提示，不能直接展示 JSON 解析器英文异常。
+- 根因：上一实现将固定类型放在值控件上方；数字也通过 JSON.parse 读取，valueError 和 JsonField 直接显示 catch 的 message。此为共享输入边界修正，涉及 ParameterField/ParameterValue 的标题与 domain/parameters.ts、JsonField 的解析；proposal/design 不变。
+- 决策：固定类型标题通过 ParameterInput.label 一处生成，字段和数组项目均采用“名称（类型）”，未开启字段也可见，删除值控件内独立类型文字。允许多种类型的字段继续保留类型选择。
+- 决策：数字文本使用原生 JSON 数值语法解析（支持负数、小数和科学计数法），只在解析边界提供中文提示，不自行实现数字正则或整数判断；空白不转换为 0，字母不截断。整数、有限值及上下限统一由 Ajv 按 Schema 校验。
+- 决策：对象字段与显式 JSON 编辑共用 ParameterInput 的解析和 Schema 校验；只捕获原生 SyntaxError 并提供中文提示，其他编程异常继续抛出。保留非法输入、阻止提交和模式切换，不回退到默认值或伪成功。
+- 验证计划：定向参数/JSON/供应商表单测试 → 类型与格式检查 → 生产构建 → 浏览器输入 12a 并保存，确认中文提示、原输入保留，修正后可正常保存；继续覆盖数组重复与排序。
+
+
+### 字段处理类与 Schema 校验统一（2026-09-21）
+
+- 授权：用户要求将字段编辑封装为统一处理类，删除堆叠的手写类型校验；复用 Element Plus 的 validate 流程，基于 Schema 生成约束。
+- 根因与选择：Element Plus 的 Form.validate 使用 async-validator 规则，而后端 `src/logagent/schema.py` 使用 JSON Schema 2020-12（含本地引用、联合类型、条件和格式约束）。手工翻译为另一套规则会再次建立不完整的校验实现；因此以 Ajv 2020 直接编译原 Schema，通过 Element Plus 的自定义 validator 接入表单。
+- 职责：`domain/parameters.ts::ParameterInput` 统一字段元信息、草稿解析和数组操作，只依赖注入的 FieldRule 接口；`adapters/schemaValidation.ts` 封装 Ajv/ajv-formats 和错误中文化；Vue 控件只管理表单绑定、展示和交互。移除旧的数字正则、整数/类型/数组唯一性手写校验及深比较实现；选项匹配使用 fast-deep-equal，Schema 约束由 Ajv 判断。
+- 一致性：字段校验器在根 Schema 上下文中编译，保留 `$defs`/`$ref`，不复制引用定义；表单整对象和原始 JSON 同样校验根规则，覆盖跨字段约束。中文提示使用 ajv-i18n，常见输入错误补充可操作的中文文案。
+- 默认值依据：沿用插件声明的 default → enum 首项 → 类型空值，仅初始化编辑草稿；Ajv 禁止自动转型、补默认值、删除未知字段，未开启的可选字段不写入提交对象。strictNumbers 保持开启；strict 模式关闭以兼容后端合法联合类型和应用注解，Schema 自身仍经 Ajv 验证。
+- 范围：只调整前端共享参数控件及直接依赖，保持现有资源/供应商/工作流调用接口；不修改 proposal.md、design.md 或后端。
+- 验证计划：Schema 适配器和真实 Element Plus 表单测试覆盖引用、类型/范围/格式、重复/嵌套数组、非法草稿与 JSON 模式；随后类型/格式检查、构建、真实后端浏览器保存与重载。
+- 验证完成：Schema 适配器 6 项、参数表单 13 项、JSON 表单 1 项、资源/工作流编辑器 8 项、供应商编辑器 9 项、模型 Proxy 保存 2 项，合计 39 项通过；vue-tsc、本次文件 Prettier、生产构建和 diff 空白检查通过。Chromium + 真实临时后端 2 条流程通过，覆盖 limit 输入 12a 的中文报错与修正、数组重复项/顺序保存重载、资源 JSON 校验与新增编辑；无页面运行异常。
+- 审查补充：保留 `items: false` 的禁止语义，数组达到 Schema 允许的项目范围后禁用添加；布尔 false Schema 的错误同样转换为可操作中文。适配器回归覆盖这一交互边界。

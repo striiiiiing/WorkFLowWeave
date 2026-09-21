@@ -19,7 +19,7 @@ const global = { plugins: [ElementPlus] }
 afterEach(() => vi.clearAllMocks())
 
 describe('editor task regressions', () => {
-  it('leaves new AI provider unset so the provider hint is visible', () => {
+  it('defaults new channels to the supported OpenAI compatible API format', () => {
     const ai = createResource('ai')
     expect(ai.provider).toBe('openai_compatible_api')
     expect(ai.base_url).toBeNull()
@@ -73,7 +73,7 @@ describe('editor task regressions', () => {
     vi.mocked(resourcesApi.protectCredential).mockResolvedValueOnce(encrypted)
     vi.mocked(resourcesApi.create)
       .mockRejectedValueOnce(new Error('save failed'))
-      .mockResolvedValueOnce(createResource('ai') as never)
+      .mockImplementationOnce(async (_kind, value) => JSON.parse(JSON.stringify(value)))
     const wrapper = mount(ResourceEditor, { props: { kind: 'ai' }, global })
     await flushPromises()
     wrapper.findComponent(ElRadioGroup).vm.$emit('update:modelValue', 'openai_compatible_api')
