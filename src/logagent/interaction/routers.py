@@ -240,6 +240,7 @@ async def list_plugins(services: Services):
     return [
         *services.plugins.collectorRegister.describe(),
         *services.plugins.channelRegister.describe(),
+        *services.plugins.toolRegister.describe(),
     ]
 
 

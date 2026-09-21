@@ -13,7 +13,7 @@ from pydantic import ValidationError
 
 from logagent.errors import LogAgentError, validation_error
 from logagent.models import CapabilityDescription, ErrorInfo, JSONObject
-from logagent.protocols import ChannelType, Collector
+from logagent.protocols import ChannelType, Collector, Tool
 from logagent.schema import schema_defaults, validate_instance, validate_schema
 
 
@@ -54,6 +54,12 @@ class _ChannelRegistration:
     implementation: Callable[..., Any]
 
 
+@dataclass(frozen=True, slots=True)
+class _ToolRegistration:
+    description: CapabilityDescription
+    implementation: Callable[..., Any]
+
+
 def collector_registration(collector: Collector, owner: str) -> _CollectorRegistration:
     """Capture the implementation once, independently of later attribute changes."""
     implementation = collector.collect
@@ -73,6 +79,7 @@ def collector_registration(collector: Collector, owner: str) -> _CollectorRegist
             setters_schema=deepcopy(collector.setters_schema),
             fields=deepcopy(getattr(collector, "fields", [])),
             count_unit=collector.count_unit,
+            execution=getattr(collector, "execution", "exclusive"),
         )
     except ValidationError as exc:
         raise validation_error(exc, code="invalid_declaration") from None
@@ -100,6 +107,47 @@ def channel_registration(channel: ChannelType, owner: str) -> _ChannelRegistrati
         raise validation_error(exc, code="invalid_declaration") from None
     _check_description(description)
     return _ChannelRegistration(description, implementation)
+
+
+def tool_registration(tool: Tool, owner: str) -> _ToolRegistration:
+    implementation = tool.invoke
+    _check_callable(implementation, 2, asynchronous=True)
+    try:
+        description = CapabilityDescription(
+            kind="tool", name=tool.name, description=tool.description, plugin=owner,
+            capabilities=["tool"], options_schema={"type": "object", "properties": {}},
+            input_schema=deepcopy(tool.input_schema), execution=tool.execution,
+        )
+    except ValidationError as exc:
+        raise validation_error(exc, code="invalid_declaration") from None
+    _check_description(description)
+    validate_schema(description.input_schema)
+    return _ToolRegistration(description, implementation)
+
+
+@dataclass(frozen=True, slots=True)
+class _RegisteredTool:
+    _registration: _ToolRegistration
+
+    @property
+    def name(self):
+        return self._registration.description.name
+
+    @property
+    def description(self):
+        return self._registration.description.description
+
+    @property
+    def input_schema(self):
+        return deepcopy(self._registration.description.input_schema)
+
+    @property
+    def execution(self):
+        return self._registration.description.execution
+
+    @property
+    def invoke(self):
+        return self._registration.implementation
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,7 +230,9 @@ class _RegisterView:
 
     def __init__(
         self,
-        registrations: Mapping[str, _CollectorRegistration | _ChannelRegistration] | None = None,
+        registrations: Mapping[
+            str, _CollectorRegistration | _ChannelRegistration | _ToolRegistration
+        ] | None = None,
         *,
         errors: Iterable[ErrorInfo] = (),
     ) -> None:
@@ -235,3 +285,15 @@ class ChannelRegister(_RegisterView):
                 registration.description.model_copy(deep=True), registration.implementation
             )
         )
+
+
+class ToolRegister(_RegisterView):
+    __slots__ = ()
+
+    def get(self, name: str) -> Tool | None:
+        registration = self._registrations.get(name)
+        if registration is None:
+            return None
+        return _RegisteredTool(_ToolRegistration(
+            registration.description.model_copy(deep=True), registration.implementation,
+        ))

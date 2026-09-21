@@ -155,7 +155,7 @@ export type ReportSection =
       rows: (string | number | boolean | null)[][]
     }
 export interface CapabilityDescription {
-  kind: 'collector' | 'channel'
+  kind: 'collector' | 'channel' | 'tool'
   name: string
   id_prefix?: string | null
   description: string
@@ -165,6 +165,8 @@ export interface CapabilityDescription {
   setters_schema: JsonObject | null
   fields: string[]
   count_unit: string | null
+  input_schema?: JsonObject | null
+  execution?: 'read' | 'exclusive'
 }
 export interface DiscoveryReport {
   registered: CapabilityDescription[]
