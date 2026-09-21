@@ -163,6 +163,7 @@ class Lifecycle:
             plugins=SimpleNamespace(
                 collectorRegister=Registry(capability),
                 channelRegister=Registry(),
+                toolRegister=Registry(),
             ),
         )
         self.started = 0

@@ -29,7 +29,7 @@ function inspect(plugin: CapabilityDescription) {
 }
 </script>
 <template>
-  <PageHeader title="插件与能力" description="查看已注册的采集和通知能力及参数结构">
+  <PageHeader title="插件与能力" description="查看已注册的采集、通知和 Agent 工具及参数结构">
     <el-button :loading="pending" @click="refresh">刷新</el-button>
     <el-button :loading="action.pending.value" @click="reload">重新加载插件</el-button>
   </PageHeader>
@@ -44,6 +44,7 @@ function inspect(plugin: CapabilityDescription) {
     <el-radio-button value="all">全部</el-radio-button>
     <el-radio-button value="collector">采集器</el-radio-button>
     <el-radio-button value="channel">通知渠道</el-radio-button>
+    <el-radio-button value="tool">Agent 工具</el-radio-button>
   </el-radio-group>
   <div v-loading="pending" class="grid grid-cols-1 md:grid-cols-2 gap-5">
     <el-card v-for="plugin in filtered" :key="`${plugin.kind}/${plugin.name}`" shadow="hover">
@@ -68,7 +69,7 @@ function inspect(plugin: CapabilityDescription) {
     <template v-if="selected">
       <h3 class="font-semibold mb-3">参数 Schema</h3>
       <pre class="text-xs p-4 bg-slate-100 dark:bg-slate-900 rounded">{{
-        JSON.stringify(selected.options_schema, null, 2)
+        JSON.stringify(selected.input_schema ?? selected.options_schema, null, 2)
       }}</pre>
       <template v-if="selected.setters_schema">
         <h3 class="font-semibold my-3">处理规则 Schema</h3>
