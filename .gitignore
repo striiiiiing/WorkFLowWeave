@@ -17,3 +17,5 @@ Typora_Hook_Log.txt
 /data/
 /frontend/node_modules/
 .env
+master.key
+master.key.initialized
