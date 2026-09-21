@@ -19,6 +19,7 @@ from logagent.models import (
     HealthReport,
     JSONObject,
     PhaseContent,
+    RecoveryAvailability,
     ResourceKind,
     SessionRecord,
     SetterTemplate,
@@ -189,6 +190,11 @@ async def get_session(
     query: Annotated[SessionQuery, Query()],
 ):
     return await services.session_view.get_session(session_id, version=query.version)
+
+
+@router.get("/sessions/{session_id}/recovery", response_model=RecoveryAvailability)
+async def get_recovery_availability(session_id: ID, services: Services):
+    return await services.workflow.recovery_availability(session_id)
 
 
 @router.get("/sessions/{session_id}/phases/{stage}", response_model=PhaseContent)

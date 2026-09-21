@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { WorkflowDefinition, AIConfig } from '@/types'
+import { reactive } from 'vue'
+import type { WorkflowDefinition, AIConfig, AnalysisTask } from '@/types'
 import { idRule } from '@/domain/forms'
 import SectionCard from '@/components/common/SectionCard.vue'
 import AIModelSelect from './AIModelSelect.vue'
@@ -10,23 +11,46 @@ const props = defineProps<{
   modelsPending?: boolean
 }>()
 const emit = defineEmits<{ refreshModels: [] }>()
+const taskKeys = new WeakMap<object, number>()
+const draftIds = reactive(new Map<AnalysisTask, string>())
+let nextKey = 0
+function taskKey(task: AnalysisTask) {
+  if (!taskKeys.has(task)) taskKeys.set(task, nextKey++)
+  return taskKeys.get(task)!
+}
+function taskIdError(task: AnalysisTask, value: string) {
+  if (!idRule.pattern.test(value)) return idRule.message
+  return model.value.analyses.some((other) => other !== task && other.id === value)
+    ? '任务编号不能重名，请使用其他名称'
+    : ''
+}
+function taskIdRules(task: AnalysisTask) {
+  return {
+    trigger: 'blur',
+    validator: (_rule: unknown, _value: unknown, callback: (error?: Error) => void) => {
+      const error = taskIdError(task, draftIds.get(task) ?? task.id)
+      callback(error ? new Error(error) : undefined)
+    },
+  }
+}
 function add() {
   let index = model.value.analyses.length + 1
   while (model.value.analyses.some((item) => item.id === `task_${index}`)) index++
   model.value.analyses.push({ id: `task_${index}`, ai: '', model: '', prompt: '{input}' })
 }
-function rename(index: number, id: string) {
-  const previous = model.value.analyses[index].id
-  model.value.analyses[index].id = id
-  if (model.value.fan_in) {
-    model.value.fan_in.order = model.value.fan_in.order.map((value) =>
-      value === previous ? id : value,
-    )
-  }
+function rename(task: AnalysisTask, value: string) {
+  draftIds.set(task, value)
+  if (taskIdError(task, value)) return
+  const previous = task.id
+  task.id = value
+  if (model.value.fan_in)
+    model.value.fan_in.order = model.value.fan_in.order.map((id) => (id === previous ? value : id))
+  draftIds.delete(task)
 }
 function remove(index: number) {
   const task = model.value.analyses[index]
   model.value.analyses.splice(index, 1)
+  draftIds.delete(task)
   if (model.value.fan_in)
     model.value.fan_in.order = model.value.fan_in.order.filter((id) => id !== task.id)
 }
@@ -52,15 +76,18 @@ function remove(index: number) {
     </el-form-item>
     <div
       v-for="(task, index) in model.analyses"
-      :key="index"
+      :key="taskKey(task)"
       class="p-4 border border-slate-200 dark:border-slate-700 rounded-lg mb-4"
     >
       <div class="flex items-center justify-between mb-3">
         <h3 class="font-semibold">分析任务 {{ index + 1 }}</h3>
         <el-button type="danger" text @click="remove(index)">移除</el-button>
       </div>
-      <el-form-item label="任务 ID" :prop="`analyses.${index}.id`" :rules="idRule">
-        <el-input :model-value="task.id" @update:model-value="rename(index, $event)" />
+      <el-form-item label="任务 ID" :prop="`analyses.${index}.id`" :rules="taskIdRules(task)">
+        <el-input
+          :model-value="draftIds.get(task) ?? task.id"
+          @update:model-value="rename(task, $event)"
+        />
       </el-form-item>
       <AIModelSelect
         :ai="task.ai"

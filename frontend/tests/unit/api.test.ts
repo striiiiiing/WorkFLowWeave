@@ -16,6 +16,19 @@ function respond(body: unknown, status = 200) {
   return fetcher
 }
 describe('HTTP contract', () => {
+  it('explains nested fields and numbered tasks in user language', () => {
+    const error = new ApiError(422, {
+      code: 'validation',
+      message: '配置无效',
+      details: {
+        errors: [{ path: ['body', 'analyses', 1, 'model'], reason: 'missing' }],
+      },
+    })
+    expect(errorMessage(error)).toBe('配置无效；分析任务 → 第 2 项 → 模型：请填写此项')
+    expect(error.info.details.errors).toEqual([
+      { path: ['body', 'analyses', 1, 'model'], reason: 'missing' },
+    ])
+  })
   it('uses resource endpoints directly and handles 204 deletes', async () => {
     const fetcher = respond(null, 204)
     await expect(resourcesApi.delete('sources', 'source a')).resolves.toBeUndefined()
@@ -36,6 +49,19 @@ describe('HTTP contract', () => {
     respond({ session_id: 'run_1', cancelled: false })
     expect((await runsApi.cancel('run_1')).cancelled).toBe(false)
   })
+  it.each(['session', 'phase'])(
+    'preserves errors recorded in a successful %s read',
+    async (kind) => {
+      const record = {
+        status: 'failed',
+        error: { code: 'source_stop', message: '来源策略要求停止下游阶段', details: {} },
+      }
+      respond(record)
+      const result =
+        kind === 'session' ? runsApi.get('run_1') : runsApi.phase('run_1', 'collect', 7)
+      await expect(result).resolves.toEqual(record)
+    },
+  )
   it('surfaces server validation paths instead of treating failure as empty data', async () => {
     respond(
       {
@@ -49,7 +75,7 @@ describe('HTTP contract', () => {
     )
     const error = await resourcesApi.list('workflows').catch((cause) => cause)
     expect(error).toBeInstanceOf(ApiError)
-    expect(errorMessage(error)).toBe('无效配置；body.analyses: too_short')
+    expect(errorMessage(error)).toBe('无效配置；分析任务：内容太少，请补充完整')
   })
   it('surfaces structured business validation fields', async () => {
     respond(

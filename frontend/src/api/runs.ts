@@ -1,5 +1,5 @@
 import { request, segment } from './client'
-import type { PhaseContent, SessionRecord, WorkflowStage } from '@/types'
+import type { PhaseContent, RecoveryAvailability, SessionRecord, WorkflowStage } from '@/types'
 
 export interface SessionQuery {
   workflow_id?: string
@@ -29,6 +29,8 @@ export const runsApi = {
     request<{ session_id: string }>(`/workflows/${segment(id)}/run`, { method: 'POST' }),
   recover: (id: string) =>
     request<{ session_id: string }>(`/sessions/${segment(id)}/recover`, { method: 'POST' }),
+  recovery: (id: string, signal?: AbortSignal) =>
+    request<RecoveryAvailability>(`/sessions/${segment(id)}/recovery`, { signal }),
   cancel: (id: string) =>
     request<{ session_id: string; cancelled: boolean }>(`/sessions/${segment(id)}/cancel`, {
       method: 'POST',

@@ -89,6 +89,7 @@ class Sessions:
         self.record = SessionRecord(
             session_id="session-1",
             workflow_id="daily",
+            workflow_name="每日日报",
             version=1,
             status="completed",
             stage="finish",
@@ -287,6 +288,9 @@ def test_transport_validation_rejects_unknown_fields_and_invalid_query_values():
 
         assert client.get("/api/sessions", params={"limit": 0}).status_code == 422
         assert client.get("/api/sessions", params={"unexpected": "field"}).status_code == 422
+        assert client.get("/api/sessions", params={"status": "unknown"}).status_code == 422
+        assert client.get("/api/sessions", params={"session_id": "not-valid!"}).status_code == 422
+        assert client.get("/api/sessions", params={"workflow_name": ""}).status_code == 422
         assert (
             client.get(
                 "/api/sessions",
@@ -296,6 +300,22 @@ def test_transport_validation_rejects_unknown_fields_and_invalid_query_values():
         )
         assert client.get("/api/sessions/session-1/phases/analyze").status_code == 422
         assert client.get("/api/sessions/not-valid!").status_code == 422
+
+
+def test_session_fields_are_forwarded_and_names_returned_in_list_and_detail():
+    lifecycle = Lifecycle()
+    with _client(lifecycle) as client:
+        response = client.get("/api/sessions", params={
+            "workflow_name": "日报", "session_id": "session-1", "status": "completed",
+            "limit": 5, "offset": 1,
+        })
+        assert response.status_code == 200
+        assert response.json()[0]["workflow_name"] == "每日日报"
+        assert lifecycle.session_view.calls[-1] == ("list", None, {
+            "workflow_name": "日报", "session_id": "session-1", "status": "completed",
+            "limit": 5, "offset": 1, "after": None, "before": None,
+        })
+        assert client.get("/api/sessions/session-1").json()["workflow_name"] == "每日日报"
 
 
 @pytest.mark.parametrize(
