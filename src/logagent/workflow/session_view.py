@@ -37,6 +37,10 @@ class SessionView:
                 for key in ("status", "error"):
                     if key in summary:
                         state[key] = summary[key]
+                if entry["scope"] == "phase" and isinstance(entry["body"], dict):
+                    errors = entry["body"].get("errors", [])
+                    if errors:
+                        state["error"] = errors[-1]
                 if entry["stage"] is not None:
                     state["stage"] = entry["stage"]
                 if summary.get("status") in {"completed", "partial", "failed", "cancelled", "interrupted"}:

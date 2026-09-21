@@ -326,6 +326,75 @@ class WorkflowService:
             self.coordinator.submit(sid, lambda: self._execute(sid, snapshot, ctx, resume=False))
         return sid
 
+    async def _recovery_material(self, session_id):
+        """One material check shared by eligibility queries and actual recovery."""
+        config = {"configurable": {"thread_id": session_id}}
+        checkpoint = await self._checkpointer.aget_tuple(config)
+        if checkpoint is None:
+            raise LogAgentError(
+                "checkpoint_missing", "缺少原 checkpoint，无法从业务存档猜测进度"
+            )
+        entry = await asyncio.to_thread(self.session_store.entry, session_id, "snapshot")
+        if entry is None or entry["body"] is None:
+            raise LogAgentError("recovery_unavailable", "原配置快照不可用")
+        snapshot = WorkflowSnapshot.model_validate(entry["body"]["snapshot"])
+        _, archives = await asyncio.to_thread(self.session_store.entries, session_id)
+        existing = {entry["write_key"] for entry in archives}
+        async for saved in self._checkpointer.alist(config):
+            refs = set(_archive_references(saved.checkpoint.get("channel_values", {})))
+            for _, channel, value in saved.pending_writes or []:
+                refs.update(_archive_references({channel: value}))
+            missing = refs - existing
+            if missing:
+                raise LogAgentError(
+                    "recovery_unavailable",
+                    "checkpoint 引用的业务内容缺失",
+                    {"keys": sorted(missing)},
+                )
+        frozen = next(
+            (
+                e
+                for e in reversed(archives)
+                if e["scope"] == "phase"
+                and e["stage"] == "aggregate"
+                and not e["summary"].get("stopped")
+            ),
+            None,
+        )
+        needed = (
+            [frozen]
+            if frozen
+            else [e for e in archives if e["category"] in {"collection", "analysis"}]
+        )
+        unavailable = [e for e in needed if e["availability"] != "available"]
+        if unavailable:
+            raise LogAgentError(
+                "recovery_unavailable",
+                "恢复所需的原阶段内容不可用",
+                {
+                    "content": [
+                        {"key": e["write_key"], "reason": e["availability"]}
+                        for e in unavailable
+                    ]
+                },
+            )
+        return snapshot, entry["body"].get("log_path")
+
+    async def recovery_availability(self, session_id):
+        """Read current recovery eligibility without submitting or modifying a run."""
+        from logagent.models import RecoveryAvailability
+
+        _ID.validate_python(session_id)
+        await self.start()
+        await self.session_view.get_session(session_id)
+        async with self._admission_lock:
+            try:
+                self.coordinator.check(session_id)
+                await self._recovery_material(session_id)
+            except LogAgentError as exc:
+                return RecoveryAvailability(available=False, reason=exc.info)
+        return RecoveryAvailability(available=True)
+
     async def recover(self, session_id, *, context=None):
         """验证恢复材料后，在原 session 对应的 LangGraph thread 上继续运行。
 
@@ -337,57 +406,7 @@ class WorkflowService:
         await self.start()
         async with self._admission_lock:
             self.coordinator.check(session_id)
-            config = {"configurable": {"thread_id": session_id}}
-            checkpoint = await self._checkpointer.aget_tuple(config)
-            if checkpoint is None:
-                raise LogAgentError(
-                    "checkpoint_missing", "缺少原 checkpoint，无法从业务存档猜测进度"
-                )
-            entry = await asyncio.to_thread(self.session_store.entry, session_id, "snapshot")
-            if entry is None or entry["body"] is None:
-                raise LogAgentError("recovery_unavailable", "原配置快照不可用")
-            snapshot = WorkflowSnapshot.model_validate(entry["body"]["snapshot"])
-            _, archives = await asyncio.to_thread(self.session_store.entries, session_id)
-            existing = {entry["write_key"] for entry in archives}
-            async for saved in self._checkpointer.alist(config):
-                refs = set(_archive_references(saved.checkpoint.get("channel_values", {})))
-                for _, channel, value in saved.pending_writes or []:
-                    refs.update(_archive_references({channel: value}))
-                missing = refs - existing
-                if missing:
-                    raise LogAgentError(
-                        "recovery_unavailable",
-                        "checkpoint 引用的业务内容缺失",
-                        {"keys": sorted(missing)},
-                    )
-            frozen = next(
-                (
-                    e
-                    for e in reversed(archives)
-                    if e["scope"] == "phase"
-                    and e["stage"] == "aggregate"
-                    and not e["summary"].get("stopped")
-                ),
-                None,
-            )
-            needed = (
-                [frozen]
-                if frozen
-                else [e for e in archives if e["category"] in {"collection", "analysis"}]
-            )
-            unavailable = [e for e in needed if e["availability"] != "available"]
-            if unavailable:
-                raise LogAgentError(
-                    "recovery_unavailable",
-                    "恢复所需的原阶段内容不可用",
-                    {
-                        "content": [
-                            {"key": e["write_key"], "reason": e["availability"]}
-                            for e in unavailable
-                        ]
-                    },
-                )
-            saved_path = entry["body"].get("log_path")
+            snapshot, saved_path = await self._recovery_material(session_id)
             if context and (
                 context.log_path != saved_path
                 or context.session_id != session_id

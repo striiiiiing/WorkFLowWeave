@@ -4,6 +4,35 @@ import { ParameterInput } from '@/domain/parameters'
 import type { JsonObject } from '@/types'
 
 describe('JSON Schema validation used by parameter controls', () => {
+  it('uses referenced enum, arrays and nullable types as controls without weakening validation', () => {
+    const root = new ParameterInput(
+      createFieldRule({
+        $defs: {
+          mode: { type: 'string', enum: ['fast', 'full'] },
+          options: {
+            type: 'object',
+            properties: {
+              modes: { type: 'array', items: { $ref: '#/$defs/mode' }, uniqueItems: true },
+            },
+          },
+        },
+        allOf: [{ $ref: '#/$defs/options' }],
+        properties: { limit: { anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }] } },
+      }),
+    )
+    expect(root.property('modes').types).toEqual(['array'])
+    expect(
+      root
+        .property('modes')
+        .item(0)
+        .choices?.map((item) => item.label),
+    ).toEqual(['fast', 'full'])
+    expect(root.property('modes').validate(['fast', 'fast']).ok).toBe(false)
+    expect(root.property('limit').types).toEqual(['number', 'null'])
+    expect(root.property('limit').validate(0).ok).toBe(false)
+    expect(root.property('limit').validate(null).ok).toBe(true)
+  })
+
   it('keeps local references rooted and reports the failing field in Chinese', () => {
     const rule = createFieldRule({
       $schema: 'https://json-schema.org/draft/2020-12/schema',

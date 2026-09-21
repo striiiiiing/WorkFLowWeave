@@ -320,6 +320,7 @@ def _collect_file(
 
 class LogsCollector:
     name = "logs"
+    id_prefix = "logs"
     description = "读取有界 JSONL 日志尾部，按声明筛选、投影和分组；保留文件中的事件顺序。"
     fields = list(_FIELDS)
     count_unit = "events"

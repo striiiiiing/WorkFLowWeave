@@ -6,6 +6,7 @@ interface PluginHealth {
   capabilities: string[]
   status: string
   errors: string[]
+  affectedResources: string[]
 }
 
 export function pluginHealthRows(plugins: CapabilityDescription[], health: HealthReport) {
@@ -19,6 +20,7 @@ export function pluginHealthRows(plugins: CapabilityDescription[], health: Healt
       capabilities: [],
       status: report?.status === 'available' ? '已注册' : '待确认',
       errors: [],
+      affectedResources: [],
     }
     row.capabilities.push(capability.name)
     rows.set(key, row)
@@ -33,6 +35,37 @@ export function pluginHealthRows(plugins: CapabilityDescription[], health: Healt
       throw new Error('插件健康诊断缺少详情')
     addDiscoveryError(rows, details, String(error.message))
   }
+  const capabilityErrors = report?.error?.details.capability_errors ?? []
+  if (!Array.isArray(capabilityErrors)) throw new Error('插件健康诊断格式无效')
+  for (const error of capabilityErrors) {
+    if (!error || typeof error !== 'object' || Array.isArray(error))
+      throw new Error('插件健康诊断格式无效')
+    const details = error.details
+    if (!details || typeof details !== 'object' || Array.isArray(details))
+      throw new Error('插件健康诊断缺少详情')
+    addCapabilityError(rows, details, String(error.message))
+  }
+  const reloadError = report?.error?.details.reload_error
+  if (reloadError !== null && reloadError !== undefined) {
+    if (!reloadError || typeof reloadError !== 'object' || Array.isArray(reloadError))
+      throw new Error('插件健康诊断格式无效')
+    const details = reloadError.details
+    const message = typeof reloadError.message === 'string' ? reloadError.message : '插件重载失败'
+    const row = rows.get('系统/插件重载') ?? {
+      plugin: '插件重载',
+      kind: '系统',
+      capabilities: [],
+      status: '不可用',
+      errors: [],
+      affectedResources: [],
+    }
+    row.errors.push(message)
+    if (details && typeof details === 'object' && !Array.isArray(details)) {
+      const stage = details.stage
+      if (typeof stage === 'string') row.errors[row.errors.length - 1] += `（阶段：${stage}）`
+    }
+    rows.set('系统/插件重载', row)
+  }
   return [...rows.values()]
 }
 
@@ -46,8 +79,42 @@ function addDiscoveryError(rows: Map<string, PluginHealth>, details: JsonObject,
     capabilities: [],
     status: '不可用',
     errors: [],
+    affectedResources: [],
   }
   row.status = row.capabilities.length ? '部分降级' : '不可用'
   row.errors.push(message)
   rows.set(key, row)
+}
+
+function addCapabilityError(rows: Map<string, PluginHealth>, details: JsonObject, message: string) {
+  if (typeof details.kind !== 'string' || typeof details.name !== 'string')
+    throw new Error('插件健康诊断缺少能力标识')
+  const kind = details.kind === 'source' ? 'collector' : details.kind
+  const resources = Array.isArray(details.resources)
+    ? details.resources.filter((resource): resource is string => typeof resource === 'string')
+    : []
+  const affected = resources.length ? `受影响资源：${resources.join('、')}` : ''
+  const text = [message, affected].filter(Boolean).join('；')
+  const matches = [...rows.values()].filter(
+    (row) => row.kind === kind && row.capabilities.includes(details.name as string),
+  )
+  const targets =
+    matches.length > 0
+      ? matches
+      : [
+          {
+            plugin: '未知插件',
+            kind,
+            capabilities: [details.name],
+            status: '不可用',
+            errors: [],
+            affectedResources: [],
+          },
+        ]
+  for (const row of targets) {
+    row.status = matches.length ? '部分降级' : '不可用'
+    row.errors.push(text)
+    row.affectedResources.push(...resources)
+    if (!matches.length) rows.set(`${details.kind}/未知插件/${details.name}`, row)
+  }
 }

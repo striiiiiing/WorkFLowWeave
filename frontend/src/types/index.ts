@@ -137,9 +137,27 @@ export interface SessionRecord {
   artifacts: ArtifactInfo[]
   snapshot_availability: ArtifactAvailability
 }
+export interface RecoveryAvailability {
+  available: boolean
+  reason: ErrorInfo | null
+}
+export type ReportSection =
+  | { kind: 'text'; title: string; text: string }
+  | {
+      kind: 'metrics'
+      title: string
+      items: { label: string; value: string | number; unit: string }[]
+    }
+  | {
+      kind: 'table'
+      title: string
+      columns: string[]
+      rows: (string | number | boolean | null)[][]
+    }
 export interface CapabilityDescription {
   kind: 'collector' | 'channel'
   name: string
+  id_prefix?: string | null
   description: string
   plugin: string
   capabilities: string[]

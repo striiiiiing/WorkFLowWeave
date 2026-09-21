@@ -9,8 +9,8 @@ from pydantic import Field, SecretStr, model_validator
 from logagent.models import (
     ID,
     DiscoveryReport,
-    SessionVersion,
     SessionStatus,
+    SessionVersion,
     StrictModel,
     UTCDateTime,
     WorkflowSnapshot,

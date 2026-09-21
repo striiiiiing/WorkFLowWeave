@@ -65,6 +65,7 @@ def collector_registration(collector: Collector, owner: str) -> _CollectorRegist
         description = CapabilityDescription(
             kind="collector",
             name=collector.name,
+            id_prefix=getattr(collector, "id_prefix", None),
             description=collector.description,
             plugin=owner,
             capabilities=["collection"],
@@ -89,6 +90,7 @@ def channel_registration(channel: ChannelType, owner: str) -> _ChannelRegistrati
         description = CapabilityDescription(
             kind="channel",
             name=channel.name,
+            id_prefix=getattr(channel, "id_prefix", None),
             description=channel.description,
             plugin=owner,
             capabilities=deepcopy(channel.capabilities),

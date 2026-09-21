@@ -1,4 +1,4 @@
-import type { AIConfig, ChannelConfig, SetterTemplate, SourceConfig } from '@/types'
+import type { AIConfig, ChannelConfig, JsonObject, SetterTemplate, SourceConfig } from '@/types'
 export type EditableKind = 'sources' | 'setters' | 'ai' | 'channels'
 export type EditableResource = SourceConfig | SetterTemplate | AIConfig | ChannelConfig
 export const resourceNames: Record<EditableKind, string> = {
@@ -13,6 +13,19 @@ export const resourceKinds = [
   { key: 'ai', label: '供应商渠道', icon: 'bot' },
   { key: 'channels', label: '通知渠道', icon: 'mail' },
 ] as const
+
+export function generatedResourceId(prefix?: string | null): string {
+  const suffix = crypto.randomUUID()
+  return prefix ? `${prefix}_${suffix}` : suffix
+}
+
+export function credentialPropertyNames(schema: JsonObject | undefined): string[] {
+  const properties = (schema?.properties ?? {}) as Record<string, JsonObject>
+  return Object.keys(properties).filter(
+    (name) => properties[name]['x-logagent-credential'] === true,
+  )
+}
+
 // Initial values follow the backend models, including the AI execution budget.
 export function createResource(kind: EditableKind): EditableResource {
   const factories = {

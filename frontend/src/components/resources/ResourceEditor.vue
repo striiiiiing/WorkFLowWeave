@@ -1,13 +1,21 @@
 <script setup lang="ts">
-import { computed, ref, toRaw } from 'vue'
+import { computed, ref, toRaw, watch, nextTick } from 'vue'
 import { ElMessage, type FormInstance } from 'element-plus'
 import { resourcesApi } from '@/api/resources'
 import { useAsyncTask } from '@/composables/useAsyncTask'
-import { createResource, type EditableKind, type EditableResource } from '@/domain/resources'
+import {
+  createResource,
+  credentialPropertyNames,
+  generatedResourceId,
+  type EditableKind,
+  type EditableResource,
+} from '@/domain/resources'
 import { optionSchema, partialSchema } from '@/domain/capabilities'
 import { idRule, sourcePolicies } from '@/domain/forms'
 import ParameterField from '@/components/common/ParameterField.vue'
 import AIProviderEditor from './AIProviderEditor.vue'
+import CredentialEditor from './CredentialEditor.vue'
+import type { Credential, JsonObject } from '@/types'
 import { systemApi } from '@/api/system'
 import { useQuery } from '@/composables/useQuery'
 const props = defineProps<{ kind: EditableKind; initial?: EditableResource }>()
@@ -16,6 +24,7 @@ const initialDraft = props.initial
   ? structuredClone(toRaw(props.initial))
   : createResource(props.kind)
 const draft = ref(initialDraft)
+const generatedId = ref(!props.initial)
 const form = ref<FormInstance>()
 const save = useAsyncTask()
 const advanced = ref(false)
@@ -41,6 +50,55 @@ const capabilityName = computed(() =>
 const capability = computed(() =>
   capabilities.value.find((item) => item.name === capabilityName.value),
 )
+const optionParameterSchema = computed(() =>
+  optionSchema(capability.value?.options_schema, 'resource'),
+)
+const credentialNames = computed(() => credentialPropertyNames(capability.value?.options_schema))
+const credentialEditors = new Map<string, InstanceType<typeof CredentialEditor>>()
+function setCredentialEditor(name: string, editor: unknown) {
+  if (editor && typeof editor === 'object' && 'prepare' in editor) {
+    credentialEditors.set(name, editor as InstanceType<typeof CredentialEditor>)
+  } else {
+    credentialEditors.delete(name)
+  }
+}
+function credentialValue(name: string): Credential | null {
+  if (!('options' in draft.value)) return null
+  const value = draft.value.options[name]
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Credential) : null
+}
+function fieldLabel(schema: JsonObject | undefined, name: string): string {
+  const properties = (schema?.properties ?? {}) as Record<string, JsonObject>
+  const description = properties[name]?.description
+  return typeof description === 'string' && description.trim() ? description : name
+}
+function updateCredential(name: string, value: Credential | null) {
+  if (!('options' in draft.value)) return
+  if (value === null) {
+    const next = { ...draft.value.options }
+    delete next[name]
+    draft.value.options = next
+    return
+  }
+  draft.value.options = { ...draft.value.options, [name]: value }
+}
+function updateId(value: string) {
+  draft.value.id = value
+  generatedId.value = false
+}
+watch(capabilityName, (next, previous) => {
+  if (next === previous) return
+  if (!props.initial && generatedId.value) {
+    draft.value.id = generatedResourceId(capability.value?.id_prefix)
+  }
+  if ('options' in draft.value) {
+    draft.value.options = {}
+    if ('setters' in draft.value) draft.value.setters = {}
+    if ('template' in draft.value) draft.value.template = null
+  } else if ('setters' in draft.value) {
+    draft.value.setters = {}
+  }
+})
 const policyFields = [
   { key: 'on_error', label: '采集失败' },
   { key: 'on_missing', label: '来源缺失' },
@@ -51,8 +109,16 @@ function submit() {
   if (!form.value) return
   const editorForm = form.value
   void save.run(async () => {
+    if ('options' in draft.value) {
+      for (const name of credentialNames.value) {
+        const editor = credentialEditors.get(name)
+        if (editor) draft.value.options[name] = await editor.prepare()
+      }
+    }
+    await nextTick()
     if (!(await editorForm.validate(() => {}))) return
-    const value = { ...draft.value, id: draft.value.id || crypto.randomUUID() }
+    const value = structuredClone(toRaw(draft.value))
+    value.id ||= generatedResourceId(capability.value?.id_prefix)
     if (props.initial) await resourcesApi.replace(props.kind, props.initial.id, value)
     else await resourcesApi.create(props.kind, value)
     ElMessage.success('资源已保存')
@@ -75,16 +141,23 @@ function submit() {
       :closable="false"
       show-icon
     />
-    <el-form novalidate ref="form" :model="draft" label-position="top" @submit.prevent="submit">
-      <el-form-item label="高级模式"><el-switch v-model="advanced" /></el-form-item>
-      <el-form-item
-        v-if="advanced"
-        label="资源 ID（留空自动生成）"
-        prop="id"
-        :rules="{ ...idRule, required: false }"
-      >
-        <el-input v-model="draft.id" :disabled="!!initial" />
+    <el-form
+      novalidate
+      ref="form"
+      :model="draft"
+      :disabled="save.pending.value"
+      label-position="top"
+      @submit.prevent="submit"
+    >
+      <el-form-item label="资源编号" prop="id" :rules="{ ...idRule, required: false }">
+        <el-input
+          :model-value="draft.id"
+          :disabled="!!initial"
+          placeholder="可自行填写；留空则自动生成"
+          @update:model-value="updateId"
+        />
       </el-form-item>
+      <el-form-item label="高级模式"><el-switch v-model="advanced" /></el-form-item>
       <el-alert v-if="pluginError" :title="pluginError" type="error" :closable="false" />
       <el-button v-if="pluginError" @click="refreshPlugins">重新加载插件选项</el-button>
       <p v-if="capability" class="muted mb-4">{{ capability.description }}</p>
@@ -123,6 +196,7 @@ function submit() {
           v-model="draft.setters"
           prop="setters"
           label="处理规则 (setters)"
+          :key="`setters-${capabilityName}`"
           :schema="
             kind === 'setters'
               ? partialSchema(capability?.setters_schema)
@@ -157,9 +231,19 @@ function submit() {
       <ParameterField
         v-if="'options' in draft"
         v-model="draft.options"
+        :excluded-properties="credentialNames"
         prop="options"
         label="插件参数 (options)"
-        :schema="optionSchema(capability?.options_schema, 'resource')"
+        :key="`options-${capabilityName}`"
+        :schema="optionParameterSchema"
+      />
+      <CredentialEditor
+        v-for="name in credentialNames"
+        :key="`${capabilityName}-${name}`"
+        :ref="(editor) => setCredentialEditor(name, editor)"
+        :model-value="credentialValue(name)"
+        :label="fieldLabel(capability?.options_schema, name)"
+        @update:model-value="updateCredential(name, $event)"
       />
       <el-form-item v-if="advanced && 'timeout' in draft" label="超时 / 秒">
         <el-input-number v-model="draft.timeout" :min="0.001" />

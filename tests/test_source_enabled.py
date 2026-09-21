@@ -5,6 +5,7 @@ import pytest
 from logagent.channel.mock import MockFileChannelType
 from logagent.collection.mock import MockCollector
 from logagent.config import PluginRegistry, ResourceStore
+from logagent.errors import LogAgentError
 from logagent.models import AIConfig, SourceConfig, SystemConfig, WorkflowDefinition
 
 
@@ -29,8 +30,6 @@ async def test_disabled_source_is_omitted_from_workflow_snapshot(tmp_path):
         ),
     )
 
-    snapshot = store.snapshot("workflow")
-
     assert store.get("sources", source.id).enabled is False
-    assert snapshot.workflow.sources == []
-    assert snapshot.sources == {}
+    with pytest.raises(LogAgentError, match="没有可用的数据源"):
+        store.snapshot("workflow")

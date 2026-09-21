@@ -3,7 +3,7 @@ import { computed, ref, toRaw, watch } from 'vue'
 import { ElMessage, type FormInstance } from 'element-plus'
 import { resourcesApi } from '@/api/resources'
 import { useAsyncTask } from '@/composables/useAsyncTask'
-import { createResource } from '@/domain/resources'
+import { createResource, generatedResourceId } from '@/domain/resources'
 import { idRule } from '@/domain/forms'
 import type { AIConfig } from '@/types'
 import AIModelList from './AIModelList.vue'
@@ -78,7 +78,7 @@ function submit() {
     }
     // Only top-level fields change here; the HTTP boundary serializes nested Vue proxies as JSON.
     const value = { ...draft.value }
-    value.id ||= crypto.randomUUID()
+    value.id ||= generatedResourceId()
     if (credentialMode.value === 'input') {
       value.api_key = await resourcesApi.protectCredential(plaintext.value)
       draft.value.api_key = value.api_key
@@ -180,15 +180,15 @@ function submit() {
       />
     </section>
     <AIModelList v-model="draft.models" :candidates="discovered" />
+    <el-form-item label="资源编号" prop="id" :rules="{ ...idRule, required: false }">
+      <el-input
+        v-model="draft.id"
+        :disabled="!!persisted"
+        placeholder="可自行填写；留空则自动生成"
+      />
+    </el-form-item>
     <el-form-item label="高级模式"><el-switch v-model="advanced" /></el-form-item>
     <div v-if="advanced">
-      <el-form-item
-        label="资源 ID（留空自动生成）"
-        prop="id"
-        :rules="{ ...idRule, required: false }"
-      >
-        <el-input v-model="draft.id" :disabled="!!persisted" />
-      </el-form-item>
       <div class="form-grid">
         <el-form-item
           label="超时 / 秒"

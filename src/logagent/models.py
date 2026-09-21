@@ -67,6 +67,8 @@ def unique_check(name: str):
 
 
 ID = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,80}$")]
+# Leave space for an underscore and the 36-character UUID in generated resource IDs.
+ResourceIDPrefix = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,43}$")]
 UTCDateTime = Annotated[datetime, BeforeValidator(_utc_datetime)]
 Seconds = Annotated[float, Field(gt=0, allow_inf_nan=False)]
 JSONObject = Annotated[dict[str, Any], BeforeValidator(_json_object)]
@@ -291,6 +293,41 @@ class WorkflowSnapshot(StrictModel):
         return self
 
 
+class ReportText(StrictModel):
+    kind: Literal["text"]
+    title: str = Field(min_length=1)
+    text: str
+
+
+class ReportMetric(StrictModel):
+    label: str = Field(min_length=1)
+    value: str | Annotated[int, Field(strict=True)] | Annotated[float, Field(strict=True, allow_inf_nan=False)]
+    unit: str = ""
+
+
+class ReportMetrics(StrictModel):
+    kind: Literal["metrics"]
+    title: str = Field(min_length=1)
+    items: list[ReportMetric]
+
+
+class ReportTable(StrictModel):
+    kind: Literal["table"]
+    title: str = Field(min_length=1)
+    columns: list[Annotated[str, Field(min_length=1)]] = Field(min_length=1)
+    rows: list[list[str | Annotated[int, Field(strict=True)] | Annotated[float, Field(strict=True, allow_inf_nan=False)] | bool | None]]
+
+    @model_validator(mode="after")
+    def matching_columns(self) -> Self:
+        if any(len(row) != len(self.columns) for row in self.rows):
+            raise ValueError("Report table rows must match the declared columns")
+        return self
+
+
+class ResultReport(StrictModel):
+    sections: list[Annotated[ReportText | ReportMetrics | ReportTable, Field(discriminator="kind")]]
+
+
 class CollectorOutput(StrictModel):
     status: CollectionStatus
     items: list[JSONObject] = Field(default_factory=list)
@@ -298,6 +335,7 @@ class CollectorOutput(StrictModel):
     count: NonNegativeInt = 0
     error: ErrorInfo | None = None
     metadata: JSONObject = Field(default_factory=dict)
+    report: ResultReport | None = None
 
     @model_validator(mode="after")
     def coherent_result(self) -> Self:
@@ -381,6 +419,11 @@ class PhaseContent(ArtifactInfo):
         return self
 
 
+class RecoveryAvailability(StrictModel):
+    available: bool
+    reason: ErrorInfo | None = None
+
+
 class SessionRecord(StrictModel):
     """Read-only business session data, independent of execution checkpoints."""
 
@@ -420,6 +463,7 @@ PluginConfiguration = dict[PluginKind, dict[ID, PluginSettings]]
 class CapabilityDescription(StrictModel):
     kind: PluginKind
     name: ID
+    id_prefix: ResourceIDPrefix | None = None
     description: str = Field(min_length=1)
     plugin: str
     capabilities: list[str]

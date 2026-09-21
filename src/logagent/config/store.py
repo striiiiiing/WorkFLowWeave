@@ -171,7 +171,13 @@ class ResourceStore:
         source.template = None
         return source
 
-    def _snapshot(self, workflow: WorkflowDefinition, candidate: _Resources) -> WorkflowSnapshot:
+    def _snapshot(
+        self,
+        workflow: WorkflowDefinition,
+        candidate: _Resources,
+        *,
+        for_execution: bool = True,
+    ) -> WorkflowSnapshot:
         ai_ids = {task.ai for task in workflow.analyses}
         if workflow.fan_in is not None and workflow.fan_in.ai is not None:
             ai_ids.add(workflow.fan_in.ai)
@@ -179,9 +185,22 @@ class ResourceStore:
             channels = {key: copy_model(candidate.channels[key]) for key in workflow.channels}
             for key, override in workflow.channel_overrides.items():
                 channels[key].options = {**channels[key].options, **deepcopy(override.options)}
-            enabled_sources = [key for key in workflow.sources if candidate.sources[key].enabled]
+            enabled_sources = [
+                key for key in workflow.sources
+                if not for_execution or candidate.sources[key].enabled
+            ]
+            if not enabled_sources:
+                raise LogAgentError(
+                    "workflow_no_enabled_sources",
+                    "工作流没有可用的数据源，请先启用至少一个数据源",
+                )
             snapshot_workflow = copy_model(workflow)
             snapshot_workflow.sources = enabled_sources
+            snapshot_workflow.source_overrides = {
+                key: copy_model(workflow.source_overrides[key])
+                for key in enabled_sources
+                if key in workflow.source_overrides
+            }
             return WorkflowSnapshot(
                 workflow=snapshot_workflow,
                 sources={key: self._source(candidate.sources[key], candidate,
@@ -197,7 +216,8 @@ class ResourceStore:
             raise validation_error(exc) from None
 
     def _validate_workflow(self, workflow, candidate, *, changed):
-        snapshot = self._snapshot(workflow, candidate)
+        # Validate all saved bindings, including disabled ones; only execution filters them.
+        snapshot = self._snapshot(workflow, candidate, for_execution=False)
         for kind, resources, overrides, registry in (
             ("sources", snapshot.sources, workflow.source_overrides, self._collectors),
             ("channels", snapshot.channels, workflow.channel_overrides, self._channels),

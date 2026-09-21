@@ -207,6 +207,7 @@ class MockFileChannel:
 
 class MockFileChannelType:
     name = "mock"
+    id_prefix = "mock"
     description = "将通知以可读文本追加到文件"
     capabilities = ["notification"]
     options_schema = {"type": "object", "properties": {"path": {"type": "string", "minLength": 1, "description": "输出文件（相对 data_dir）", "x-logagent-path": True}}, "required": ["path"], "additionalProperties": False}

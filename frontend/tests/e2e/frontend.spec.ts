@@ -3,6 +3,129 @@
  */
 import { test, expect } from '@playwright/test'
 
+test('run history displays frozen workflow names and searches selected fields', async ({
+  page,
+  request,
+}) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  for (const [kind, data] of Object.entries({
+    sources: {
+      id: 'search_source',
+      collector: 'mock',
+      options: { mode: 'empty' },
+      on_empty: 'skip',
+    },
+    ai: {
+      id: 'search_ai',
+      provider: 'openai_compatible_api',
+      base_url: 'http://127.0.0.1:1/v1',
+      models: { offline: {} },
+      retries: 0,
+    },
+  })) {
+    const response = await request.post(`/api/${kind}`, { data })
+    expect(response.ok(), await response.text()).toBe(true)
+  }
+  const sessions: Record<string, string> = {}
+  for (const [id, name, on_all_empty] of [
+    ['search_daily', '运行记录 Daily 日报', 'stop'],
+    ['search_weekly', '运行记录 Weekly 周报', 'skip'],
+  ]) {
+    const created = await request.post('/api/workflows', {
+      data: {
+        id,
+        name,
+        sources: ['search_source'],
+        analyses: [{ id: 'analysis', ai: 'search_ai', model: 'offline' }],
+        on_all_empty,
+        backup: { enabled: false },
+      },
+    })
+    expect(created.ok(), await created.text()).toBe(true)
+    const triggered = await request.post(`/api/workflows/${id}/run`)
+    expect(triggered.ok(), await triggered.text()).toBe(true)
+    sessions[id] = (await triggered.json()).session_id
+    await expect
+      .poll(async () => (await (await request.get(`/api/sessions/${sessions[id]}`)).json()).status)
+      .toBe(on_all_empty === 'stop' ? 'failed' : 'completed')
+  }
+  const daily = await (await request.get('/api/workflows/search_daily')).json()
+  expect(
+    (
+      await request.put('/api/workflows/search_daily', { data: { ...daily, name: '修改后的名称' } })
+    ).ok(),
+  ).toBe(true)
+  expect((await request.delete('/api/workflows/search_daily')).ok()).toBe(true)
+
+  await page.goto('/runs')
+  await expect(page.getByRole('columnheader', { name: '工作流名称', exact: true })).toBeVisible()
+  const dailyRow = page.getByRole('row').filter({ hasText: sessions.search_daily })
+  const weeklyRow = page.getByRole('row').filter({ hasText: sessions.search_weekly })
+  await expect(dailyRow).toContainText('运行记录 Daily 日报')
+  await expect(weeklyRow).toContainText('运行记录 Weekly 周报')
+  await expect(dailyRow.getByText('失败', { exact: true })).toBeVisible()
+  await expect(weeklyRow.getByText('已完成', { exact: true })).toBeVisible()
+  await page.getByRole('textbox', { name: '工作流名称', exact: true }).fill('daily')
+  await page.getByRole('button', { name: '筛选', exact: true }).click()
+  await expect(weeklyRow).toHaveCount(0)
+  await expect(dailyRow).toBeVisible()
+
+  for (const [field, value] of [
+    ['工作流 ID', 'search_weekly'],
+    ['Session ID', sessions.search_daily],
+  ]) {
+    await page
+      .locator('.el-select')
+      .filter({ has: page.getByRole('combobox', { name: '筛选字段', exact: true }) })
+      .click()
+    await page.getByRole('option', { name: field, exact: true }).click()
+    const input = page.getByRole('textbox', { name: field, exact: true })
+    await expect(input).toHaveValue('')
+    await input.fill(value)
+    await page.getByRole('button', { name: '筛选', exact: true }).click()
+    await expect(page.getByRole('row').filter({ hasText: sessions.search_weekly })).toHaveCount(
+      field === '工作流 ID' ? 1 : 0,
+    )
+    await expect(page.getByRole('row').filter({ hasText: sessions.search_daily })).toHaveCount(
+      field === 'Session ID' ? 1 : 0,
+    )
+  }
+  await page
+    .locator('.el-select')
+    .filter({ has: page.getByRole('combobox', { name: '筛选字段', exact: true }) })
+    .click()
+  await page.getByRole('option', { name: '运行状态', exact: true }).click()
+  await page
+    .locator('.el-select')
+    .filter({ has: page.getByRole('combobox', { name: '运行状态', exact: true }) })
+    .click()
+  await page.getByRole('option', { name: '失败', exact: true }).click()
+  await page.getByRole('button', { name: '筛选', exact: true }).click()
+  await expect(dailyRow).toBeVisible()
+  await expect(weeklyRow).toHaveCount(0)
+  await page.getByRole('button', { name: '重置', exact: true }).click()
+  await expect(weeklyRow).toBeVisible()
+  await page.setViewportSize({ width: 375, height: 812 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(
+    false,
+  )
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.screenshot({
+    path: 'test-results/run-history-fields.png',
+    fullPage: true,
+    animations: 'disabled',
+  })
+  await dailyRow.getByRole('link', { name: sessions.search_daily }).click()
+  await expect(
+    page.getByRole('heading', { name: '运行记录 Daily 日报', exact: true }),
+  ).toBeVisible()
+  expect((await request.delete('/api/workflows/search_weekly')).ok()).toBe(true)
+  expect((await request.delete('/api/sources/search_source')).ok()).toBe(true)
+  expect((await request.delete('/api/ai/search_ai')).ok()).toBe(true)
+  expect(errors).toEqual([])
+})
+
 test('resource arrays keep repeated entries and ordered selections after saving', async ({
   page,
   request,
@@ -93,7 +216,7 @@ test('resource JSON validation, create and edit use the real API', async ({ page
   await page.goto('/resources')
   await page.getByRole('button', { name: '添加数据源' }).click()
   await page.getByRole('switch', { name: '高级模式', exact: true }).locator('..').click()
-  await page.getByLabel('资源 ID（留空自动生成）', { exact: true }).fill('browser_source')
+  await page.getByLabel('资源编号', { exact: true }).fill('browser_source')
   await page.getByLabel('采集器', { exact: true }).click()
   await page.getByRole('option', { name: 'mock', exact: true }).click()
   await page
@@ -125,10 +248,8 @@ test('resource JSON validation, create and edit use the real API', async ({ page
     .getByRole('button', { name: '编辑', exact: true })
     .click()
   await page.getByRole('switch', { name: '高级模式', exact: true }).locator('..').click()
-  await expect(page.getByLabel('资源 ID（留空自动生成）', { exact: true })).toHaveValue(
-    'browser_source',
-  )
-  await expect(page.getByLabel('资源 ID（留空自动生成）', { exact: true })).toBeDisabled()
+  await expect(page.getByLabel('资源编号', { exact: true })).toHaveValue('browser_source')
+  await expect(page.getByLabel('资源编号', { exact: true })).toBeDisabled()
   await page.getByRole('button', { name: '保存资源' }).click()
   await expect(page.getByRole('dialog')).toBeHidden()
   expect(errors).toEqual([])
@@ -204,13 +325,14 @@ test('workflow create, reload, run, and versioned phase reading', async ({ page,
   expect(reloaded.source_overrides).toEqual(saved.source_overrides)
   await page.getByRole('button', { name: '立即运行' }).click()
   await expect(page).toHaveURL(/\/runs\/[^/]+$/)
-  await expect(page.getByRole('heading', { name: '阶段执行流程与只读产物' })).toBeVisible()
-  const phaseRequest = page.waitForRequest((request) =>
-    /\/phases\/collect\?version=\d+$/.test(request.url()),
-  )
-  await page.getByRole('button', { name: '查看正文' }).first().click()
-  await phaseRequest
-  await expect(page.getByRole('dialog')).toContainText('业务版本 v')
+  await expect(page.getByRole('heading', { name: '最终报告', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '通知状态', exact: true })).toBeVisible()
+  await page.getByText('数据采集与共享输入', { exact: true }).click()
+  await expect(page.getByText('没有采集到内容', { exact: false }).first()).toBeVisible()
+  await expect(page.getByText('原始 JSON', { exact: false })).toHaveCount(0)
+  await page.getByRole('switch', { name: '高级模式', exact: true }).locator('..').click()
+  await page.getByText('原始 JSON', { exact: false }).first().click()
+  await expect(page.locator('pre').first()).toContainText('collection')
   await page.goto('/workflows')
   await page.getByRole('button', { name: '删除', exact: true }).click()
   await page.getByRole('button', { name: '确定', exact: true }).click()
@@ -258,7 +380,7 @@ test('provider models are configured in the channel and selected by workflows', 
   })
   await page.goto('/resources?kind=ai')
   await page.getByRole('button', { name: '添加供应商渠道' }).click()
-  await expect(page.getByLabel('资源 ID（留空自动生成）')).toHaveCount(0)
+  await expect(page.getByLabel('资源编号')).toBeVisible()
   await expect(page.getByRole('button', { name: '检查健康', exact: true })).toBeDisabled()
   await page.getByLabel('服务地址', { exact: true }).fill('http://127.0.0.1:1/v1')
   const key = page.getByLabel('API 密钥', { exact: true })
@@ -369,5 +491,126 @@ test('provider models are configured in the channel and selected by workflows', 
   expect((await request.delete(`/api/workflows/${workflow.id}`)).ok()).toBe(true)
   expect((await request.delete(`/api/ai/${saved.id}`)).ok()).toBe(true)
   expect((await request.delete('/api/sources/model_flow_source')).ok()).toBe(true)
+  expect(errors).toEqual([])
+})
+
+test('readable report, plugin sections, advanced data and mobile layout', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  const record = {
+    session_id: 'report_preview',
+    workflow_id: 'daily',
+    workflow_name: '每日巡检报告',
+    version: 12,
+    status: 'partial',
+    stage: 'finish',
+    created_at: '2026-09-21T01:00:00Z',
+    updated_at: '2026-09-21T01:02:00Z',
+    finished_at: '2026-09-21T01:02:00Z',
+    error: null,
+    artifacts: [],
+    snapshot_availability: 'available',
+  }
+  const content: Record<string, object> = {
+    aggregate: {
+      outputs: {
+        final:
+          '# 巡检结论\n\n服务运行正常，发现 **2 项需要关注的问题**。\n\n- 磁盘使用率达到 82%，建议清理过期日志。\n- 有 3 次网络请求超时，请检查网络连接。\n\n## 后续处理\n\n优先清理磁盘，再观察网络情况。',
+      },
+      errors: [],
+    },
+    collect: {
+      collection: [
+        {
+          source_id: '系统日志',
+          status: 'success',
+          text: '本次采集记录',
+          count: 128,
+          report: {
+            sections: [
+              {
+                kind: 'metrics',
+                title: '采集概况',
+                items: [
+                  { label: '记录数量', value: 128, unit: '条' },
+                  { label: '告警数量', value: 2, unit: '项' },
+                ],
+              },
+              {
+                kind: 'table',
+                title: '告警明细',
+                columns: ['类别', '情况'],
+                rows: [
+                  ['磁盘', '使用率 82%'],
+                  ['网络', '3 次请求超时'],
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    },
+    analyze: {
+      analyses: [
+        { task_id: '运行分析', status: 'success', text: '已核对日志，建议优先处理磁盘空间。' },
+      ],
+    },
+    notify: {
+      deliveries: [
+        { channel_id: '工作邮箱', output_id: 'final', status: 'success' },
+        {
+          channel_id: '备用邮箱',
+          output_id: 'final',
+          status: 'failed',
+          error: { code: 'delivery_uncertain', message: '没有获得可靠回执，请先核对收件箱。' },
+        },
+      ],
+    },
+    finish: { status: 'partial' },
+  }
+  await page.route('**/api/sessions/report_preview**', async (route) => {
+    const url = new URL(route.request().url())
+    const stage = url.pathname.split('/phases/')[1]
+    if (stage) {
+      expect(url.searchParams.get('version')).toBe('12')
+      await route.fulfill({
+        json: {
+          session_id: record.session_id,
+          version: 12,
+          stage,
+          availability: 'available',
+          error: null,
+          size_bytes: null,
+          content: content[stage],
+        },
+      })
+    } else if (url.pathname.endsWith('/recovery')) {
+      await route.fulfill({ json: { available: true, reason: null } })
+    } else await route.fulfill({ json: record })
+  })
+  await page.goto('/runs/report_preview')
+  await expect(page.getByRole('heading', { name: '巡检结论', exact: true })).toBeVisible()
+  await expect(page.getByText('投递结果不确定', { exact: true })).toBeVisible()
+  await expect(page.getByText('已送达', { exact: true })).toBeVisible()
+  await expect(page.getByText('原始 JSON', { exact: false })).toHaveCount(0)
+  await page.getByText('数据采集与共享输入', { exact: true }).click()
+  await expect(page.getByRole('table', { name: '告警明细' })).toBeVisible()
+  await page.screenshot({
+    path: 'test-results/readable-report-desktop.png',
+    fullPage: true,
+    animations: 'disabled',
+  })
+  await page.setViewportSize({ width: 375, height: 812 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(
+    false,
+  )
+  await page.screenshot({
+    path: 'test-results/readable-report-mobile.png',
+    fullPage: true,
+    animations: 'disabled',
+  })
+  await page.getByRole('switch', { name: '高级模式', exact: true }).locator('..').click()
+  await page.getByText('原始 JSON', { exact: false }).first().click()
+  await expect(page.locator('pre').first()).toContainText('outputs')
   expect(errors).toEqual([])
 })

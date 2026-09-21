@@ -95,12 +95,11 @@ function submit() {
         <SectionCard title="基本信息与运行策略">
           <div class="form-grid">
             <el-form-item
-              v-if="advanced"
               label="工作流 ID（留空自动生成）"
               prop="id"
               :rules="{ ...idRule, required: false }"
             >
-              <el-input v-model="workflow.id" :disabled="!!id" placeholder="nightly_analysis" />
+              <el-input v-model="workflow.id" placeholder="nightly_analysis" />
             </el-form-item>
             <el-form-item label="显示名称">
               <el-input v-model="workflow.name" placeholder="夜间日志分析" />

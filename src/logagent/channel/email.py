@@ -159,6 +159,7 @@ class EmailChannel:
 
 class EmailChannelType:
     name = "email"
+    id_prefix = "email"
     description = "通过 SMTP 向单个收件人发送通知"
     capabilities = ["notification"]
     options_schema = _OPTIONS_SCHEMA

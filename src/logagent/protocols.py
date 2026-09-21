@@ -30,6 +30,7 @@ from logagent.models import (
 
 class Collector(Protocol):
     name: str
+    id_prefix: str | None
     description: str
     fields: list[str]
     count_unit: str
@@ -63,6 +64,7 @@ class NotificationChannel(Protocol):
 
 class ChannelType(Protocol):
     name: str
+    id_prefix: str | None
     description: str
     capabilities: list[str]
     options_schema: JSONSchema

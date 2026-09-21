@@ -36,6 +36,7 @@ def _format(items, group_by):
 
 class HistoryCollector:
     name = "history"
+    id_prefix = "history"
     description = "读取已存档的历史 session，不重新采集；正文固定到所选业务版本。"
     fields = _FIELDS
     count_unit = "sessions"

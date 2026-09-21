@@ -81,7 +81,12 @@ function remove(id: string) {
         <router-link :to="`/workflows/${workflow.id}/edit`">
           <el-button>编辑</el-button>
         </router-link>
-        <el-button type="primary" :loading="action.pending.value" @click="trigger(workflow.id)">
+        <el-button
+          type="primary"
+          :loading="action.pending.value"
+          :disabled="!workflow.enabled"
+          @click="trigger(workflow.id)"
+        >
           立即运行
         </el-button>
       </div>
