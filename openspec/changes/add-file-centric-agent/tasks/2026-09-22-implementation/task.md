@@ -104,7 +104,7 @@
 
 - D 基础实现：新增 `EventLog`、`create_agent` 图装配和 `AgentService`。当前已验证工具 started/completed、request_id 幂等、单轮后台任务、独立 `runtime/checkpoints.sqlite` 及重启后的 `outcome_unknown` 标记；资源代次快照、活动键跨进程协调、pending ToolMessage 修复和 HTTP/SSE 仍待完成。新增服务、工具、恢复测试，Agent 定向测试 53 项通过，ruff 通过。
 
-- D3/D4 完成：EventLog 使用跨进程文件锁在同一提交临界区分配序号、占用稳定键并 fsync；重复活动键等待既有终态，完成键复用且参数冲突明确失败。启动把未完成轮次追加 `turn.interrupted`，未完成副作用追加 `tool.outcome_unknown`；下一条消息读取公开 checkpoint 状态，为 pending 工具补入 `ToolMessage(outcome_unknown)` 后清理工具边界。历史会话缺少或无法读写 checkpoint 时返回 `checkpoint_missing`/`checkpoint_corrupt`，不猜测状态或重放副作用。定向 Agent 测试 11 项通过，ruff 与 diff-check 通过。
+- D3/D4 完成：EventLog 使用跨进程文件锁在同一提交临界区分配序号、占用稳定键并 fsync；稳定键采用 `(session_id, turn_id, tool_call_id)`，重复活动键等待既有终态，完成键复用且参数冲突明确失败。启动把未完成轮次追加 `turn.interrupted`，未完成副作用追加 `tool.outcome_unknown`；下一条消息读取公开 checkpoint 状态，为 pending 工具补入 `ToolMessage(outcome_unknown)` 后清理工具边界。历史会话缺少或无法读写 checkpoint 时返回 `checkpoint_missing`/`checkpoint_corrupt`，不猜测状态或重放副作用。定向 Agent 测试 58 项通过，ruff 与 diff-check 通过。
 
 - D5 完成：Agent 已纳入 lifecycle 的启动、插件重载准入协调和关停顺序；活动 Agent 轮次使插件重载返回 `plugin_reload_conflict`，且不会卸载或发布新插件。Agent 准入使用同一把 admission lock，避免 reload/shutdown 与新会话或新轮次竞态；资源与插件快照仍在每轮开始捕获，更新只影响后续轮次。Agent 与 lifecycle 定向测试 78 项通过，ruff 与 diff-check 通过。
 
