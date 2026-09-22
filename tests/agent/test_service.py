@@ -122,6 +122,17 @@ async def test_existing_session_without_checkpoint_is_not_reconstructed(tmp_path
     await restored.close()
 
 
+async def test_admission_pause_blocks_new_sessions_and_racing_turns(tmp_path):
+    service = AgentService(
+        tmp_path / "workspace", tmp_path / "runtime",
+        model_provider=lambda _: ScriptedModel(responses=[AIMessage(content="answer")]),
+    )
+    await service.pause_admission()
+    with pytest.raises(LogAgentError) as error:
+        await service.create_session(model="scripted")
+    assert error.value.code == "agent_busy"
+
+
 async def test_context_budget_includes_fixed_prompt_and_reserved_output():
     config = AgentConfig(context_window=500, output_tokens=100)
     with pytest.raises(LogAgentError) as error:
