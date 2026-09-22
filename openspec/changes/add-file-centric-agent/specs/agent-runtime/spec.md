@@ -65,7 +65,7 @@
 
 系统 SHALL 提供工作区根 `AGENTS.md`、按配置时区的 `Memory/YYYY-MM-DD.md`、可编辑 `History/<session>.md`、只读 Runtime、事件和 Artifact。Agent MUST 使用普通 read/write/grep 维护 Memory 和 History，不增加记忆专用工具或向量索引。活动 turn 捕获的 AGENTS 和工具定义保持稳定，修改从下一轮或新分支生效。
 
-Runtime MUST provide a session-scoped read-only logical file `Runtime/self.json`. Its resolution MUST use the current Agent session context, so concurrent sessions reading the same logical path receive different metadata; it MUST NOT be implemented as a shared `Runtime/current.json` file.
+Runtime MUST provide a session-scoped read-only logical file `Runtime/self.json`. Its stable path MUST be included in the built-in runtime instruction so the model can discover it without knowing its own ID. Its resolution MUST use the current Agent session context, so concurrent sessions reading the same logical path receive different metadata; it MUST NOT be implemented as a shared `Runtime/current.json` file.
 
 #### Scenario: Keep instructions stable during a turn
 
