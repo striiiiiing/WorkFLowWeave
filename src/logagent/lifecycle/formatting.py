@@ -10,6 +10,8 @@ from typing import Any
 
 import orjson
 
+from logagent.redaction import redact_text as _redact_text
+
 _MAX_BYTES = 10 * 1024 * 1024
 _MIN_MAX_BYTES = 128
 _FIELD_MAX_BYTES = 256
@@ -34,12 +36,6 @@ _CORRELATION_FIELDS = (
     "uncertain",
 )
 _OPTIONAL_JSON_FIELDS = ("message", *reversed(_CORRELATION_FIELDS), "exception_type")
-_AUTHORIZATION = re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/\-=]+")
-_NAMED_SECRET = re.compile(
-    r"(?i)\b(api[_-]?key|password|secret|token|authorization|credential|master[_-]?key)"
-    r"\b\s*[:=]\s*([^\s,;]+)"
-)
-_URL_CREDENTIAL = re.compile(r"(?i)(https?://)([^/\s:@]+):([^@\s/]+)@")
 
 
 def _truncate_text(value: str, max_bytes: int) -> str:
@@ -50,13 +46,6 @@ def _truncate_text(value: str, max_bytes: int) -> str:
     if max_bytes <= 3:
         return encoded[:max_bytes].decode("utf-8", "ignore")
     return encoded[: max_bytes - 3].decode("utf-8", "ignore") + "..."
-
-
-def _redact_text(value: str) -> str:
-    """遮盖授权头、具名密钥及 HTTP URL 内嵌凭据等已知敏感模式。"""
-    value = _AUTHORIZATION.sub(lambda match: f"{match.group(1)} [REDACTED]", value)
-    value = _NAMED_SECRET.sub(lambda match: f"{match.group(1)}=[REDACTED]", value)
-    return _URL_CREDENTIAL.sub(lambda match: f"{match.group(1)}[REDACTED]@", value)
 
 
 def _safe_value(value: Any, *, max_bytes: int = _FIELD_MAX_BYTES) -> Any:
