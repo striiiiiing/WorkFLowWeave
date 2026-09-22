@@ -37,7 +37,7 @@ class _SummaryTimeoutModel:
     def __getattr__(self, name: str):
         return getattr(self._model, name)
 
-    def with_retry(self, **_kwargs):
+    def with_retry(self, *_args, **_kwargs):
         return self
 
     async def ainvoke(self, input, config=None, **kwargs):
