@@ -348,6 +348,42 @@ class ApplicationLifecycle:
             if task.done():
                 self._reload_tasks.pop(scope, None)
 
+    async def update_plugin_setting(self, plugin_id: str, enabled: bool) -> DiscoveryReport:
+        """Persist one tool switch and publish it through the normal reload path.
+
+        The admission check happens before touching ``plugins/config.json`` so
+        an active Agent turn receives a conflict without leaving a half-applied
+        setting behind.
+        """
+        async with self._lifecycle_lock:
+            if self._shutdown_requested:
+                raise LogAgentError("shutdown", "应用已经关闭")
+            services = self.services
+            was_accepting = services.workflow.coordinator.accepting
+            agent_was_accepting = services.agent.accepting if services.agent is not None else False
+            active = await services.workflow.pause_admission()
+            active_agent = await services.agent.pause_admission() if services.agent is not None else 0
+            if active or active_agent:
+                if was_accepting:
+                    services.workflow.resume_admission()
+                if services.agent is not None and agent_was_accepting:
+                    services.agent.resume_admission()
+                raise LogAgentError(
+                    "plugin_reload_conflict", "存在活动运行时不能修改工具开关",
+                    {"active_runs": active, "active_agent_runs": active_agent},
+                )
+            try:
+                services.plugins.update_plugin_setting(
+                    self.config, "tool", plugin_id, enabled,
+                )
+                return await self._reload_plugins(services)
+            except BaseException:
+                if not self._shutdown_requested:
+                    services.workflow.resume_admission()
+                    if services.agent is not None:
+                        services.agent.resume_admission()
+                raise
+
     async def _reload_once(self, scope: ReloadScope) -> DiscoveryReport | None:
         """串行化重载与启动、关闭；资源文件读取移至工作线程。"""
         async with self._lifecycle_lock:
