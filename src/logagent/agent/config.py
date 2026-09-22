@@ -28,6 +28,10 @@ class AgentConfig(StrictModel):
     keep_ratio: Ratio = 0.2
     summary_ratio: Ratio = 0.05
     summary_max_tokens: PositiveInt = 4096
+    summary_prompt: str = (
+        "请保留当前目标、明确约束、已确认事实、文件引用、已完成或结果未知的副作用、"
+        "未完成事项和下一步；不要搬运完整工具正文。"
+    )
     idle_timeout: Seconds = 300
     read_concurrency: PositiveInt = 4
     read_lines: PositiveInt = 200
