@@ -235,7 +235,7 @@ data/agents/
 
 WorkspaceBackend 将 runtime 的只读内容映射到逻辑路径 `Runtime/self.json`、`Runtime/Sessions/<session_id>.json`、`Runtime/Catalog/`、`Runtime/Artifacts/` 和 `Runtime/History/<session_id>/`；Shell 沙箱使用对应只读挂载。`History/<session_id>.md` 与 `Runtime/History/<session_id>/events.jsonl` 分属可编辑笔记与执行事实。它们都可读，但只有笔记由 Agent 随意重写，避免编辑历史导致已经发送的通知被重新执行。
 
-`Runtime/self.json` 是一个**按 Agent 会话上下文解析的只读逻辑文件**，不是共享工作区中的单个 `current.json`。每个 Agent turn 的 `WorkspaceBackend` 都绑定自己的 `session_id`、`branch_id` 和本轮快照；多个会话同时运行时读取同一个逻辑路径仍分别得到各自内容，不会互相覆盖。该文件包含当前 `session_id`、`turn_id`、`branch_id`、来源 Workflow session、模型、工具 generation 和工作区标识。模型需要自己的 ID 时固定执行 `read("Runtime/self.json")`；提示词只告知这个路径，不把运行元数据复制成第二份事实。`Runtime/Sessions/<session_id>.json` 面向已知 ID 的历史/界面查看，不能替代 `self.json` 的会话作用域。
+`Runtime/self.json` 是一个**按 Agent 会话上下文解析的只读逻辑文件**，不是共享工作区中的单个 `current.json`。每个 Agent turn 的 `WorkspaceBackend` 都绑定自己的 `session_id`、`branch_id` 和本轮快照；多个会话同时运行时读取同一个逻辑路径仍分别得到各自内容，不会互相覆盖。该文件包含当前 `session_id`、`turn_id`、`branch_id`、来源 Workflow session、模型、工具 generation 和工作区标识。内置的不可删除运行时说明固定告知模型执行 `read("Runtime/self.json")`；提示词只提供稳定路径，文件提供动态事实，不把运行元数据复制成第二份事实。`Runtime/Sessions/<session_id>.json` 面向已知 ID 的历史/界面查看，不能替代 `self.json` 的会话作用域。
 
 这不是第二套文件系统协议：模型仍只看路径并用 read/grep；映射在一个 WorkspaceBackend 内完成。Catalog 是可删除再生成的物化视图，唯一事实来源仍是 registry；Agent 不能靠改目录 JSON 注册能力。
 

@@ -11,7 +11,7 @@
 | 使用 `Runtime/self.json` | 用户要求 Linux 式可读文件；`self` 表达进程/会话作用域，不要求预先知道 ID | 模型固定 `read("Runtime/self.json")` 获取自己的 session、turn、branch、来源 Workflow、模型和工具 generation。 |
 | `self.json` 是逻辑映射，不是共享物理文件 | 多个 Agent 可以同时运行；共享 `current.json` 会产生竞态 | `WorkspaceBackend` 绑定当前 Agent 会话快照，按调用方解析同一路径；不落盘、不由模型写入。 |
 | 保留 `Runtime/Sessions/<session_id>.json` | UI 和已知 ID 的历史查看仍需要稳定持久路径 | 它是只读持久元数据视图；当前会话发现使用 `self.json`，不依赖该路径。 |
-| 提示词只提供路径说明 | 运行元数据的事实应来自文件，避免系统提示和文件各维护一份 ID | AGENTS 默认说明如何读取 `Runtime/self.json`，不直接硬编码当前 session 值。 |
+| 固定运行时说明提供路径 | 模型必须先知道一个无参数入口，但运行元数据仍应来自文件 | 不可删除的运行时说明告知 `Runtime/self.json`；AGENTS 可补充说明但不是唯一入口，不直接硬编码当前 session 值。 |
 
 ## 验证要求
 
