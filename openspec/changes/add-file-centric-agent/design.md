@@ -4,28 +4,54 @@
 
 ## 1. 结论与边界
 
-采用 **LangChain `create_agent` 构建的 LangGraph 图 + 现成摘要中间件 + 五个小工具 + 普通文件工作区**。
+采用 **LangChain `create_agent` 构建的 LangGraph 图 + 现成摘要中间件 + 几个小工具 + 普通文件工作区**。
 
-Agent 是与 Workflow 并列的模块。Workflow 继续执行预先定义的采集/分析/通知阶段；Agent 根据问题循环调用同一批基础能力。不把聊天封装成一个假的 Workflow，也不让 Agent 直接操作 Workflow 私有存储。
+Agent 是与 Workflow 并列的模块。Workflow 继续执行预先定义的采集/分析/通知阶段；Agent 根据问题循环调用同一批基础能力。
 
-首版是单服务进程、一个 Agent 工作区、多个会话；每个会话同时只执行一轮。没有子 Agent、向量记忆、MCP 服务、定时 Agent、后台 Shell 会话或插件市场。网页搜索可由普通 Collector 插件提供，经同一网关调用，不增加核心 search 工具。
+它可以尽可能复用Workflow模块相关的东西，这个版本是复用采集器和渠道
 
-最短使用路径是：用户提问 → 找到来源 → 查看参数 → 调一次采集器 → 回答。记忆只在有值得保留的信息时写文件，压缩只在接近预算时运行，不固定给每个请求增加额外模型轮次。
+首版是单服务进程、一个 Agent 工作区、多个会话；ReAct框架，可多轮对话。没有子 Agent、向量记忆、MCP 服务、定时 Agent、后台 Shell 会话或插件市场。网页搜索暂时不实现
+
+记忆模块的原则是，不添加新的工具，一切交给模型。压缩采用token到达上限时自动执行，该版本不采用自适应策略，压缩统计的颗粒度为message，而非是更细的
+
+
+
+---
+
+
+
+这里和WorkFlow的交互是，可以复用WorkFLow最后输出的对象，作为{input}来插入上下文的前面。这也是其核心功能——继续讨论某次WorkFlow的分析结果，如此情况下，这个Agent会和这个SessionID绑定，也应该要可以为其提供其他的绑定的AI
+
+双向的渠道应该提供（channel,session,priority）指令，stop的优先级最高，独立进行排队，然后是一般的指令，然后是其他的对话
+
+一般的指令应该要有个/new和/resume，可以参考qwenpaw和CC-Connect，但是这里的dir不该可以修改。这里应该要有查看/workflow的历史记录，还有从某个session的结果中继续，还有个快捷按钮，直接从最新的开始
+
+/compact和/append将在该模型模型下次返回后将后继内容添加
+
+/fork，并且基于/fork这些来实现树形的对话历史，借鉴Pi Agent，这便于实现类似于chatGPT那种可编辑输入内容的选项的方案。但是模型输出用户无法修改，这类似于Reponse接口对分支的设计
+
+指令的解析可能会采用Typer，可能采用直接解析，这取决于哪个代码实现更加复杂，需要维护的对象更多
+
+WorkFlow的执行不会让AI Agent的对话被切换，用户不会希望自己对话着，然后突然历史上下文就变了
 
 ## 2. 当前可复用的边界
 
 | 现有能力 | 复用方式与必要调整 |
 | --- | --- |
 | `PluginRegistry`、只读注册视图 | 继续作为唯一插件发现入口；扩展 `kind=tool` 与 `register_tool`，不另建插件扫描器。 |
-| `options_schema`、`setters_schema`、`schema.py` | Schema 是唯一参数定义。按调用层投影并组合为 Agent 可读说明，执行仍使用同一校验器。 |
-| `ResourceStore` 的来源/渠道/模型配置 | 复用已有账号与默认参数；一轮开始时固定资源和插件版本。 |
-| `CollectorManager.collect` | 每个工具调用执行一次采集，不带 Workflow 的 stop/skip 策略。 |
-| `ChannelManager.send` | 每个工具调用执行一次投递；内部仍可复用连接，不意味着每次创建/关闭客户端。 |
+| `options_schema`、`setters_schema`、`schema.py` | Schema 提供给plugin工具，作为执行的依据<br />目前的方案限制在collector里，不对渠道进行扩展——理由是用户可能会更期望指定渠道，且我也没有看到多少MCP让Agent自己选择渠道投递 |
+| `ResourceStore` 的来源/渠道/模型配置 | 复用已有账号与默认参数。 |
+| `CollectorManager.collect` | 为Agent提供如此服务：Agent提供参数，然后该模块按照要求进行执行，采用Cli的包装，Cli则是对HTTP的包装，以便于Agent也可采用Bash方式执行 |
+| `ChannelManager.send` | 用于双向交流 |
 | AI Provider、凭据、模型参数、连接生命周期 | 抽出公共模型借用入口；现有 `AIService.execute` 保持单次文本分析。 |
-| LangGraph SQLite checkpointer | 复用官方实现，Agent 使用独立数据库/命名空间，不读写 Workflow 的内部 checkpoint。 |
+| LangGraph SQLite checkpointer | 复用官方实现，Agent 使用独立数据库/命名空间，不读写 Workflow 的内部 checkpoint。<br />但是采用定期清理的策略 |
 | FastAPI、Vue、Schema 表单、报告组件 | 增加独立 Agent HTTP/SSE 与页面，复用现有基础设施。 |
 
 当前 `AIService._result` 拒绝 tool_calls，`OpenAIChannel.create_model` 固定 `disable_streaming=True`，因此不能直接调用 `AIService.execute` 实现 Agent。模型抽象已经存在，必要变更应在同一个 AI 模块内完成，避免 Agent 再维护一套凭据与连接代码。
+
+所以直接修改`AIService._result`的设计，那个约束只是对于前版本的，但是如果可以，这里应该要拆分出来，理应提供一个限制不执行Tools的AI方案，以便于WorkFlow的设计
+
+LangGraph直接采用原生的Message会带来长执行下的存储问题，所以需要定期清理，显然，最后一次的都是有用的，但是大模型-工具这样的交替可不一定有用了。中间应该设计定期清理的策略，Pi Agent的方案不错，但是移植的成本太大了，可能可以看一看Codex的方案
 
 ## 3. 图与模型接入
 
@@ -37,7 +63,7 @@ Agent 是与 Workflow 并列的模块。Workflow 继续执行预先定义的采�
 flowchart TD
     U[用户消息] --> S[AgentService 固定本轮配置]
     S --> G[LangGraph Agent 图]
-    G --> C[加载常驻说明 / 检查上下文 / 必要时摘要]
+    G --> C[加载常驻AGENTS.md / 检查上下文 / 必要时摘要]
     C --> M[调用模型]
     M -->|工具调用| T[ToolNode 动态执行工具]
     T --> W[统一执行包装: 分类与互斥 / 事件 / 输出文件]
@@ -56,7 +82,11 @@ flowchart TD
 2. **`SummarizationMiddleware`**：使用现成摘要、历史裁剪和消息对齐逻辑。
 3. **工具执行包装**：通过 `wrap_tool_call`/异步对应接口，统一分类、读写调度、取消、记录与结果文件化；插件不自行实现这一套。
 
-实现时固定中间件顺序并验证：工具结果先完成外置和裁剪，下一轮再判断摘要；常驻说明不参与历史摘要，不因压缩消失。存储错误、未知异常、取消必须传播，不能用一个广泛的 ToolNode catch-all 把所有异常转成「执行成功」。已知参数/插件失败可返回结构化 ToolMessage，由模型修正参数。
+实现时固定中间件顺序并验证：工具结果先完成外置和裁剪；固定系统提示不参与历史摘要，不因压缩消失。存储错误、未知异常、取消必须传播，不能用一个广泛的 ToolNode catch-all 把所有异常转成「执行成功」。已知参数/插件失败可返回结构化 ToolMessage，由模型修正参数。
+
+同时，采用pydantic对返回的结果尽可能的转换格式，失败才会报错，以便于更好的兼容性
+
+前端的对话可以采用LangGraph提供的前端组件
 
 ### 3.2 共享模型入口
 
@@ -71,25 +101,30 @@ async with model_runtime.lease(config, model=model_id, streaming=True) as chat_m
 
 `AIService.execute` 和 Agent 都使用该入口，凭据解析、配置验证、连接租约及错误脱敏只实现一次。图装配依赖注入 `BaseChatModel`，不导入 `ChatOpenAI` 具体实现。图按轮装配并恢复同一 thread 的 checkpoint；模型租约覆盖整轮 astream，而不只覆盖图创建。Provider 工厂显式支持流式参数，不能保留当前固定的 disable_streaming=True 后期待上层自动启用。
 
-模型调用超时继续取 `AIConfig.timeout`；增加可配置的流式无活动超时，默认 300 秒，仅针对上游模型长时间无任何事件，不把 SSE 心跳算作模型活动。现有默认总时限为 600 秒；二者分别防止完全停滞与无限请求，不推断「推理模型必然在 300 秒内响应」。Agent 模型重试只允许发生在本次请求尚未向外发布文本/工具调用时；已发布增量后失败要明确结束，不重复拼接答案。工具尤其是发送、写入和 Shell 不挂自动重试中间件。
+模型调用超时继续取 `AIConfig.timeout`；增加可配置的流式无活动超时，默认 300 秒，仅针对上游模型长时间无任何事件，不把 SSE 心跳算作模型活动。现有默认总时限为 600 秒；二者分别防止完全停滞与无限请求。Agent 模型重试只允许发生在本次请求尚未向外发布文本/工具调用时；已发布增量后失败要明确结束，不重复拼接答案。工具尤其是发送、写入和 Shell 不挂自动重试中间件。
 
 ### 3.3 依赖升级是先决任务
 
-仓库目前锁定 LangGraph 0.6.11、prebuilt 0.6.5、checkpoint 2.1.2、sqlite 2.0.11，把 `langgraph` 限制为 `<1`，尚未直接依赖 `langchain`。不能只添加一行 middleware import 就声称可用。实施第一步在隔离环境验证并统一 LangChain 1.x、LangGraph 1.x、对应 checkpoint/sqlite 与 langchain-openai 的兼容版本，并加入读写锁依赖 aiorwlock，提交同一份锁文件。
+仓库目前锁定 LangGraph 0.6.11、prebuilt 0.6.5、checkpoint 2.1.2、sqlite 2.0.11，把 `langgraph` 限制为 `<1`，尚未直接依赖 `langchain`。不能只添加一行 middleware import 就声称可用。
 
-新 Agent 数据库与旧 Workflow 数据库分开。升级会影响 Workflow 使用的同一运行库，因此必须回归其父子图、取消、恢复和 checkpoint 读取；现有数据库先在副本上验证，失败时停止升级，不静默新建空表代替旧运行。具体锁定版本由验证决定，不在设计中虚构已验证依赖组合。
+实施第一步在隔离环境验证并统一 相对新而稳定的LangGraph、对应 checkpoint/sqlite 与 langchain-openai 的兼容版本，并加入读写锁依赖 aiorwlock，提交同一份锁文件。
+
+现有的数据库容许破坏性更新
+
+同时，我只会1.x的LangGraph，所以必须更新，同时尽可能使用最新的版本的特性，否则我无法进行code review
 
 ## 4. 工具保持少量，插件按需发现
 
-### 4.1 默认五个工具
+### 4.1 默认六个工具
 
 | 工具 | 参数概要 | 执行类别 | 作用 |
 | --- | --- | --- | --- |
-| `plugin` | `action=list/schema/call, target?, arguments?, query?, cursor?` | 按 action 与目标声明解析 | 列出能力、按需读取调用 Schema、调用一个采集器或渠道。 |
+| `plugin` | `action=list/schema/call, target?, arguments?, query?, cursor?` | 按 action 与目标声明解析 | 列出能力、按需读取调用 Schema、调用一个采集器或渠道。<br />Agent在执行是需要首先查看有哪些plugin，然后查看该Plugin提供什么，然后再进行调用。采用按需调用的设计，以降低token开销 |
 | `read` | `path, offset?, limit?` | read | 读文本片段；路径为目录时分页列项。 |
 | `write` | `path, mode, content, old_text?, expected_hash?` | exclusive | 新建/覆盖、追加或精确替换一段文字。 |
 | `grep` | `pattern, path?, glob?, limit?` | read | 使用 ripgrep 查文本/文件，返回路径、行号和小片段。 |
 | `shell` | `command, cwd?, timeout?` | exclusive | 单次 Shell，返回退出码与有限输出，完整 stdout/stderr 文件化。 |
+| ？ | ？ | ？ | RunTime信息读取，比如当前的SessionID，或者是哪个WorkFlow的SessionID来的 |
 
 `write.mode=replace` 要求 old_text 恰好匹配一次，零次或多次都报错；不做模糊替换，不自建补丁语言。覆盖采用同目录临时文件和原子替换。read 返回 hash，后续编辑可携带 expected_hash；前端保存必须携带版本条件。
 
@@ -97,7 +132,9 @@ async with model_runtime.lease(config, model=model_id, streaming=True) as chat_m
 
 这借鉴 Claude Code 的 Read/Write/Edit/Grep/Bash 分类，以及 Codex 的短工具描述、搜索与 Shell/补丁能力；五工具集合是本项目自己的取舍，不宣称与它们内部工具列表一致。记忆文件主要是短 Markdown，因此首版采用简单写入/精确替换，不引入专门代码补丁执行器。
 
-### 4.2 一个插件网关
+但是plugin直接作为Cli给模型调用会不会更好写？如此只要四个工具了，且少设计了一份工具，毕竟CLi版本总是要设计的
+
+### 4.2 一个Tools网关
 
 示例中的 ID 仅表示形状，不假定仓库已配置这些账号：
 
@@ -117,6 +154,8 @@ async with model_runtime.lease(config, model=model_id, streaming=True) as chat_m
 - 参数错误返回字段路径和简短原因；不重复回传完整 Schema。插件内部异常保留可读错误和诊断文件引用，不把异常当作空采集结果。
 
 采集器的 `success/empty/filtered_empty/missing/failed/timeout` 与渠道的 `success/failed/timeout/skipped` 原样保留。一次 call 只调用一次 Manager，没有隐含重采、发送队列或后台循环。Manager 自己的连接生命周期不属于模型工具数量。
+
+采用修改交互模块，直接提供按参数调用的Cli/HTTP接口，如此可以减少后继的运维成本
 
 ### 4.3 工具也注册为插件
 
@@ -146,6 +185,8 @@ plugin 网关本身由一个内置 tool 插件注册；read/write/grep/shell 各
 - 此规则约束 Agent 发起的操作和 Agent 文件 API，不声称锁住外部编辑器、既有 Workflow 或插件私自启动的线程。Channel 自身跨 Workflow/Agent 的实例 send_lock 继续生效。
 
 调用重复由稳定 `(session_id, turn_id, tool_call_id)` 识别；已经完成的调用返回原记录，不能再执行。此规则在沙箱关闭时仍成立。
+
+当然，这里应该更多的讨论，分析Claude Code和Codex的方案，感觉还是不大行，因为如果是所有的Agent 会话共享，那么多个Agent同时工作就不大容易了
 
 ## 6. 简单且可关闭的沙箱
 
@@ -203,11 +244,15 @@ WorkspaceBackend 将 runtime 的只读内容映射到逻辑路径 `Catalog/`、`
 
 - `AGENTS.md` 在每次模型请求前完整加载为稳定系统上下文，位于摘要区之外；文件变化后下一次请求生效，压缩不能删掉。首版只支持工作区根文件，不加递归 import、嵌套覆盖和多套别名解析。
 - 默认模板只写职责、五工具使用方式、当前日期/工作区路径约定、按需回忆及值得保留时写 Memory/History。动态时间放在短运行上下文中，避免整段稳定提示词每轮变化。
-- Memory 按配置时区确定日期；默认 UTC 以保证服务跨机器可复现，部署可设置 `Asia/Shanghai`。不会因为服务器本地时区或 UTC 午夜在一个文件名里混用日期。
+- Memory 是纯文本的，所以采用系统默认的时区，也可以采用配置文件指定的，后者如果有优先级更高。这里便于Agent读取，否则用户可能不是很能理解
 - Agent 根据任务主动 read/grep Memory 与 History，用 write 保存。运行时不代替模型生成每日记忆，不建立向量索引，不自动把全部历史或过去 N 天全文塞进上下文。
 - 自动压缩摘要属于运行时上下文，不自动写进每日 Memory。Memory 是模型判断后的长期记录；摘要是当前会话继续执行所需的短期状态。
 - 关闭 read/write/grep 后，相应行为明确不可用。关闭 write 只代表不注册该工具；Shell 仍开启时仍能写文件。全部文件写能力关闭时，模型不再被提示必须保存记忆；已存在 AGENTS 的核心加载仍然工作。
 - 采集文本、文件正文和历史笔记均作为数据读取，不因为文件内出现指令就提升成系统规则。只有指定 AGENTS 进入常驻指令位置。
+
+每个对话在AGENTS.md前后追加各种信息，比如如果是workflow来的，会带有workflow的id
+
+这个采用提示词替换，
 
 ### 7.3 原始事实与 checkpoint
 
@@ -229,24 +274,15 @@ SQLite 是执行恢复的例外，用户相关正文仍有文本文件可读。�
 
 工具结果统一先产生短结构：`status`、`summary/preview`、`artifact_path`、`truncated`、必要业务计数。默认预览至多约 2,000 tokens，read/grep 同样受上限约束；超过就返回可继续分页读取的位置，不静默截断并伪称完整。完整正文写文件不消耗模型上下文，但仍有磁盘预算：单次输出默认 16 MiB；Shell 等流式生产者达到上限立即停止，普通非流式插件在返回后检查序列化大小，超限明确 `output_limit_exceeded` 并记录已保存字节与部分输出，不把部分结果当完整成功。该预算不声称限制可信插件内部的内存分配。
 
-Schema 首次需要才读，不永久追加 system prompt。大 Schema 通过文件按段读取；若 read 被关闭，schema action 必须明确报告输出预算不足，不能返回损坏的半段 JSON 并假装它是完整 Schema。
+系统提示词绝不修改，为了用户更好的命中提示词前缀
 
-### 8.2 不使用固定小窗口
+这里需要参考Codex
 
-上下文容量 C 优先取已知模型 profile 的输入上限；OpenAI 兼容渠道通常无法通过 `/models` 得到可靠值，未知时要求在 Agent 配置明确填写，不猜成 8k/16k。
+### 8.2 压缩阈值
 
-```text
-C = 模型上下文容量
-R = 最大输出预留，必须与实际模型请求的输出限制一致
-P = 核心说明 + 当前 AGENTS + 工具 Schema + 短运行状态的 token 估算
-H = 安全余量，建议 5% × C
-B = C - R - P - H              # 可用于活跃消息的预算
-触发点 = 80% × B
-最近消息保留预算 = 20% × B
-摘要输出预算 = min(4096, 5% × B)
-```
+默认是认为用户上下文200k，到达90%后自动压缩
 
-比例和摘要上限均可配置；没有固定 20 条消息或小 Token 上限。使用 profile 时不能把供应商「输入+输出」和「仅输入」窗口口径混淆；适配层统一换算后再计算 B。B 无效、当前完整用户消息/工具组无法容纳，或 AGENTS 本身过大时明确返回预算错误，不裁掉用户问题或常驻规则。
+一般现在模型的上下文是到256k或者1M，所以有着相当大的冗余，但是自动压缩也是为了维持上下文的干净，同时减低token的消耗
 
 ### 8.3 复用 LangChain 摘要
 
@@ -257,17 +293,16 @@ B = C - R - P - H              # 可用于活跃消息的预算
 1. 官方中间件只计算 state.messages，不自动计算之后注入的 system/AGENTS/tools。context.py 的薄包装在**每次模型请求前**读取 AGENTS、计算 P/B，并用该次预算构造官方中间件、委托其公开 abefore_model；不要在多会话间修改一个共享中间件的私有阈值。压缩结果发布前再次检查完整请求预算。
 2. 核验时官方 `trim_tokens_to_summarize` 默认仅 **4,000 tokens**，还存在裁剪异常后取最近 15 条的 fallback。设置 **`trim_tokens_to_summarize=None`**，使用官方提供的「不裁剪摘要输入」选项，避免重要早期内容在摘要之前就被丢掉；摘要模型收到完整待压缩前缀。调用前按摘要模型容量检查完整序列化提示，不够则明确失败。这解决用户提到的「默认限制太小」，不需要重写摘要算法或修改第三方私有方法。
 
-摘要默认使用当前模型，避免用户必须再配置一个提供方；可选已有资源中的较便宜摘要模型。摘要模型与主模型分别核算容量，如果摘要模型装不下待摘要消息，明确配置错误，不盲目发送或自写递归压缩器。
-
-摘要输出上限不是 SummarizationMiddleware 参数，应由共享模型工厂为摘要模型设置实际 provider 输出限制，并校验返回的非空摘要及其预算；供应商未遵守时明确 summary_output_budget_exceeded。摘要中间件内部直接调用自身模型，不经过 create_agent 的普通模型 wrapper，因此摘要模型也必须独立使用共享租约、timeout、取消、usage 与错误记录。框架自带摘要调用的瞬时错误重试须纳入同一总时限，不在外面再叠一层 AIService 重试。
+摘要默认使用当前模型，避免用户必须再配置一个提供方；以便用户选择已有资源中的较便宜摘要模型，有相关的资料表明可能有些小模型的表现比大模型更优。如果摘要模型装不下待摘要消息，明确配置错误，不盲目发送或自写递归压缩器。但是这里不保证采用其他的模型可以调用成功，这里不进行维护，也由于采用原先模型可以更好的重用前缀缓存
 
 自定义 summary_prompt 要求保留：当前目标、明确约束、确认事实及文件引用、已完成/结果未知的副作用、未完成事项、下一步。不搬运长工具正文。模型摘要本身不能保证逐字保留所有发送事实；当前轮与未解决副作用的短状态块从原始事件确定性生成，位于活跃运行上下文，历史完整回执在文件中，恢复/去重决策始终查事实记录。新摘要替代旧摘要与对应历史前缀，保留最近完整消息组；ToolMessage 必须与 tool_call_id 成组，不能留下孤立调用。
+这里可的summary_prompt可以参考Codex等公开信息，如果没有找到，这里将去抓取几份综合分析
 
 每次普通模型请求之前至多压缩一次；摘要后重新计算。仍超预算则返回 `context_budget_exceeded` 并附大项占用，不循环摘要、不用截断冒充成功。没有可摘要前缀时，手动压缩为空操作；自动预算不足则报错，不接受框架占位字符串作为有效摘要。失败保留原消息和旧摘要，当前轮明确结束；不能吞掉摘要异常继续发送超限请求。
 
 压缩成功保存可读摘要与被覆盖事件范围，再提交新上下文，发 `context.compacted`；聊天历史文件与 UI 的旧消息不删除。通过管理 API 手动压缩复用同一逻辑，不增加模型工具。
 
-借鉴 Claude Code 的工具输出管理、自动摘要、常驻说明和文件记忆；不照抄其精确阈值。Codex 的 Responses 专用 compaction 与本项目当前 Chat Completions 兼容层不同，首版不把 `/responses/compact` 当作通用压缩服务。
+借鉴 Claude Code 的工具输出管理、自动摘要、常驻说明和文件记忆；不照抄其精确阈值。Codex 的 Responses 专用 compaction 与本项目当前 Chat Completions 兼容层不同，这里不把 `/responses/compact` 当作通用压缩服务
 
 ## 9. 会话、执行记录与重启
 
@@ -342,8 +377,12 @@ SSE 回放与实时订阅在同一事件游标上接续，按 ID 去重，不能
 ## 12. 取舍与限制
 
 - create_agent 比自写 StateGraph 少维护循环和摘要衔接，但需要升级现有依赖；以旧 Workflow 回归和数据库副本验证控制风险。
-- 五个工具比为每个插件注册函数省定义 Token；首次未知调用多一次 Schema 读取，已知 Schema 的后续调用可直接 call。
+- 六个工具比为每个插件注册函数省定义 Token；首次未知调用多一次 基于类型读取Schema和一次Schema 读取，已知 Schema 的后续调用可直接 call。
 - 全局读写锁会降低多会话写吞吐；首版任务量和用户的单写要求适合这个选择，不预先引入锁分片。
 - 文件化使正文可检查、可搜索，运行恢复仍依赖官方 checkpoint；不承诺纯手改 Markdown 能恢复执行。
 - bubblewrap 只支持首版目标平台且依赖宿主内核；不可用时显式报错，关闭模式是真正宿主执行，不模拟沙箱成功。
 - 记忆由模型自己写，不能保证每个事实都会被记住；UI 可编辑且原始事件可检索。目标是小工具与可读文件，不建立第二个自动记忆管理系统。
+- 运行时绝不改变工具，非压缩绝不改变历史上下文提示词，否则会导致prompt cache失效
+  - 用户可以自己创造分支，但是不代表用户可以直接修改上下文，相当于树上多了个链而已
+- 所有的提示词用户都可便捷修改，比如AGENTS.md或者压缩用的提示词
+- 各种存储标注时间，以便进行清理

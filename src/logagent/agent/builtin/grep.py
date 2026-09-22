@@ -5,6 +5,7 @@ async def invoke(arguments, context):
     return await context.workspace.grep(
         **arguments, sandbox=context.config.sandbox.enabled,
         default_limit=context.config.grep_matches,
+        output_bytes=context.config.output_bytes,
     )
 
 
