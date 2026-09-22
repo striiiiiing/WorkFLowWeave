@@ -376,26 +376,30 @@ class ApplicationLifecycle:
             {item.plugin for item in old_channels.describe() if item.plugin != "builtin"}
         )
         was_accepting = services.workflow.coordinator.accepting
+        agent_was_accepting = services.agent.accepting if services.agent is not None else False
         paused_before = services.intervals.paused
         self._reload_in_progress = True
         services.intervals.paused = True
         stage = "pause_admission"
         try:
             active = await services.workflow.pause_admission()
-            if active:
+            active_agent = await services.agent.pause_admission() if services.agent is not None else 0
+            if active or active_agent:
                 self._reload_diagnostic = ErrorInfo(
                     code="plugin_reload_conflict",
                     message="存在活动运行时不能 reload 插件",
-                    details={"active_runs": active},
+                    details={"active_runs": active, "active_agent_runs": active_agent},
                 )
                 if was_accepting and not self._shutdown_requested:
                     services.workflow.resume_admission()
+                if agent_was_accepting and not self._shutdown_requested and services.agent is not None:
+                    services.agent.resume_admission()
                 if not self._shutdown_requested:
                     services.intervals.paused = paused_before
                 raise LogAgentError(
                     "plugin_reload_conflict",
                     "存在活动运行时不能 reload 插件",
-                    {"active_runs": active},
+                    {"active_runs": active, "active_agent_runs": active_agent},
                 )
 
             stage = "unload_owners"
@@ -430,6 +434,8 @@ class ApplicationLifecycle:
             self._reload_diagnostic = None
             self._reload_requires_recovery = False
             services.workflow.resume_admission()
+            if services.agent is not None:
+                services.agent.resume_admission()
             services.intervals.paused = False
             logger.info(
                 "plugins_reloaded",
@@ -561,6 +567,12 @@ class ApplicationLifecycle:
         任一步失败或超时即停止后续清理并向 errors 追加诊断，保留仍被依赖的资源。
         只有成功释放的组件才清空所有权引用；全部完成返回 True。
         """
+        if self._agent is not None:
+            if not await self._cleanup(
+                "agent_pause_admission", self._agent.pause_admission, errors, self._shutdown_timeout
+            ):
+                return False
+
         if self._intervals is not None and self._workflow is not None:
             if not await self._cleanup(
                 "workflow_pause_admission",
