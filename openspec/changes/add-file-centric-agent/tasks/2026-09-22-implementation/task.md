@@ -109,3 +109,5 @@
 - D5 完成：Agent 已纳入 lifecycle 的启动、插件重载准入协调和关停顺序；活动 Agent 轮次使插件重载返回 `plugin_reload_conflict`，且不会卸载或发布新插件。Agent 准入使用同一把 admission lock，避免 reload/shutdown 与新会话或新轮次竞态；资源与插件快照仍在每轮开始捕获，更新只影响后续轮次。Agent 与 lifecycle 定向测试 78 项通过，ruff 与 diff-check 通过。
 
 - E 基础实现：`context.py` 新增固定 system/tools/output 预算估算、超限显式 `context_budget_exceeded`、官方 `SummarizationMiddleware` 的 `trim_tokens_to_summarize=None` 包装及 ToolMessage 配对校验；每次请求构造独立中间件，摘要提示缺少 `{messages}` 时补入完整消息占位。新增预算与完整摘要输入测试，Agent 定向测试 55 项通过，ruff 通过。E1/E4 及摘要模型独立租约/超时尚待 Agent 主流程接入。
+
+- E4 完成：Agent 轮次在捕获的 `AIConfig.timeout` 内持有主模型租约；`AgentConfig.idle_timeout` 默认 300 秒仅在收到上游 `on_chat_model_start` 后等待模型事件，不把工具运行或 SSE 心跳误判为模型活动。图改用 LangGraph `astream_events(version="v2")`，真实模型增量先以 `message.delta` 持久化；增量发布后异常记录 `turn.failed(partial=true)` 并原样结束，不自动重试或重复拼接。取消时取消并等待活动工具任务，使调度锁、工具事件和模型租约均在轮次结束前释放；可选 `summary_ai` 从同一 ResourceStore 代次捕获并单独租约，默认仍复用主模型。依据 design §3.2、§8.3、§9.2、§10：总时限沿用 AIConfig，默认无活动窗口采用设计值 300 秒，工具不挂自动重试。`tests/agent/test_service.py` E4 行为覆盖 13 项（含模型空闲/总时限、增量失败不重试、取消工具清理），全部通过；ruff 与 diff-check 通过。
