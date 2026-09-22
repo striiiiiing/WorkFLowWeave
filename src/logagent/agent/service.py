@@ -661,6 +661,7 @@ class AgentService:
             raise
         except TimeoutError as exc:
             published = bool(getattr(exc, "_agent_published", published or publication[0]))
+            await self._cancel_tools(context)
             session.status = "failed"
             await log.append(
                 "turn.failed", turn_id=turn_id,
@@ -671,6 +672,7 @@ class AgentService:
                                 {"timeout": getattr(turn_resources.ai_config, "timeout", None)}) from exc
         except Exception as exc:
             published = bool(getattr(exc, "_agent_published", published or publication[0]))
+            await self._cancel_tools(context)
             session.status = "failed"
             await log.append("turn.failed", turn_id=turn_id,
                              error={"type": type(exc).__name__, "message": str(exc)},
