@@ -48,6 +48,8 @@ class EventLog:
         self.path = self.runtime / "History" / session_id / "events.jsonl"
         self.lock_path = self.runtime / "History" / session_id / "events.lock"
         self._lock = asyncio.Lock()
+        self._changed = asyncio.Condition()
+        self._revision = 0
         self._loaded = False
         self._next_id = 1
         self._events: list[dict[str, Any]] = []
@@ -106,6 +108,33 @@ class EventLog:
             self._append_index(event)
             self._next_id += 1
 
+    async def wait_for_events(self, after: int, *, wait_seconds: float = 15.0) -> list[dict[str, Any]]:
+        """Return events after ``after`` without a polling gap.
+
+        The check and subscription share the event-log revision.  An append
+        racing with subscription either is observed by the immediate check or
+        wakes the condition; the timeout is only a cross-process refresh and
+        heartbeat boundary, never the correctness mechanism.
+        """
+        if type(after) is not int or after < 0:
+            raise LogAgentError("invalid_argument", "事件游标必须是非负整数")
+        deadline = asyncio.get_running_loop().time() + wait_seconds
+        while True:
+            events = await self.replay(after)
+            if events:
+                return events
+            remaining = max(0.0, deadline - asyncio.get_running_loop().time())
+            if remaining == 0:
+                return []
+            async with self._changed:
+                revision = self._revision
+                if self.latest_id > after or self._revision != revision:
+                    continue
+                try:
+                    await asyncio.wait_for(self._changed.wait(), remaining)
+                except TimeoutError:
+                    return await self.replay(after)
+
     def _ensure_loaded(self) -> None:
         if not self._loaded:
             self._load()
@@ -151,6 +180,9 @@ class EventLog:
             }
             event, events = await asyncio.to_thread(self._append_locked, event)
             self._replace_index(events)
+            self._revision += 1
+            async with self._changed:
+                self._changed.notify_all()
             return dict(event)
 
     def _append_locked(self, event: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
