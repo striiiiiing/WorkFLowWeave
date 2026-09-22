@@ -135,7 +135,20 @@ class EventLog:
         async with self._lock:
             if not self._loaded:
                 await asyncio.to_thread(self._load)
-            event = {"type": event_type, "created_at": self._timestamp(), **fields}
+            # Keep the durable public envelope explicit.  The flattened fields
+            # remain for the internal recovery/index code and for compatibility
+            # with existing history files; ``data`` is the transport payload
+            # consumed by SSE clients.
+            timestamp = self._timestamp()
+            event = {
+                "session_id": self.session_id,
+                "turn_id": fields.get("turn_id"),
+                "type": event_type,
+                "at": timestamp,
+                "data": dict(fields),
+                "created_at": timestamp,
+                **fields,
+            }
             event, events = await asyncio.to_thread(self._append_locked, event)
             self._replace_index(events)
             return dict(event)
@@ -252,9 +265,11 @@ class EventLog:
                     return ToolReservation(key, arguments_digest, completed["type"],
                                            completed.get("result")), events
                 return ToolReservation(key, arguments_digest, "active"), events
-            event = {"id": len(events) + 1, "type": "tool.started",
-                     "created_at": self._timestamp(), "tool_key": key,
-                     "arguments_digest": arguments_digest}
+            timestamp = self._timestamp()
+            payload = {"tool_key": key, "arguments_digest": arguments_digest}
+            event = {"id": len(events) + 1, "session_id": self.session_id,
+                     "turn_id": None, "type": "tool.started", "at": timestamp,
+                     "data": payload, "created_at": timestamp, **payload}
             with self.path.open("ab") as stream:
                 stream.write((json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n").encode())
                 stream.flush()
@@ -289,9 +304,12 @@ class EventLog:
                               and item["type"] in {"tool.completed", "tool.outcome_unknown"}), None)
             if completed is not None:
                 return completed, events, completed.get("result") or {}
-            event = {"id": len(events) + 1, "type": "tool.completed",
-                     "created_at": self._timestamp(), "tool_key": key,
-                     "arguments_digest": arguments_digest, "result": result}
+            timestamp = self._timestamp()
+            payload = {"tool_key": key, "arguments_digest": arguments_digest,
+                       "result": result}
+            event = {"id": len(events) + 1, "session_id": self.session_id,
+                     "turn_id": None, "type": "tool.completed", "at": timestamp,
+                     "data": payload, "created_at": timestamp, **payload}
             with self.path.open("ab") as stream:
                 stream.write((json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n").encode())
                 stream.flush()
@@ -326,9 +344,12 @@ class EventLog:
                               and item["type"] in {"tool.completed", "tool.outcome_unknown"}), None)
             if completed is not None:
                 return completed, events, completed
-            event = {"id": len(events) + 1, "type": "tool.outcome_unknown",
-                     "created_at": self._timestamp(), "tool_key": key,
-                     "arguments_digest": arguments_digest, "result": {"status": reason}}
+            timestamp = self._timestamp()
+            payload = {"tool_key": key, "arguments_digest": arguments_digest,
+                       "result": {"status": reason}}
+            event = {"id": len(events) + 1, "session_id": self.session_id,
+                     "turn_id": None, "type": "tool.outcome_unknown", "at": timestamp,
+                     "data": payload, "created_at": timestamp, **payload}
             with self.path.open("ab") as stream:
                 stream.write((json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n").encode())
                 stream.flush()
