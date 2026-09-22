@@ -48,8 +48,8 @@
 
 - [ ] D1 AgentService 持有后台轮任务、每会话单轮、request_id 幂等；每轮固定资源/插件同代快照。
 - [ ] D2 使用 create_agent 与独立 SQLite checkpointer，整轮持有模型租约；连接断开不取消运行，显式取消释放工具与租约。
-- [ ] D3 JSONL 原子占用/started fsync/结果提交；稳定调用键复用、同键异参冲突、活动键共享任务、发送前记账。
-- [ ] D4 重启标记 interrupted/outcome_unknown，不重做旧副作用；补齐工具消息后接收新消息，checkpoint 缺失/损坏明确不可继续。
+- [x] D3 JSONL 原子占用/started fsync/结果提交；稳定调用键复用、同键异参冲突、活动键共享任务、发送前记账。
+- [x] D4 重启标记 interrupted/outcome_unknown，不重做旧副作用；补齐工具消息后接收新消息，checkpoint 缺失/损坏明确不可继续。
 - [ ] D5 lifecycle 装配、关停、插件 reload 在活动 Agent 轮时 busy；资源更新只影响下一轮。
 
 预期改动：agent/{events,service,graph}.py、lifecycle 和恢复测试。事实来自 JSONL，checkpoint 保存框架上下文，笔记不能反向修改状态。
@@ -103,5 +103,7 @@
 - C 批次完成：修正 Shell 使用 `sh -c`，避免登录 Shell 从宿主 profile 注入环境变量；`WorkspaceBackend` 增加 `Runtime/self.json` 会话作用域逻辑映射、Runtime/Sessions 只读目录和不可搜索/写入约束。新增并通过 self 映射隔离测试；Agent 定向测试 49 项通过，ruff 与 diff-check 通过。
 
 - D 基础实现：新增 `EventLog`、`create_agent` 图装配和 `AgentService`。当前已验证工具 started/completed、request_id 幂等、单轮后台任务、独立 `runtime/checkpoints.sqlite` 及重启后的 `outcome_unknown` 标记；资源代次快照、活动键跨进程协调、pending ToolMessage 修复和 HTTP/SSE 仍待完成。新增服务、工具、恢复测试，Agent 定向测试 53 项通过，ruff 通过。
+
+- D3/D4 完成：EventLog 使用跨进程文件锁在同一提交临界区分配序号、占用稳定键并 fsync；重复活动键等待既有终态，完成键复用且参数冲突明确失败。启动把未完成轮次追加 `turn.interrupted`，未完成副作用追加 `tool.outcome_unknown`；下一条消息读取公开 checkpoint 状态，为 pending 工具补入 `ToolMessage(outcome_unknown)` 后清理工具边界。历史会话缺少或无法读写 checkpoint 时返回 `checkpoint_missing`/`checkpoint_corrupt`，不猜测状态或重放副作用。定向 Agent 测试 11 项通过，ruff 与 diff-check 通过。
 
 - E 基础实现：`context.py` 新增固定 system/tools/output 预算估算、超限显式 `context_budget_exceeded`、官方 `SummarizationMiddleware` 的 `trim_tokens_to_summarize=None` 包装及 ToolMessage 配对校验；每次请求构造独立中间件，摘要提示缺少 `{messages}` 时补入完整消息占位。新增预算与完整摘要输入测试，Agent 定向测试 55 项通过，ruff 通过。E1/E4 及摘要模型独立租约/超时尚待 Agent 主流程接入。
