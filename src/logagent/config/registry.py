@@ -6,8 +6,11 @@ import asyncio
 import importlib
 import importlib.util
 import inspect
+import json
+import os
 import re
 import sys
+import tempfile
 from collections.abc import Iterable, Mapping
 from importlib.machinery import ModuleSpec
 from pathlib import Path, PureWindowsPath
@@ -315,6 +318,42 @@ class PluginRegistry:
             self._tool_register = tool_view
             self.generation += 1
             return report.model_copy(deep=True)
+
+    def update_plugin_setting(self, config: SystemConfig, kind: PluginKind,
+                              plugin_id: str, enabled: bool) -> None:
+        """Atomically update the registry's single persisted enabled source.
+
+        Publication still happens only through ``reload_plugins``.  This method
+        writes the same ``plugins/config.json`` consumed by discovery and does
+        not keep an Agent-specific copy of plugin state.
+        """
+        if not _safe_name(plugin_id):
+            raise LogAgentError("invalid_argument", "插件 ID 不符合格式")
+        location = Path(config.plugin_dir) / "config.json"
+        settings = read_plugin_configuration(location)
+        candidate = {
+            group: {ident: value.model_dump(mode="json") for ident, value in values.items()}
+            for group, values in settings.items()
+        }
+        candidate.setdefault(kind, {})[plugin_id] = {"enabled": bool(enabled)}
+        location.parent.mkdir(parents=True, exist_ok=True)
+        payload = json.dumps(candidate, ensure_ascii=False, indent=2).encode("utf-8")
+        temporary: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                dir=location.parent, prefix=".plugins-", delete=False
+            ) as stream:
+                temporary = Path(stream.name)
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, location)
+            temporary = None
+        except OSError:
+            raise LogAgentError("storage_failed", "插件配置原子保存失败") from None
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
 
     def _discover(
         self,
