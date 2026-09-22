@@ -97,3 +97,5 @@
 - C 的细化约定：History 下单层 `.md` 为可写笔记，子目录映射运行事实并只读，避免尚未创建的会话目录被工具抢先伪造。文件读取/写入使用目录句柄和 O_NOFOLLOW；线程内文件操作在取消时先完成再释放统一调度锁，避免后台写入越过独占窗口。主模型输出预留默认 4096 tokens（可配置），用于首版文本问答和工具参数的单次输出；与真实 provider 限制同步，并在模型容量不足时要求调整，不代表模型窗口。
 
 - B3/B4 完成：工具声明与注册事务、owner 冲突、只读视图、generation、发现/API/前端 DTO 已贯通；五内置工具先查 enabled 后导入，logs/history/mock 声明 read，其余 Collector 默认 exclusive。184 项插件/配置/契约/HTTP/生命周期定向测试通过（12.22s），ruff、前端类型与构建、Python 构建通过。生命周期旧测试预期纯正文但未关闭默认 include_counts；仅使该测试显式声明 False，完整 lifecycle 20 项通过，未改变业务默认。
+
+- C4 进程清理决策：仅 killpg 无法回收 Shell 中调用 setsid 后脱离原进程组的后台任务。单次 Shell 使用独立的 Linux subreaper 监督进程；主服务取消先通知监督进程，监督进程杀死并回收所有后代后才退出，不在主服务设置全局 subreaper，也不影响 Workflow 的子进程。该辅助进程只承接本次命令，不构成后台 Shell 会话。
