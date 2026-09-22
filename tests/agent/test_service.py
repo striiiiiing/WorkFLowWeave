@@ -114,6 +114,51 @@ async def test_agent_service_is_idempotent_and_runs_one_turn(tmp_path):
                for event in events)
 
 
+async def test_append_queues_behind_running_turn_and_drains_once(tmp_path):
+    service = AgentService(
+        tmp_path / "workspace", tmp_path / "runtime",
+        config=AgentConfig(),
+        model_provider=lambda _: DelayedModel(delay=0.03, response="answer"),
+    )
+    session = await service.create_session(model="delayed")
+    first = await service.submit(session["session_id"], "first", request_id="first")
+    queued = await service.append(session["session_id"], "second", request_id="second")
+    duplicate = await service.append(session["session_id"], "second", request_id="second")
+
+    assert queued["status"] == "queued"
+    assert duplicate["deduplicated"] is True
+    await service.wait(first["turn_id"])
+    result = await service.wait(queued["turn_id"])
+    assert result["status"] == "completed"
+    events = await service.events(session["session_id"])
+    assert sum(event["type"] == "command.queued" for event in events) == 1
+    assert [event["text"] for event in events if event["type"] == "message.user"] == [
+        "first", "second",
+    ]
+
+
+async def test_fork_copies_checkpoint_and_keeps_parent_immutable(tmp_path):
+    model = ScriptedModel(responses=[AIMessage(content="parent"), AIMessage(content="child")])
+    service = AgentService(
+        tmp_path / "workspace", tmp_path / "runtime",
+        config=AgentConfig(), model_provider=lambda _: model,
+    )
+    parent = await service.create_session(model="scripted")
+    accepted = await service.submit(parent["session_id"], "question", request_id="parent-1")
+    await service.wait(accepted["turn_id"])
+
+    child = await service.fork(parent["session_id"])
+    assert child["parent_session_id"] == parent["session_id"]
+    assert child["parent_turn_id"] == accepted["turn_id"]
+    assert child["branch_id"] != parent["branch_id"]
+    child_request = await service.submit(child["session_id"], "follow-up", request_id="child-1")
+    result = await service.wait(child_request["turn_id"])
+    assert result["text"] == "child"
+    assert (await service.get_session(parent["session_id"]))["status"] == "completed"
+    assert not any(event["type"] == "message.user" and event.get("text") == "follow-up"
+                   for event in await service.events(parent["session_id"]))
+
+
 async def test_event_log_wait_subscribes_without_polling_gap(tmp_path):
     log = EventLog(tmp_path / "runtime", "session")
     await log.initialize()

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import shutil
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -49,6 +50,10 @@ class AgentSession:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     task: asyncio.Task | None = None
     compact_pending: bool = False
+    parent_session_id: str | None = None
+    parent_turn_id: str | None = None
+    parent_branch_id: str | None = None
+    pending_appends: list[tuple[str, str, str, str]] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,7 +181,33 @@ class AgentService:
                 created.get("model"), created.get("workflow_session_id"),
                 workflow.get("input") if workflow else None, now, now,
                 status=status, turn_id=turn_id, log=log,
+                parent_session_id=created.get("parent_session_id"),
+                parent_turn_id=created.get("parent_turn_id"),
+                parent_branch_id=created.get("parent_branch_id"),
             )
+            started_turns = {
+                event.get("turn_id") for event in log.events
+                if event["type"] == "turn.started"
+            }
+            finished_turns = {
+                event.get("turn_id") for event in log.events
+                if event["type"] in {
+                    "turn.completed", "turn.failed", "turn.cancelled", "turn.interrupted",
+                }
+            }
+            for event in log.events:
+                if event["type"] != "command.queued" or event.get("command") != "append":
+                    continue
+                queued_turn = event.get("queued_turn_id")
+                text = event.get("text")
+                request_id = event.get("request_id")
+                digest = event.get("text_digest")
+                if (isinstance(queued_turn, str) and isinstance(text, str)
+                        and isinstance(request_id, str) and isinstance(digest, str)
+                        and queued_turn not in started_turns
+                        and queued_turn not in finished_turns):
+                    session.pending_appends.append((queued_turn, text, request_id, digest))
+                    session.request_ids[request_id] = (queued_turn, digest)
             for event in log.events:
                 if event["type"] == "request.accepted":
                     request_id = event.get("request_id")
@@ -203,7 +234,10 @@ class AgentService:
     async def create_session(self, *, model: str | None = None,
                              workflow_session_id: str | None = None,
                              workflow_result: Any = None,
-                             session_id: str | None = None) -> dict[str, Any]:
+                             session_id: str | None = None,
+                             parent_session_id: str | None = None,
+                             parent_turn_id: str | None = None,
+                             parent_branch_id: str | None = None) -> dict[str, Any]:
         async with self._admission_lock:
             if not self._accepting:
                 raise LogAgentError("agent_busy", "Agent 当前暂停接收新会话")
@@ -216,19 +250,102 @@ class AgentService:
             sid, _new_id("branch_"), model or self.default_model,
             workflow_session_id, workflow_result, now, now,
             log=EventLog(self.runtime, sid),
+            parent_session_id=parent_session_id,
+            parent_turn_id=parent_turn_id,
+            parent_branch_id=parent_branch_id,
         )
         await session.log.initialize()
         self.sessions[sid] = session
         await session.log.append("session.created", branch_id=session.branch_id,
-                                 model=session.model, workflow_session_id=workflow_session_id)
+                                 model=session.model, workflow_session_id=workflow_session_id,
+                                 parent_session_id=parent_session_id,
+                                 parent_turn_id=parent_turn_id,
+                                 parent_branch_id=parent_branch_id)
         if workflow_result is not None:
             await session.log.append("workflow.input", workflow_session_id=workflow_session_id,
                                      input=workflow_result)
         return self._session_view(session)
 
+    async def _copy_checkpoint_thread(self, source_session_id: str,
+                                      target_session_id: str) -> None:
+        """Copy a complete SQLite checkpoint chain for a fork.
+
+        The installed AsyncSqliteSaver exposes ``acopy_thread`` only as an
+        abstract placeholder.  Its public async cursor and serializer-backed
+        tables are stable in the supported version, so copy every namespace,
+        checkpoint and pending write in one transaction.  Unknown saver
+        implementations fail explicitly instead of creating a branch with a
+        missing context.
+        """
+        saver = self.checkpointer
+        if saver is None or not hasattr(saver, "conn") or not hasattr(saver, "lock"):
+            raise LogAgentError("checkpoint_fork_unavailable", "当前 checkpoint 不支持安全分支")
+        await saver.setup()
+        async with saver.lock, saver.conn.cursor() as cursor:
+            await cursor.execute(
+                "SELECT checkpoint_ns, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata "
+                "FROM checkpoints WHERE thread_id = ? ORDER BY checkpoint_ns, checkpoint_id",
+                (source_session_id,),
+            )
+            checkpoints = await cursor.fetchall()
+            if not checkpoints:
+                raise LogAgentError("checkpoint_missing", "源会话 checkpoint 缺失，不能创建分支")
+            await cursor.execute(
+                "SELECT checkpoint_ns, checkpoint_id, task_id, idx, channel, type, value "
+                "FROM writes WHERE thread_id = ? ORDER BY checkpoint_ns, checkpoint_id, task_id, idx",
+                (source_session_id,),
+            )
+            writes = await cursor.fetchall()
+            await cursor.executemany(
+                "INSERT INTO checkpoints (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [(target_session_id, *row) for row in checkpoints],
+            )
+            await cursor.executemany(
+                "INSERT INTO writes (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, value) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                [(target_session_id, *row) for row in writes],
+            )
+            await saver.conn.commit()
+
+    async def fork(self, session_id: str, *, turn_id: str | None = None,
+                   model: str | None = None) -> dict[str, Any]:
+        """Create a read-only parent branch and a new session at its checkpoint."""
+        source = self._session(session_id)
+        if source.task is not None and not source.task.done():
+            raise LogAgentError("session_busy", "运行中的 session 不能创建分支")
+        selected_turn = turn_id or source.turn_id
+        if selected_turn is not None and not any(
+                event.get("turn_id") == selected_turn
+                and event["type"] in {"turn.completed", "turn.failed", "turn.cancelled", "turn.interrupted"}
+                for event in source.log.events):
+            raise LogAgentError("turn_not_found", "分支起点轮次不存在或尚未结束")
+        child = await self.create_session(
+            model=model or source.model,
+            workflow_session_id=source.workflow_session_id,
+            parent_session_id=source.session_id,
+            parent_turn_id=selected_turn,
+            parent_branch_id=source.branch_id,
+        )
+        try:
+            await self._copy_checkpoint_thread(source.session_id, child["session_id"])
+        except Exception:
+            self.sessions.pop(child["session_id"], None)
+            shutil.rmtree(self.runtime / "History" / child["session_id"], ignore_errors=True)
+            raise
+        child_session = self.sessions[child["session_id"]]
+        await child_session.log.append(
+            "branch.created", parent_session_id=source.session_id,
+            parent_turn_id=selected_turn, parent_branch_id=source.branch_id,
+        )
+        return self._session_view(child_session)
+
     def _session_view(self, session: AgentSession) -> dict[str, Any]:
         return {"session_id": session.session_id, "branch_id": session.branch_id,
                 "model": session.model, "workflow_session_id": session.workflow_session_id,
+                "parent_session_id": session.parent_session_id,
+                "parent_turn_id": session.parent_turn_id,
+                "parent_branch_id": session.parent_branch_id,
                 "created_at": session.created_at, "updated_at": session.updated_at,
                 "status": session.status, "turn_id": session.turn_id}
 
@@ -243,6 +360,22 @@ class AgentService:
         if session is None:
             raise LogAgentError("session_not_found", "Agent session 不存在")
         return session
+
+    async def _start_turn_locked(self, session: AgentSession, text: str, *,
+                                 request_id: str, turn_id: str | None = None,
+                                 digest: str | None = None) -> dict[str, Any]:
+        """Record and launch a turn while the admission/session locks are held."""
+        turn_id = turn_id or _new_id("turn_")
+        digest = digest or _digest(text)
+        session.request_ids[request_id] = (turn_id, digest)
+        await session.log.append("request.accepted", request_id=request_id,
+                                 turn_id=turn_id, text_digest=digest)
+        await session.log.append("message.user", turn_id=turn_id, text=text)
+        task = asyncio.create_task(self._run_turn(session, turn_id, text),
+                                   name=f"agent:turn:{turn_id}")
+        session.task = task
+        self._turns[turn_id] = task
+        return {"session_id": session.session_id, "turn_id": turn_id, "deduplicated": False}
 
     async def submit(self, session_id: str, text: str, *, request_id: str) -> dict[str, Any]:
         if not isinstance(text, str) or not text.strip():
@@ -262,16 +395,47 @@ class AgentService:
             async with session.lock:
                 if session.task is not None and not session.task.done():
                     raise LogAgentError("session_busy", "一个 session 同时只能运行一轮")
-                turn_id = _new_id("turn_")
-                session.request_ids[request_id] = (turn_id, digest)
-                await session.log.append("request.accepted", request_id=request_id,
-                                         turn_id=turn_id, text_digest=digest)
-                await session.log.append("message.user", turn_id=turn_id, text=text)
-                task = asyncio.create_task(self._run_turn(session, turn_id, text),
-                                           name=f"agent:turn:{turn_id}")
-                session.task = task
-                self._turns[turn_id] = task
-        return {"session_id": session_id, "turn_id": turn_id, "deduplicated": False}
+                return await self._start_turn_locked(
+                    session, text, request_id=request_id, digest=digest,
+                )
+
+    async def append(self, session_id: str, text: str, *, request_id: str) -> dict[str, Any]:
+        """Append a user message at the next safe model boundary.
+
+        An idle session starts a normal turn immediately.  A running session
+        records a durable command and starts the queued turn only after the
+        current turn has reached a terminal event.
+        """
+        if not isinstance(text, str) or not text.strip():
+            raise LogAgentError("invalid_argument", "消息不能为空")
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise LogAgentError("invalid_argument", "request_id 不能为空")
+        session = self._session(session_id)
+        digest = _digest(text)
+        previous = session.request_ids.get(request_id)
+        if previous is not None:
+            if previous[1] != digest:
+                raise LogAgentError("request_conflict", "request_id 已用于其他消息")
+            return {"session_id": session_id, "turn_id": previous[0], "deduplicated": True}
+        async with self._admission_lock:
+            if not self._accepting:
+                raise LogAgentError("agent_busy", "Agent 当前暂停接收新轮次")
+            async with session.lock:
+                if session.task is not None and not session.task.done():
+                    turn_id = _new_id("turn_")
+                    session.request_ids[request_id] = (turn_id, digest)
+                    session.pending_appends.append((turn_id, text, request_id, digest))
+                    event = await session.log.append(
+                        "command.queued", command="append", turn_id=session.turn_id,
+                        queued_turn_id=turn_id, request_id=request_id,
+                        text_digest=digest, text=text,
+                    )
+                    return {"session_id": session_id, "turn_id": turn_id,
+                            "status": "queued", "deduplicated": False,
+                            "event_id": event["id"]}
+                return await self._start_turn_locked(
+                    session, text, request_id=request_id, digest=digest,
+                )
 
     async def wait(self, turn_id: str) -> dict[str, Any]:
         task = self._turns.get(turn_id)
@@ -346,6 +510,27 @@ class AgentService:
             )
             return {"session_id": session_id, "status": "completed", "empty": True,
                     "event_id": event["id"]}
+
+    async def _drain_append(self, session: AgentSession,
+                            *, finishing_task: asyncio.Task | None = None) -> None:
+        """Start one queued append after the current turn terminal fact."""
+        if not self._accepting:
+            return
+        async with self._admission_lock:
+            if not self._accepting:
+                return
+            async with session.lock:
+                if not session.pending_appends:
+                    return
+                if session.task is finishing_task:
+                    session.task = None
+                if session.task is not None and not session.task.done():
+                    return
+                turn_id, text, request_id, digest = session.pending_appends.pop(0)
+                await self._start_turn_locked(
+                    session, text, request_id=request_id,
+                    turn_id=turn_id, digest=digest,
+                )
 
     @asynccontextmanager
     async def _model(self, session: AgentSession, *, ai_config=None, model: str | None = None):
@@ -697,6 +882,7 @@ class AgentService:
             raise
         finally:
             session.updated_at = datetime.now(UTC).isoformat()
+            await self._drain_append(session, finishing_task=asyncio.current_task())
 
     async def _ensure_checkpoint_present(self, session: AgentSession, *,
                                          require_existing: bool) -> None:
