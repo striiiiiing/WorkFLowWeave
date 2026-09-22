@@ -1,8 +1,11 @@
-from langchain_core.messages import AIMessage
+import pytest
+from langchain_core.messages import AIMessage, HumanMessage
 
 from logagent.agent.config import AgentConfig
+from logagent.agent.context import summarize_once, validate_request_budget
 from logagent.agent.events import EventLog
 from logagent.agent.service import AgentService
+from logagent.errors import LogAgentError
 from tests.agent.helpers import ScriptedModel
 
 
@@ -76,3 +79,26 @@ async def test_service_restart_marks_started_turn_and_tool_as_interrupted(tmp_pa
     assert current["status"] == "interrupted"
     events = await restored.events(session["session_id"])
     assert any(event["type"] == "tool.outcome_unknown" for event in events)
+
+
+async def test_context_budget_includes_fixed_prompt_and_reserved_output():
+    config = AgentConfig(context_window=500, output_tokens=100)
+    with pytest.raises(LogAgentError) as error:
+        validate_request_budget(
+            [HumanMessage(content="x" * 5_000)], "fixed instructions", [{"name": "read"}], config
+        )
+    assert error.value.code == "context_budget_exceeded"
+
+
+async def test_summary_uses_full_prefix_once_and_preserves_tool_pairs():
+    config = AgentConfig(context_window=10_000, output_tokens=100)
+    messages = [
+        HumanMessage(content="early fact " + "history " * 12_000),
+        AIMessage(content="", tool_calls=[{"id": "call-1", "name": "read", "args": {}}]),
+    ]
+    from langchain_core.messages import ToolMessage
+    messages.append(ToolMessage(content="read result", tool_call_id="call-1"))
+    model = ScriptedModel(responses=[AIMessage(content="summary")])
+    compacted = await summarize_once(model, messages, config)
+    assert compacted and model.seen
+    assert any("early fact" in message.content for message in model.seen[0])
