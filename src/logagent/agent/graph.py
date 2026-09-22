@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections import defaultdict
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from langchain.agents import create_agent
@@ -32,6 +32,7 @@ class AgentToolContext:
     event_log: EventLog
     scheduler: ToolScheduler
     artifacts: ArtifactStore | None = None
+    tool_call_id: str | None = None
     tool_tasks: dict[str, asyncio.Task] = field(default_factory=dict)
     ordinals: dict[str, int] = field(default_factory=lambda: defaultdict(int))
 
@@ -55,7 +56,9 @@ def _langchain_tool(declaration: ToolDeclaration, context: AgentToolContext) -> 
         async def execute():
             async with context.scheduler.acquire(declaration.execution):
                 try:
-                    result = await declaration.invoke(arguments, context)
+                    result = await declaration.invoke(
+                        arguments, replace(context, tool_call_id=key)
+                    )
                     if not isinstance(result, dict):
                         result = {"status": "success", "value": result}
                     await context.event_log.complete_tool(key, arguments, result)

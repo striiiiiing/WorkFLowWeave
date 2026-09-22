@@ -152,20 +152,47 @@ class EventLog:
             return ToolReservation(key, arguments_digest, "started")
 
     async def complete_tool(self, key: str, arguments: Any, result: dict[str, Any]) -> dict[str, Any]:
-        reservation = await self.reserve_tool(key, arguments)
-        if reservation.status not in {"started", "active"}:
-            return reservation.result or {}
-        event = await self.append("tool.completed", tool_key=key,
-                                  arguments_digest=reservation.arguments_digest, result=result)
-        return event
+        arguments_digest = _digest(arguments)
+        async with self._lock:
+            if not self._loaded:
+                await asyncio.to_thread(self._load)
+            previous = self._tools.get(key)
+            if previous is None:
+                raise LogAgentError("tool_not_started", "工具完成事件缺少 started 记录")
+            if previous["arguments_digest"] != arguments_digest:
+                raise LogAgentError("tool_key_conflict", "工具稳定键对应了不同参数")
+            completed = previous.get("completed")
+            if completed is not None:
+                return completed.get("result") or {}
+            event = {"id": self._next_id, "type": "tool.completed",
+                     "created_at": self._timestamp(), "tool_key": key,
+                     "arguments_digest": arguments_digest, "result": result}
+            await asyncio.to_thread(self._write, event)
+            self._append_index(event)
+            self._next_id += 1
+            return dict(event)
 
     async def mark_unknown(self, key: str, arguments: Any, *, reason: str = "outcome_unknown") -> dict[str, Any]:
-        reservation = await self.reserve_tool(key, arguments)
-        if reservation.status not in {"started", "active"}:
-            return {"status": reservation.status, "result": reservation.result}
-        return await self.append("tool.outcome_unknown", tool_key=key,
-                                 arguments_digest=reservation.arguments_digest,
-                                 result={"status": reason})
+        arguments_digest = _digest(arguments)
+        async with self._lock:
+            if not self._loaded:
+                await asyncio.to_thread(self._load)
+            previous = self._tools.get(key)
+            if previous is None:
+                raise LogAgentError("tool_not_started", "工具结果缺少 started 记录")
+            if previous["arguments_digest"] != arguments_digest:
+                raise LogAgentError("tool_key_conflict", "工具稳定键对应了不同参数")
+            completed = previous.get("completed")
+            if completed is not None:
+                return {"status": completed["type"], "result": completed.get("result")}
+            event = {"id": self._next_id, "type": "tool.outcome_unknown",
+                     "created_at": self._timestamp(), "tool_key": key,
+                     "arguments_digest": arguments_digest,
+                     "result": {"status": reason}}
+            await asyncio.to_thread(self._write, event)
+            self._append_index(event)
+            self._next_id += 1
+            return dict(event)
 
     async def recover_interrupted(self) -> list[str]:
         """Mark started calls without terminal facts after a process restart."""

@@ -87,7 +87,9 @@ def validate_request_budget(messages: list[BaseMessage], system_prompt: str,
                             tools: list[dict[str, Any]], config: AgentConfig) -> dict[str, int] | None:
     """Validate the complete request envelope before invoking the model."""
     if config.context_window is None:
-        return None
+        raise LogAgentError(
+            "context_budget_unavailable", "必须显式配置模型上下文容量后才能执行 Agent",
+        )
     usage = estimate_request(messages, system_prompt, tools, config)
     if usage["total"] > usage["window"]:
         raise LogAgentError("context_budget_exceeded", "当前请求超过已配置模型上下文容量", usage)
