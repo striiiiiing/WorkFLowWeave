@@ -109,6 +109,9 @@ async def test_agent_service_is_idempotent_and_runs_one_turn(tmp_path):
     assert result == {"turn_id": accepted["turn_id"], "status": "completed", "text": "answer"}
     events = await service.events(session["session_id"])
     assert [event["type"] for event in events][-1] == "turn.completed"
+    assert all(event["session_id"] == session["session_id"] for event in events)
+    assert all(isinstance(event["at"], str) and isinstance(event["data"], dict)
+               for event in events)
 
 
 async def test_agent_tool_execution_is_recorded_before_graph_continues(tmp_path):
