@@ -65,6 +65,8 @@
 
 系统 SHALL 提供工作区根 `AGENTS.md`、按配置时区的 `Memory/YYYY-MM-DD.md`、可编辑 `History/<session>.md`、只读 Runtime、事件和 Artifact。Agent MUST 使用普通 read/write/grep 维护 Memory 和 History，不增加记忆专用工具或向量索引。活动 turn 捕获的 AGENTS 和工具定义保持稳定，修改从下一轮或新分支生效。
 
+Runtime MUST provide a session-scoped read-only logical file `Runtime/self.json`. Its resolution MUST use the current Agent session context, so concurrent sessions reading the same logical path receive different metadata; it MUST NOT be implemented as a shared `Runtime/current.json` file.
+
 #### Scenario: Keep instructions stable during a turn
 
 - **WHEN** Agent turn 已经开始后用户修改 `AGENTS.md`
@@ -74,6 +76,11 @@
 
 - **WHEN** Agent 判断一条信息值得保留并调用普通 `write`
 - **THEN** 内容写入配置时区对应的 `Memory/YYYY-MM-DD.md`，系统不额外创建记忆工具或自动日记
+
+#### Scenario: Read the current session identity
+
+- **WHEN** 两个 Agent 会话并行调用 `read("Runtime/self.json")`
+- **THEN** 每个调用返回其自身的 `session_id`、`turn_id` 和 `branch_id`，不会读取或覆盖另一个会话的元数据
 
 ### Requirement: Compaction uses a fixed configurable budget
 

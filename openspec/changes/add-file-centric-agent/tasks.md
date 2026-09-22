@@ -9,6 +9,7 @@
 - [x] 1.3 重写 `design.md` 内的冲突段落，保持原章节结构并记录 checkpoint、并发、工具数量和缓存边界。
 - [x] 1.4 同步 proposal、frontend、references、runtime/interface specs。
 - [x] 1.5 校准 Runtime 可读文件路径，并将 checkpoint 清理统一为整条 thread 生命周期规则；依据见 [设计一致性校准记录](tasks/2026-09-22-design-alignment/task.md)。
+- [x] 1.6 修正多会话 Runtime 入口：使用会话作用域的 `Runtime/self.json`，不使用共享工作区的 `Runtime/current.json`；依据见 [会话上下文入口记录](tasks/2026-09-22-session-context/task.md)。
 
 ## 2. 实施顺序（新版，尚未开始）
 
