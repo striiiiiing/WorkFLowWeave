@@ -285,6 +285,11 @@ class AgentService:
         if task is None or task.done():
             return self._session_view(session)
         task.cancel()
+        # The API acknowledges stop only after the turn has recorded its
+        # terminal fact and released tool/scheduler resources.  A caller may
+        # disconnect after this response without leaving a hidden background
+        # cancellation race.
+        await asyncio.gather(task, return_exceptions=True)
         return self._session_view(session)
 
     async def events(self, session_id: str, *, after: int = 0) -> list[dict[str, Any]]:
