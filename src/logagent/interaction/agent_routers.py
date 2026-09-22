@@ -113,7 +113,16 @@ def build_agent_router():
         async def stream() -> AsyncIterator[str]:
             nonlocal cursor
             while True:
-                events = await service.events(session_id, after=cursor)
+                log = getattr(service, "sessions", {}).get(session_id)
+                if log is not None and getattr(log, "log", None) is not None:
+                    events = await log.log.wait_for_events(cursor, wait_seconds=0.5)
+                else:
+                    # Keep fake/embedded Agent implementations compatible with
+                    # the public service protocol; their events() method is the
+                    # only available replay source.
+                    events = await service.events(session_id, after=cursor)
+                    if not events:
+                        await asyncio.sleep(0.5)
                 for event in events:
                     cursor = event["id"]
                     yield f"id: {cursor}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
