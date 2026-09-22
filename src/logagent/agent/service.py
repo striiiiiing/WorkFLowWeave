@@ -266,6 +266,7 @@ class AgentService:
                 session.request_ids[request_id] = (turn_id, digest)
                 await session.log.append("request.accepted", request_id=request_id,
                                          turn_id=turn_id, text_digest=digest)
+                await session.log.append("message.user", turn_id=turn_id, text=text)
                 task = asyncio.create_task(self._run_turn(session, turn_id, text),
                                            name=f"agent:turn:{turn_id}")
                 session.task = task
@@ -292,16 +293,27 @@ class AgentService:
 
     def tool_views(self) -> list[dict[str, Any]]:
         """Return the published tool DTOs used by the next turn."""
-        return [
-            {
+        generation = self.plugins.generation if self.plugins is not None else None
+        owners = ({item.name: item.plugin for item in self.plugins.toolRegister.describe()}
+                  if self.plugins is not None else {})
+        views = []
+        for item in self._tool_declarations():
+            # Registered tool descriptions carry their plugin owner.  Built-ins
+            # are represented by their stable plugin IDs even when the service
+            # is used without a PluginRegistry in tests or embedded callers.
+            owner = owners.get(item.name, f"agent_{item.name}")
+            schema = item.input_schema
+            views.append({
                 "name": item.name,
+                "plugin": owner,
                 "description": item.description,
                 "execution": item.execution,
-                "input_schema": item.input_schema,
+                "input_schema": schema,
+                "definition_tokens": max(1, len(str(schema)) // 4),
+                "generation": generation,
                 "enabled": True,
-            }
-            for item in self._tool_declarations()
-        ]
+            })
+        return views
 
     def update_config(self, config: AgentConfig) -> dict[str, Any]:
         """Publish configuration for subsequent turns."""
