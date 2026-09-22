@@ -20,6 +20,8 @@ class Lifecycle(Protocol):
 
     async def reload(self, scope: Literal["resources", "plugins"]) -> DiscoveryReport | None: ...
 
+    async def update_plugin_setting(self, plugin_id: str, enabled: bool) -> DiscoveryReport: ...
+
 
 def get_services(request: Request) -> ApplicationServices:
     services = getattr(request.app.state, "services", None)

@@ -18,9 +18,11 @@ from logagent.errors import LogAgentError
 from logagent.lifecycle import ApplicationServices
 from logagent.models import ID, StrictModel
 
-from .dependencies import get_services
+from .dependencies import Lifecycle as LifecycleProtocol
+from .dependencies import get_lifecycle, get_services
 
 Services = Annotated[ApplicationServices, Depends(get_services)]
+Lifecycle = Annotated[LifecycleProtocol, Depends(get_lifecycle)]
 
 
 class AgentSessionCreate(StrictModel):
@@ -39,6 +41,10 @@ class AgentFileWrite(StrictModel):
     content: str
     old_text: str | None = None
     expected_hash: str | None = None
+
+
+class AgentToolSetting(StrictModel):
+    enabled: bool
 
 
 def _workspace(service, session_id: str):
@@ -222,6 +228,15 @@ def build_agent_router():
     @router.get("/tools")
     async def list_agent_tools(services: Services):
         return _agent(services).tool_views()
+
+    @router.put("/tools/{plugin_id}")
+    async def update_agent_tool(plugin_id: ID, payload: AgentToolSetting,
+                                services: Services, lifecycle: Lifecycle):
+        """Change the existing PluginRegistry tool setting and reload atomically."""
+        report = await lifecycle.update_plugin_setting(plugin_id, payload.enabled)
+        return {"plugin_id": plugin_id, "enabled": payload.enabled,
+                "generation": services.plugins.generation,
+                "report": report.model_dump(mode="json")}
 
     return router
 
