@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 import logagent.agent.workspace as workspace_module
-from logagent.agent.workspace import WorkspaceBackend
+from logagent.agent.workspace import RuntimeIdentity, WorkspaceBackend
 from logagent.errors import LogAgentError
 
 DEFAULT_LIMIT = 200
@@ -48,6 +48,28 @@ async def test_initialize_instructions_and_workspace_layout(tmp_path):
     assert {
         path.name for path in backend.runtime.iterdir()
     } >= {"Catalog", "Artifacts", "History"}
+
+
+async def test_runtime_self_is_session_scoped_readonly_and_not_searchable(tmp_path):
+    base = WorkspaceBackend(tmp_path / "workspace", tmp_path / "runtime")
+    await base.initialize()
+    first = base.for_identity(RuntimeIdentity("s1", "t1", "b1", model="m1"))
+    second = base.for_identity(RuntimeIdentity("s2", "t2", "b2", model="m2"))
+
+    first_view = await read_backend(first, "Runtime/self.json")
+    second_view = await read_backend(second, "Runtime/self.json")
+    assert '"session_id": "s1"' in first_view["content"]
+    assert '"session_id": "s2"' in second_view["content"]
+    assert '"session_id": "s2"' not in first_view["content"]
+    assert first_view["readonly"] and first_view["hash"] != second_view["hash"]
+
+    with pytest.raises(LogAgentError) as write_error:
+        await first.write("Runtime/self.json", "overwrite", "{}")
+    assert_error(write_error, "read_only")
+    with pytest.raises(LogAgentError) as grep_error:
+        await first.grep("session_id", path="Runtime/self.json",
+                          default_limit=DEFAULT_LIMIT, output_bytes=OUTPUT_BYTES)
+    assert_error(grep_error, "read_only")
 
 
 async def test_read_paginates_and_hashes_complete_file(tmp_path):

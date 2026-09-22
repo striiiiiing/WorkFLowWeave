@@ -52,10 +52,10 @@ class ShellSandbox:
             if probe.returncode != 0 or probe.status != "success":
                 raise LogAgentError("sandbox_unavailable", "bubblewrap 无法创建实际隔离",
                                     {"diagnostic": probe.stderr.decode("utf-8", errors="replace")})
-            argv, working_directory = [*prefix, "/bin/sh", "-lc", command], None
+            argv, working_directory = [*prefix, "/bin/sh", "-c", command], None
         else:
             working_directory = self.workspace.root / cwd
-            argv = ["/bin/sh", "-lc", command]
+            argv = ["/bin/sh", "-c", command]
         result = await run_process(argv, cwd=working_directory, env=environment,
                                    deadline_seconds=timeout or config.shell_timeout,
                                    output_bytes=config.output_bytes, supervise=True)

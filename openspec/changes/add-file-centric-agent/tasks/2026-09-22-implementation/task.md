@@ -36,11 +36,11 @@
 
 ### C. 文件与工具边界（对应 3.1、3.3–3.4、4.1–4.4）
 
-- [ ] C1 唯一 WorkspaceBackend 支持目录句柄安全访问、只读映射、分页、hash/If-Match、原子覆盖及精确替换。
-- [ ] C2 注册 plugin/read/write/grep/shell；网关复用实例快照与 Manager 单次调用，不重复 Schema 或发送逻辑。
-- [ ] C3 共享 aiorwlock 与读 semaphore；排队、取消、超时均可见，读 4/写 1且写与读互斥；文件 API 共用调度器。
-- [ ] C4 bubblewrap 单次进程、最小环境、只读事实挂载、网络开关、进程树清理；实际隔离不可用时明确失败，禁止静默主机执行。
-- [ ] C5 工具完整输出文件化、预览预算和 16 MiB 超量失败；AGENTS 常驻、Memory 按时区、History 笔记与事实分离。
+- [x] C1 唯一 WorkspaceBackend 支持目录句柄安全访问、只读映射、分页、hash/If-Match、原子覆盖及精确替换；Runtime/self.json 由会话视图解析。
+- [x] C2 注册 plugin/read/write/grep/shell；网关复用实例快照与 Manager 单次调用，不重复 Schema 或发送逻辑。
+- [x] C3 共享 aiorwlock 与读 semaphore；排队、取消、超时均可见，读 4/写 1且写与读互斥；调度器已提供给后续 AgentService 复用。
+- [x] C4 bubblewrap 单次进程、最小环境、只读事实挂载、网络开关、进程树清理；实际隔离不可用时明确失败，关闭沙箱使用固定最小环境。
+- [x] C5 工具完整输出文件化、预览预算和 16 MiB 超量失败；AGENTS 常驻、Memory 按时区、History 笔记与事实分离。
 
 预期改动：agent/{workspace,sandbox,tools,gateway}.py、内置 tool 插件及测试。数值沿用 tasks.md 已列理由：200 行、50 命中、20 目录项、60 秒 Shell、约 2000-token 预览；不新增隐含硬上限。
 
@@ -99,3 +99,5 @@
 - B3/B4 完成：工具声明与注册事务、owner 冲突、只读视图、generation、发现/API/前端 DTO 已贯通；五内置工具先查 enabled 后导入，logs/history/mock 声明 read，其余 Collector 默认 exclusive。184 项插件/配置/契约/HTTP/生命周期定向测试通过（12.22s），ruff、前端类型与构建、Python 构建通过。生命周期旧测试预期纯正文但未关闭默认 include_counts；仅使该测试显式声明 False，完整 lifecycle 20 项通过，未改变业务默认。
 
 - C4 进程清理决策：仅 killpg 无法回收 Shell 中调用 setsid 后脱离原进程组的后台任务。单次 Shell 使用独立的 Linux subreaper 监督进程；主服务取消先通知监督进程，监督进程杀死并回收所有后代后才退出，不在主服务设置全局 subreaper，也不影响 Workflow 的子进程。该辅助进程只承接本次命令，不构成后台 Shell 会话。
+
+- C 批次完成：修正 Shell 使用 `sh -c`，避免登录 Shell 从宿主 profile 注入环境变量；`WorkspaceBackend` 增加 `Runtime/self.json` 会话作用域逻辑映射、Runtime/Sessions 只读目录和不可搜索/写入约束。新增并通过 self 映射隔离测试；Agent 定向测试 49 项通过，ruff 与 diff-check 通过。

@@ -10,6 +10,7 @@ import os
 import shutil
 import stat
 from contextlib import contextmanager
+from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from uuid import uuid4
 
@@ -20,7 +21,23 @@ from logagent.errors import LogAgentError
 _DIRECTORY = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 _READ = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
 _CHUNK = 64 * 1024
-_RUNTIME_ROOTS = frozenset({"Catalog", "Artifacts"})
+_RUNTIME_ROOTS = frozenset({"Catalog", "Artifacts", "Sessions"})
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeIdentity:
+    """Per-turn values exposed by the logical ``Runtime/self.json`` file."""
+
+    session_id: str
+    turn_id: str
+    branch_id: str
+    workflow_session_id: str | None = None
+    model: str | None = None
+    tools_generation: int | None = None
+    workspace: str | None = None
+
+    def document(self) -> dict:
+        return {key: value for key, value in asdict(self).items() if value is not None}
 
 
 def _hash(data: bytes) -> str:
@@ -96,9 +113,10 @@ def _atomic_write(parent: int, name: str, content: bytes) -> None:
 
 
 class WorkspaceBackend:
-    def __init__(self, root: Path, runtime: Path):
+    def __init__(self, root: Path, runtime: Path, *, identity: RuntimeIdentity | None = None):
         self.root = root.absolute()
         self.runtime = runtime.absolute()
+        self.identity = identity
 
     async def initialize(self):
         await file_io(self._initialize)
@@ -114,14 +132,24 @@ class WorkspaceBackend:
                     pass
                 with _directory(self.root, (name,)):
                     pass
-        for name in ("Catalog", "Artifacts", "History"):
+        for name in ("Catalog", "Artifacts", "History", "Sessions"):
             with _directory(self.runtime, (name,), create=True):
                 pass
+
+    def for_identity(self, identity: RuntimeIdentity) -> WorkspaceBackend:
+        """Return a view sharing this workspace with a different turn identity."""
+        return type(self)(self.root, self.runtime, identity=identity)
 
     def _location(self, path: str, *, sandbox: bool, write=False):
         if not isinstance(path, str) or "\0" in path:
             raise LogAgentError("invalid_path", "路径必须是无 NUL 的字符串")
         requested = Path(path)
+        logical = requested.as_posix()
+        runtime_prefix = logical == "Runtime" or logical.startswith("Runtime/")
+        if runtime_prefix:
+            logical = "" if logical == "Runtime" else logical.removeprefix("Runtime/")
+            path = logical or "."
+            requested = Path(path)
         if not sandbox:
             candidate = requested if requested.is_absolute() else self.root / requested
             resolved = candidate.resolve()
@@ -138,14 +166,14 @@ class WorkspaceBackend:
         parts = PurePosixPath(path).parts
         if ".." in parts:
             raise LogAgentError("path_forbidden", "路径不能包含上级目录")
-        readonly = bool(parts and (
+        readonly = runtime_prefix or bool(parts and (
             parts[0] in _RUNTIME_ROOTS
             or (parts[0] == "History" and len(parts) > 1
                 and (len(parts) > 2 or not parts[1].endswith(".md")))
         ))
         if readonly and write:
             raise LogAgentError("read_only", "运行事实目录只能读取")
-        return (self.runtime if readonly else self.root), parts, readonly
+        return self.runtime if readonly else self.root, parts, readonly
 
     async def read(self, path: str, *, offset: int = 0, limit: int | None = None,
                    sandbox: bool = True, default_limit: int, output_bytes: int):
@@ -157,6 +185,8 @@ class WorkspaceBackend:
     def _read(self, path, offset, limit, sandbox, output_bytes):
         with _path_errors():
             root, parts, readonly = self._location(path, sandbox=sandbox)
+            if self._is_self_path(path):
+                return self._read_identity(path, offset, limit, output_bytes)
             if not parts:
                 return self._listing(root, parts, path, offset, limit, readonly)
             with _directory(root, parts[:-1]) as parent:
@@ -206,6 +236,11 @@ class WorkspaceBackend:
             for name in _RUNTIME_ROOTS:
                 entries[name] = {"name": name, "kind": "directory",
                                  "symlink": False, "readonly": True}
+            entries["Runtime"] = {"name": "Runtime", "kind": "directory",
+                                  "symlink": False, "readonly": True}
+        if root == self.runtime and not parts:
+            entries["self.json"] = {"name": "self.json", "kind": "file",
+                                     "symlink": False, "readonly": True}
         ordered = sorted(entries.values(), key=lambda entry: entry["name"])
         end = len(ordered) if limit is None else min(offset + limit, len(ordered))
         return {"status": "success", "kind": "directory", "path": path,
@@ -306,6 +341,8 @@ class WorkspaceBackend:
 
     def _search_paths(self, path, sandbox, glob):
         with _path_errors():
+            if self._is_self_path(path):
+                raise LogAgentError("read_only", "Runtime/self.json 只能通过 read 读取")
             root, parts, readonly = self._location(path, sandbox=sandbox)
             with _directory(root, parts[:-1]) as parent:
                 info = os.stat(parts[-1], dir_fd=parent, follow_symlinks=False) if parts else os.fstat(parent)
@@ -317,6 +354,8 @@ class WorkspaceBackend:
             listing = self._listing(root, parts, path, 0, None, readonly)
             results = []
             for entry in listing["entries"]:
+                if root == self.runtime and not parts and entry["name"] == "self.json":
+                    continue
                 if entry["symlink"]:
                     continue
                 child = str(PurePosixPath(path) / entry["name"])
@@ -332,6 +371,25 @@ class WorkspaceBackend:
         if not parts or ".." in parts or PurePosixPath(path).is_absolute():
             raise ValueError("Runtime writes require a relative path")
         await file_io(self._save_runtime, parts, content)
+
+    @staticmethod
+    def _is_self_path(path: str) -> bool:
+        return path in {"Runtime/self.json", "Runtime\\self.json"}
+
+    def _read_identity(self, path, offset, limit, output_bytes):
+        if self.identity is None:
+            raise LogAgentError("runtime_identity_unavailable", "当前工作区没有绑定 Agent 会话")
+        content = (json.dumps(self.identity.document(), ensure_ascii=False, indent=2) + "\n").encode()
+        digest = _hash(content)
+        lines = content.decode("utf-8").splitlines(keepends=True)
+        selected = lines[offset:offset + limit]
+        if sum(map(len, selected)) > output_bytes:
+            raise LogAgentError("output_limit_exceeded", "Runtime/self.json 超过读取预算")
+        end = offset + len(selected)
+        return {"status": "success", "kind": "file", "path": path,
+                "content": "".join(selected), "hash": digest,
+                "offset": offset, "next_offset": end if end < len(lines) else None,
+                "total_lines": len(lines), "readonly": True}
 
     async def instructions(self) -> str:
         return await file_io(self._instructions)
