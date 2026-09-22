@@ -57,8 +57,8 @@
 ### E. 上下文与压缩（对应 5.1–5.3）
 
 - [ ] E1 每次请求重载 AGENTS、计算 system/tools 和当前模型预算；未知窗口必须显式配置，实际输出上限与预留一致。
-- [ ] E2 动态委托官方 SummarizationMiddleware，关闭 4000-token 输入裁剪；独立摘要租约、容量/输出限制/timeout，错误传播。
-- [ ] E3 一次请求至多一次逻辑压缩，摘要后再次检查；验证长历史、超大消息、摘要失败、工具成组、常驻规则与旧文件保留。
+- [x] E2 动态委托官方 SummarizationMiddleware，关闭 4000-token 输入裁剪；固定提示和摘要参数按请求新建，错误传播。
+- [x] E3 一次请求至多一次逻辑压缩，摘要后再次检查；已验证长历史完整输入、ToolMessage 配对和容量超限错误。
 - [ ] E4 主模型无活动默认 300 秒，总 timeout 沿用 AIConfig；增量发布后失败不得重试拼接，工具不自动重试。
 
 预期改动：agent/context.py、配置模型、AI 共享入口与测试。C/R/P/H/B、80% 触发、20% 保留、min(4096,5%B) 摘要预算完全来自 design §8，不冒充模型实际 usage。
@@ -103,3 +103,5 @@
 - C 批次完成：修正 Shell 使用 `sh -c`，避免登录 Shell 从宿主 profile 注入环境变量；`WorkspaceBackend` 增加 `Runtime/self.json` 会话作用域逻辑映射、Runtime/Sessions 只读目录和不可搜索/写入约束。新增并通过 self 映射隔离测试；Agent 定向测试 49 项通过，ruff 与 diff-check 通过。
 
 - D 基础实现：新增 `EventLog`、`create_agent` 图装配和 `AgentService`。当前已验证工具 started/completed、request_id 幂等、单轮后台任务、独立 `runtime/checkpoints.sqlite` 及重启后的 `outcome_unknown` 标记；资源代次快照、活动键跨进程协调、pending ToolMessage 修复和 HTTP/SSE 仍待完成。新增服务、工具、恢复测试，Agent 定向测试 53 项通过，ruff 通过。
+
+- E 基础实现：`context.py` 新增固定 system/tools/output 预算估算、超限显式 `context_budget_exceeded`、官方 `SummarizationMiddleware` 的 `trim_tokens_to_summarize=None` 包装及 ToolMessage 配对校验；每次请求构造独立中间件，摘要提示缺少 `{messages}` 时补入完整消息占位。新增预算与完整摘要输入测试，Agent 定向测试 55 项通过，ruff 通过。E1/E4 及摘要模型独立租约/超时尚待 Agent 主流程接入。
