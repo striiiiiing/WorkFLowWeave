@@ -225,7 +225,7 @@ data/agents/
 │       └── <session_id>.md         # Agent 自行整理、可继续改写的历史笔记
 └── runtime/
     ├── checkpoints.sqlite         # LangGraph 官方执行状态，不暴露为可写工具文件
-    ├── Session/<session_id>.json  # 当前会话、分支、来源 Workflow 和本轮运行元数据
+    ├── Sessions/<session_id>.json # 各会话持久化的只读元数据
     ├── Catalog/<generation>/      # 从同代 registry 生成的只读目录与 Schema
     ├── Artifacts/<session_id>/     # 工具原始输出与诊断
     └── History/<session_id>/
@@ -233,7 +233,9 @@ data/agents/
         └── summaries/             # 已提交的压缩摘要及所覆盖的事件范围
 ```
 
-WorkspaceBackend 将 runtime 的只读内容映射到逻辑路径 `Runtime/Session/<session_id>.json`、`Runtime/Catalog/`、`Runtime/Artifacts/` 和 `Runtime/History/<session_id>/`；Shell 沙箱使用对应只读挂载。`History/<session_id>.md` 与 `Runtime/History/<session_id>/events.jsonl` 分属可编辑笔记与执行事实。它们都可读，但只有笔记由 Agent 随意重写，避免编辑历史导致已经发送的通知被重新执行。`Runtime/Session/<session_id>.json` 是模型通过 `read` 查看当前 session、branch、来源 Workflow、turn、模型和工具 generation 的固定入口，不增加 Runtime 专用工具。
+WorkspaceBackend 将 runtime 的只读内容映射到逻辑路径 `Runtime/self.json`、`Runtime/Sessions/<session_id>.json`、`Runtime/Catalog/`、`Runtime/Artifacts/` 和 `Runtime/History/<session_id>/`；Shell 沙箱使用对应只读挂载。`History/<session_id>.md` 与 `Runtime/History/<session_id>/events.jsonl` 分属可编辑笔记与执行事实。它们都可读，但只有笔记由 Agent 随意重写，避免编辑历史导致已经发送的通知被重新执行。
+
+`Runtime/self.json` 是一个**按 Agent 会话上下文解析的只读逻辑文件**，不是共享工作区中的单个 `current.json`。每个 Agent turn 的 `WorkspaceBackend` 都绑定自己的 `session_id`、`branch_id` 和本轮快照；多个会话同时运行时读取同一个逻辑路径仍分别得到各自内容，不会互相覆盖。该文件包含当前 `session_id`、`turn_id`、`branch_id`、来源 Workflow session、模型、工具 generation 和工作区标识。模型需要自己的 ID 时固定执行 `read("Runtime/self.json")`；提示词只告知这个路径，不把运行元数据复制成第二份事实。`Runtime/Sessions/<session_id>.json` 面向已知 ID 的历史/界面查看，不能替代 `self.json` 的会话作用域。
 
 这不是第二套文件系统协议：模型仍只看路径并用 read/grep；映射在一个 WorkspaceBackend 内完成。Catalog 是可删除再生成的物化视图，唯一事实来源仍是 registry；Agent 不能靠改目录 JSON 注册能力。
 
@@ -242,7 +244,7 @@ WorkspaceBackend 将 runtime 的只读内容映射到逻辑路径 `Runtime/Sessi
 ### 7.2 AGENTS、记忆与历史
 
 - `AGENTS.md` 在每个新 turn 开始时完整加载为稳定系统上下文，位于摘要区之外；活动 turn 捕获的内容不在中途变化，文件修改从下一轮或新分支生效，压缩不能删掉。首版只支持工作区根文件，不加递归 import、嵌套覆盖和多套别名解析。
-- 默认模板只写职责、五工具使用方式、当前日期/工作区路径约定、按需回忆及值得保留时写 Memory/History。动态时间放在短运行上下文中，避免整段稳定提示词每轮变化。
+- 默认模板只写职责、五工具使用方式、`Runtime/self.json` 的读取方式、当前日期/工作区路径约定、按需回忆及值得保留时写 Memory/History。动态时间放在短运行上下文中，避免整段稳定提示词每轮变化。
 - Memory 是纯文本的，所以采用系统默认的时区，也可以采用配置文件指定的，后者如果有优先级更高。这里便于Agent读取，否则用户可能不是很能理解
 - Agent 根据任务主动 read/grep Memory 与 History，用 write 保存。运行时不代替模型生成每日记忆，不建立向量索引，不自动把全部历史或过去 N 天全文塞进上下文。
 - 自动压缩摘要属于运行时上下文，不自动写进每日 Memory。Memory 是模型判断后的长期记录；摘要是当前会话继续执行所需的短期状态。
