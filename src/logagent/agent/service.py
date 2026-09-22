@@ -102,6 +102,7 @@ class AgentService:
         self._turns: dict[str, asyncio.Task] = {}
         self._initialized = False
         self._accepting = True
+        self._admission_lock = asyncio.Lock()
 
     @property
     def accepting(self) -> bool:
@@ -109,8 +110,9 @@ class AgentService:
 
     async def pause_admission(self) -> int:
         """Stop new turns and return the number of currently active turns."""
-        self._accepting = False
-        return sum(1 for task in self._turns.values() if not task.done())
+        async with self._admission_lock:
+            self._accepting = False
+            return sum(1 for task in self._turns.values() if not task.done())
 
     def resume_admission(self) -> None:
         self._accepting = True
@@ -178,7 +180,8 @@ class AgentService:
             self.sessions[directory.name] = session
 
     async def close(self) -> None:
-        self._accepting = False
+        async with self._admission_lock:
+            self._accepting = False
         tasks = [task for task in self._turns.values() if not task.done()]
         for task in tasks:
             task.cancel()
@@ -193,7 +196,10 @@ class AgentService:
                              workflow_session_id: str | None = None,
                              workflow_result: Any = None,
                              session_id: str | None = None) -> dict[str, Any]:
-        await self.initialize()
+        async with self._admission_lock:
+            if not self._accepting:
+                raise LogAgentError("agent_busy", "Agent 当前暂停接收新会话")
+            await self.initialize()
         sid = session_id or _new_id("agent_")
         if sid in self.sessions:
             raise LogAgentError("session_conflict", "Agent session 已存在")
@@ -236,25 +242,26 @@ class AgentService:
         if not isinstance(request_id, str) or not request_id.strip():
             raise LogAgentError("invalid_argument", "request_id 不能为空")
         session = self._session(session_id)
-        if not self._accepting:
-            raise LogAgentError("agent_busy", "Agent 当前暂停接收新轮次")
         digest = _digest(text)
         previous = session.request_ids.get(request_id)
         if previous is not None:
             if previous[1] != digest:
                 raise LogAgentError("request_conflict", "request_id 已用于其他消息")
             return {"session_id": session_id, "turn_id": previous[0], "deduplicated": True}
-        async with session.lock:
-            if session.task is not None and not session.task.done():
-                raise LogAgentError("session_busy", "一个 session 同时只能运行一轮")
-            turn_id = _new_id("turn_")
-            session.request_ids[request_id] = (turn_id, digest)
-            await session.log.append("request.accepted", request_id=request_id,
-                                     turn_id=turn_id, text_digest=digest)
-            task = asyncio.create_task(self._run_turn(session, turn_id, text),
-                                       name=f"agent:turn:{turn_id}")
-            session.task = task
-            self._turns[turn_id] = task
+        async with self._admission_lock:
+            if not self._accepting:
+                raise LogAgentError("agent_busy", "Agent 当前暂停接收新轮次")
+            async with session.lock:
+                if session.task is not None and not session.task.done():
+                    raise LogAgentError("session_busy", "一个 session 同时只能运行一轮")
+                turn_id = _new_id("turn_")
+                session.request_ids[request_id] = (turn_id, digest)
+                await session.log.append("request.accepted", request_id=request_id,
+                                         turn_id=turn_id, text_digest=digest)
+                task = asyncio.create_task(self._run_turn(session, turn_id, text),
+                                           name=f"agent:turn:{turn_id}")
+                session.task = task
+                self._turns[turn_id] = task
         return {"session_id": session_id, "turn_id": turn_id, "deduplicated": False}
 
     async def wait(self, turn_id: str) -> dict[str, Any]:
