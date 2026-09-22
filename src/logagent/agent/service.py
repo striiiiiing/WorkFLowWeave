@@ -57,6 +57,8 @@ class _TurnResources:
 
     ai_config: Any | None
     model: str | None
+    summary_ai_config: Any | None
+    summary_model: str | None
     tools_generation: int | None
     declarations: tuple[ToolDeclaration, ...]
     gateway: Any | None
@@ -65,6 +67,12 @@ class _TurnResources:
 def _new_id(prefix: str = "") -> str:
     value = prefix + uuid4().hex
     return value[:80]
+
+
+@asynccontextmanager
+async def _null_async_context(value=None):
+    """Async context helper for injected providers without a second lease."""
+    yield value
 
 
 class AgentService:
@@ -394,12 +402,18 @@ class AgentService:
     def _capture_turn_resources(self, session: AgentSession) -> _TurnResources:
         declarations = self._tool_declarations()
         if self.resources is None:
-            return _TurnResources(self.ai_config, session.model, None, declarations, None)
+            return _TurnResources(self.ai_config, session.model, None, None, None, declarations, None)
         snapshot = self.resources.invocation_snapshot()
         ai_config = None
         model_name = session.model
+        summary_ai_config = None
+        summary_model = None
         if self.model_provider is None:
             ai_config, model_name = self._resolve_model(session.model, snapshot)
+            if self.config.summary_ai is not None:
+                summary_ai_config, summary_model = self._resolve_summary_model(
+                    self.config.summary_ai, model_name, snapshot,
+                )
         if self.gateway_factory is not None:
             gateway = self.gateway_factory(session)
         elif self.plugins is not None and self.collectors is not None and self.channels is not None:
@@ -414,10 +428,137 @@ class AgentService:
         else:
             gateway = None
         return _TurnResources(
-            ai_config, model_name,
+            ai_config, model_name, summary_ai_config, summary_model,
             self.plugins.generation if self.plugins is not None else None,
             declarations, gateway,
         )
+
+    @staticmethod
+    def _resolve_summary_model(reference: str, main_model: str | None,
+                               snapshot: dict[str, Any]) -> tuple[Any, str]:
+        """Select a model from the configured summary AI resource.
+
+        ``summary_ai`` names an AI resource rather than duplicating a second model
+        selector in AgentConfig.  Reuse the main model when that resource exposes
+        it; otherwise use its first configured model in stable order.  An empty
+        or unknown resource is an explicit configuration error.
+        """
+        config = snapshot.get("ai", {}).get(reference)
+        if config is None:
+            raise LogAgentError("model_unavailable", "Agent 摘要模型资源不可用",
+                                {"summary_ai": reference})
+        if main_model is not None and main_model in config.models:
+            return config, main_model
+        names = sorted(config.models)
+        if not names:
+            raise LogAgentError("model_unavailable", "Agent 摘要模型资源没有可用模型",
+                                {"summary_ai": reference})
+        return config, names[0]
+
+    @staticmethod
+    def _message_delta(chunk: Any) -> dict[str, Any] | None:
+        """Project one LangChain chat stream chunk into a durable small delta.
+
+        The event log stores only emitted text/tool-call fragments.  It never
+        fabricates a token when a provider emits no stream event, and it keeps
+        provider-specific metadata out of the public event payload.
+        """
+        content = getattr(chunk, "content", None)
+        tool_calls = getattr(chunk, "tool_call_chunks", None) or getattr(chunk, "tool_calls", None)
+        delta: dict[str, Any] = {}
+        if isinstance(content, str) and content:
+            delta["content"] = content
+        elif isinstance(content, list) and content:
+            delta["content"] = content
+        if tool_calls:
+            delta["tool_calls"] = tool_calls
+        return delta or None
+
+    async def _stream_graph(self, graph: Any, messages: list[Any], *, session: AgentSession,
+                            turn_id: str, log: EventLog,
+                            publication: list[bool] | None = None) -> tuple[dict[str, Any], bool]:
+        """Consume graph events while enforcing the model inactivity boundary.
+
+        ``astream_events`` is used instead of a second graph invocation so a
+        provider's true incremental chunks are persisted exactly once.  A
+        timeout while waiting for an event is an upstream model idle timeout;
+        heartbeat events from the HTTP layer never enter this loop.
+        """
+        stream = graph.astream_events(
+            {"messages": messages},
+            {"configurable": {"thread_id": session.session_id}},
+            version="v2",
+        )
+        final_state: dict[str, Any] | None = None
+        published = False
+        awaiting_model = False
+        try:
+            while True:
+                if awaiting_model:
+                    try:
+                        event = await asyncio.wait_for(
+                            stream.__anext__(), timeout=self.config.idle_timeout,
+                        )
+                    except StopAsyncIteration:
+                        break
+                    except TimeoutError as exc:
+                        raise LogAgentError(
+                            "model_idle_timeout", "模型流式输出在无活动超时内没有新事件",
+                            {"idle_timeout": self.config.idle_timeout},
+                        ) from exc
+                else:
+                    try:
+                        event = await stream.__anext__()
+                    except StopAsyncIteration:
+                        break
+
+                event_name = event.get("event") if isinstance(event, dict) else None
+                if event_name == "on_chat_model_start":
+                    awaiting_model = True
+                if event_name == "on_chat_model_stream":
+                    data = event.get("data", {})
+                    delta = self._message_delta(data.get("chunk")) if isinstance(data, dict) else None
+                    if delta is not None:
+                        published = True
+                        if publication is not None:
+                            publication[0] = True
+                        await log.append(
+                            "message.delta", turn_id=turn_id,
+                            message_id=getattr(data.get("chunk"), "id", None),
+                            **delta,
+                        )
+                if event_name == "on_chat_model_end":
+                    awaiting_model = False
+                if event_name == "on_chain_end" and isinstance(event.get("data"), dict):
+                    output = event["data"].get("output")
+                    if isinstance(output, dict) and isinstance(output.get("messages"), list):
+                        final_state = output
+        except BaseException as exc:
+            # Preserve the original provider error while carrying the durable
+            # publication boundary to the turn terminal event.
+            try:
+                exc._agent_published = published
+            except Exception:
+                pass
+            raise
+        finally:
+            close = getattr(stream, "aclose", None)
+            if close is not None:
+                await close()
+        if final_state is None:
+            raise LogAgentError("invalid_response", "Agent 图没有返回最终消息状态")
+        return final_state, published
+
+    @staticmethod
+    async def _cancel_tools(context: AgentToolContext | None) -> None:
+        """Cancel and await in-flight tools before a cancelled turn returns."""
+        if context is None or not context.tool_tasks:
+            return
+        tasks = list(context.tool_tasks.values())
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _run_turn(self, session: AgentSession, turn_id: str, text: str) -> dict[str, Any]:
         had_previous_turn = any(event["type"].startswith("turn.") for event in session.log.events)
@@ -426,6 +567,8 @@ class AgentService:
         log = session.log
         await log.append("turn.started", turn_id=turn_id, branch_id=session.branch_id)
         context = None
+        published = False
+        publication = [False]
         try:
             turn_resources = self._capture_turn_resources(session)
             identity = RuntimeIdentity(
@@ -464,33 +607,70 @@ class AgentService:
             await self._ensure_checkpoint_present(
                 session, require_existing=had_previous_turn,
             )
-            async with self._model(session, ai_config=turn_resources.ai_config,
-                                   model=turn_resources.model) as model:
-                graph = create_graph(model=model, declarations=turn_resources.declarations,
-                                     context=context, system_prompt=system_prompt,
-                                     checkpointer=self.checkpointer)
-                await self._prepare_checkpoint(
-                    session, graph, log, turn_id, require_existing=had_previous_turn,
-                )
-                result = await graph.ainvoke(
-                    {"messages": messages},
-                    {"configurable": {"thread_id": session.session_id}},
-                )
+            timeout_seconds = getattr(turn_resources.ai_config, "timeout", None)
+            timeout_context = (
+                asyncio.timeout(timeout_seconds)
+                if timeout_seconds is not None else None
+            )
+            if timeout_context is None:
+                timeout_context = _null_async_context()
+            async with timeout_context:
+                async with self._model(session, ai_config=turn_resources.ai_config,
+                                       model=turn_resources.model) as model:
+                    if turn_resources.summary_ai_config is not None:
+                        summary_context = self._model(
+                            session, ai_config=turn_resources.summary_ai_config,
+                            model=turn_resources.summary_model,
+                        )
+                    else:
+                        summary_context = _null_async_context(model)
+                    async with summary_context as summary_model:
+                        graph = create_graph(
+                            model=model, summary_model=summary_model,
+                            declarations=turn_resources.declarations,
+                            context=context, system_prompt=system_prompt,
+                            checkpointer=self.checkpointer,
+                        )
+                        await self._prepare_checkpoint(
+                            session, graph, log, turn_id, require_existing=had_previous_turn,
+                        )
+                        result, published = await self._stream_graph(
+                            graph, messages, session=session, turn_id=turn_id, log=log,
+                            publication=publication,
+                        )
             if session.compact_pending:
                 await log.append("context.compacted", turn_id=turn_id, empty=True)
                 session.compact_pending = False
             answer = _last_text(result)
+            completed = {"turn_id": turn_id, "incremental": published}
+            if not published:
+                completed["text"] = answer
+            await log.append("message.completed", **completed)
             session.status = "completed"
             await log.append("turn.completed", turn_id=turn_id, text=answer)
             return {"turn_id": turn_id, "status": "completed", "text": answer}
         except asyncio.CancelledError:
+            published = published or publication[0]
+            await self._cancel_tools(context)
             session.status = "cancelled"
-            await log.append("turn.cancelled", turn_id=turn_id)
+            await log.append("turn.cancelled", turn_id=turn_id, partial=published)
             raise
+        except TimeoutError as exc:
+            published = bool(getattr(exc, "_agent_published", published or publication[0]))
+            session.status = "failed"
+            await log.append(
+                "turn.failed", turn_id=turn_id,
+                error={"code": "ai_timeout", "message": "模型调用总时限已耗尽"},
+                partial=published,
+            )
+            raise LogAgentError("ai_timeout", "模型调用总时限已耗尽",
+                                {"timeout": getattr(turn_resources.ai_config, "timeout", None)}) from exc
         except Exception as exc:
+            published = bool(getattr(exc, "_agent_published", published or publication[0]))
             session.status = "failed"
             await log.append("turn.failed", turn_id=turn_id,
-                             error={"type": type(exc).__name__, "message": str(exc)})
+                             error={"type": type(exc).__name__, "message": str(exc)},
+                             partial=published)
             raise
         finally:
             session.updated_at = datetime.now(UTC).isoformat()
