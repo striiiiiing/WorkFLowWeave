@@ -36,6 +36,11 @@ class AgentMessage(StrictModel):
     text: str = Field(min_length=1)
 
 
+class AgentForkRequest(StrictModel):
+    turn_id: ID | None = None
+    model: str | None = None
+
+
 class AgentFileWrite(StrictModel):
     mode: str
     content: str
@@ -90,6 +95,22 @@ def build_agent_router():
         accepted = await _agent(services).submit(session_id, payload.text, request_id=payload.request_id)
         response.headers["Location"] = f"/api/agents/sessions/{session_id}/events"
         return accepted
+
+    @router.post("/sessions/{session_id}/append", status_code=status.HTTP_202_ACCEPTED)
+    async def append_agent_message(session_id: ID, payload: AgentMessage,
+                                   services: Services, response: Response):
+        accepted = await _agent(services).append(
+            session_id, payload.text, request_id=payload.request_id,
+        )
+        response.headers["Location"] = f"/api/agents/sessions/{session_id}/events"
+        return accepted
+
+    @router.post("/sessions/{session_id}/fork", status_code=status.HTTP_201_CREATED)
+    async def fork_agent_session(session_id: ID, payload: AgentForkRequest,
+                                 services: Services):
+        return await _agent(services).fork(
+            session_id, turn_id=payload.turn_id, model=payload.model,
+        )
 
     @router.post("/sessions/{session_id}/cancel")
     async def cancel_agent_session(session_id: ID, services: Services):
