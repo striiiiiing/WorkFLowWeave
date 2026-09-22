@@ -6,10 +6,11 @@ import asyncio
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
-from typing import Any
+from typing import Annotated, Any
 
 from langchain.agents import create_agent
-from langchain_core.tools import StructuredTool
+from langchain_core.tools import InjectedToolArg, StructuredTool
+from langgraph.prebuilt.tool_node import ToolRuntime
 
 from logagent.agent.artifacts import ArtifactStore
 from logagent.agent.builtin.declaration import ToolDeclaration
@@ -42,10 +43,16 @@ def _tool_error(error: LogAgentError) -> dict[str, Any]:
 
 
 def _langchain_tool(declaration: ToolDeclaration, context: AgentToolContext) -> StructuredTool:
-    async def invoke(**arguments):
-        ordinal = context.ordinals[declaration.name]
-        context.ordinals[declaration.name] += 1
-        key = f"{context.turn_id}:{declaration.name}:{ordinal}"
+    async def invoke(runtime: Annotated[ToolRuntime, InjectedToolArg], **arguments):
+        tool_call_id = runtime.tool_call_id
+        if not tool_call_id:
+            # A manually invoked tool may not have a ToolNode runtime.  Keep a
+            # deterministic fallback for that boundary while model calls use
+            # their actual tool_call_id below.
+            ordinal = context.ordinals[declaration.name]
+            context.ordinals[declaration.name] += 1
+            tool_call_id = f"{declaration.name}:{ordinal}"
+        key = f"{context.session_id}:{context.turn_id}:{tool_call_id}"
         reservation = await context.event_log.reserve_tool(key, arguments)
         if reservation.status == "tool.completed":
             return reservation.result or {}
