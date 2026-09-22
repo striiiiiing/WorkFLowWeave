@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
@@ -23,6 +25,23 @@ async def test_event_log_reuses_completed_tool_and_marks_restart_unknown(tmp_pat
     unknown = await log.recover_interrupted()
     assert unknown == ["turn:shell:0"]
     assert any(event["type"] == "tool.outcome_unknown" for event in await log.replay())
+
+
+async def test_event_log_waits_for_active_key_across_instances(tmp_path):
+    first = EventLog(tmp_path / "runtime", "session")
+    second = EventLog(tmp_path / "runtime", "session")
+    await first.initialize()
+    await second.initialize()
+    arguments = {"path": "Memory/shared.md"}
+    assert (await first.reserve_tool("turn:write:call-1", arguments)).status == "started"
+
+    waiter = asyncio.create_task(second.wait_for_tool("turn:write:call-1", arguments, wait_timeout=1))
+    await asyncio.sleep(0.05)
+    assert not waiter.done()
+    await first.complete_tool("turn:write:call-1", arguments, {"status": "success"})
+    result = await waiter
+    assert result.status == "tool.completed"
+    assert result.result == {"status": "success"}
 
 
 async def test_agent_service_is_idempotent_and_runs_one_turn(tmp_path):

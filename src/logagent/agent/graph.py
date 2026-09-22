@@ -52,6 +52,13 @@ def _langchain_tool(declaration: ToolDeclaration, context: AgentToolContext) -> 
         existing = context.tool_tasks.get(key)
         if existing is not None:
             return await asyncio.shield(existing)
+        if reservation.status == "active":
+            # The owner may live in another service process.  Re-read the
+            # durable event log until it publishes a terminal result; never
+            # execute a side effect a second time merely because this worker
+            # cannot see the owner's in-memory task.
+            completed = await context.event_log.wait_for_tool(key, arguments)
+            return completed.result or {}
 
         async def execute():
             async with context.scheduler.acquire(declaration.execution):
