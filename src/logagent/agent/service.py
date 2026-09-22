@@ -20,7 +20,7 @@ from logagent.agent.artifacts import ArtifactStore
 from logagent.agent.builtin import grep, plugin, read, shell, write
 from logagent.agent.builtin.declaration import ToolDeclaration
 from logagent.agent.config import AgentConfig
-from logagent.agent.context import build_system_prompt
+from logagent.agent.context import build_system_prompt, validate_request_budget
 from logagent.agent.events import EventLog
 from logagent.agent.graph import AgentToolContext, create_graph
 from logagent.agent.sandbox import ShellSandbox
@@ -274,6 +274,12 @@ class AgentService:
                     {"input": session.workflow_input}, ensure_ascii=False, sort_keys=True)))
                 await log.append("workflow.input.used", turn_id=turn_id)
             messages.append(HumanMessage(content=text))
+            validate_request_budget(
+                messages, system_prompt,
+                [{"name": item.name, "description": item.description,
+                  "input_schema": item.input_schema} for item in self._declarations],
+                self.config,
+            )
             async with self._model(session) as model:
                 graph = create_graph(model=model, declarations=self._declarations,
                                      context=context, system_prompt=system_prompt,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -11,6 +12,7 @@ from langchain_core.messages import BaseMessage
 from langchain_core.messages.utils import count_tokens_approximately
 
 from logagent.agent.config import AgentConfig
+from logagent.errors import LogAgentError
 
 RUNTIME_INSTRUCTION = (
     "运行时文件入口固定为 Runtime/self.json。需要了解当前会话、分支、轮次、来源和工具代次时，"
@@ -58,11 +60,14 @@ def summarization_middleware(model, config: AgentConfig, *, summary_prompt: str 
     trigger are part of the captured turn snapshot.
     """
     budget = ContextBudget.from_config(config)
+    prompt = summary_prompt or config.summary_prompt
+    if "{messages}" not in prompt:
+        prompt = prompt.rstrip() + "\n\n<messages>\n{messages}\n</messages>"
     return SummarizationMiddleware(
         model,
         trigger=("tokens", budget.trigger),
         keep=("tokens", budget.keep),
-        summary_prompt=summary_prompt or config.summary_prompt,
+        summary_prompt=prompt,
         trim_tokens_to_summarize=None,
     )
 
@@ -76,3 +81,39 @@ def estimate_request(messages: list[BaseMessage], system_prompt: str, tools: lis
     return {"messages": body, "system": stable, "tools": tool_tokens,
             "total": body + stable + tool_tokens + budget.output,
             "window": budget.window, "remaining": budget.window - body - stable - tool_tokens}
+
+
+def validate_request_budget(messages: list[BaseMessage], system_prompt: str,
+                            tools: list[dict[str, Any]], config: AgentConfig) -> dict[str, int] | None:
+    """Validate the complete request envelope before invoking the model."""
+    if config.context_window is None:
+        return None
+    usage = estimate_request(messages, system_prompt, tools, config)
+    if usage["total"] > usage["window"]:
+        raise LogAgentError("context_budget_exceeded", "当前请求超过已配置模型上下文容量", usage)
+    return usage
+
+
+def _validate_tool_pairs(messages: list[BaseMessage]) -> None:
+    pending = {call["id"] for message in messages
+               for call in getattr(message, "tool_calls", []) if "id" in call}
+    for message in messages:
+        tool_id = getattr(message, "tool_call_id", None)
+        if tool_id is not None:
+            pending.discard(tool_id)
+    if pending:
+        raise LogAgentError("context_tool_pairing", "摘要后存在未配对的工具调用", {"tool_calls": sorted(pending)})
+
+
+async def summarize_once(model, messages: list[BaseMessage], config: AgentConfig) -> list[BaseMessage]:
+    """Delegate one complete prefix to the public LangChain middleware API."""
+    middleware = summarization_middleware(model, config)
+    state = {"messages": deepcopy(messages)}
+    result = await middleware.abefore_model(state, None)
+    if result is None:
+        return messages
+    compacted = result.get("messages", messages)
+    if not isinstance(compacted, list):
+        raise LogAgentError("context_compaction_failed", "摘要模型返回了无效消息状态")
+    _validate_tool_pairs(compacted)
+    return compacted
