@@ -13,8 +13,9 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.graph import END
 
 from logagent.agent.artifacts import ArtifactStore
 from logagent.agent.builtin import grep, plugin, read, shell, write
@@ -142,7 +143,15 @@ class AgentService:
             workflow = next((event for event in log.events if event["type"] == "workflow.input"), None)
             terminal = next((event for event in reversed(log.events)
                              if event["type"].startswith("turn.")), None)
-            status = "interrupted" if terminal and terminal["type"] == "turn.started" else "created"
+            status = "interrupted" if terminal and terminal["type"] in {
+                "turn.started", "turn.interrupted"
+            } else "created"
+            if terminal is not None and terminal["type"] == "turn.started":
+                # A process may die after turn.started and before its terminal
+                # fact.  Make that boundary durable before exposing the session
+                # to a new request; the old graph is never resumed.
+                await log.append("turn.interrupted", turn_id=terminal.get("turn_id"),
+                                 reason="process_restart")
             if terminal is not None and terminal["type"] == "turn.completed":
                 status = "completed"
             elif terminal is not None and terminal["type"] == "turn.cancelled":
@@ -404,6 +413,7 @@ class AgentService:
         )
 
     async def _run_turn(self, session: AgentSession, turn_id: str, text: str) -> dict[str, Any]:
+        had_previous_turn = any(event["type"].startswith("turn.") for event in session.log.events)
         session.status, session.turn_id = "running", turn_id
         session.updated_at = datetime.now(UTC).isoformat()
         log = session.log
@@ -449,6 +459,9 @@ class AgentService:
                 graph = create_graph(model=model, declarations=turn_resources.declarations,
                                      context=context, system_prompt=system_prompt,
                                      checkpointer=self.checkpointer)
+                await self._prepare_checkpoint(
+                    session, graph, log, turn_id, require_existing=had_previous_turn,
+                )
                 result = await graph.ainvoke(
                     {"messages": messages},
                     {"configurable": {"thread_id": session.session_id}},
@@ -471,6 +484,83 @@ class AgentService:
             raise
         finally:
             session.updated_at = datetime.now(UTC).isoformat()
+
+    async def _prepare_checkpoint(self, session: AgentSession, graph: Any,
+                                  log: EventLog, turn_id: str, *,
+                                  require_existing: bool) -> None:
+        """Validate the previous thread state and close an interrupted tool step.
+
+        Event JSONL tells us which side effects are complete or unknown.  The
+        LangGraph checkpoint only supplies the pending message boundary.  If
+        either source is unavailable we stop explicitly instead of rebuilding
+        a plausible state and risking a duplicate side effect.
+        """
+        config = {"configurable": {"thread_id": session.session_id}}
+        try:
+            state = await graph.aget_state(config)
+        except Exception as exc:
+            raise LogAgentError(
+                "checkpoint_corrupt", "Agent checkpoint 无法读取，不能继续会话",
+                {"exception_type": type(exc).__name__},
+            ) from exc
+
+        if state is None:
+            if require_existing:
+                raise LogAgentError(
+                    "checkpoint_missing", "Agent checkpoint 缺失，不能猜测历史继续",
+                    {"session_id": session.session_id},
+                )
+            return
+
+        values = getattr(state, "values", None) or {}
+        messages = values.get("messages", []) if isinstance(values, dict) else []
+        next_nodes = tuple(getattr(state, "next", ()) or ())
+        if require_existing and not messages and not next_nodes:
+            raise LogAgentError(
+                "checkpoint_missing", "Agent checkpoint 缺失，不能猜测历史继续",
+                {"session_id": session.session_id},
+            )
+        if not next_nodes:
+            return
+
+        pending: list[str] = []
+        replied: set[str] = set()
+        for message in messages:
+            tool_call_id = getattr(message, "tool_call_id", None)
+            if isinstance(tool_call_id, str):
+                replied.add(tool_call_id)
+        for message in messages:
+            for call in getattr(message, "tool_calls", ()) or ():
+                call_id = call.get("id") if isinstance(call, dict) else None
+                if isinstance(call_id, str) and call_id not in replied:
+                    pending.append(call_id)
+
+        if not pending:
+            raise LogAgentError(
+                "checkpoint_corrupt", "Agent checkpoint 存在未完成节点但没有可修复工具调用",
+                {"next": list(next_nodes)},
+            )
+        if "tools" not in next_nodes:
+            raise LogAgentError(
+                "checkpoint_corrupt", "Agent checkpoint 的未完成节点不是工具边界",
+                {"next": list(next_nodes)},
+            )
+
+        repairs = [ToolMessage(
+            content=json.dumps({"status": "outcome_unknown", "reason": "interrupted"},
+                               ensure_ascii=False, sort_keys=True),
+            tool_call_id=call_id,
+        ) for call_id in pending]
+        try:
+            await graph.aupdate_state(config, {"messages": repairs}, as_node="tools")
+            await graph.aupdate_state(config, None, as_node=END)
+        except Exception as exc:
+            raise LogAgentError(
+                "checkpoint_corrupt", "Agent checkpoint 无法写入中断工具结果",
+                {"exception_type": type(exc).__name__},
+            ) from exc
+        await log.append("checkpoint.repaired", turn_id=turn_id,
+                         tool_call_ids=pending, result="outcome_unknown")
 
 
 def _last_text(result: dict[str, Any]) -> str:
