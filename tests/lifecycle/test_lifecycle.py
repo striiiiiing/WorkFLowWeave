@@ -498,6 +498,28 @@ async def test_plugin_reload_conflict_restores_admission_and_later_success_recov
     await lifecycle.shutdown()
 
 
+async def test_plugin_reload_conflict_includes_active_agent_turn(tmp_path):
+    lifecycle = ApplicationLifecycle(_config(tmp_path), channel_factories={"mock": TestChannelFactory()})
+    services = await lifecycle.start()
+    release = asyncio.Event()
+    active = asyncio.create_task(release.wait())
+    services.agent._turns["agent-active"] = active
+    generation = services.plugins.generation
+    try:
+        with pytest.raises(LogAgentError) as caught:
+            await lifecycle.reload("plugins")
+        assert caught.value.code == "plugin_reload_conflict"
+        assert caught.value.details["active_agent_runs"] == 1
+        assert services.plugins.generation == generation
+        assert services.agent.accepting is True
+    finally:
+        release.set()
+        active.cancel()
+        await asyncio.gather(active, return_exceptions=True)
+        services.agent._turns.pop("agent-active", None)
+        await lifecycle.shutdown()
+
+
 async def test_invalid_plugin_degrades_and_fixed_reload_recovers_saved_resource(tmp_path):
     config = _config(tmp_path)
     entry = _write_plugin(config.plugin_dir, "external", _COLLECTOR_PLUGIN)
