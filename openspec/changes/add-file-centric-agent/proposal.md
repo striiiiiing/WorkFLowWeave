@@ -11,7 +11,7 @@
 - 默认只注册 `plugin`、`read`、`write`、`grep`、`shell` 五个工具。`plugin` 按需列出、读取 Schema 并单次调用 Collector；工具插件可独立关闭。Channel 继续作为会话绑定的双向通道，不暴露任意发送工具。
 - 提供 `/new`、`/resume`、`/workflow`、`/compact`、`/append`、`/fork` 命令、优先级队列、树形分支和可编辑用户输入。
 - 使用固定工作区、AGENTS.md、按日 Memory、历史笔记、原始 JSONL 和 Artifact；不增加记忆专用工具或向量数据库。
-- 复用 LangChain 摘要中间件，以 200,000 tokens/90% 触发作为默认配置，原始历史与执行 checkpoint 分离，并按执行轮清理可删除 checkpoint。
+- 复用 LangChain 摘要中间件，以 200,000 tokens/90% 触发作为默认配置，原始历史与执行 checkpoint 分离；普通压缩和 fork 不删除链上中间 checkpoint，只在整条 thread 满足保留策略时清理。
 - 提供可关闭的简单 bubblewrap Shell 沙箱、工作区级读并发/写独占，以及独立 Agent HTTP/SSE 和 Vue 页面。
 
 ## Capabilities
