@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
@@ -18,6 +19,30 @@ RUNTIME_INSTRUCTION = (
     "运行时文件入口固定为 Runtime/self.json。需要了解当前会话、分支、轮次、来源和工具代次时，"
     "请使用 read 读取该文件；它是只读会话映射，不要写入或通过 grep 搜索。"
 )
+
+
+class _SummaryTimeoutModel:
+    """Apply a per-summary-call timeout without changing the leased model.
+
+    ``SummarizationMiddleware`` wraps its model with ``with_retry`` during
+    construction.  Returning this proxy from ``with_retry`` keeps the timeout
+    around every attempt and avoids letting a summary call outlive its own AI
+    resource lease.  The main model remains untouched.
+    """
+
+    def __init__(self, model: Any, timeout: float):
+        self._model = model
+        self._timeout = timeout
+
+    def __getattr__(self, name: str):
+        return getattr(self._model, name)
+
+    def with_retry(self, **_kwargs):
+        return self
+
+    async def ainvoke(self, input, config=None, **kwargs):
+        async with asyncio.timeout(self._timeout):
+            return await self._model.ainvoke(input, config=config, **kwargs)
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,7 +78,8 @@ def build_system_prompt(*, agents: str, session_id: str, branch_id: str,
     return f"{RUNTIME_INSTRUCTION}\n运行上下文：{runtime}\n\n工作区常驻规则：\n{agents}".strip()
 
 
-def summarization_middleware(model, config: AgentConfig, *, summary_prompt: str | None = None):
+def summarization_middleware(model, config: AgentConfig, *, summary_prompt: str | None = None,
+                             summary_timeout: float | None = None):
     """Create a fresh official middleware for one graph/request.
 
     The middleware is intentionally not shared between sessions: its model and
@@ -63,8 +89,12 @@ def summarization_middleware(model, config: AgentConfig, *, summary_prompt: str 
     prompt = summary_prompt or config.summary_prompt
     if "{messages}" not in prompt:
         prompt = prompt.rstrip() + "\n\n<messages>\n{messages}\n</messages>"
+    summary_model = (
+        _SummaryTimeoutModel(model, summary_timeout)
+        if summary_timeout is not None else model
+    )
     return SummarizationMiddleware(
-        model,
+        summary_model,
         trigger=("tokens", budget.trigger),
         keep=("tokens", budget.keep),
         summary_prompt=prompt,
