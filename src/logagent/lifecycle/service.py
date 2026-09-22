@@ -13,6 +13,7 @@ from typing import Any, Literal
 
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
+from logagent.agent import AgentService
 from logagent.ai import AIService, ChannelFactory, OpenAIChannelFactory
 from logagent.ai.options import LEGACY_HTTP_PROVIDER, OPENAI_COMPATIBLE_PROVIDER
 from logagent.channel import ChannelManager, builtin_channels
@@ -88,6 +89,7 @@ class ApplicationLifecycle:
         self._session_store: SessionStore | None = None
         self._checkpointer_context: Any = None
         self._ai: AIService | None = None
+        self._agent: AgentService | None = None
         self._channels: ChannelManager | None = None
         self._workflow: WorkflowService | None = None
         self._intervals: IntervalTrigger | None = None
@@ -244,6 +246,19 @@ class ApplicationLifecycle:
                 await workflow.pause_admission()
                 await workflow.reconcile_interrupted()
 
+                stage = "agent"
+                agent = AgentService(
+                    Path(self.config.data_dir) / "agents" / "workspace",
+                    Path(self.config.data_dir) / "agents" / "runtime",
+                    ai_service=ai,
+                    resources=resources,
+                    plugins=plugins,
+                    collectors=collectors,
+                    channels=channels,
+                )
+                await agent.initialize()
+                self._agent = agent
+
                 stage = "intervals"
                 intervals = IntervalTrigger(workflow, clock=self._clock)
                 self._intervals = intervals
@@ -266,6 +281,7 @@ class ApplicationLifecycle:
                     workflow=workflow,
                     intervals=intervals,
                     log_path=self.config.log_file,
+                    agent=agent,
                 )
                 self._services = services
                 intervals.start()
@@ -567,6 +583,11 @@ class ApplicationLifecycle:
             ):
                 return False
             self._workflow = None
+
+        if self._agent is not None:
+            if not await self._cleanup("agent", self._agent.close, errors, _CLEANUP_TIMEOUT):
+                return False
+            self._agent = None
 
         if self._ai is not None:
             if not await self._cleanup("ai", self._ai.close, errors, _CLEANUP_TIMEOUT):

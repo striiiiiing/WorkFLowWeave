@@ -22,6 +22,7 @@ from logagent.agent.builtin.declaration import ToolDeclaration
 from logagent.agent.config import AgentConfig
 from logagent.agent.context import build_system_prompt, validate_request_budget
 from logagent.agent.events import EventLog
+from logagent.agent.gateway import InvocationSnapshot, PluginGateway
 from logagent.agent.graph import AgentToolContext, create_graph
 from logagent.agent.sandbox import ShellSandbox
 from logagent.agent.scheduling import ToolScheduler
@@ -48,6 +49,17 @@ class AgentSession:
     task: asyncio.Task | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class _TurnResources:
+    """Resources captured before a turn and never changed during that turn."""
+
+    ai_config: Any | None
+    model: str | None
+    tools_generation: int | None
+    declarations: tuple[ToolDeclaration, ...]
+    gateway: Any | None
+
+
 def _new_id(prefix: str = "") -> str:
     value = prefix + uuid4().hex
     return value[:80]
@@ -59,6 +71,7 @@ class AgentService:
     def __init__(self, workspace: Path, runtime: Path, *, config: AgentConfig | None = None,
                  model_provider: ModelProvider | None = None, ai_service=None,
                  ai_config=None, model: str | None = None, checkpointer=None,
+                 resources=None, plugins=None, collectors=None, channels=None,
                  declarations: list[ToolDeclaration] | None = None,
                  gateway_factory: Callable[[AgentSession], Any] | None = None,
                  read_only_tools: bool = False):
@@ -71,6 +84,10 @@ class AgentService:
         self.ai_service = ai_service
         self.ai_config = ai_config
         self.default_model = model
+        self.resources = resources
+        self.plugins = plugins
+        self.collectors = collectors
+        self.channels = channels
         self.checkpointer = checkpointer
         self._checkpointer_context = None
         self._owns_checkpointer = checkpointer is None
@@ -222,7 +239,7 @@ class AgentService:
         return await session.log.replay(after)
 
     @asynccontextmanager
-    async def _model(self, session: AgentSession):
+    async def _model(self, session: AgentSession, *, ai_config=None, model: str | None = None):
         if self.model_provider is not None:
             value = self.model_provider(session)
             if inspect.isawaitable(value):
@@ -233,27 +250,106 @@ class AgentService:
             else:
                 yield value
             return
-        if self.ai_service is None or self.ai_config is None or session.model is None:
+        ai_config = self.ai_config if ai_config is None else ai_config
+        model = session.model if model is None else model
+        if self.ai_service is None or ai_config is None or model is None:
             raise LogAgentError("model_unavailable", "Agent session 没有可用模型")
         async with self.ai_service.lease(
-            self.ai_config, model=session.model, streaming=True,
+            ai_config, model=model, streaming=True,
             max_output_tokens=self.config.output_tokens,
         ) as model:
             yield model
+
+    def _tool_declarations(self) -> tuple[ToolDeclaration, ...]:
+        """Project the published tool registry into graph declarations."""
+        if self.plugins is None:
+            return tuple(self._declarations)
+        declarations: list[ToolDeclaration] = []
+        for description in self.plugins.toolRegister.describe():
+            tool = self.plugins.toolRegister.get(description.name)
+            if tool is None:
+                continue
+            declarations.append(ToolDeclaration(
+                tool.name, tool.description, tool.input_schema, tool.execution, tool.invoke,
+            ))
+        return tuple(declarations)
+
+    def _resolve_model(self, selected: str | None, snapshot: dict[str, Any]) -> tuple[Any, str]:
+        """Resolve a model reference against one ResourceStore publication.
+
+        A reference can be ``ai:model`` or ``ai/model``. Bare model names are
+        accepted only when exactly one AI resource provides that name.
+        """
+        reference = selected or self.default_model
+        candidates = [
+            (ai_id, name, config)
+            for ai_id, config in snapshot.get("ai", {}).items()
+            for name in config.models
+        ]
+        if reference:
+            separator = ":" if ":" in reference else "/" if "/" in reference else None
+            if separator is not None:
+                ai_id, name = reference.split(separator, 1)
+                config = snapshot.get("ai", {}).get(ai_id)
+                if config is not None and name in config.models:
+                    return config, name
+                raise LogAgentError("model_unavailable", "Agent session 引用的模型不可用",
+                                    {"model": reference})
+            matches = [(name, config) for _, name, config in candidates if name == reference]
+            if len(matches) == 1:
+                return matches[0][1], matches[0][0]
+            if len(matches) > 1:
+                raise LogAgentError("model_ambiguous", "模型名称对应多个 AI 资源",
+                                    {"model": reference})
+            raise LogAgentError("model_unavailable", "Agent session 引用的模型不可用",
+                                {"model": reference})
+        if len(candidates) == 1:
+            return candidates[0][2], candidates[0][1]
+        raise LogAgentError("model_unavailable", "Agent session 没有可用模型")
+
+    def _capture_turn_resources(self, session: AgentSession) -> _TurnResources:
+        declarations = self._tool_declarations()
+        if self.resources is None:
+            return _TurnResources(self.ai_config, session.model, None, declarations, None)
+        snapshot = self.resources.invocation_snapshot()
+        ai_config = None
+        model_name = session.model
+        if self.model_provider is None:
+            ai_config, model_name = self._resolve_model(session.model, snapshot)
+        if self.gateway_factory is not None:
+            gateway = self.gateway_factory(session)
+        elif self.plugins is not None and self.collectors is not None and self.channels is not None:
+            gateway = PluginGateway(
+                InvocationSnapshot(
+                    self.plugins.generation, snapshot, self.plugins.collectorRegister,
+                    self.plugins.channelRegister, self.plugins.toolRegister,
+                ),
+                collectors=self.collectors, channels=self.channels,
+                data_dir=Path(getattr(self.resources, "_data_dir", self.workspace.root)),
+            )
+        else:
+            gateway = None
+        return _TurnResources(
+            ai_config, model_name,
+            self.plugins.generation if self.plugins is not None else None,
+            declarations, gateway,
+        )
 
     async def _run_turn(self, session: AgentSession, turn_id: str, text: str) -> dict[str, Any]:
         session.status, session.turn_id = "running", turn_id
         session.updated_at = datetime.now(UTC).isoformat()
         log = session.log
         await log.append("turn.started", turn_id=turn_id, branch_id=session.branch_id)
-        identity = RuntimeIdentity(
-            session.session_id, turn_id, session.branch_id,
-            workflow_session_id=session.workflow_session_id, model=session.model,
-            workspace=str(self.workspace.root),
-        )
-        view = self.workspace.for_identity(identity)
         context = None
         try:
+            turn_resources = self._capture_turn_resources(session)
+            identity = RuntimeIdentity(
+                session.session_id, turn_id, session.branch_id,
+                workflow_session_id=session.workflow_session_id, model=session.model,
+                tools_generation=turn_resources.tools_generation,
+                workspace=str(self.workspace.root),
+            )
+            view = self.workspace.for_identity(identity)
             instructions = await view.instructions()
             system_prompt = build_system_prompt(
                 agents=instructions, session_id=session.session_id, branch_id=session.branch_id,
@@ -261,8 +357,8 @@ class AgentService:
                 workflow_session_id=session.workflow_session_id, now=datetime.now(UTC),
             )
             context = AgentToolContext(
-                workspace=view, sandbox=ShellSandbox(view), gateway=self.gateway_factory(session)
-                if self.gateway_factory else None, config=self.config,
+                workspace=view, sandbox=ShellSandbox(view), gateway=turn_resources.gateway,
+                config=self.config,
                 session_id=session.session_id, turn_id=turn_id, branch_id=session.branch_id,
                 event_log=log, scheduler=self.scheduler, artifacts=self.artifacts,
             )
@@ -277,11 +373,12 @@ class AgentService:
             validate_request_budget(
                 messages, system_prompt,
                 [{"name": item.name, "description": item.description,
-                  "input_schema": item.input_schema} for item in self._declarations],
+                  "input_schema": item.input_schema} for item in turn_resources.declarations],
                 self.config,
             )
-            async with self._model(session) as model:
-                graph = create_graph(model=model, declarations=self._declarations,
+            async with self._model(session, ai_config=turn_resources.ai_config,
+                                   model=turn_resources.model) as model:
+                graph = create_graph(model=model, declarations=turn_resources.declarations,
                                      context=context, system_prompt=system_prompt,
                                      checkpointer=self.checkpointer)
                 result = await graph.ainvoke(
