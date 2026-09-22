@@ -42,6 +42,7 @@ Workflow 详情页增加“从最新结果继续”和历史运行的“继续�
 | --- | --- |
 | `AGENTS.md` | 普通文本编辑；显示“下一轮生效”和版本。 |
 | `Memory/YYYY-MM-DD.md`、`History/<session>.md` | 可编辑；保存携带 ETag/If-Match。 |
+| `Runtime/Session/<session_id>.json` | 只读当前 session、branch、来源 Workflow、turn、模型和工具 generation 元数据。 |
 | `Runtime/History/.../events.jsonl`、`summaries/` | 只读事实和摘要，显示时间、覆盖范围、完整性。 |
 | `Runtime/Artifacts/` | 按工具调用分页读取，标注截断、缺失和大小。 |
 | `Runtime/Catalog/` | 只读插件目录和调用 Schema，不作为账号配置入口。 |
