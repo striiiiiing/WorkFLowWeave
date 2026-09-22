@@ -22,6 +22,7 @@ _VALIDATION_CODES = {
     "invalid_schema",
     "capability_missing",
     "validation",
+    "context_budget_unavailable",
 }
 _CONFLICT_CODES = {
     "already_exists",
@@ -37,6 +38,12 @@ _CONFLICT_CODES = {
     "version_not_found",
     "workflow_disabled",
     "workflow_no_enabled_sources",
+    "request_conflict",
+    "session_busy",
+    "tool_key_conflict",
+    "model_ambiguous",
+    "compact_conflict",
+    "agent_busy",
 }
 _UNAVAILABLE_CODES = {
     "checkpoint",

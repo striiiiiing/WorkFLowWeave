@@ -19,7 +19,9 @@ class SandboxConfig(StrictModel):
 class AgentConfig(StrictModel):
     sandbox: SandboxConfig = Field(default_factory=SandboxConfig)
     timezone: str = "UTC"
-    context_window: PositiveInt | None = None
+    # 200k is the documented project default; callers may set None only when
+    # they intentionally disable model execution pending an explicit limit.
+    context_window: PositiveInt | None = 200_000
     output_tokens: PositiveInt = 4096
     summary_ai: ID | None = None
     summary_context_window: PositiveInt | None = None
