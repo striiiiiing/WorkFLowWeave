@@ -461,6 +461,9 @@ class AgentService:
                   "input_schema": item.input_schema} for item in turn_resources.declarations],
                 self.config,
             )
+            await self._ensure_checkpoint_present(
+                session, require_existing=had_previous_turn,
+            )
             async with self._model(session, ai_config=turn_resources.ai_config,
                                    model=turn_resources.model) as model:
                 graph = create_graph(model=model, declarations=turn_resources.declarations,
@@ -491,6 +494,27 @@ class AgentService:
             raise
         finally:
             session.updated_at = datetime.now(UTC).isoformat()
+
+    async def _ensure_checkpoint_present(self, session: AgentSession, *,
+                                         require_existing: bool) -> None:
+        """Fail before leasing a model when a historical thread has no state."""
+        if not require_existing or self.checkpointer is None:
+            return
+        getter = getattr(self.checkpointer, "aget_tuple", None)
+        if getter is None:
+            return
+        try:
+            checkpoint = await getter({"configurable": {"thread_id": session.session_id}})
+        except Exception as exc:
+            raise LogAgentError(
+                "checkpoint_corrupt", "Agent checkpoint 无法读取，不能继续会话",
+                {"exception_type": type(exc).__name__},
+            ) from exc
+        if checkpoint is None:
+            raise LogAgentError(
+                "checkpoint_missing", "Agent checkpoint 缺失，不能猜测历史继续",
+                {"session_id": session.session_id},
+            )
 
     async def _prepare_checkpoint(self, session: AgentSession, graph: Any,
                                   log: EventLog, turn_id: str, *,
