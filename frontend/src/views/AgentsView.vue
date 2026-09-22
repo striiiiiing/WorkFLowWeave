@@ -70,7 +70,9 @@ async function select(session: AgentSession) {
     const value = JSON.parse(event.data) as AgentEvent
     lastEventId = Math.max(lastEventId, value.id)
     if (!events.value.some((item) => item.id === value.id)) events.value.push(value)
+    if (value.type === 'turn.started') selected.value = { ...session, status: 'running' }
     if (['turn.completed', 'turn.failed', 'turn.cancelled', 'turn.interrupted'].includes(value.type)) {
+      selected.value = { ...session, status: value.type.slice('turn.'.length) }
       void refresh()
       expectedStreamClose = true
       stream?.close()
@@ -89,7 +91,9 @@ async function select(session: AgentSession) {
             const value = JSON.parse(event.data) as AgentEvent
             lastEventId = Math.max(lastEventId, value.id)
             if (!events.value.some((item) => item.id === value.id)) events.value.push(value)
+            if (value.type === 'turn.started') selected.value = { ...session, status: 'running' }
             if (['turn.completed', 'turn.failed', 'turn.cancelled', 'turn.interrupted'].includes(value.type)) {
+              selected.value = { ...session, status: value.type.slice('turn.'.length) }
               expectedStreamClose = true
               stream?.close()
               stream = undefined
