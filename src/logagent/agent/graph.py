@@ -104,7 +104,7 @@ def _langchain_tool(declaration: ToolDeclaration, context: AgentToolContext) -> 
 
 def create_graph(*, model, declarations: Iterable[ToolDeclaration], context: AgentToolContext,
                  system_prompt: str, checkpointer=None, use_summarization: bool = True,
-                 summary_model=None):
+                 summary_model=None, summary_timeout: float | None = None):
     """Assemble one turn graph with an optional independently leased summary model.
 
     ``summary_model`` is deliberately passed as an already leased dependency.  The
@@ -114,7 +114,9 @@ def create_graph(*, model, declarations: Iterable[ToolDeclaration], context: Age
     tools = [_langchain_tool(declaration, context) for declaration in declarations]
     middleware = []
     if use_summarization and context.config.context_window is not None:
-        middleware.append(summarization_middleware(summary_model or model, context.config))
+        middleware.append(summarization_middleware(
+            summary_model or model, context.config, summary_timeout=summary_timeout,
+        ))
     return create_agent(model=model, tools=tools, system_prompt=system_prompt,
                         middleware=middleware, checkpointer=checkpointer,
                         name="logagent-agent")

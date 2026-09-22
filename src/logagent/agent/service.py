@@ -627,6 +627,10 @@ class AgentService:
                     async with summary_context as summary_model:
                         graph = create_graph(
                             model=model, summary_model=summary_model,
+                            summary_timeout=(
+                                getattr(turn_resources.summary_ai_config, "timeout", None)
+                                if turn_resources.summary_ai_config is not None else None
+                            ),
                             declarations=turn_resources.declarations,
                             context=context, system_prompt=system_prompt,
                             checkpointer=self.checkpointer,
