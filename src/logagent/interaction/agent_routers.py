@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shutil
 from collections.abc import AsyncIterator
 from typing import Annotated
 
@@ -188,9 +189,22 @@ def build_agent_router():
     @router.get("/config")
     async def get_agent_config(services: Services):
         service = _agent(services)
+        sandbox = getattr(service.config, "sandbox", None)
+        sandbox_enabled = bool(getattr(sandbox, "enabled", False))
+        sandbox_available = shutil.which("bwrap") is not None
         return {"config": service.config.model_dump(mode="json"),
                 "tools": service.tool_views(),
-                "scheduler": service.scheduler.status}
+                "scheduler": service.scheduler.status,
+                "sandbox": {
+                    "enabled": sandbox_enabled,
+                    "network": bool(getattr(sandbox, "network", False)),
+                    "available": sandbox_available,
+                    "status": (
+                        "enabled" if sandbox_enabled and sandbox_available
+                        else "unavailable" if sandbox_enabled
+                        else "disabled"
+                    ),
+                }}
 
     @router.put("/config")
     async def update_agent_config(payload: AgentRuntimeConfig, services: Services):
