@@ -97,7 +97,29 @@ async def test_service_restart_marks_started_turn_and_tool_as_interrupted(tmp_pa
     current = await restored.get_session(session["session_id"])
     assert current["status"] == "interrupted"
     events = await restored.events(session["session_id"])
+    assert any(event["type"] == "turn.interrupted" for event in events)
     assert any(event["type"] == "tool.outcome_unknown" for event in events)
+
+
+async def test_existing_session_without_checkpoint_is_not_reconstructed(tmp_path):
+    first = AgentService(tmp_path / "workspace", tmp_path / "runtime")
+    session = await first.create_session(model="scripted")
+    await first.sessions[session["session_id"]].log.append(
+        "turn.completed", turn_id="turn_old", text="old"
+    )
+    await first.close()
+    (tmp_path / "runtime" / "checkpoints.sqlite").unlink()
+
+    restored = AgentService(
+        tmp_path / "workspace", tmp_path / "runtime",
+        model_provider=lambda _: ScriptedModel(responses=[AIMessage(content="new")]),
+    )
+    await restored.initialize()
+    accepted = await restored.submit(session["session_id"], "continue", request_id="new-request")
+    with pytest.raises(LogAgentError) as error:
+        await restored.wait(accepted["turn_id"])
+    assert error.value.code == "checkpoint_missing"
+    await restored.close()
 
 
 async def test_context_budget_includes_fixed_prompt_and_reserved_output():
