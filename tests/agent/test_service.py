@@ -114,6 +114,16 @@ async def test_agent_service_is_idempotent_and_runs_one_turn(tmp_path):
                for event in events)
 
 
+async def test_event_log_wait_subscribes_without_polling_gap(tmp_path):
+    log = EventLog(tmp_path / "runtime", "session")
+    await log.initialize()
+    waiter = asyncio.create_task(log.wait_for_events(0, wait_seconds=2))
+    await asyncio.sleep(0.02)
+    appended = await log.append("message.delta", turn_id="turn", content="hi")
+    received = await waiter
+    assert [event["id"] for event in received] == [appended["id"]]
+
+
 async def test_agent_tool_execution_is_recorded_before_graph_continues(tmp_path):
     model = ScriptedModel(responses=[
         AIMessage(content="", tool_calls=[{"id": "read-1", "name": "read",
