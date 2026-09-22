@@ -79,6 +79,7 @@ async def test_agent_tool_execution_is_recorded_before_graph_continues(tmp_path)
     completed = [event for event in await service.events(session["session_id"])
                  if event["type"] == "tool.completed"]
     assert len(completed) == 1
+    assert completed[0]["tool_key"].endswith(":read-1")
     assert completed[0]["result"]["content"] == "hello\n"
 
 
