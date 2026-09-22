@@ -9,7 +9,7 @@ from pydantic import Field
 
 from logagent.agent.builtin.declaration import ToolDeclaration
 from logagent.agent.config import AgentConfig
-from logagent.agent.context import summarize_once, validate_request_budget
+from logagent.agent.context import summarization_middleware, summarize_once, validate_request_budget
 from logagent.agent.events import EventLog
 from logagent.agent.service import AgentService
 from logagent.errors import LogAgentError
@@ -260,6 +260,18 @@ async def test_stream_failure_after_delta_is_terminal_without_retry_or_duplicate
     assert len(model.seen) == 1
     assert failures and failures[-1]["partial"] is True
     assert not any(event["type"] == "turn.completed" for event in events)
+
+
+async def test_summary_model_timeout_is_scoped_to_summary_call():
+    config = AgentConfig(context_window=200, output_tokens=10)
+    model = DelayedModel(delay=0.2)
+    middleware = summarization_middleware(model, config, summary_timeout=0.03)
+    messages = [
+        HumanMessage(content="history " * 200),
+        HumanMessage(content="recent"),
+    ]
+    with pytest.raises(TimeoutError):
+        await middleware.abefore_model({"messages": messages}, None)
 
 
 async def test_cancelled_turn_waits_for_tool_cleanup_and_marks_unknown(tmp_path):
