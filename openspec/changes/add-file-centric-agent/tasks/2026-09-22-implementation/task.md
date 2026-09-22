@@ -70,7 +70,7 @@
 - [ ] F3 /agents 两栏聊天与按需工具/文件/设置抽屉，复用 Markdown、报告、useQuery/useAsyncTask；新增单个导航。
 - [ ] F4 工具开关沿用插件配置与 reload；显示真实沙箱/并发/未知发送状态、上下文估算、压缩摘要、文件冲突保留草稿。
 - [ ] F5 前端单测、类型检查、构建；临时目录与假模型的真实后端/浏览器 SSE 烟测、窄屏、停止、重连、冲突，不连接真实渠道。
-- [ ] F6 后端定向回归、静态检查、构建、旧 Workflow 回归、OpenSpec 严格验证与 diff 审查。
+- [x] F6 后端定向回归、静态检查、构建、旧 Workflow 回归、OpenSpec 严格验证与 diff 审查。
 
 ## 验证与提交规则
 
@@ -117,3 +117,5 @@
 - Qwen Paw 对照记录（只读借鉴，未引入其协议）：`/mnt/d/code/QwenPaw/console/src/pages/Chat/replayFastForward.ts` 与同目录 `tests/replayFastForward.test.ts` 将重连回放缓冲到显式 `replay_end` 后一次性快进、过滤标记，并在旧后端无标记时以短 idle 窗口降级；本实现继续以 EventLog 的持久 `id`/`Last-Event-ID` 为唯一游标，不增加标记事件。`/mnt/d/code/QwenPaw/src/qwenpaw/app/routers/fork.py` 的 `POST /fork/agent` 先复制父会话状态再建立子会话，验证了“父会话只读、子会话独立”的交互方向；本实现改为复制 LangGraph checkpoint 完整链和 branch 元数据，不复制可编辑事件正文作为执行状态。
 - Append/fork 最小契约已实现：`AgentService.append` 在活动轮次写入 `command.queued`，当前终态落盘后仅启动一个排队轮次；空闲 append 直接创建新轮次，request_id 仍按同一幂等表去重。`POST /api/agents/sessions/{id}/append` 返回排队 turn；`POST /api/agents/sessions/{id}/fork` 复制独立 SQLite checkpoint 的完整链与 writes，记录 `parent_session_id`、`parent_turn_id`、`parent_branch_id`，父事件文件和父会话不变。当前 SQLite saver 的 `acopy_thread` 为抽象占位，因此实现使用其连接锁内的同一 checkpoint 表事务复制；无可用 checkpoint 明确返回 `checkpoint_missing`，不猜测上下文。行为测试覆盖排队只启动一次、fork 后子会话继续及父分支不变。
 - F3/F4 增量完成（`e3ac86f`、`0a58370`）：前端新增 append/fork 操作、工具插件开关调用、generation/定义 Token/执行类别、真实沙箱/并发/上下文设置面板，以及按需文件抽屉。文件保存携带 `If-Match`，`Runtime/` 显示只读；写冲突错误时不清空草稿。复用现有 `ReportText`，未在前端复制权限或执行类别判断。`npm run typecheck`、`npm run build`、前端 Vitest 全量通过。仍未勾选 F3/F4：分支树完整可视化、抽屉目录分页、真实浏览器 SSE 烟测和 send 状态细分仍待最终验收。
+- F5/F6 验收记录（`e7e7039`）：新增 `frontend/playwright.agent.config.ts`、`frontend/tests/serve_agent_backend.py` 和 `frontend/tests/e2e/agent.spec.ts`。假模型仅在本地流式响应，后端仍使用真实 FastAPI Agent 路由、EventLog、SQLite checkpoint、WorkspaceBackend；HTTP smoke 实际验证 health、创建/发送、完整 SSE 事件、`Last-Event-ID` 回放、慢模型取消和 `If-Match` 文件冲突，结果分别为 200/201/202/409，未连接真实渠道。Playwright 已实际启动该后端和前端预览，但 Chromium 在页面启动前因运行环境缺少 `libnspr4.so` 退出（`browserType.launch`，不是应用断言失败），故 F5 保持未勾选，命令为 `cd frontend && npm run test:e2e -- --config playwright.agent.config.ts`；安装 Chromium 系统依赖后可直接重跑。
+- F6 已完成：`timeout 60s ./.venv/bin/pytest -q tests/agent/test_service.py tests/agent/test_framework_contracts.py`（20 passed）、`tests/interaction/test_agent_api.py`（4 passed）、Agent 其余三批（20/26 passed），旧 Workflow/lifecycle 按文件拆批全部通过（包括进程恢复 3 passed/45.97s）；`npm test`（19 files/97 tests）、`npm run typecheck`、`npm run build`、`ruff check src tests frontend/tests/serve_agent_backend.py`、`uv build`、`openspec validate add-file-centric-agent --strict --no-interactive` 和 `git diff --check` 均通过。合并批次超过 60 秒时按文件拆分，未放宽单批硬超时；未发现 catch-all 成功、重复副作用、事件游标跳号或中间 checkpoint 删除。
