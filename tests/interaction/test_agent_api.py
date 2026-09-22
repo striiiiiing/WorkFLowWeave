@@ -41,13 +41,19 @@ class FakeAgent:
 
 class Lifecycle:
     def __init__(self):
-        self.services = SimpleNamespace(agent=FakeAgent())
+        self.services = SimpleNamespace(
+            agent=FakeAgent(), plugins=SimpleNamespace(generation=1),
+        )
 
     async def start(self):
         return self.services
 
     async def shutdown(self):
         pass
+
+    async def update_plugin_setting(self, plugin_id, enabled):
+        self.setting = (plugin_id, enabled)
+        return SimpleNamespace(model_dump=lambda mode="json": {"registered": [], "errors": []})
 
 
 def test_agent_session_message_and_replay_endpoints():
@@ -76,3 +82,11 @@ def test_missing_sse_session_returns_structured_error_before_streaming():
 def test_agent_conflict_codes_are_http_409():
     for code in ("request_conflict", "session_conflict", "file_conflict", "replace_conflict"):
         assert status_for_code(code) == 409
+
+
+def test_agent_tool_switch_uses_lifecycle_reload_boundary():
+    owner = Lifecycle()
+    with TestClient(create_app(owner)) as client:
+        response = client.put("/api/agents/tools/agent_shell", json={"enabled": False})
+    assert response.status_code == 200
+    assert owner.setting == ("agent_shell", False)
