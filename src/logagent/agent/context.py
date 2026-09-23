@@ -101,6 +101,7 @@ def _estimate(messages, system_prompt, tools, budget, counter) -> dict[str, Any]
     total = body + stable + definitions + budget.output
     return {"messages": body, "system": stable, "tools": definitions,
             "output": budget.output, "total": total, "window": budget.window,
+            "trigger": min(budget.trigger, budget.window),
             "remaining": budget.window - total, "estimated": True,
             "token_counter": counter.source}
 

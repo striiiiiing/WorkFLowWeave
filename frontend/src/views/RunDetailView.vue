@@ -17,6 +17,7 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import PhaseReport from '@/components/report/PhaseReport.vue'
+import AgentContinueButton from '@/components/agent/AgentContinueButton.vue'
 const route = useRoute()
 const router = useRouter()
 const id = computed(() => String(route.params.id))
@@ -64,6 +65,7 @@ function recover() {
       description="查看本次运行的结果与执行情况"
     >
       <el-button :loading="pending" @click="refreshAll">刷新</el-button>
+      <AgentContinueButton v-if="session && ['completed', 'partial'].includes(session.status)" :workflow-session-id="id" />
       <el-popconfirm v-if="active" title="确认取消执行？" @confirm="cancel">
         <template #reference>
           <el-button type="danger" :disabled="action.pending.value">取消执行</el-button>

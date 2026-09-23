@@ -7,6 +7,7 @@ import { useQuery } from '@/composables/useQuery'
 import { useAsyncTask } from '@/composables/useAsyncTask'
 import PageHeader from '@/components/common/PageHeader.vue'
 import AppIcon from '@/components/icons/AppIcon.vue'
+import AgentContinueButton from '@/components/agent/AgentContinueButton.vue'
 const router = useRouter()
 const search = ref('')
 const { data, pending, error, refresh } = useQuery((signal) =>
@@ -73,6 +74,7 @@ function remove(id: string) {
         <span>{{ workflow.channels.length }} 个通知渠道</span>
       </div>
       <div class="flex flex-wrap justify-end gap-2 mt-6">
+        <AgentContinueButton :workflow-id="workflow.id" />
         <el-popconfirm title="确认删除此工作流？" @confirm="remove(workflow.id)">
           <template #reference>
             <el-button type="danger" plain :disabled="action.pending.value">删除</el-button>

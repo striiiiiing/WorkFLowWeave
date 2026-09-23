@@ -67,9 +67,9 @@
 
 - [x] F1 独立 /api/agents 会话、消息、取消、手动压缩、文件、配置、工具 DTO；明确 409、If-Match 和 request_id 冲突。
 - [x] F2 持久序号 SSE、回放/实时无缝续传、慢客户端不阻塞执行、心跳不算模型活动。
-- [ ] F3 /agents 两栏聊天与按需工具/文件/设置抽屉，复用 Markdown、报告、useQuery/useAsyncTask；新增单个导航。
-- [ ] F4 工具开关沿用插件配置与 reload；显示真实沙箱/并发/未知发送状态、上下文估算、压缩摘要、文件冲突保留草稿。
-- [ ] F5a 本轮：前端组件/流状态单测、类型检查、构建；临时目录与假模型的非浏览器真实后端 HTTP/SSE 验证，覆盖停止、重连、冲突，不连接真实渠道。
+- [x] F3 /agents 两栏聊天与按需工具/文件/设置抽屉，复用 Markdown、报告、useQuery/useAsyncTask；新增单个导航。
+- [x] F4 工具开关沿用插件配置与 reload；显示真实沙箱/并发/未知发送状态、上下文估算、压缩摘要、文件冲突保留草稿。
+- [x] F5a 本轮：前端组件/流状态单测、类型检查、构建；临时目录与假模型的非浏览器真实后端 HTTP/SSE 验证，覆盖停止、重连、冲突，不连接真实渠道。
 - [ ] F5b 用户独立方案待验收：真实浏览器操作、窄屏视觉与真实浏览器 SSE；不属于本轮 Agent 完成阻塞，不声称已通过。
 - [ ] F6 后端定向回归、静态检查、构建、旧 Workflow 回归、OpenSpec 严格验证与 diff 审查。
 
@@ -82,13 +82,13 @@
 
 ## F 最终契约收尾计划（2026-09-23）
 
-以现行 design §4.2/§8/§9/§10、frontend §1–7 与设计修订任务为最终验收依据；上文旧 F6 验证不覆盖本轮最终代码，暂时撤销勾选。根因是图执行、管理端点和页面投影各有未接通的公共契约，按结构性修复处理，不追加第二套调度/摘要/配置来源。
+以现行 design §4.2/§8/§9/§10、frontend §1–7 与设计修订任务为最终验收依据；上文旧 F6 验证不覆盖本轮最终代码，本轮开始时暂时撤销勾选，最终状态以下方新记录为准。根因是图执行、管理端点和页面投影各有未接通的公共契约，按结构性修复处理，不追加第二套调度/摘要/配置来源。
 
 1. 统一工具包装：Collector-only 网关，动态执行类别、完整 Artifact 与可归并工具事实；先验证调用/互斥/错误与取消。
 2. 命令和历史边界：复用 create_agent 中间件在完整工具组后的模型边界处理 append/compact；stop 取消优先；使用公开 checkpoint/state API 建分支，禁止直接操作 saver SQLite 表，编辑只切用户节点之前的投影。
 3. 管理与事件：HTTP 条件写、分页与共享锁、持久配置和真实工具状态；SSE 游标无缝连接、重连去重及慢连接隔离。
 4. 页面：真实分支树/编辑预览、文件分页/冲突草稿、来源/模型/设置/摘要/未知副作用、Workflow 最新和历史入口，复用 useQuery/useAsyncTask。
-5. 前端单测→类型→构建→真实临时 FastAPI/SSE Playwright，覆盖桌面/窄屏/发送/停止/重连/冲突；最后后端及旧 Workflow 回归、静态检查、OpenSpec strict、diff 自审。每批后端 timeout 60s，逐完成点本地提交，不推送、不混入共享脏文件。
+5. 按下方用户最新验收授权，前端单测→类型→构建→非浏览器真实临时 FastAPI/HTTP/SSE，覆盖发送/停止/重连/冲突；真实浏览器操作与桌面/窄屏视觉交由用户独立验收。最后后端及旧 Workflow 回归、静态检查、OpenSpec strict、diff 自审。每批后端 timeout 60s，逐完成点本地提交，不推送、不混入共享脏文件。
 
 ## 执行记录
 
@@ -160,3 +160,9 @@
 - F1/F2 管理与流契约完成点（2026-09-23）：统一 Agent 文件读取/写入路由，读取沿用共享 read 调度、写入沿用 exclusive；保存强制 If-Match，新建 If-None-Match:*，409 冲突保留磁盘新版本，Runtime 只读。Agent router 必须注册在通用资源 /{kind}/{id} 前，真实 HTTP 测试暴露并修复 file 被当作资源后返回422的问题；接管 app.py Agent import/include_router 与 lifecycle/services.py Agent 字段两处必要装配。配置同目录原子保存，时区来自宿主 IANA 设定，Session 元数据物化、活动模型/工具代次和不可继续原因由持久事实派生；禁用插件元数据沿用 PluginRegistry 同一次发现，无第二扫描/配置源。Workflow 续接读取 session_view 的最终结果并冻结来源，拒绝客户端覆盖；模型切换下轮生效。/commands 提供 channel/session/priority 信封及 /new、/resume、/workflow、/append、/compact、/fork、/stop，复用既有准入与独立取消通道。EventLog 工具事实唤醒 SSE，慢客户端完成竞态在相同游标下 drain，排队命令取消先于终态；空会话 compact 保存空 checkpoint，不消耗 Workflow 输入。tests/agent、tests/interaction/test_agent_api.py、tests/config/test_plugin_setting.py：124 passed / 17.69s（timeout 60s）；含真实 ASGI 流断连/慢消费/续传、冻结来源、命令停止、文件条件写入、恢复持久化。ruff 通过。后续前端和最终回归仍按 F3–F6 完成。
 
 - F 恢复边界自审完成点（2026-09-23）：真实图的“模型返回后手动摘要失败→用户再发新消息”测试暴露两个过度门禁：新准入重复 await 已失败任务；已配对消息后的待执行 middleware/model 节点被当成损坏 checkpoint。现在准入只等待尚未结束任务的完成事实；仅在先前终态为 failed/cancelled/interrupted、待执行节点属于当前已知图且无未配对工具调用时，用既有公开消息投影清除调度，不重做副作用；未知节点继续明确失败。摘要失败/取消写 command.failed 后重新抛出，原始消息和失败事实保留，不显示压缩成功。Runtime/Sessions 在 turn.resources 发布后立即物化运行态。定向43项通过，最终 tests/agent + Agent HTTP 124 passed /52.68s（timeout60s）；ruff通过。
+
+- F3/F4 页面完成点（2026-09-23）：依据 frontend §1–7 和 design §8–10，新增 Agent 分支树、工具事实归并、压缩摘要、文件/设置抽屉与 Workflow 最新/历史结果续接入口；模型和来源预览在确认时绑定已预览 session，不受后来运行替换。当前分支只有用户消息可编辑，预览后从该消息之前的公开 checkpoint 投影建立新分支；父历史、助手和工具消息保持只读。页面复用 ReportText、useQuery/useAsyncTask；停止使用独立动作，活动轮 compact 在模型边界排队。两条 Agent 路由、单个导航和两个 Workflow 入口按必要 hunks 提交，布局使用组件内样式，不依赖共享工作树其他任务的报告/全局样式。
+- F3/F4 事件与冲突决策：useAgentStream 以 session_id:id 合并父子历史，先读历史再取最新会话并从持久游标接流；新轮建立独立代次，旧轮终态/旧连接回调不能关闭新轮。断线从 500ms 退避到最多 5s，仅调节 UI 网络重试频率，不重试业务副作用；普通消息和 append 响应未知时保留草稿与 request_id，用户明确重试沿用同 ID，管理命令不冒称幂等。读取工具仅在任一工具结束之前已排队的同组内折叠，避免把后续依赖误示为并行。文件只有按一致 hash 载入完整正文后才允许保存，写入路径绑定已读文件，冲突保留草稿并单独加载远端供用户明确合并；Runtime 只读来自后端。
+- F4 预算决策：依据 design §3.1/§8 的按轮快照约束，context.budget 新增本轮有效 trigger=min(trigger_tokens, window)，页面使用该事件值展示触发线；设置更改只影响下一轮，不能用新配置倒推当前预算。旧历史缺少 trigger 时明确显示“历史未记录，下轮重新计算”。context/final_contracts 定向 28 passed /23.17s（timeout60s），ruff 通过。
+- F5a 前端验证：共享工作树 Vitest 22 files/112 tests passed /71.57s；随后在 37a13bc 加本任务精确暂存补丁的隔离 worktree 验证 Agent 三文件与基线 ReportText 共 18 passed /32.18s（Agent15+报告3），最后追加的未知发送同 ID 重试用例所在 agent-view 文件 4 passed /50.54s，新增 Agent 共16项均有通过证据，不将追加后未重跑的全量描述为113项通过。隔离前端 npm run typecheck、npm run build 通过（Vite 3556 modules/32.45s）；其 frontend 文件与本任务暂存内容逐字节一致，未借用共享脏报告组件或样式。共享工作树另有 CollectorDesignDemoView.vue:254 的 selectedTemplate 未使用导致 TS6133，属于其他任务，未改动或提交；本任务类型/构建结论以隔离检出为界。
+- F5a 非浏览器烟测：临时目录、假模型、真实 Uvicorn/FastAPI/EventLog/checkpoint/Workspace，经 localhost:14301 的真实 HTTP/SSE 验证创建201、发送202、9条连续持久事件、Last-Event-ID 仅回放缺失末条、新建 If-None-Match:*、If-Match 改写和 stale409 保留远端，以及独立 stop 得到 cancelled。首次10秒就绪窗口被繁忙导入耗尽，改为明确40秒就绪窗口后上述业务断言通过；未改变产品超时。进程与临时目录已清理，未连接真实渠道，未启动浏览器或准备浏览器依赖。F5b 仍由用户独立验收，不以组件/HTTP结果声称真实浏览器或窄屏视觉已通过。
