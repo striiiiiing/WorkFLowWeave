@@ -1,16 +1,20 @@
-"""Per-turn prompt assembly and fixed context-budget policy."""
+"""Captured prompt prefix and complete request budgets around official compaction."""
 
 from __future__ import annotations
 
 import asyncio
+import json
+from collections.abc import Awaitable, Callable
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from langchain.agents.middleware import SummarizationMiddleware
-from langchain_core.messages import BaseMessage
+from langchain.agents.middleware import AgentMiddleware, SummarizationMiddleware
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import BaseMessage, HumanMessage, RemoveMessage, SystemMessage
 from langchain_core.messages.utils import count_tokens_approximately
+from langgraph.graph.message import add_messages
 
 from logagent.agent.config import AgentConfig
 from logagent.errors import LogAgentError
@@ -21,28 +25,40 @@ RUNTIME_INSTRUCTION = (
 )
 
 
-class _SummaryTimeoutModel:
-    """Apply a per-summary-call timeout without changing the leased model.
+class TokenCounter:
+    """Use a model tokenizer when supported; explicitly label the fallback."""
 
-    ``SummarizationMiddleware`` wraps its model with ``with_retry`` during
-    construction.  Returning this proxy from ``with_retry`` keeps the timeout
-    around every attempt and avoids letting a summary call outlive its own AI
-    resource lease.  The main model remains untouched.
-    """
+    def __init__(self, model=None):
+        self.model = model
+        self.source = "model_tokenizer"
 
-    def __init__(self, model: Any, timeout: float):
-        self._model = model
-        self._timeout = timeout
+    def __call__(self, messages) -> int:
+        if not messages:
+            return 0
+        counter = getattr(self.model, "get_num_tokens_from_messages", None)
+        implementation = getattr(type(self.model), "get_num_tokens_from_messages", None)
+        if counter is not None and implementation is not BaseChatModel.get_num_tokens_from_messages:
+            try:
+                return counter(messages)
+            except (NotImplementedError, ImportError):
+                # Unsupported tokenizer/model, not an upstream invocation error.
+                pass
+        self.source = "framework_approximate"
+        return count_tokens_approximately(messages)
 
-    def __getattr__(self, name: str):
-        return getattr(self._model, name)
 
-    def with_retry(self, *_args, **_kwargs):
-        return self
+def token_count(messages) -> int:
+    return count_tokens_approximately(messages)
 
-    async def ainvoke(self, input, config=None, **kwargs):
-        async with asyncio.timeout(self._timeout):
-            return await self._model.ainvoke(input, config=config, **kwargs)
+
+def context_window(configured: int | None, model=None) -> int:
+    profile = getattr(model, "profile", None)
+    known = profile.get("max_input_tokens") if isinstance(profile, dict) else None
+    if type(known) is not int or known <= 0:
+        known = None
+    if configured is None and known is None:
+        raise LogAgentError("context_budget_unavailable", "模型容量未知，必须显式配置上下文容量")
+    return min(configured, known) if configured and known else configured or known
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,20 +67,11 @@ class ContextBudget:
     trigger: int
     keep: int
     output: int
-    safety: int
 
     @classmethod
-    def from_config(cls, config: AgentConfig) -> ContextBudget:
-        if config.context_window is None:
-            raise ValueError("Agent context_window must be configured before model execution")
-        window = config.context_window
-        safety = max(1, int(window * config.safety_ratio))
-        return cls(window, int(window * config.trigger_ratio),
-                   int(window * config.keep_ratio), config.output_tokens, safety)
-
-
-def token_count(messages: list[BaseMessage] | tuple[BaseMessage, ...]) -> int:
-    return count_tokens_approximately(messages)
+    def from_config(cls, config: AgentConfig, model=None) -> ContextBudget:
+        return cls(context_window(config.context_window, model), config.trigger_tokens,
+                   config.keep_tokens, config.output_tokens)
 
 
 def build_system_prompt(*, agents: str, session_id: str, branch_id: str,
@@ -78,74 +85,174 @@ def build_system_prompt(*, agents: str, session_id: str, branch_id: str,
     return f"{RUNTIME_INSTRUCTION}\n运行上下文：{runtime}\n\n工作区常驻规则：\n{agents}".strip()
 
 
-def summarization_middleware(model, config: AgentConfig, *, summary_prompt: str | None = None,
-                             summary_timeout: float | None = None):
-    """Create a fresh official middleware for one graph/request.
+def estimate_request(messages: list[BaseMessage], system_prompt: str, tools: list[dict[str, Any]],
+                     config: AgentConfig, *, model=None) -> dict[str, Any]:
+    counter = TokenCounter(model)
+    budget = ContextBudget.from_config(config, model)
+    return _estimate(messages, system_prompt, tools, budget, counter)
 
-    The middleware is intentionally not shared between sessions: its model and
-    trigger are part of the captured turn snapshot.
-    """
-    budget = ContextBudget.from_config(config)
-    prompt = summary_prompt or config.summary_prompt
+
+def _estimate(messages, system_prompt, tools, budget, counter) -> dict[str, Any]:
+    body = counter(messages)
+    stable = counter([SystemMessage(content=system_prompt)]) if system_prompt else 0
+    definitions = counter([HumanMessage(content=json.dumps(
+        tools, ensure_ascii=False, separators=(",", ":"),
+    ))]) if tools else 0
+    total = body + stable + definitions + budget.output
+    return {"messages": body, "system": stable, "tools": definitions,
+            "output": budget.output, "total": total, "window": budget.window,
+            "remaining": budget.window - total, "estimated": True,
+            "token_counter": counter.source}
+
+
+def _validate_usage(usage, *, summary=False) -> None:
+    if usage["total"] > usage["window"]:
+        code = "summary_context_budget_exceeded" if summary else "context_budget_exceeded"
+        raise LogAgentError(code, "完整请求与输出预留超过模型上下文容量", usage)
+
+
+def validate_request_budget(messages: list[BaseMessage], system_prompt: str,
+                            tools: list[dict[str, Any]], config: AgentConfig,
+                            *, model=None) -> dict[str, Any]:
+    usage = estimate_request(messages, system_prompt, tools, config, model=model)
+    _validate_usage(usage)
+    return usage
+
+
+class _SummaryInvocation:
+    """Check the official middleware's exact serialized prompt before any I/O."""
+
+    def __init__(self, model, *, config, timeout, same_model):
+        self.model = model
+        self.config = config
+        self.timeout = timeout
+        self.same_model = same_model
+
+    def __getattr__(self, name):
+        return getattr(self.model, name)
+
+    def with_retry(self, *_args, **_kwargs):
+        # Capacity errors cannot become framework retries. A summary call also
+        # must remain inside its own AI resource timeout.
+        return self
+
+    async def ainvoke(self, input, config=None, **kwargs):
+        configured = self.config.summary_context_window
+        if configured is None and self.same_model:
+            configured = self.config.context_window
+        budget = ContextBudget(context_window(configured, self.model), 0, 0,
+                               self.config.summary_max_tokens)
+        usage = _estimate([HumanMessage(content=input)], "", [], budget, TokenCounter(self.model))
+        _validate_usage(usage, summary=True)
+        async with asyncio.timeout(self.timeout):
+            response = await self.model.ainvoke(input, config=config, **kwargs)
+        if not response.text.strip():
+            raise LogAgentError("context_compaction_failed", "摘要模型返回空摘要")
+        return response
+
+
+def summarization_middleware(model, config: AgentConfig, *, summary_prompt: str | None = None,
+                             summary_timeout: float | None = None,
+                             trigger_tokens: int | None = None, token_counter=None,
+                             same_model: bool = True):
+    """Create one official middleware, retaining the complete selected prefix."""
+    prompt = summary_prompt if summary_prompt is not None else config.summary_prompt
     if "{messages}" not in prompt:
         prompt = prompt.rstrip() + "\n\n<messages>\n{messages}\n</messages>"
-    summary_model = (
-        _SummaryTimeoutModel(model, summary_timeout)
-        if summary_timeout is not None else model
-    )
+    invocation = _SummaryInvocation(model, config=config, timeout=summary_timeout,
+                                    same_model=same_model)
     return SummarizationMiddleware(
-        summary_model,
-        trigger=("tokens", budget.trigger),
-        keep=("tokens", budget.keep),
+        invocation,
+        trigger=("tokens", trigger_tokens or config.trigger_tokens),
+        keep=("tokens", config.keep_tokens),
+        token_counter=token_counter or TokenCounter(model),
         summary_prompt=prompt,
         trim_tokens_to_summarize=None,
     )
 
 
-def estimate_request(messages: list[BaseMessage], system_prompt: str, tools: list[dict[str, Any]],
-                     config: AgentConfig) -> dict[str, int]:
-    body = token_count(messages)
-    stable = count_tokens_approximately([system_prompt])
-    tool_tokens = count_tokens_approximately([str(tool) for tool in tools])
-    budget = ContextBudget.from_config(config)
-    return {"messages": body, "system": stable, "tools": tool_tokens,
-            "total": body + stable + tool_tokens + budget.output,
-            "window": budget.window, "remaining": budget.window - body - stable - tool_tokens}
-
-
-def validate_request_budget(messages: list[BaseMessage], system_prompt: str,
-                            tools: list[dict[str, Any]], config: AgentConfig) -> dict[str, int] | None:
-    """Validate the complete request envelope before invoking the model."""
-    if config.context_window is None:
-        raise LogAgentError(
-            "context_budget_unavailable", "必须显式配置模型上下文容量后才能执行 Agent",
-        )
-    usage = estimate_request(messages, system_prompt, tools, config)
-    if usage["total"] > usage["window"]:
-        raise LogAgentError("context_budget_exceeded", "当前请求超过已配置模型上下文容量", usage)
-    return usage
-
-
 def _validate_tool_pairs(messages: list[BaseMessage]) -> None:
-    pending = {call["id"] for message in messages
-               for call in getattr(message, "tool_calls", []) if "id" in call}
+    pending: set[str] = set()
     for message in messages:
+        if isinstance(message, RemoveMessage):
+            continue
         tool_id = getattr(message, "tool_call_id", None)
         if tool_id is not None:
-            pending.discard(tool_id)
+            if tool_id not in pending:
+                raise LogAgentError("context_tool_pairing", "摘要后存在孤立工具结果",
+                                    {"tool_call_id": tool_id})
+            pending.remove(tool_id)
+            continue
+        if pending:
+            raise LogAgentError("context_tool_pairing", "摘要后存在未配对的工具调用",
+                                {"tool_calls": sorted(pending)})
+        pending.update(call["id"] for call in getattr(message, "tool_calls", []))
     if pending:
-        raise LogAgentError("context_tool_pairing", "摘要后存在未配对的工具调用", {"tool_calls": sorted(pending)})
+        raise LogAgentError("context_tool_pairing", "摘要后存在未配对的工具调用",
+                            {"tool_calls": sorted(pending)})
+
+
+CompactionCallback = Callable[[dict[str, Any]], Awaitable[None]]
+
+
+class ContextMiddleware(AgentMiddleware):
+    """Own the complete envelope policy while delegating message selection."""
+
+    def __init__(self, *, model, config, system_prompt, tools, summary_model=None,
+                 summary_timeout=None, on_compacted: CompactionCallback | None = None,
+                 on_budget: CompactionCallback | None = None):
+        self.config = config
+        self.system_prompt = system_prompt
+        self.tool_definitions = tools
+        self.model = model
+        self.summary_model = summary_model if summary_model is not None else model
+        self.summary_timeout = summary_timeout
+        self.on_compacted = on_compacted
+        self.on_budget = on_budget
+        self.budget = ContextBudget.from_config(config, model)
+        self.counter = TokenCounter(model)
+
+    def estimate(self, messages):
+        return _estimate(messages, self.system_prompt, self.tool_definitions,
+                         self.budget, self.counter)
+
+    async def abefore_model(self, state, runtime):
+        return await self.prepare(state["messages"], runtime)
+
+    async def prepare(self, messages, runtime=None, *, force=False):
+        usage = self.estimate(messages)
+        result = None
+        if force or usage["total"] >= min(self.budget.trigger, self.budget.window):
+            # The official counter sees only messages. Subtract the immutable
+            # envelope, and preselect here so historical reported usage cannot
+            # unexpectedly trigger an extra summary.
+            trigger = max(1, min(self.budget.trigger, self.budget.window)
+                          - usage["system"] - usage["tools"] - usage["output"])
+            middleware = summarization_middleware(
+                self.summary_model, self.config, summary_timeout=self.summary_timeout,
+                trigger_tokens=1 if force else trigger, token_counter=self.counter,
+                same_model=self.config.summary_ai is None,
+            )
+            result = await middleware.abefore_model({"messages": deepcopy(messages)}, runtime)
+        compacted = add_messages([], result["messages"]) if result else messages
+        _validate_tool_pairs(compacted)
+        after = self.estimate(compacted)
+        _validate_usage(after)
+        if result and self.on_compacted is not None:
+            retained = {message.id for message in compacted}
+            await self.on_compacted({
+                "summary": compacted[0].content,
+                "removed_message_ids": [message.id for message in messages
+                                        if message.id not in retained],
+                "before": usage, "after": after,
+            })
+        if self.on_budget is not None:
+            await self.on_budget(after)
+        return result
 
 
 async def summarize_once(model, messages: list[BaseMessage], config: AgentConfig) -> list[BaseMessage]:
-    """Delegate one complete prefix to the public LangChain middleware API."""
-    middleware = summarization_middleware(model, config)
-    state = {"messages": deepcopy(messages)}
-    result = await middleware.abefore_model(state, None)
-    if result is None:
-        return messages
-    compacted = result.get("messages", messages)
-    if not isinstance(compacted, list):
-        raise LogAgentError("context_compaction_failed", "摘要模型返回了无效消息状态")
-    _validate_tool_pairs(compacted)
-    return compacted
+    """Run the same checked compaction policy used before every graph request."""
+    middleware = ContextMiddleware(model=model, config=config, system_prompt="", tools=[])
+    result = await middleware.prepare(messages)
+    return add_messages([], result["messages"]) if result else messages

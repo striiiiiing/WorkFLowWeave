@@ -29,8 +29,10 @@ class TurnModel(ScriptedModel):
 async def test_config_prompt_tools_and_output_limit_are_captured_per_turn(tmp_path):
     seen = []
     leases = []
-    initial = AgentConfig(output_tokens=128, idle_timeout=1, preview_tokens=1000)
-    updated = AgentConfig(output_tokens=256, idle_timeout=0.01, preview_tokens=2000)
+    initial = AgentConfig(output_tokens=128, summary_max_tokens=128,
+                          idle_timeout=1, preview_tokens=1000)
+    updated = AgentConfig(output_tokens=256, summary_max_tokens=256,
+                          idle_timeout=0.01, preview_tokens=2000)
     schema = {"type": "object", "properties": {}}
 
     async def invoke(arguments, context):
