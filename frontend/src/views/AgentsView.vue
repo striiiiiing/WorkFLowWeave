@@ -33,6 +33,7 @@ const router = useRouter()
 const sessions = useQuery((signal) => agentsApi.list(signal))
 const settings = useQuery((signal) => agentsApi.config(signal))
 const action = useAsyncTask()
+const createAction = useAsyncTask()
 const stopAction = useAsyncTask()
 const selected = ref<AgentSession>()
 const sessionQuery = useQuery(
@@ -149,14 +150,18 @@ async function select(session: AgentSession) {
   await router.push(`/agents/${encodeURIComponent(session.session_id)}`)
 }
 
-async function create() {
-  if (!availableModels.value.some((item) => item.reference === model.value)) return
-  const result = await action.run(() => agentsApi.create(model.value ? { model: model.value } : {}))
-  if (!result) return
+async function finishCreate(result: AgentSession) {
   showCreate.value = false
   await sessions.refresh()
   await select(result)
   ElMessage.success('已创建新会话')
+}
+
+async function create() {
+  const modelReference = model.value
+  if (!availableModels.value.some((item) => item.reference === modelReference)) return
+  const result = await createAction.run(() => agentsApi.create({ model: modelReference }))
+  if (result) await finishCreate(result)
 }
 
 async function send() {
@@ -286,15 +291,38 @@ async function openWorkflows() {
   if (records) workflowHistory.value = records
 }
 
-function openCreate() {
+async function openCreate() {
+  if (createAction.pending.value) return
+
   try {
     model.value = readDefaultAgentModel()
   } catch {
     model.value = ''
     ElMessage.error('无法读取浏览器默认模型，请选择模型')
   }
-  showCreate.value = true
-  void settings.refresh()
+
+  if (!model.value) {
+    showCreate.value = true
+    if (!settings.pending.value) void settings.refresh()
+    return
+  }
+
+  const defaultModel = model.value
+  const result = await createAction.run(async () => {
+    await settings.refresh()
+    if (
+      settings.error.value ||
+      !availableModels.value.some((item) => item.reference === defaultModel)
+    )
+      return
+    return agentsApi.create({ model: defaultModel })
+  })
+
+  if (result) {
+    await finishCreate(result)
+    return
+  }
+  if (!createAction.error.value) showCreate.value = true
 }
 
 function openFile(path: string) {
@@ -431,7 +459,7 @@ function executeSlashCommand(cmd: SlashCommand) {
         <AppIcon name="fork" size="sm" />
         <span>分支树</span>
       </el-button>
-      <el-button type="primary" @click="openCreate">
+      <el-button type="primary" :loading="createAction.pending.value" @click="openCreate">
         <AppIcon name="plus" size="sm" />
         <span>新会话</span>
       </el-button>
@@ -441,6 +469,7 @@ function executeSlashCommand(cmd: SlashCommand) {
       v-if="
         sessionQuery.error.value ||
         action.error.value ||
+        createAction.error.value ||
         stopAction.error.value ||
         sessions.error.value ||
         settings.error.value ||
@@ -449,6 +478,7 @@ function executeSlashCommand(cmd: SlashCommand) {
       :title="
         sessionQuery.error.value ||
         action.error.value ||
+        createAction.error.value ||
         stopAction.error.value ||
         sessions.error.value ||
         settings.error.value ||
@@ -463,7 +493,12 @@ function executeSlashCommand(cmd: SlashCommand) {
       <!-- 1. ChatGPT 风格侧栏 -->
       <aside class="chatgpt-sidebar">
         <div class="sidebar-header">
-          <button type="button" class="sidebar-new-btn" @click="openCreate">
+          <button
+            type="button"
+            class="sidebar-new-btn"
+            :disabled="createAction.pending.value"
+            @click="openCreate"
+          >
             <AppIcon name="plus" size="sm" />
             <span>新会话</span>
           </button>
@@ -568,7 +603,7 @@ function executeSlashCommand(cmd: SlashCommand) {
             唤起快捷指令。
           </p>
           <div class="flex gap-2 mt-4">
-            <el-button type="primary" @click="openCreate">
+            <el-button type="primary" :loading="createAction.pending.value" @click="openCreate">
               <AppIcon name="plus" size="sm" />
               <span>新建会话</span>
             </el-button>
@@ -674,8 +709,8 @@ function executeSlashCommand(cmd: SlashCommand) {
     <!-- 8. 创建新会话 Dialog -->
     <el-dialog v-model="showCreate" title="创建 Agent 分析会话" width="min(90vw, 500px)">
       <el-alert
-        v-if="action.error.value || settings.error.value"
-        :title="action.error.value || settings.error.value"
+        v-if="createAction.error.value || settings.error.value"
+        :title="createAction.error.value || settings.error.value"
         type="error"
         :closable="false"
       />
@@ -693,7 +728,7 @@ function executeSlashCommand(cmd: SlashCommand) {
         <el-button @click="showCreate = false">取消</el-button>
         <el-button
           type="primary"
-          :loading="action.pending.value"
+          :loading="createAction.pending.value"
           :disabled="!availableModels.some((item) => item.reference === model)"
           @click="create"
         >
@@ -745,12 +780,14 @@ function executeSlashCommand(cmd: SlashCommand) {
 .agent-view-shell {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 84px);
+  height: calc(100vh - 120px);
+  height: calc(100dvh - 120px);
 }
 
 .chatgpt-layout {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   flex: 1;
   min-height: 0;
   border: 1px solid var(--border);
@@ -925,7 +962,9 @@ function executeSlashCommand(cmd: SlashCommand) {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   height: 100%;
+  overflow: hidden;
   background: var(--surface);
 }
 
@@ -991,6 +1030,13 @@ function executeSlashCommand(cmd: SlashCommand) {
   }
   .mobile-toggle-btn {
     display: inline-flex;
+  }
+}
+
+@media (max-width: 640px) {
+  .agent-view-shell {
+    height: calc(100vh - 88px);
+    height: calc(100dvh - 88px);
   }
 }
 </style>

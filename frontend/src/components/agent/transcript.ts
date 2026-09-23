@@ -1,4 +1,12 @@
 import type { AgentEvent } from '@/api/agents'
+
+const terminalTurnLabels: Record<string, string> = {
+  'turn.completed': '本轮分析已完成',
+  'turn.failed': '本轮分析失败',
+  'turn.cancelled': '会话已暂停 / 停止',
+  'turn.interrupted': '会话已中断',
+}
+
 export interface TranscriptRow {
   key: string
   role: 'user' | 'assistant' | 'tool' | 'summary' | 'status' | 'command'
@@ -65,8 +73,14 @@ export function transcriptRows(events: AgentEvent[]): TranscriptRow[] {
     } else if (event.type === 'context.compacted')
       rows.push({ key: base, role: 'summary', event, text: contentText(data.summary) })
     else if (event.type.startsWith('turn.')) {
-      if (event.type !== 'turn.started')
-        rows.push({ key: base, role: 'status', event, text: event.type.slice(5) })
+      if (event.type === 'turn.started' || event.type === 'turn.resources') continue
+      rows.push({
+        key: base,
+        role: 'status',
+        event,
+        status: event.type.slice(5),
+        text: terminalTurnLabels[event.type] ?? '会话状态已更新',
+      })
     } else if (event.type.startsWith('command.')) {
       const key = `${event.session_id}:command:${data.request_id ?? data.command_event_id ?? event.id}`
       let row = lookup.get(key)

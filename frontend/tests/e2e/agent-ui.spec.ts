@@ -221,14 +221,94 @@ test('正式 Agent 入口不含 demo；默认模型持久化并用于新会话�
 
   await page.reload()
   await page.getByRole('button', { name: '新建会话' }).click()
-  await expect(page.getByRole('dialog').locator('.el-select__placeholder')).toContainText(
-    'channel-a / alpha',
-  )
-  await page.getByRole('button', { name: '确认创建' }).click()
+  await expect(page).toHaveURL(/\/agents\/created-session$/)
+  await expect(page.getByRole('dialog', { name: '创建 Agent 分析会话' })).toHaveCount(0)
+  expect(
+    calls.find((call) => call.method === 'POST' && call.path === '/agents/sessions')?.body,
+  ).toEqual({ model: 'channel-a:alpha' })
+})
+
+test('未设置默认模型时新会话保留模型选择步骤', async ({ page }) => {
+  const calls = await installApi(page)
+  await page.goto('/agents')
+  await page.getByRole('button', { name: '新建会话' }).click()
+
+  const dialog = page.getByRole('dialog', { name: '创建 Agent 分析会话' })
+  await expect(dialog).toBeVisible()
+  const model = dialog.getByRole('combobox', { name: '新会话模型' })
+  await expect(model).toBeEnabled()
+  await dialog.locator('.el-select__wrapper').click()
+  await page.locator('.el-select-dropdown__item:visible').first().click()
+  await dialog.getByRole('button', { name: '确认创建' }).click()
+
   await expect(page).toHaveURL(/\/agents\/created-session$/)
   expect(
     calls.find((call) => call.method === 'POST' && call.path === '/agents/sessions')?.body,
   ).toEqual({ model: 'channel-a:alpha' })
+})
+
+test('长会话只滚动消息区，输入器留在聊天窗口底部', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const history = Array.from({ length: 40 }, (_, index) => {
+    const id = index + 1
+    return index % 2 === 0
+      ? event(id, 'message.user', {
+          message_id: `user-${id}`,
+          text: `第 ${(index + 2) / 2} 条用户消息`,
+        })
+      : event(id, 'message.completed', {
+          message_id: `assistant-${id}`,
+          content: `这是第 ${(index + 1) / 2} 段较长的分析内容。`.repeat(8),
+        })
+  })
+  history.push(
+    event(41, 'turn.resources', { model: 'channel-a:alpha', tools_generation: 1 }),
+    event(42, 'turn.completed', { checkpoint_id: 'checkpoint-long' }),
+  )
+  await installApi(page, { sessions: [session('qa-session')], history })
+  await page.goto('/agents/qa-session')
+
+  const transcript = page.getByRole('region', { name: 'Agent 对话历史' })
+  const composer = page.getByRole('form', { name: 'Agent 输入' })
+  await expect(page.getByText('第 20 条用户消息', { exact: true })).toBeVisible()
+  await expect(transcript).toContainText('本轮分析已完成')
+  await expect(page.getByText('turn.resources', { exact: true })).toHaveCount(0)
+
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 375, height: 812 },
+  ]) {
+    await page.setViewportSize(viewport)
+    const layout = await page.evaluate(() => {
+      const transcript = document.querySelector('.transcript-viewport')!
+      const main = document.querySelector('.chatgpt-main')!
+      const composer = document.querySelector('.composer-container')!
+      const rect = (element: Element) => {
+        const { top, bottom } = element.getBoundingClientRect()
+        return { top, bottom }
+      }
+      return {
+        documentHeight: document.documentElement.scrollHeight,
+        viewportHeight: window.innerHeight,
+        transcriptHeight: transcript.scrollHeight,
+        transcriptViewportHeight: transcript.clientHeight,
+        main: rect(main),
+        composer: rect(composer),
+      }
+    })
+    expect(layout.documentHeight).toBeLessThanOrEqual(layout.viewportHeight)
+    expect(layout.transcriptHeight).toBeGreaterThan(layout.transcriptViewportHeight)
+    expect(layout.composer.top).toBeGreaterThanOrEqual(layout.main.top)
+    expect(layout.composer.bottom).toBeLessThanOrEqual(layout.main.bottom + 1)
+    expect(layout.composer.bottom).toBeLessThanOrEqual(layout.viewportHeight + 1)
+
+    await transcript.evaluate((element) => {
+      element.scrollTop = 0
+    })
+    const composerAfterScroll = await composer.boundingBox()
+    expect(composerAfterScroll?.y).toBeCloseTo(layout.composer.top, 0)
+    expect(await page.evaluate(() => window.scrollY)).toBe(0)
+  }
 })
 
 test('Workflow 续接自动选择默认模型并提交固定来源', async ({ page }) => {

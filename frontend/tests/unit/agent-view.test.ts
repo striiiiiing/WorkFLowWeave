@@ -282,10 +282,8 @@ it('preselects the persistent default in new sessions without linking to the dem
   expect(wrapper.find('a[href="/agent-demo"]').exists()).toBe(false)
   button('新会话').click()
   await flushPromises()
-  expect(wrapper.findComponent(AgentModelSelect).props('modelValue')).toBe('local:one')
-  button('确认创建').click()
-  await flushPromises()
   expect(create).toHaveBeenCalledWith({ model: 'local:one' })
+  expect(document.body.textContent).not.toContain('创建 Agent 分析会话')
 })
 
 it('keeps drafts and unknown send receipts with their originating session during navigation', async () => {
