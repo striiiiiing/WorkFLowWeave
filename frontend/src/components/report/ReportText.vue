@@ -47,6 +47,12 @@ const content = computed(() => markdown.render(props.text))
   padding: 1em;
   border-radius: 0.5em;
 }
+.report-prose :deep(code) {
+  background: #f1f5f9;
+  color: #0f172a;
+  padding: 0.1em 0.3em;
+  border-radius: 0.25em;
+}
 .report-prose :deep(blockquote) {
   border-left: 3px solid #cbd5e1;
   padding-left: 1em;
@@ -64,9 +70,18 @@ const content = computed(() => markdown.render(props.text))
   padding: 0.4em 0.7em;
 }
 :global(.dark) .report-prose :deep(pre) {
-  background: #1e293b;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+:global(.dark) .report-prose :deep(code) {
+  background: #0f172a;
+  color: #e2e8f0;
 }
 :global(.dark) .report-prose :deep(blockquote) {
   color: #cbd5e1;
+}
+:global(.dark) .report-prose :deep(th),
+:global(.dark) .report-prose :deep(td) {
+  border-color: #475569;
 }
 </style>

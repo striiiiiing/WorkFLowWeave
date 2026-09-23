@@ -3,8 +3,6 @@ import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus, { ElSelect, type FormInstance } from 'element-plus'
 import { describe, expect, it, vi } from 'vitest'
 import AIModelSelect from '@/components/workflow/AIModelSelect.vue'
-import FanOutTaskCard from '@/components/workflow/FanOutTaskCard.vue'
-import { createWorkflow } from '@/domain/workflow'
 import type { AIConfig } from '@/types'
 
 const config = (id: string, models: string[]): AIConfig => ({
@@ -112,20 +110,6 @@ describe('workflow AI channel and model selection', () => {
     state.value.ai = 'openai'
     state.value.model = 'gpt-4'
     expect(await validate()).toBe(true)
-    wrapper.unmount()
-  })
-
-  it('emits model refresh from the parallel analysis section and disables it while pending', async () => {
-    const wrapper = mount(FanOutTaskCard, {
-      props: { modelValue: createWorkflow(), configs: [], modelsPending: false },
-      global: { plugins: [ElementPlus] },
-    })
-    const refresh = () =>
-      wrapper.findAll('button').find((button) => button.text().includes('刷新模型列表'))!
-    await refresh().trigger('click')
-    expect(wrapper.emitted('refreshModels')).toHaveLength(1)
-    await wrapper.setProps({ modelsPending: true })
-    expect(refresh().attributes('disabled')).toBeDefined()
     wrapper.unmount()
   })
 })

@@ -12,7 +12,8 @@
     "format": "prettier --write src tests *.ts *.json index.html README.md",
     "format:check": "prettier --check src tests *.ts *.json index.html README.md",
     "test:e2e": "playwright test",
-    "test:live": "playwright test --config playwright.live.config.ts"
+    "test:live": "playwright test --config playwright.live.config.ts",
+    "screenshot:tabbit": "node scripts/capture_tabbit.mjs"
   },
   "dependencies": {
     "ajv": "^8.20.0",

@@ -468,17 +468,36 @@ test('provider models are configured in the channel and selected by workflows', 
   await page.getByRole('option', { name: 'model_flow_source', exact: true }).click()
   await page.getByRole('heading', { name: '1. 数据采集' }).click()
   await page.getByRole('button', { name: '添加任务', exact: true }).click()
+  await expect(page.getByRole('button', { name: '刷新模型列表', exact: true })).toHaveCount(0)
+  const providerPage = await page.context().newPage()
+  await providerPage.goto('/resources?kind=ai')
+  await providerPage.bringToFront()
+  await providerPage
+    .locator('.el-card .el-card')
+    .filter({ has: providerPage.getByRole('heading', { name: saved.id }) })
+    .getByRole('button', { name: '编辑', exact: true })
+    .click()
+  const providerModels = providerPage.getByRole('region', { name: '渠道模型', exact: true })
+  await providerModels.getByRole('textbox', { name: '模型名称', exact: true }).fill('openai/new.v3')
+  await providerModels.getByRole('button', { name: '添加模型', exact: true }).click()
+  const addedModelResponse = providerPage.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/ai/${saved.id}`) && response.request().method() === 'PUT',
+  )
+  await providerPage.getByRole('button', { name: '保存渠道', exact: true }).click()
+  expect((await addedModelResponse).ok()).toBe(true)
   const modelsResponse = page.waitForResponse(
     (response) => response.url().endsWith('/api/ai') && response.request().method() === 'GET',
   )
-  await page.getByRole('button', { name: '刷新模型列表', exact: true }).click()
+  await page.bringToFront()
   expect((await modelsResponse).ok()).toBe(true)
+  await providerPage.close()
   await expect(page.getByLabel('显示名称', { exact: true })).toHaveValue('模型配置流程')
   await expect(page.getByRole('heading', { name: '分析任务 1', exact: true })).toBeVisible()
   await page.getByText('选择供应商渠道', { exact: true }).click()
   await page.getByRole('option', { name: saved.id, exact: true }).click()
   await page.getByText('选择模型', { exact: true }).click()
-  await page.getByRole('option', { name: 'openai/test.v1', exact: true }).click()
+  await page.getByRole('option', { name: 'openai/new.v3', exact: true }).click()
   const workflowResponse = page.waitForResponse(
     (response) =>
       response.url().endsWith('/api/workflows') && response.request().method() === 'POST',
@@ -487,7 +506,8 @@ test('provider models are configured in the channel and selected by workflows', 
   const workflowResult = await workflowResponse
   expect(workflowResult.ok(), await workflowResult.text()).toBe(true)
   const workflow = await workflowResult.json()
-  expect(workflow.analyses[0]).toMatchObject({ ai: saved.id, model: 'openai/test.v1' })
+  expect(workflow.analyses[0]).toMatchObject({ ai: saved.id, model: 'openai/new.v3' })
+  expect(workflow.sources).toEqual(['model_flow_source'])
   expect((await request.delete(`/api/workflows/${workflow.id}`)).ok()).toBe(true)
   expect((await request.delete(`/api/ai/${saved.id}`)).ok()).toBe(true)
   expect((await request.delete('/api/sources/model_flow_source')).ok()).toBe(true)
@@ -593,6 +613,26 @@ test('readable report, plugin sections, advanced data and mobile layout', async 
   await expect(page.getByText('投递结果不确定', { exact: true })).toBeVisible()
   await expect(page.getByText('已送达', { exact: true })).toBeVisible()
   await expect(page.getByText('原始 JSON', { exact: false })).toHaveCount(0)
+  async function checkProcessTargets() {
+    for (const label of ['数据采集与共享输入', '并行 AI 分析', '执行完成']) {
+      const summary = page.locator('summary').filter({ hasText: label })
+      const details = summary.locator('..')
+      await summary.scrollIntoViewIfNeeded()
+      const box = (await summary.boundingBox())!
+      expect(box.height).toBeGreaterThanOrEqual(44)
+      // The padded right edge must toggle too, away from the label and marker.
+      await summary.click({ position: { x: box.width - 4, y: box.height - 4 } })
+      await expect(details).toHaveAttribute('open', '')
+      await summary.focus()
+      await page.keyboard.press('Enter')
+      await expect(details).not.toHaveAttribute('open', '')
+      await page.keyboard.press('Space')
+      await expect(details).toHaveAttribute('open', '')
+      await summary.click({ position: { x: box.width - 4, y: 4 } })
+      await expect(details).not.toHaveAttribute('open', '')
+    }
+  }
+  await checkProcessTargets()
   await page.getByText('数据采集与共享输入', { exact: true }).click()
   await expect(page.getByRole('table', { name: '告警明细' })).toBeVisible()
   await page.screenshot({
@@ -600,7 +640,10 @@ test('readable report, plugin sections, advanced data and mobile layout', async 
     fullPage: true,
     animations: 'disabled',
   })
+  await page.locator('summary').filter({ hasText: '数据采集与共享输入' }).click()
   await page.setViewportSize({ width: 375, height: 812 })
+  await checkProcessTargets()
+  await page.locator('summary').filter({ hasText: '数据采集与共享输入' }).click()
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(
     false,
   )

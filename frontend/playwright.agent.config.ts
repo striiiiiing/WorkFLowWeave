@@ -14,7 +14,7 @@ export default defineConfig({
       timeout: 60_000,
     },
     {
-      command: 'npm run preview -- --host 127.0.0.1 --port 13001 --strictPort',
+      command: 'npm run dev -- --host 127.0.0.1 --port 13001 --strictPort',
       url: 'http://127.0.0.1:13001',
       env: { API_TARGET: 'http://127.0.0.1:14301' },
       timeout: 60_000,

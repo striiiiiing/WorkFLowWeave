@@ -13,6 +13,7 @@ export const router = createRouter({
     { path: '/plugins', component: () => import('@/views/PluginsView.vue') },
     { path: '/agents', component: () => import('@/views/AgentsView.vue') },
     { path: '/agents/:sessionId', component: () => import('@/views/AgentsView.vue') },
+    { path: '/agent-demo', component: () => import('@/views/AgentChatDemoView.vue') },
     { path: '/:pathMatch(.*)*', component: () => import('@/views/NotFoundView.vue') },
   ],
 })
