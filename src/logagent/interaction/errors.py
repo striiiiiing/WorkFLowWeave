@@ -25,6 +25,7 @@ _VALIDATION_CODES = {
     "context_budget_unavailable",
 }
 _CONFLICT_CODES = {
+    "target_unavailable",
     "already_exists",
     "checkpoint_missing",
     "not_found",

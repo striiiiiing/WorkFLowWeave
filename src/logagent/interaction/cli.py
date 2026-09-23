@@ -10,9 +10,11 @@ from typing import Annotated, Any
 import httpx
 import typer
 import uvicorn
+from pydantic import TypeAdapter, ValidationError
 
+from logagent.errors import validation_error
 from logagent.lifecycle import ApplicationLifecycle
-from logagent.models import ErrorInfo, ErrorResponse, SystemConfig
+from logagent.models import ID, ErrorInfo, ErrorResponse, SystemConfig
 
 from .app import create_app
 
@@ -37,9 +39,10 @@ def _request(
     api_url: str,
     json_body: Any | None = None,
     params: dict[str, Any] | None = None,
+    timeout: httpx.Timeout | float = 30.0,
 ) -> Any:
     try:
-        with httpx.Client(base_url=api_url, timeout=httpx.Timeout(30.0)) as client:
+        with httpx.Client(base_url=api_url, timeout=timeout) as client:
             response = client.request(method, path, json=json_body, params=params)
     except httpx.HTTPError:
         body = ErrorResponse(
@@ -171,6 +174,54 @@ def resource_delete(
 ) -> None:
     _request("DELETE", f"/api/{kind}/{ident}", api_url=api_url)
     _print_json({"deleted": ident, "kind": kind})
+
+
+@app.command()
+def collect(
+    source_id: str,
+    arguments: Annotated[
+        Path | None,
+        typer.Option("--arguments", "-a", exists=True, dir_okay=False, readable=True,
+                     help="UTF-8 JSON file containing options and setters overrides."),
+    ] = None,
+    api_url: ApiUrl = "http://127.0.0.1:8000",
+) -> None:
+    """Collect once using a saved source; never retry an unknown outcome."""
+    path = _source_path(source_id)
+    payload = {}
+    if arguments is not None:
+        try:
+            payload = json.loads(arguments.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("Expected an object")
+        except (OSError, UnicodeError, ValueError):
+            body = ErrorResponse(error=ErrorInfo(
+                code="invalid_argument", message="Arguments file must contain a JSON object",
+            ))
+            _print_json(body.model_dump(mode="json"), error=True)
+            raise typer.Exit(2) from None
+    # CollectorManager owns the source's execution deadline. A client read
+    # timeout could otherwise expire first and leave a side effect unknown.
+    _print_json(_request(
+        "POST", path + "/collect", api_url=api_url, json_body=payload,
+        timeout=httpx.Timeout(30.0, read=None),
+    ))
+
+
+@app.command("collect-schema")
+def collect_schema(source_id: str, api_url: ApiUrl = "http://127.0.0.1:8000") -> None:
+    """Show the saved source's callable options and setters schema."""
+    _print_json(_request("GET", _source_path(source_id) + "/call-schema", api_url=api_url))
+
+
+def _source_path(source_id: str) -> str:
+    try:
+        ident = TypeAdapter(ID).validate_python(source_id)
+    except ValidationError as exc:
+        body = ErrorResponse(error=validation_error(exc, code="invalid_argument").info)
+        _print_json(body.model_dump(mode="json"), error=True)
+        raise typer.Exit(2) from None
+    return f"/api/sources/{ident}"
 
 
 @app.command()

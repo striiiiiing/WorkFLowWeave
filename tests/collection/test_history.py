@@ -43,7 +43,12 @@ async def test_real_view_registration_and_content_agree_without_recollection(sto
     registry = PluginRegistry(builtin_collectors())
     report = await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     assert not report.errors
-    assert {x.name for x in report.registered} == {"history", "logs", "mock"}
+    assert {x.name for x in report.registered if x.kind == "collector"} == {
+        "history", "logs", "mock",
+    }
+    assert {x.name for x in report.registered if x.kind == "tool"} == {
+        "plugin", "read", "write", "grep", "shell",
+    }
     manager = CollectorManager(registry.collectorRegister)
     resources = ResourceStore(tmp_path / "resources.json", collector_register=registry.collectorRegister)
     source = resources.save("sources", SourceConfig(id="past", collector="history"))
