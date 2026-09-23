@@ -10,10 +10,31 @@ class ToolScheduler:
     def __init__(self, read_concurrency: int):
         self.read_concurrency = read_concurrency
         self._slots = asyncio.Semaphore(read_concurrency)
+        self._resize_lock = asyncio.Lock()
         self._lock = aiorwlock.RWLock()
         self.reading = 0
         self.writing = 0
         self.queued = 0
+
+    async def resize(self, read_concurrency: int) -> None:
+        """Change workspace capacity without replacing the lock or semaphore.
+
+        A new turn applies its captured limit. Shrinking waits for existing
+        readers; cancellation returns any permits already retired.
+        """
+        async with self._resize_lock:
+            retired = 0
+            try:
+                for _ in range(max(0, self.read_concurrency - read_concurrency)):
+                    await self._slots.acquire()
+                    retired += 1
+            except BaseException:
+                for _ in range(retired):
+                    self._slots.release()
+                raise
+            for _ in range(max(0, read_concurrency - self.read_concurrency)):
+                self._slots.release()
+            self.read_concurrency = read_concurrency
 
     @property
     def status(self):
