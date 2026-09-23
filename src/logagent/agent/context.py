@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from langchain.agents.middleware import AgentMiddleware, SummarizationMiddleware
+from langchain.agents.middleware import AgentMiddleware, SummarizationMiddleware, hook_config
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage, RemoveMessage, SystemMessage
 from langchain_core.messages.utils import count_tokens_approximately
@@ -200,7 +200,7 @@ class ContextMiddleware(AgentMiddleware):
 
     def __init__(self, *, model, config, system_prompt, tools, summary_model=None,
                  summary_timeout=None, on_compacted: CompactionCallback | None = None,
-                 on_budget: CompactionCallback | None = None):
+                 on_budget: CompactionCallback | None = None, on_boundary=None):
         self.config = config
         self.system_prompt = system_prompt
         self.tool_definitions = tools
@@ -211,13 +211,43 @@ class ContextMiddleware(AgentMiddleware):
         self.on_budget = on_budget
         self.budget = ContextBudget.from_config(config, model)
         self.counter = TokenCounter(model)
+        self.on_boundary = on_boundary
+        self.model_returned = False
 
     def estimate(self, messages):
         return _estimate(messages, self.system_prompt, self.tool_definitions,
                          self.budget, self.counter)
 
     async def abefore_model(self, state, runtime):
+        update = await self._commands(state["messages"], runtime) if self.model_returned else None
+        self.model_returned = False
+        if update is not None:
+            return update
         return await self.prepare(state["messages"], runtime)
+
+    @hook_config(can_jump_to=["model"])
+    async def aafter_model(self, state, runtime):
+        self.model_returned = True
+        # ToolNode must finish the entire group before accepting a new human
+        # message or summarizing paired tool calls and receipts.
+        if getattr(state["messages"][-1], "tool_calls", None):
+            return None
+        return await self._commands(state["messages"], runtime, final=True)
+
+    async def _commands(self, messages, runtime, *, final=False):
+        if self.on_boundary is None:
+            return None
+        batch = await self.on_boundary(final=final)
+        if batch is None:
+            return None
+        additions, force, complete = batch
+        combined = add_messages(messages, additions)
+        result = await self.prepare(combined, runtime, force=force)
+        await complete(compacted=result is not None)
+        update = result or ({"messages": additions} if additions else {})
+        if additions and final:
+            update["jump_to"] = "model"
+        return update
 
     async def prepare(self, messages, runtime=None, *, force=False):
         usage = self.estimate(messages)
