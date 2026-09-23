@@ -56,9 +56,9 @@
 
 ### E. 上下文与压缩（对应 5.1–5.3）
 
-- [ ] E1 每轮捕获 AGENTS、prompt、工具及 AgentConfig，逐模型请求计算完整 system/tools/messages 预算；未知窗口必须显式配置，实际输出上限与预留一致。
-- [ ] E2 动态委托官方 SummarizationMiddleware，关闭 4000-token 输入裁剪；固定提示和摘要参数按请求新建，错误传播。
-- [ ] E3 一次请求至多一次逻辑压缩，摘要后再次检查；验证长历史完整输入、ToolMessage 配对和容量超限错误。
+- [x] E1 每轮捕获 AGENTS、prompt、工具及 AgentConfig，逐模型请求计算完整 system/tools/messages 预算；未知窗口必须显式配置，实际输出上限与预留一致。
+- [x] E2 动态委托官方 SummarizationMiddleware，关闭 4000-token 输入裁剪；固定提示和摘要参数按请求新建，错误传播。
+- [x] E3 一次请求至多一次逻辑压缩，摘要后再次检查；验证长历史完整输入、ToolMessage 配对和容量超限错误。
 - [x] E4 主模型无活动默认 300 秒，总 timeout 沿用 AIConfig；增量发布后失败不得重试拼接，工具不自动重试。
 
 预期改动：agent/context.py、配置模型、AI 共享入口与测试。现行依据为 design §3.1/§8 及设计修订任务：默认 200,000/180,000/40,000 固定 token 阈值，按完整消息计数；不再使用旧 80%/20% 自适应比例。估算与实际 usage 必须区分。
@@ -80,6 +80,14 @@
 - 审查重点：重复逻辑/第二事实来源、过度 gate、吞错、静默降级、禁用绕过、竞态、重复发送、凭据泄露和与设计未说明的偏离。
 
 ## 执行记录
+
+- E1/E2/E3 主路径完成点（2026-09-23，快照提交 `0a0a201` 之后）：按 design §3.1/§8 和设计修订任务，删除旧 `safety_ratio/trigger_ratio/keep_ratio/summary_ratio` 配置，改为固定绝对 `trigger_tokens=180000`、`keep_tokens=40000`，`context_window=200000` 仍为明确展示的项目用户预算，不宣称所有模型容量。已知模型公开 profile 容量与配置取较小值；context_window 为 null 且 profile 未知时明确 `context_budget_unavailable`。独立 summary_ai 不继承主模型容量，必须有其 profile 或显式 summary_context_window。主/摘要输出预留默认仍为 4096；两者不同时通过既有 AIService 租约构造各自上限的模型，不修改活动模型或另造 Provider 工厂。
+- 每次模型节点由 `ContextMiddleware` 计算固定 system/AGENTS、实际转换后的工具定义、包含 checkpoint 的完整 state.messages 及输出预留。优先模型 tokenizer，仅不支持/缺少依赖时使用明确标记的框架估算，其他异常传播；全部预算均带 estimated=true，不冒充 provider usage。普通请求达到固定阈值或实际容量才委托按请求新建的官方 SummarizationMiddleware；传消息深副本，`trim_tokens_to_summarize=None`，由框架选取完整消息组。摘要代理直接检查框架实际生成的完整序列化提示和独立输出预留，超限/空摘要/模型异常直接失败；一次逻辑调用后用公开 add_messages reducer 投影并再次检查完整请求，超限不循环摘要。历史 reported usage 不反向触发额外压缩，无可压缩前缀时手动 prepare(force=True) 无操作、自动超限明确失败；HTTP compact 的排队/空闲接入仍归 F，不以该辅助入口冒称管理 API 完成。
+- 压缩成功先保存脱敏可读 `History/<session_id>/summaries/<uuid>.md` 与 context.compacted 事实，再交回图提交新消息；旧聊天事件与 checkpoint 链不删除。事件保存 summary、artifact_path、removed_message_ids、before/after 预算及 source_event_range（本次压缩所依据的原始事件日志范围，精确被替换上下文以 message IDs 表示，不把保留消息误称已从历史删除）。每次合法模型请求发布 context.budget；会话 context_budget 从日志最新事件派生，不建第二状态库。摘要模型流事件通过框架 lc_source=summarization 元数据隔离，不变成聊天 message.delta。turn.failed 对 LogAgentError 保留 code/message/details，让容量失败的大项占用可见。
+- E1/E2/E3 实测：新增 `tests/agent/test_context.py` 19 项，验证固定默认值与旧比例拒绝、模型 tokenizer/显式估算、未知主/摘要容量、system/tools 触发、旧 usage 不误触发、超过 100k 字符的完整摘要前缀、ToolMessage 配对、完整序列化摘要提示超限、失败/空摘要/摘要仍超限只调用一次且原消息不变、无可压缩前缀、工具结果增长以及真实 SQLite 历史压缩/可读摘要与预算事件。真实 ChatOpenAI + AIService + httpx.MockTransport 实测三次请求的 max_completion_tokens 为主 120/摘要 60/主 120，旧 max_tokens 被移除，主 tools 稳定，摘要不发聊天增量。该测试最初触发 tiktoken 首次网络下载被 60s 硬超时终止，随后仅把测试 tokenizer 固定为本地计数，真实 Provider/连接/HTTP 序列化保持并通过，不放宽超时。
+- 最终定向回归：`rtk proxy timeout 60s .venv/bin/pytest -q --tb=short tests/agent tests/interaction/test_agent_api.py tests/lifecycle/test_lifecycle.py tests/ai/test_model_lease.py` → 136 passed / 24.69s；核心批次 57 passed / 16.45s，context/AI lease/framework/gateway 批次 29 passed / 8.31s。仅有已知 Starlette anyio BlockingPortal 弃用警告。恢复 E2/E3 勾选基于本轮主路径证据；下方旧完成记录继续仅作历史。
+- 完成前检查：`rtk proxy .venv/bin/ruff check src/logagent/agent tests/agent tests/ai/test_model_lease.py`、`rtk proxy uv build`、`rtk proxy openspec validate add-file-centric-agent --strict --no-interactive`、`rtk proxy git diff --check` 均通过；构建后 Provider 请求体与真实 ASGI/SSE disconnect 两项烟测 2 passed / 15.50s。自审确认无框架私有阈值写入/摘要算法副本、无循环压缩/异常吞为成功、无新配置持久库或工具锁、未更改其他任务脏文件。原始消息先复制再委托，失败保留原状态；统计依然是预估，真实 usage 只可作为后续观测。
+- F 接口交接：config 移除四个 ratio 键，新增 trigger_tokens/keep_tokens；保留 context_window/output_tokens/summary_context_window/summary_max_tokens/summary_ai。session 新增 context_budget（null 或最新预算）；context.budget.data 字段为 turn_id、messages/system/tools/output/total/window/remaining、estimated=true、token_counter=model_tokenizer|framework_approximate，remaining 已扣输出预留。context.compacted.data 见上一段，before/after 使用相同预算字段。后续设置抽屉与上下文显示应明确“估算/用户预算”，手动 compact 复用 ContextMiddleware.prepare(force=True)，不能恢复旧空压缩伪成功。证据见 test_context.py、test_turn_config.py 与既有 API/SSE 回归；未修改前端、proposal/design 或其他任务脏文件。
 
 - E1 配置快照完成点（2026-09-23）：按 design §3.1/§9.1/§10，扩展已有 `_TurnResources` 捕获深拷贝 AgentConfig、工具 Schema 和无 ResourceStore 时的 AIConfig；主模型输出限制、摘要资源选择、工具参数及 idle timeout 不再读取活动轮中的 `self.config`。`update_config` 仅发布下一轮配置，调用方后续修改对象不会改变已发布值。工作区始终保持同一个 ToolScheduler/RWLock/Semaphore；新轮应用共享读容量，缩容等待既有读槽释放，取消归还已收回槽，不新建第二把锁或依赖信号量私有属性。该容量是工作区公共限制，模型生成不持工具锁。
 - E1 快照实测：`rtk proxy timeout 60s .venv/bin/pytest -q tests/agent/test_turn_config.py tests/agent/test_service.py tests/agent/test_admission.py tests/agent/test_task_ownership.py` → 38 passed / 4.97s。新增 4 项验证同轮工具后 prompt/Schema/config/idle timeout 固定、下一轮重新捕获及 provider 输出参数一致，配置更新后写锁仍阻止读取，缩扩容与取消不遗失容量。ruff、uv build、diff-check 通过；构建后单独重跑快照集成烟测 1 passed。E1 全项暂不勾选。

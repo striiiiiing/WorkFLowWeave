@@ -24,7 +24,7 @@ from logagent.agent.artifacts import ArtifactStore
 from logagent.agent.builtin import grep, plugin, read, shell, write
 from logagent.agent.builtin.declaration import ToolDeclaration
 from logagent.agent.config import AgentConfig
-from logagent.agent.context import build_system_prompt, validate_request_budget
+from logagent.agent.context import build_system_prompt
 from logagent.agent.events import EventLog
 from logagent.agent.gateway import InvocationSnapshot, PluginGateway
 from logagent.agent.graph import AgentToolContext, create_graph
@@ -355,13 +355,16 @@ class AgentService:
         return self._session_view(child_session)
 
     def _session_view(self, session: AgentSession) -> dict[str, Any]:
+        budget = next((event["data"] for event in reversed(session.log.events)
+                       if event["type"] == "context.budget"), None)
         return {"session_id": session.session_id, "branch_id": session.branch_id,
                 "model": session.model, "workflow_session_id": session.workflow_session_id,
                 "parent_session_id": session.parent_session_id,
                 "parent_turn_id": session.parent_turn_id,
                 "parent_branch_id": session.parent_branch_id,
                 "created_at": session.created_at, "updated_at": session.updated_at,
-                "status": session.status, "turn_id": session.turn_id}
+                "status": session.status, "turn_id": session.turn_id,
+                "context_budget": budget}
 
     async def get_session(self, session_id: str) -> dict[str, Any]:
         return self._session_view(self._session(session_id))
@@ -744,7 +747,8 @@ class AgentService:
                 event_name = event.get("event") if isinstance(event, dict) else None
                 if event_name == "on_chat_model_start":
                     awaiting_model = True
-                if event_name == "on_chat_model_stream":
+                is_summary = event.get("metadata", {}).get("lc_source") == "summarization"
+                if event_name == "on_chat_model_stream" and not is_summary:
                     data = event.get("data", {})
                     delta = self._message_delta(data.get("chunk")) if isinstance(data, dict) else None
                     if delta is not None:
@@ -847,12 +851,6 @@ class AgentService:
                     {"input": session.workflow_input}, ensure_ascii=False, sort_keys=True)))
                 await log.append("workflow.input.used", turn_id=turn_id)
             messages.append(HumanMessage(content=text))
-            validate_request_budget(
-                messages, system_prompt,
-                [{"name": item.name, "description": item.description,
-                  "input_schema": item.input_schema} for item in turn_resources.declarations],
-                config,
-            )
             await self._ensure_checkpoint_present(
                 session, require_existing=had_previous_turn,
             )
@@ -867,10 +865,13 @@ class AgentService:
                 async with self._model(session, ai_config=turn_resources.ai_config,
                                        model=turn_resources.model,
                                        output_tokens=config.output_tokens) as model:
-                    if turn_resources.summary_ai_config is not None:
+                    separate_summary = (turn_resources.summary_ai_config is not None
+                                        or config.summary_max_tokens != config.output_tokens)
+                    if separate_summary and self.model_provider is None:
                         summary_context = self._model(
-                            session, ai_config=turn_resources.summary_ai_config,
-                            model=turn_resources.summary_model,
+                            session, ai_config=(turn_resources.summary_ai_config
+                                                or turn_resources.ai_config),
+                            model=turn_resources.summary_model or turn_resources.model,
                             output_tokens=config.summary_max_tokens,
                         )
                     else:
@@ -922,9 +923,10 @@ class AgentService:
         except Exception as exc:
             published = bool(getattr(exc, "_agent_published", published or publication[0]))
             session.status = "failed"
+            error = (exc.info.model_dump(mode="json") if isinstance(exc, LogAgentError)
+                     else {"type": type(exc).__name__, "message": str(exc)})
             await log.append("turn.failed", turn_id=turn_id,
-                             error={"type": type(exc).__name__, "message": str(exc)},
-                             partial=published)
+                             error=error, partial=published)
             raise
         finally:
             session.updated_at = log.events[-1]["created_at"]

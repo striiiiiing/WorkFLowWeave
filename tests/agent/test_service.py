@@ -253,7 +253,9 @@ async def test_context_budget_includes_fixed_prompt_and_reserved_output():
 
 
 async def test_summary_uses_full_prefix_once_and_preserves_tool_pairs():
-    config = AgentConfig(context_window=10_000, output_tokens=100)
+    config = AgentConfig(context_window=10_000, output_tokens=100,
+                         trigger_tokens=8000, keep_tokens=2000,
+                         summary_context_window=100_000, summary_max_tokens=100)
     messages = [
         HumanMessage(content="early fact " + "history " * 12_000),
         AIMessage(content="", tool_calls=[{"id": "call-1", "name": "read", "args": {}}]),
@@ -321,7 +323,9 @@ async def test_stream_failure_after_delta_is_terminal_without_retry_or_duplicate
 
 
 async def test_summary_model_timeout_is_scoped_to_summary_call():
-    config = AgentConfig(context_window=200, output_tokens=10)
+    config = AgentConfig(context_window=200, output_tokens=10,
+                         trigger_tokens=160, keep_tokens=40,
+                         summary_context_window=2000, summary_max_tokens=10)
     model = DelayedModel(delay=0.2)
     middleware = summarization_middleware(model, config, summary_timeout=0.03)
     messages = [
