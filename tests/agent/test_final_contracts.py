@@ -189,3 +189,47 @@ async def test_running_compact_waits_for_tool_receipt_and_summarizes_once(tmp_pa
         assert len(model.seen) == 4
     finally:
         await service.close()
+
+
+async def test_settings_persist_and_disabled_tool_metadata_does_not_register(tmp_path):
+    from logagent.config import PluginRegistry
+    from logagent.models import SystemConfig
+    registry = PluginRegistry([])
+    plugin_config = SystemConfig(plugin_dir=str(tmp_path / "plugins"))
+    registry.update_plugin_setting(plugin_config, "tool", "agent_shell", False)
+    await registry.discover_plugins(plugin_config)
+    service = AgentService(tmp_path / "workspace", tmp_path / "runtime", plugins=registry)
+    try:
+        await service.initialize()
+        config = service.config.model_copy(update={"timezone": "Asia/Shanghai", "trigger_tokens": 170000})
+        service.update_config(config)
+        shell = next(tool for tool in service.tool_views() if tool["plugin"] == "agent_shell")
+        assert shell["enabled"] is False and shell["input_schema"] is None
+        assert registry.toolRegister.get("shell") is None
+    finally:
+        await service.close()
+    restored = AgentService(tmp_path / "workspace", tmp_path / "runtime")
+    try:
+        await restored.initialize()
+        assert restored.config.timezone == "Asia/Shanghai" and restored.config.trigger_tokens == 170000
+    finally:
+        await restored.close()
+
+
+async def test_empty_compact_keeps_source_and_can_accept_first_message(tmp_path):
+    model = ScriptedModel(responses=[AIMessage(content="ready")])
+    service = AgentService(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model)
+    try:
+        sid = (await service.create_session(workflow_session_id="run", workflow_result={"result": "frozen"}))["session_id"]
+        compact = await service.compact(sid)
+        await service.wait(compact["turn_id"])
+        events = await service.events(sid)
+        assert not any(event["type"] in {"context.compacted", "workflow.input.used"} for event in events)
+        assert any(event["type"] == "command.completed" and event["compacted"] is False for event in events)
+        turn = await service.submit(sid, "start", request_id="start")
+        assert (await service.wait(turn["turn_id"]))["status"] == "completed"
+        assert any("frozen" in str(message.content) for message in model.seen[-1])
+        metadata = json.loads((service.runtime / "Sessions" / f"{sid}.json").read_text())
+        assert metadata["last_checkpoint_at"] and metadata["continuable"]
+    finally:
+        await service.close()

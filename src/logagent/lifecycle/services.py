@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Any
 
+from logagent.agent import AgentService
 from logagent.ai import AIService
 from logagent.channel import ChannelManager
 from logagent.collection import CollectorManager
@@ -32,3 +33,4 @@ class ApplicationServices:
     workflow: WorkflowService
     intervals: IntervalTrigger
     log_path: str | None
+    agent: AgentService | None = None

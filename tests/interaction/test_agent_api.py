@@ -161,3 +161,125 @@ async def test_real_sse_disconnect_keeps_turn_running_and_replays_its_completion
             assert not any(event["type"] == "turn.cancelled" for event in events)
     finally:
         await service.close()
+
+
+async def test_files_enforce_conditional_writes_and_preserve_external_changes(tmp_path):
+    service = AgentService(tmp_path / "workspace", tmp_path / "runtime")
+    owner = Lifecycle()
+    owner.services.agent = service
+    app = create_app(owner)
+    try:
+        async with app.router.lifespan_context(app), httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            sid = (await client.post("/api/agents/sessions", json={})).json()["session_id"]
+            url = f"/api/agents/file?session_id={sid}&path=Memory/test.md"
+            body = {"mode": "overwrite", "content": "first\nsecond\nthird\n"}
+            assert (await client.put(url, json=body)).status_code == 428
+            created = await client.put(url, json=body, headers={"If-None-Match": "*"})
+            assert created.status_code == 200
+            version = created.headers["etag"]
+            page = await client.get(url + "&offset=1&limit=1")
+            assert page.status_code == 200, page.text
+            assert page.headers["etag"] == version
+            assert page.json()["content"] == "second\n" and page.json()["next_offset"] == 2
+            changed = await client.put(url, json={**body, "content": "external"}, headers={"If-Match": version})
+            assert changed.status_code == 200
+            stale = await client.put(url, json={**body, "content": "draft"}, headers={"If-Match": version})
+            assert stale.status_code == 409
+            assert (await client.get(url)).json()["content"] == "external"
+            assert (await client.put(url, json=body, headers={"If-None-Match": "*"})).status_code == 409
+            runtime = f"/api/agents/file?session_id={sid}&path=Runtime/self.json"
+            info = await client.get(runtime)
+            assert info.json()["readonly"] is True
+            assert (await client.put(runtime, json=body, headers={"If-Match": info.headers["etag"]})).status_code == 403
+    finally:
+        await service.close()
+
+
+async def test_slow_sse_consumer_does_not_block_turn_and_gets_terminal_racing_batch(tmp_path):
+    model = GatedModel(responses=[AIMessage(content="completed independently")])
+    service = AgentService(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model)
+    owner = Lifecycle()
+    owner.services.agent = service
+    app = create_app(owner)
+    try:
+        sid = (await service.create_session())["session_id"]
+        turn = await service.submit(sid, "hello", request_id="r1")
+        await asyncio.wait_for(model.entered.wait(), 1)
+        app.state.services = owner.services
+        paused, resume = asyncio.Event(), asyncio.Event()
+        chunks = []
+        request_received = False
+
+        async def receive():
+            nonlocal request_received
+            if not request_received:
+                request_received = True
+                return {"type": "http.request", "body": b"", "more_body": False}
+            await asyncio.Event().wait()
+
+        async def send(message):
+            if message["type"] == "http.response.body" and b"data:" in message.get("body", b""):
+                chunks.append(message["body"].decode())
+                paused.set()
+                await resume.wait()
+
+        async with app.router.lifespan_context(app):
+            stream = asyncio.create_task(app({
+                "type": "http", "asgi": {"version": "3.0", "spec_version": "2.0"},
+                "http_version": "1.1", "method": "GET", "scheme": "http", "root_path": "",
+                "path": f"/api/agents/sessions/{sid}/events", "query_string": b"", "headers": [],
+                "client": ("test", 1), "server": ("test", 80),
+            }, receive, send))
+            await asyncio.wait_for(paused.wait(), 1)
+            model.release.set()
+            assert (await asyncio.wait_for(service.wait(turn["turn_id"]), 2))["status"] == "completed"
+            assert not stream.done()
+            resume.set()
+            await asyncio.wait_for(stream, 2)
+            delivered = [json.loads(line[6:]) for chunk in chunks for line in chunk.splitlines() if line.startswith("data: ")]
+            assert delivered[-1]["type"] == "turn.completed"
+            assert [event["id"] for event in delivered] == list(range(1, len(delivered) + 1))
+    finally:
+        await service.close()
+
+
+async def test_workflow_source_is_frozen_and_command_stop_has_independent_priority(tmp_path):
+    from datetime import UTC, datetime
+    from unittest.mock import AsyncMock
+
+    model = GatedModel(responses=[AIMessage(content="answer")])
+    service = AgentService(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model)
+    owner = Lifecycle()
+    owner.services.agent = service
+    record = SimpleNamespace(session_id="run-old", workflow_id="workflow", status="completed",
+                             version=1, finished_at=datetime.now(UTC), updated_at=datetime.now(UTC))
+    owner.services.session_view = SimpleNamespace(
+        list_sessions=AsyncMock(return_value=[record]), get_session=AsyncMock(return_value=record),
+        get_phase_content=AsyncMock(return_value=SimpleNamespace(availability="available", content={"outputs": {"answer": "frozen"}})),
+    )
+    app = create_app(owner)
+    try:
+        async with app.router.lifespan_context(app), httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            created = await client.post("/api/agents/sessions", json={"workflow_id": "workflow"})
+            assert created.status_code == 201
+            sid = created.json()["session_id"]
+            owner.services.session_view.get_phase_content.return_value.content = {"outputs": {"answer": "new run"}}
+            source = (await client.get(f"/api/agents/sessions/{sid}/source")).json()
+            assert source["workflow_session_id"] == "run-old" and source["input"]["outputs"]["answer"] == "frozen"
+            rejected = await client.post("/api/agents/sessions", json={"workflow_session_id": "run-old", "workflow_result": "override"})
+            assert rejected.status_code == 422
+            accepted = await client.post("/api/agents/commands", json={"channel": "web", "session": sid, "text": "hello", "request_id": "r1", "priority": "conversation"})
+            assert accepted.json()["kind"] == "turn"
+            await asyncio.wait_for(model.entered.wait(), 1)
+            await client.post("/api/agents/commands", json={"session": sid, "text": "/append more", "request_id": "r2"})
+            stopped = await client.post("/api/agents/commands", json={"session": sid, "text": "/stop", "request_id": "r3", "priority": "stop"})
+            assert stopped.json()["result"]["status"] == "cancelled"
+            events = await service.events(sid)
+            assert events[-1]["type"] == "turn.cancelled"
+            assert any(event["type"] == "command.cancelled" for event in events)
+            bad = await client.post("/api/agents/commands", json={"session": sid, "text": "/stop", "request_id": "r4", "priority": "conversation"})
+            assert bad.status_code == 422
+    finally:
+        await service.close()
