@@ -1,5 +1,7 @@
 """Agent defaults and their validation, shared by tools and management APIs."""
 
+import os
+from pathlib import Path
 from typing import Annotated, Self
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -15,9 +17,21 @@ class SandboxConfig(StrictModel):
     network: bool = False
 
 
+def local_timezone() -> str:
+    if os.environ.get("TZ"):
+        return os.environ["TZ"]
+    zonefile = Path("/etc/timezone")
+    if zonefile.is_file():
+        return zonefile.read_text().strip()
+    resolved = str(Path("/etc/localtime").resolve())
+    if "/zoneinfo/" in resolved:
+        return resolved.split("/zoneinfo/", 1)[1]
+    return "UTC"  # Hosts without an IANA database identity use the explicit UTC baseline.
+
+
 class AgentConfig(StrictModel):
     sandbox: SandboxConfig = Field(default_factory=SandboxConfig)
-    timezone: str = "UTC"
+    timezone: str = Field(default_factory=local_timezone)
     # User budget, not a claim about every provider's actual model capacity.
     # None requires a known model profile or explicit configuration to run.
     context_window: PositiveInt | None = 200_000
