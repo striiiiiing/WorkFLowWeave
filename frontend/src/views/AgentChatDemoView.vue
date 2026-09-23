@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import AppIcon from '@/components/icons/AppIcon.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -9,7 +9,7 @@ import AgentTranscript from '@/components/agent/AgentTranscript.vue'
 import AgentBranchDrawer from '@/components/agent/AgentBranchDrawer.vue'
 import AgentGlobalSettingsModal from '@/components/agent/AgentGlobalSettingsModal.vue'
 import type { SlashCommand } from '@/components/agent/AgentSlashMenu.vue'
-import type { AgentEvent, AgentModel, AgentSession, ContextBudget } from '@/api/agents'
+import type { AgentEvent, AgentModel, AgentSession } from '@/api/agents'
 
 // 1. 模拟模型列表
 const availableModels: AgentModel[] = [

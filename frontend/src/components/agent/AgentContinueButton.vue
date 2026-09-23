@@ -5,6 +5,8 @@ import { agentsApi, type AgentModel } from '@/api/agents'
 import { runsApi } from '@/api/runs'
 import type { SessionRecord } from '@/types'
 import { useAsyncTask } from '@/composables/useAsyncTask'
+import AgentModelSelect from './AgentModelSelect.vue'
+import { readDefaultAgentModel } from '@/domain/agentModels'
 const props = defineProps<{ workflowId?: string; workflowSessionId?: string }>()
 const router = useRouter()
 const action = useAsyncTask()
@@ -15,7 +17,9 @@ const source = ref<SessionRecord>()
 async function open() {
   visible.value = true
   source.value = undefined
+  model.value = ''
   await action.run(async () => {
+    model.value = readDefaultAgentModel()
     models.value = await agentsApi.models()
     if (props.workflowSessionId) source.value = await runsApi.get(props.workflowSessionId)
     else {
@@ -30,7 +34,7 @@ async function open() {
   })
 }
 async function create() {
-  if (!source.value) return
+  if (!source.value || !models.value.some((item) => item.reference === model.value)) return
   const session = await action.run(() =>
     agentsApi.create({
       workflow_session_id: source.value!.session_id,
@@ -58,17 +62,20 @@ async function create() {
       结果时间 {{ source.finished_at ?? source.updated_at }}
     </p>
     <p>创建后固定此来源结果，后续 Workflow 运行不会替换当前上下文。</p>
-    <el-select v-model="model" placeholder="选择模型（可选）" clearable aria-label="续接模型">
-      <el-option
-        v-for="item in models"
-        :key="item.reference"
-        :value="item.reference"
-        :label="`${item.provider} / ${item.reference}`"
-      />
-    </el-select>
+    <AgentModelSelect
+      v-model="model"
+      :models="models"
+      label="续接模型"
+      :disabled="action.pending.value"
+    />
     <template #footer>
       <el-button @click="visible = false">取消</el-button>
-      <el-button type="primary" :disabled="!source" :loading="action.pending.value" @click="create">
+      <el-button
+        type="primary"
+        :disabled="!source || !models.some((item) => item.reference === model)"
+        :loading="action.pending.value"
+        @click="create"
+      >
         创建并继续
       </el-button>
     </template>

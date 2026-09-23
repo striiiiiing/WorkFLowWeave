@@ -144,7 +144,7 @@ it('merges stream deltas and tool statuses, keeps old messages at compaction, an
     global,
   })
   wrappers.push(wrapper)
-  expect(wrapper.findAll('.assistant')).toHaveLength(1)
+  expect(wrapper.findAll('.role-assistant')).toHaveLength(1)
   expect(wrapper.findAll('.tool-call')).toHaveLength(1)
   expect(wrapper.text()).toContain('parent text')
   expect(wrapper.text()).toContain('sources:mock')

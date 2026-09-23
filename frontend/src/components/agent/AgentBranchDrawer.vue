@@ -54,9 +54,7 @@ const tree = computed(() => {
   }
 
   // First process roots
-  props.sessions
-    .filter((s) => !s.parent_session_id)
-    .forEach((s) => walk(s, 0))
+  props.sessions.filter((s) => !s.parent_session_id).forEach((s) => walk(s, 0))
 
   // In case of disconnected branches
   props.sessions.forEach((s) => walk(s, 0))
@@ -120,8 +118,13 @@ function formatTime(iso: string) {
 
         <div
           class="node-card"
+          role="button"
+          tabindex="0"
+          :aria-current="selectedSessionId === node.session.session_id ? 'page' : undefined"
           :class="{ current: selectedSessionId === node.session.session_id }"
           @click="emit('select', node.session)"
+          @keydown.enter.self="emit('select', node.session)"
+          @keydown.space.prevent.self="emit('select', node.session)"
         >
           <div class="card-header">
             <span class="branch-name">
@@ -158,7 +161,11 @@ function formatTime(iso: string) {
               size="small"
               text
               type="primary"
-              :disabled="!node.session.continuable"
+              :disabled="
+                !node.session.continuable ||
+                node.session.status === 'running' ||
+                !node.session.last_checkpoint_at
+              "
               @click="emit('fork', node.session)"
             >
               <AppIcon name="fork" size="sm" />

@@ -10,6 +10,7 @@ export interface SlashCommand {
   icon: IconName
   badge?: string
   shortcut?: string
+  disabled?: boolean
   action: () => void
 }
 
@@ -26,16 +27,11 @@ const emit = defineEmits<{
 
 const activeIndex = ref(0)
 
-const filtered = computed(() => {
-  const q = props.query.trim().toLowerCase().replace(/^\//, '')
-  if (!q) return props.commands
-  return props.commands.filter(
-    (cmd) =>
-      cmd.key.toLowerCase().includes(q) ||
-      cmd.label.toLowerCase().includes(q) ||
-      cmd.description.toLowerCase().includes(q),
-  )
-})
+const filtered = computed(() =>
+  props.commands.filter(
+    (cmd) => !cmd.disabled && cmd.key.toLowerCase().startsWith(props.query.toLowerCase()),
+  ),
+)
 
 watch(
   () => props.query,
@@ -115,7 +111,9 @@ defineExpose({
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: 0 12px 32px -4px rgba(15, 23, 42, 0.16), 0 4px 12px rgba(15, 23, 42, 0.08);
+  box-shadow:
+    0 12px 32px -4px rgba(15, 23, 42, 0.16),
+    0 4px 12px rgba(15, 23, 42, 0.08);
   overflow: hidden;
   z-index: 50;
   backdrop-filter: blur(12px);
