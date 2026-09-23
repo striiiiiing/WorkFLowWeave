@@ -1,6 +1,6 @@
 # Agent 设计与实施任务
 
-本文件是 OpenSpec CLI 入口。新版设计依据、默认值和实现边界记录在 [设计修订任务](tasks/2026-09-22-design-revision/task.md)；现行实现和验证证据见 [实施与审核记录](tasks/2026-09-22-implementation/task.md) 的本轮完成点及 F6 最终验收。实施记录中的旧过程保留为历史，本索引依据2026-09-23最终代码与验证更新。
+本文件是 OpenSpec CLI 入口。新版设计依据、默认值和实现边界记录在 [设计修订任务](tasks/2026-09-22-design-revision/task.md)；现行实现和验证证据见 [实施与审核记录](tasks/2026-09-22-implementation/task.md) 的本轮完成点、F6 最终验收及 C6 公共 Collector 入口补漏。实施记录中的旧过程保留为历史，本索引依据2026-09-23最终代码与验证更新。
 
 本轮 F1–F4、F5a、F6 已完成。依用户最新授权，真实浏览器操作、窄屏视觉和浏览器 SSE 由用户独立方案验收，F5b 保持未完成，不属于本轮阻塞。本轮没有启动浏览器或准备浏览器依赖。
 
@@ -17,7 +17,7 @@
 
 - [x] 2.1 验证锁文件中的 LangChain/LangGraph 1.x、checkpoint/sqlite、Provider 与 Workflow 副本回归；不在 SQLite 中直接删除中间 checkpoint。
 - [x] 2.2 抽取共享模型租约和无工具 Workflow 文本入口；验证 Agent tool calling/streaming 入口。
-- [ ] 2.3 扩展 PluginRegistry 的 tool kind、Collector 调用 Schema 投影、公共 HTTP/CLI/application service 和五个内置工具插件。2026-09-23 复核发现公共 Collector HTTP/CLI 尚缺，按实施记录 C6 补齐后再勾选。
+- [x] 2.3 扩展 PluginRegistry 的 tool kind、Collector 调用 Schema 投影、公共 HTTP/CLI/application service 和五个内置工具插件。公共 Collector HTTP/CLI 已按 C6 补齐：Agent/HTTP 共用调用服务、CLI 包装 HTTP，新增32项自动化测试及关闭 Shell、持工作区写锁时的真实 HTTP/CLI 烟测通过。
 - [x] 2.4 实现固定工作区级读写调度、取消、稳定 tool key、事件 JSONL 和 `created_at/updated_at` thread 元数据。
 - [x] 2.5 实现文件记忆、Runtime 映射、bubblewrap/关闭模式、按日时区和 Artifact 预算。
 - [x] 2.6 实现 Workflow 结果续接、命令优先级、`/append`/`/compact` 边界、Pi 式 fork 分支和模型输出只读。

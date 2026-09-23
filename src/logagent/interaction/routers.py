@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path as FilePath
 from typing import Annotated, Literal
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Path, Query, Response, status
 
+from logagent.collection.invocation import CollectionArguments, CollectorInvocation
 from logagent.errors import LogAgentError
 from logagent.lifecycle import ApplicationServices
 from logagent.models import (
@@ -14,6 +17,8 @@ from logagent.models import (
     AIConfig,
     CapabilityDescription,
     ChannelConfig,
+    CollectionContext,
+    CollectionResult,
     DiscoveryReport,
     EncryptedCredential,
     HealthReport,
@@ -81,6 +86,30 @@ async def replace_source(ident: ID, payload: SourceConfig, services: Services):
     if ident != payload.id:
         raise LogAgentError("invalid_argument", "路径 ID 与资源 ID 不一致")
     return await _save_resource(services, "sources", payload, mode="replace")
+
+
+def _collector_invocation(services: ApplicationServices) -> CollectorInvocation:
+    # No await or Agent workspace lock between snapshot capture and execution:
+    # Shell can call this API while already holding the workspace write lock.
+    snapshot = services.resources.invocation_snapshot()
+    return CollectorInvocation(
+        snapshot["sources"], services.plugins.collectorRegister.describe(),
+        executor=services.collectors, data_dir=FilePath(services.system_config.data_dir),
+    )
+
+
+@router.get("/sources/{ident}/call-schema", response_model=JSONObject)
+async def source_call_schema(ident: ID, services: Services):
+    return _collector_invocation(services).schema(ident)
+
+
+@router.post("/sources/{ident}/collect", response_model=CollectionResult)
+async def collect_source(ident: ID, payload: CollectionArguments, services: Services):
+    invocation = _collector_invocation(services)
+    context = CollectionContext(
+        "collection", uuid4().hex, services.log_path, services.credentials, services.session_view,
+    )
+    return await invocation.invoke(ident, payload, context)
 
 
 @router.post("/setters", response_model=SetterTemplate, status_code=status.HTTP_201_CREATED)

@@ -41,7 +41,7 @@
 - [x] C3 共享 aiorwlock 与读 semaphore；排队、取消、超时均可见，读 4/写 1且写与读互斥；调度器已提供给后续 AgentService 复用。
 - [x] C4 bubblewrap 单次进程、最小环境、只读事实挂载、网络开关、进程树清理；实际隔离不可用时明确失败，关闭沙箱使用固定最小环境。
 - [x] C5 工具完整输出文件化、预览预算和 16 MiB 超量失败；AGENTS 常驻、Memory 按时区、History 笔记与事实分离。
-- [ ] C6 补齐 design §2/§4.1/§4.2 的公共 Collector HTTP/CLI 入口；Agent 和 HTTP 共用调用应用服务，CLI 只包装 HTTP。
+- [x] C6 补齐 design §2/§4.1/§4.2 的公共 Collector HTTP/CLI 入口；Agent 和 HTTP 共用调用应用服务，CLI 只包装 HTTP。
 
 预期改动：agent/{workspace,sandbox,tools,gateway}.py、内置 tool 插件及测试。数值沿用 tasks.md 已列理由：200 行、50 命中、20 目录项、60 秒 Shell、约 2000-token 预览；不新增隐含硬上限。
 
@@ -180,3 +180,12 @@
 - 外部服务失败如实保留：一次包含 turn_config/model_lease/ai service/interaction/recovery_query 的批次结果为46 passed、2 failed、3 skipped /19.25s；两个失败均为已有 `tests/ai/test_service.py::test_request_roles_prompt_credentials_and_usage[mock-...]`，默认请求 localhost:19026/v1。`tests/ai/live_helpers.py:73` 要求 mock 正文包含“测试”，当前本地服务实际返回 `LOGAGENT_OK`。未修改外部服务或放宽断言，也未再次请求该服务/真实模型；确定性模型租约和配置测试另批通过。
 - 静态/构建与烟测：`ruff check src tests frontend/tests/serve_agent_backend.py` 通过，最后 context 字段改动另行 ruff 通过；最终代码 `uv build` 产出 sdist/wheel。前端最终冻结文件的隔离 typecheck 与格式检查通过，隔离构建和16项 Agent 测试证据见 F5a；共享 CollectorDesignDemoView.vue 的 TS6133 边界同上。真实 ASGI 断连/续传和 localhost HTTP/SSE 烟测通过，未用启动日志代替业务验证。OpenSpec strict 与 diff-check 通过。
 - 最终差异自审：复用唯一配置、插件发现、模型租约、Workspace 调度、公开 checkpoint 和官方摘要入口；无第二 Schema/模型池/摘要实现、无静默失败成功化、无自动重做未知副作用、无链上中间 checkpoint 删除。事件游标跨分支去重，停止不等待共享动作，文件部分读取不能覆盖全文，冲突与响应未知均保留用户输入。仅提交本任务文件及必要接线 hunks，保留其他任务共享脏改动；最终索引以本轮证据覆盖历史勾选，不追改历史执行事实。
+
+### C6 公共 Collector 入口补漏完成（2026-09-23）
+
+- 实施前记录提交 `3c38c64`。从 Agent gateway 抽取 `collection/invocation.py` 的 `CollectorInvocation`/`CollectionArguments`，统一目标解析、Schema 投影、允许覆盖的参数归一化、保存值与 Setter 合并、单次 CollectorManager 调用；服务只引用既有快照和注入的执行协议，不新建 Manager/插件池。Agent 每轮保存该服务的快照，HTTP 每次请求捕获资源/注册描述后直接调用，同一请求在进入 Manager 前没有 await 或工作区锁。
+- HTTP 提供 `GET /api/sources/{id}/call-schema`、`POST /api/sources/{id}/collect`；CLI 提供 `logagent collect-schema ID --api-url URL`、`logagent collect ID --arguments overrides.json --api-url URL`。不传 `--arguments` 时发送 `{}`；文件格式为 `{"options":{},"setters":{}}`。来源不存在、禁用或插件不可用沿用 `target_unavailable` 并显式映射 409；结构/实例字段越权返回 422。Collector 参数值校验仍由 Manager 产生 `failed` 采集结果（HTTP 200 携带事实），六种采集状态原样保留，不把失败转成成功或重复执行。
+- 新增 32 项自动化测试全部通过，覆盖 Agent/共享服务/真实 ASGI/CLI 到 HTTP 的行为一致性、模板展开、保存默认值、显式空列表、资源不变、Agent 固定快照与 HTTP 新快照、生命周期上下文注入、禁用目标、错误脱敏、六种状态、取消清理、单次执行、持写锁不死锁、CLI 本地无效输入/路径注入/读取超时和无重试。首次测试把 Collector 非法参数值误期待为 HTTP 422，核对既有 Manager 契约后修正测试为明确 `failed` 事实，未改变既有采集错误语义。
+- 回归均使用 `rtk proxy timeout 60s .venv/bin/pytest`：Gateway + 原 HTTP 测试 27 passed /11.83s；新增入口 + Gateway + 全部 Collector 测试初跑 166 passed、1 failed /24.56s，唯一失败为旧 history 测试仍断言插件发现只有三个 Collector。依据 design §4.1 的五个内置工具契约，改为分别精确核对 Collector 与 Tool 名单，随后完整 history 文件 15 passed /5.72s。Agent service/admission/final_contracts + lifecycle 57 passed /34.39s。上述批次存在重叠，不合并声称全量后端通过。
+- 受影响文件 Ruff、`uv build`（sdist/wheel）、diff-check 通过。真实 Uvicorn + ApplicationLifecycle 临时目录烟测（整批 timeout 60s）关闭 `agent_shell` 后，经 localhost HTTP 创建来源 201、查询 Schema 200、采集 timeout 事实、无效来源 409；实际 CLI 子进程在真实 Agent scheduler exclusive 锁内完成 success 和显式空 Setter 的 filtered_empty，Schema CLI 与 HTTP 一致，保存资源未被改写。进程与临时目录正常清理；未启动浏览器、未调用真实模型或渠道。
+- 差异自审确认：公共入口没有 Agent lock 递归、独立插件扫描、第二份 Schema 或自动副作用重试；错误与取消保留，CLI ID 使用既有 ID 类型验证，输入错误不输出原始秘密值。未修改 proposal/design/frontend，未新增或重新派发 subagent；F5b 仍由用户独立验收。
