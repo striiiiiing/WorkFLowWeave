@@ -180,11 +180,14 @@ class EventLog:
                 **fields,
             }
             event, events = await file_io(self._append_locked, event)
-            self._replace_index(events)
-            self._revision += 1
-            async with self._changed:
-                self._changed.notify_all()
+            await self._publish(events)
             return dict(event)
+
+    async def _publish(self, events):
+        self._replace_index(events)
+        self._revision += 1
+        async with self._changed:
+            self._changed.notify_all()
 
     def _append_locked(self, event: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         with self._file_lock():
@@ -219,10 +222,10 @@ class EventLog:
         async with self._lock:
             if not self._loaded:
                 await asyncio.to_thread(self._load)
-            reservation, events = await asyncio.to_thread(
+            reservation, events = await file_io(
                 self._reserve_locked, key, arguments_digest, metadata,
             )
-            self._replace_index(events)
+            await self._publish(events)
             return reservation
 
     async def wait_for_tool(self, key: str, arguments: Any, *, wait_timeout: float | None = None,
@@ -315,10 +318,10 @@ class EventLog:
         async with self._lock:
             if not self._loaded:
                 await asyncio.to_thread(self._load)
-            event, events, previous_result = await asyncio.to_thread(
+            event, events, previous_result = await file_io(
                 self._complete_locked, key, arguments_digest, result,
             )
-            self._replace_index(events)
+            await self._publish(events)
             if previous_result is not None:
                 return previous_result
             return dict(event)
@@ -355,10 +358,10 @@ class EventLog:
         async with self._lock:
             if not self._loaded:
                 await asyncio.to_thread(self._load)
-            event, events, previous = await asyncio.to_thread(
+            event, events, previous = await file_io(
                 self._unknown_locked, key, arguments_digest, reason,
             )
-            self._replace_index(events)
+            await self._publish(events)
             if previous is not None:
                 return {"status": previous["type"], "result": previous.get("result")}
             return dict(event)

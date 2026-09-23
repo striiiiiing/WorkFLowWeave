@@ -288,7 +288,15 @@ class ChannelRegister(_RegisterView):
 
 
 class ToolRegister(_RegisterView):
-    __slots__ = ()
+    __slots__ = ("_plugins",)
+
+    def __init__(self, registrations=None, *, errors=(), plugins=()):
+        super().__init__(registrations, errors=errors)
+        self._plugins = tuple(deepcopy(item) for item in plugins)
+
+    def plugins(self):
+        """Discovery metadata, including disabled entries without importing them."""
+        return deepcopy(list(self._plugins))
 
     def get(self, name: str) -> Tool | None:
         registration = self._registrations.get(name)

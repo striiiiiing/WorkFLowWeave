@@ -398,6 +398,8 @@ class PluginRegistry:
 
         root = Path(config.plugin_dir)
         settings = read_plugin_configuration(root / "config.json")
+        tool_plugins = {owner: {"plugin": owner, "enabled": settings.get("tool", {}).get(
+            owner, PluginSettings()).enabled} for owner in BUILTIN_TOOLS}
         try:
             directories = sorted(
                 (entry for entry in root.iterdir() if entry.is_dir()), key=lambda entry: entry.name
@@ -439,6 +441,9 @@ class PluginRegistry:
                 except ValidationError as exc:
                     raise validation_error(exc) from None
                 kind, plugin_id = manifest.kind, manifest.id
+                if kind == "tool":
+                    tool_plugins[plugin_id] = {"plugin": plugin_id, "enabled": settings.get(
+                        "tool", {}).get(plugin_id, PluginSettings()).enabled}
                 if reload_owners is not None and plugin_id not in reload_owners:
                     continue
                 owner = (kind, plugin_id)
@@ -482,6 +487,7 @@ class PluginRegistry:
         tool_view = ToolRegister(
             entries["tool"],
             errors=(error for error in errors if error.details.get("kind") in (None, "tool")),
+            plugins=tool_plugins.values(),
         )
         report = DiscoveryReport(
             registered=[*collectors.describe(), *channels.describe(), *tool_view.describe()],

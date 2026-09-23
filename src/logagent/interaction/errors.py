@@ -46,6 +46,9 @@ _CONFLICT_CODES = {
     "tool_key_conflict",
     "model_ambiguous",
     "compact_conflict",
+    "workflow_result_unavailable",
+    "turn_not_found",
+    "message_not_found",
     "agent_busy",
 }
 _UNAVAILABLE_CODES = {
@@ -63,6 +66,12 @@ _UNAVAILABLE_CODES = {
 
 
 def status_for_code(code: str) -> int:
+    if code == "precondition_required":
+        return 428
+    if code in {"read_only", "path_forbidden"}:
+        return 403
+    if code == "file_missing":
+        return 404
     if code in _VALIDATION_CODES:
         return 422
     if code in _CONFLICT_CODES:

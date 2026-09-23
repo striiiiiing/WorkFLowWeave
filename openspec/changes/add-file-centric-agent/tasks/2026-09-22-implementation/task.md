@@ -65,11 +65,12 @@
 
 ### F. HTTP、SSE、前端与最终验收（对应 6、7）
 
-- [ ] F1 独立 /api/agents 会话、消息、取消、手动压缩、文件、配置、工具 DTO；明确 409、If-Match 和 request_id 冲突。
-- [ ] F2 持久序号 SSE、回放/实时无缝续传、慢客户端不阻塞执行、心跳不算模型活动。
+- [x] F1 独立 /api/agents 会话、消息、取消、手动压缩、文件、配置、工具 DTO；明确 409、If-Match 和 request_id 冲突。
+- [x] F2 持久序号 SSE、回放/实时无缝续传、慢客户端不阻塞执行、心跳不算模型活动。
 - [ ] F3 /agents 两栏聊天与按需工具/文件/设置抽屉，复用 Markdown、报告、useQuery/useAsyncTask；新增单个导航。
 - [ ] F4 工具开关沿用插件配置与 reload；显示真实沙箱/并发/未知发送状态、上下文估算、压缩摘要、文件冲突保留草稿。
-- [ ] F5 前端单测、类型检查、构建；临时目录与假模型的真实后端/浏览器 SSE 烟测、窄屏、停止、重连、冲突，不连接真实渠道。
+- [ ] F5a 本轮：前端组件/流状态单测、类型检查、构建；临时目录与假模型的非浏览器真实后端 HTTP/SSE 验证，覆盖停止、重连、冲突，不连接真实渠道。
+- [ ] F5b 用户独立方案待验收：真实浏览器操作、窄屏视觉与真实浏览器 SSE；不属于本轮 Agent 完成阻塞，不声称已通过。
 - [ ] F6 后端定向回归、静态检查、构建、旧 Workflow 回归、OpenSpec 严格验证与 diff 审查。
 
 ## 验证与提交规则
@@ -153,3 +154,7 @@
 - F3/F4 增量完成（`e3ac86f`、`0a58370`）：前端新增 append/fork 操作、工具插件开关调用、generation/定义 Token/执行类别、真实沙箱/并发/上下文设置面板，以及按需文件抽屉。文件保存携带 `If-Match`，`Runtime/` 显示只读；写冲突错误时不清空草稿。复用现有 `ReportText`，未在前端复制权限或执行类别判断。`npm run typecheck`、`npm run build`、前端 Vitest 全量通过。仍未勾选 F3/F4：分支树完整可视化、抽屉目录分页、真实浏览器 SSE 烟测和 send 状态细分仍待最终验收。
 - F5/F6 验收记录（`e7e7039`）：新增 `frontend/playwright.agent.config.ts`、`frontend/tests/serve_agent_backend.py` 和 `frontend/tests/e2e/agent.spec.ts`。假模型仅在本地流式响应，后端仍使用真实 FastAPI Agent 路由、EventLog、SQLite checkpoint、WorkspaceBackend；HTTP smoke 实际验证 health、创建/发送、完整 SSE 事件、`Last-Event-ID` 回放、慢模型取消和 `If-Match` 文件冲突，结果分别为 200/201/202/409，未连接真实渠道。Playwright 已实际启动该后端和前端预览，但 Chromium 在页面启动前因运行环境缺少 `libnspr4.so` 退出（`browserType.launch`，不是应用断言失败），故 F5 保持未勾选，命令为 `cd frontend && npm run test:e2e -- --config playwright.agent.config.ts`；安装 Chromium 系统依赖后可直接重跑。
 - F6 已完成：`timeout 60s ./.venv/bin/pytest -q tests/agent/test_service.py tests/agent/test_framework_contracts.py`（20 passed）、`tests/interaction/test_agent_api.py`（4 passed）、Agent 其余三批（20/26 passed），旧 Workflow/lifecycle 按文件拆批全部通过（包括进程恢复 3 passed/45.97s）；`npm test`（19 files/97 tests）、`npm run typecheck`、`npm run build`、`ruff check src tests frontend/tests/serve_agent_backend.py`、`uv build`、`openspec validate add-file-centric-agent --strict --no-interactive` 和 `git diff --check` 均通过。合并批次超过 60 秒时按文件拆分，未放宽单批硬超时；未发现 catch-all 成功、重复副作用、事件游标跳号或中间 checkpoint 删除。
+
+- 验收责任修订（2026-09-23，用户明确授权）：用户要求“继续，同时真实浏览器验收不应该是你要负责的，我到时候另外的方案进行验收”，指定本 task.md。保持 proposal/design/frontend 设计不变；本轮不启动或执行浏览器、Playwright、Chrome MCP，也不准备浏览器依赖。F5 拆分为本轮自动化/非浏览器后端 HTTP/SSE 验证与用户真实浏览器验收，F5b 保留待验收；F1–F4、F6 仍按既有设计完成并逐完成点提交。
+
+- F1/F2 管理与流契约完成点（2026-09-23）：统一 Agent 文件读取/写入路由，读取沿用共享 read 调度、写入沿用 exclusive；保存强制 If-Match，新建 If-None-Match:*，409 冲突保留磁盘新版本，Runtime 只读。Agent router 必须注册在通用资源 /{kind}/{id} 前，真实 HTTP 测试暴露并修复 file 被当作资源后返回422的问题；接管 app.py Agent import/include_router 与 lifecycle/services.py Agent 字段两处必要装配。配置同目录原子保存，时区来自宿主 IANA 设定，Session 元数据物化、活动模型/工具代次和不可继续原因由持久事实派生；禁用插件元数据沿用 PluginRegistry 同一次发现，无第二扫描/配置源。Workflow 续接读取 session_view 的最终结果并冻结来源，拒绝客户端覆盖；模型切换下轮生效。/commands 提供 channel/session/priority 信封及 /new、/resume、/workflow、/append、/compact、/fork、/stop，复用既有准入与独立取消通道。EventLog 工具事实唤醒 SSE，慢客户端完成竞态在相同游标下 drain，排队命令取消先于终态；空会话 compact 保存空 checkpoint，不消耗 Workflow 输入。tests/agent、tests/interaction/test_agent_api.py、tests/config/test_plugin_setting.py：124 passed / 17.69s（timeout 60s）；含真实 ASGI 流断连/慢消费/续传、冻结来源、命令停止、文件条件写入、恢复持久化。ruff 通过。后续前端和最终回归仍按 F3–F6 完成。

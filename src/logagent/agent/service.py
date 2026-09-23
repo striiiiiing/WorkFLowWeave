@@ -6,6 +6,8 @@ import asyncio
 import inspect
 import json
 import logging
+import os
+import tempfile
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from copy import deepcopy
@@ -14,6 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
@@ -102,6 +105,7 @@ class AgentService:
         self.config = (config or AgentConfig()).model_copy(deep=True)
         self.workspace = WorkspaceBackend(workspace, runtime)
         self.runtime = Path(runtime).absolute()
+        self.config_path = self.runtime.parent / "config.json"
         self.scheduler = ToolScheduler(self.config.read_concurrency)
         self.artifacts = ArtifactStore(self.workspace)
         self.model_provider = model_provider
@@ -144,7 +148,17 @@ class AgentService:
     async def initialize(self) -> None:
         if self._initialized:
             return
+        if self.config_path.exists():
+            self.config = AgentConfig.model_validate_json(self.config_path.read_text())
         await self.workspace.initialize()
+        if not (self.workspace.root / "AGENTS.md").exists():
+            await self.workspace.write("AGENTS.md", "overwrite", (
+                "协助用户分析日志和 Workflow 结果。用 plugin 按需发现、读取 Schema 并单次调用 Collector。\n"
+                "通过 read(\"Runtime/self.json\") 查看当前会话与来源。read/grep 用于查阅文件；"
+                "在相应写能力可用且值得长期保存时，用 write 维护 Memory/YYYY-MM-DD.md 或 History/<session>.md。\n"
+                "Shell 是单次执行；同组工具可并发，有前后依赖的调用分成两个模型步骤。"
+                "工具结果未知时告知用户，不自动重做副作用。\n"
+            ), expected_hash="*")
         if self.checkpointer is None:
             self._checkpointer_context = AsyncSqliteSaver.from_conn_string(
                 str(self.runtime / "checkpoints.sqlite")
@@ -227,7 +241,11 @@ class AgentService:
                     if isinstance(request_id, str) and isinstance(digest, str) \
                             and isinstance(accepted_turn, str):
                         session.request_ids[request_id] = (accepted_turn, digest)
+            changed_model = next((event.get("model") for event in reversed(log.events)
+                                  if event["type"] == "session.model.changed"), session.model)
+            session.model = changed_model
             self.sessions[directory.name] = session
+            await self._persist_session(session)
 
     async def close(self) -> None:
         async with self._admission_lock:
@@ -287,6 +305,7 @@ class AgentService:
             session.created_at = created["created_at"]
             session.updated_at = session.log.events[-1]["created_at"]
             self.sessions[sid] = session
+            await self._persist_session(session)
             return self._session_view(session)
 
     def _projection_graph(self):
@@ -366,6 +385,11 @@ class AgentService:
     def _session_view(self, session: AgentSession) -> dict[str, Any]:
         budget = next((event["data"] for event in reversed(session.log.events)
                        if event["type"] == "context.budget"), None)
+        resources = next((event["data"] for event in reversed(session.log.events)
+                          if event["type"] == "turn.resources"), None)
+        checkpoint_error = next((event.get("error") for event in reversed(session.log.events)
+            if event["type"] == "turn.failed" and event.get("error", {}).get("code")
+            in {"checkpoint_missing", "checkpoint_corrupt"}), None)
         return {"session_id": session.session_id, "branch_id": session.branch_id,
                 "model": session.model, "workflow_session_id": session.workflow_session_id,
                 "parent_session_id": session.parent_session_id,
@@ -374,7 +398,43 @@ class AgentService:
                 "parent_event_id": session.parent_event_id,
                 "created_at": session.created_at, "updated_at": session.updated_at,
                 "status": session.status, "turn_id": session.turn_id,
-                "context_budget": budget}
+                "context_budget": budget,
+                "active_resources": resources,
+                "history_path": f"Runtime/History/{session.session_id}/events.jsonl",
+                "continuable": checkpoint_error is None,
+                "continuation_error": checkpoint_error,
+                "last_checkpoint_at": next((event["at"] for event in reversed(session.log.events)
+                    if event.get("checkpoint_id")), None)}
+
+    async def _persist_session(self, session):
+        await self.workspace.save_runtime(
+            f"Sessions/{session.session_id}.json",
+            json.dumps(self._session_view(session), ensure_ascii=False, indent=2).encode(),
+        )
+
+    async def set_model(self, session_id: str, model: str):
+        session = self._session(session_id)
+        if self.resources is not None and self.model_provider is None:
+            self._resolve_model(model, self.resources.invocation_snapshot())
+        async with session.lock:
+            event = await session.log.append("session.model.changed", model=model)
+            session.model, session.updated_at = model, event["at"]
+            await self._persist_session(session)
+        return self._session_view(session)
+
+    def model_views(self):
+        if self.resources is None:
+            return []
+        return [{"reference": f"{ai.id}:{name}", "provider": ai.provider,
+                 "ai": ai.id, "model": name}
+                for ai in self.resources.list("ai") for name in ai.models]
+
+    async def source(self, session_id: str):
+        session = self._session(session_id)
+        if session.parent_session_id:
+            return await self.source(session.parent_session_id)
+        return {"workflow_session_id": session.workflow_session_id,
+                "input": session.workflow_input, "created_at": session.created_at}
 
     async def get_session(self, session_id: str) -> dict[str, Any]:
         return self._session_view(self._session(session_id))
@@ -528,10 +588,28 @@ class AgentService:
                 "generation": generation,
                 "enabled": True,
             })
+        if self.plugins is not None:
+            published = {item["plugin"] for item in views}
+            for plugin in self.plugins.toolRegister.plugins():
+                if plugin["plugin"] not in published:
+                    views.append({**plugin, "name": plugin["plugin"].removeprefix("agent_"),
+                                  "description": "未注册；启用后显示实际定义", "execution": None,
+                                  "input_schema": None, "definition_tokens": 0,
+                                  "generation": generation, "registered": False})
         return views
 
     def update_config(self, config: AgentConfig) -> dict[str, Any]:
         """Publish configuration for subsequent turns."""
+        self.config_path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(dir=self.config_path.parent, delete=False) as stream:
+            temporary = Path(stream.name)
+            try:
+                stream.write(config.model_dump_json(indent=2).encode())
+                stream.flush()
+                os.fsync(stream.fileno())
+                os.replace(temporary, self.config_path)
+            finally:
+                temporary.unlink(missing_ok=True)
         self.config = config.model_copy(deep=True)
         return self.config.model_dump(mode="json")
 
@@ -859,9 +937,11 @@ class AgentService:
             if not compact_only:
                 await log.append("message.user", turn_id=turn_id, text=text, message_id=message_id)
             await log.append("turn.started", turn_id=turn_id, branch_id=session.branch_id)
+            await log.append("turn.resources", turn_id=turn_id, model=turn_resources.model,
+                             tools_generation=turn_resources.tools_generation)
             identity = RuntimeIdentity(
                 session.session_id, turn_id, session.branch_id,
-                workflow_session_id=session.workflow_session_id, model=session.model,
+                workflow_session_id=session.workflow_session_id, model=turn_resources.model,
                 tools_generation=turn_resources.tools_generation,
                 workspace=str(self.workspace.root),
             )
@@ -872,7 +952,7 @@ class AgentService:
             system_prompt = build_system_prompt(
                 agents=instructions, session_id=session.session_id, branch_id=session.branch_id,
                 turn_id=turn_id, workspace=str(view.root),
-                workflow_session_id=session.workflow_session_id, now=datetime.now(UTC),
+                workflow_session_id=session.workflow_session_id, now=datetime.now(ZoneInfo(config.timezone)),
             )
             context = AgentToolContext(
                 workspace=view, sandbox=ShellSandbox(view), gateway=turn_resources.gateway,
@@ -886,7 +966,7 @@ class AgentService:
                             else CollectionContext("agent", session.session_id)),
             )
             messages = []
-            if session.workflow_input is not None and not any(
+            if not compact_only and session.workflow_input is not None and not any(
                 event["type"] == "workflow.input.used" for event in log.events
             ):
                 messages.append(HumanMessage(content=json.dumps(
@@ -939,9 +1019,9 @@ class AgentService:
                             update = await context.context_middleware.prepare(
                                 state.values.get("messages", []), force=True,
                             )
-                            if update:
+                            if update or not state.config.get("configurable", {}).get("checkpoint_id"):
                                 await self._projection_graph().aupdate_state(
-                                    graph_config, update, as_node="projection",
+                                    graph_config, update or {"messages": []}, as_node="projection",
                                 )
                             await log.append("command.completed", command="compact", turn_id=turn_id,
                                              compacted=update is not None)
@@ -959,36 +1039,40 @@ class AgentService:
                 completed["text"] = answer
             if not compact_only:
                 await log.append("message.completed", **completed)
+            await self._cancel_pending_commands(session)
             await log.append("turn.completed", turn_id=turn_id, text=answer,
                              checkpoint_id=checkpoint_id, command="compact" if compact_only else None)
             session.status = "completed"
             return {"turn_id": turn_id, "status": "completed", "text": answer}
         except asyncio.CancelledError:
             published = published or publication[0]
-            session.status = "cancelled"
+            await self._cancel_pending_commands(session)
             await log.append("turn.cancelled", turn_id=turn_id, partial=published)
+            session.status = "cancelled"
             raise
         except TimeoutError as exc:
             published = bool(getattr(exc, "_agent_published", published or publication[0]))
-            session.status = "failed"
+            await self._cancel_pending_commands(session)
             await log.append(
                 "turn.failed", turn_id=turn_id,
                 error={"code": "ai_timeout", "message": "模型调用总时限已耗尽"},
                 partial=published,
             )
+            session.status = "failed"
             raise LogAgentError("ai_timeout", "模型调用总时限已耗尽",
                                 {"timeout": getattr(turn_resources.ai_config, "timeout", None)}) from exc
         except Exception as exc:
             published = bool(getattr(exc, "_agent_published", published or publication[0]))
-            session.status = "failed"
+            await self._cancel_pending_commands(session)
             error = (exc.info.model_dump(mode="json") if isinstance(exc, LogAgentError)
                      else {"type": type(exc).__name__, "message": str(exc)})
             await log.append("turn.failed", turn_id=turn_id,
                              error=error, partial=published)
+            session.status = "failed"
             raise
         finally:
             session.updated_at = log.events[-1]["created_at"]
-            await self._cancel_pending_commands(session)
+            await self._persist_session(session)
 
     async def _ensure_checkpoint_present(self, session: AgentSession, *,
                                          require_existing: bool) -> None:
@@ -1041,7 +1125,8 @@ class AgentService:
         values = getattr(state, "values", None) or {}
         messages = values.get("messages", []) if isinstance(values, dict) else []
         next_nodes = tuple(getattr(state, "next", ()) or ())
-        if require_existing and not messages and not next_nodes:
+        checkpoint_id = (getattr(state, "config", None) or {}).get("configurable", {}).get("checkpoint_id")
+        if require_existing and not messages and not next_nodes and not checkpoint_id:
             raise LogAgentError(
                 "checkpoint_missing", "Agent checkpoint 缺失，不能猜测历史继续",
                 {"session_id": session.session_id},
