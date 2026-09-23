@@ -122,14 +122,20 @@ export const agentsApi = {
       method: 'POST',
       body: JSON.stringify({ request_id: requestId, text }),
     }),
-  command: (id: string | null, text: string, requestId: string) =>
+  command: (id: string | null, text: string, requestId: string, model?: string) =>
     request<{
       kind: 'session' | 'turn' | 'workflows'
       priority: string
       result: AgentSession | TurnAccepted | unknown[]
     }>('/agents/commands', {
       method: 'POST',
-      body: JSON.stringify({ channel: 'web', session: id, text, request_id: requestId }),
+      body: JSON.stringify({
+        channel: 'web',
+        session: id,
+        text,
+        request_id: requestId,
+        ...(model ? { model } : {}),
+      }),
     }),
   append: (id: string, requestId: string, text: string) =>
     request<TurnAccepted>(`${sessionPath(id)}/append`, {

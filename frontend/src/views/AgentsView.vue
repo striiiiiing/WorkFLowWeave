@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   agentsApi,
@@ -19,11 +19,14 @@ import AgentBranchDrawer from '@/components/agent/AgentBranchDrawer.vue'
 import AgentGlobalSettingsModal from '@/components/agent/AgentGlobalSettingsModal.vue'
 import AgentFileDrawer from '@/components/agent/AgentFileDrawer.vue'
 import AgentContinueButton from '@/components/agent/AgentContinueButton.vue'
+import AgentModelSelect from '@/components/agent/AgentModelSelect.vue'
 import AppIcon from '@/components/icons/AppIcon.vue'
 import type { SlashCommand } from '@/components/agent/AgentSlashMenu.vue'
 import type { SessionRecord } from '@/types'
 import { ApiError } from '@/api/client'
+import { runsApi } from '@/api/runs'
 import { ElMessage } from 'element-plus'
+import { readDefaultAgentModel } from '@/domain/agentModels'
 
 const route = useRoute()
 const router = useRouter()
@@ -40,9 +43,34 @@ const sessionQuery = useQuery(
   [() => route.params.sessionId],
 )
 
-const draft = ref('')
-const pendingInput = ref<{ session: string | null; text: string; requestId: string }>()
-const sendUncertain = ref(false)
+interface PendingInput {
+  session: string | null
+  draft: string
+  text: string
+  requestId: string
+}
+interface ComposerState {
+  draft: string
+  pendingInput?: PendingInput
+  sendUncertain: boolean
+  sendRetrySafe: boolean
+}
+const inputs = reactive<Record<string, ComposerState>>({})
+const inputState = computed(() => {
+  const key = String(route.params.sessionId ?? '')
+  if (!inputs[key]) inputs[key] = { draft: '', sendUncertain: false, sendRetrySafe: true }
+  return inputs[key]
+})
+const draft = computed({
+  get: () => inputState.value.draft,
+  set: (text) => {
+    const state = inputState.value
+    state.draft = text
+    if (state.pendingInput && text !== state.pendingInput.draft) state.sendUncertain = false
+  },
+})
+const sendUncertain = computed(() => inputState.value.sendUncertain)
+const sendRetrySafe = computed(() => inputState.value.sendRetrySafe)
 const model = ref('')
 const sessionSearch = ref('')
 const showCreate = ref(false)
@@ -52,10 +80,13 @@ const showSettings = ref(false)
 const showSource = ref(false)
 const showWorkflows = ref(false)
 const workflowHistory = ref<SessionRecord[]>([])
+const workflowAction = useAsyncTask()
 const filePath = ref('AGENTS.md')
 const source = ref<Awaited<ReturnType<typeof agentsApi.source>>>()
 const editEvent = ref<AgentEvent>()
 const editText = ref('')
+const editBranch = ref<AgentSession>()
+const editRequestId = ref('')
 
 const running = computed(() => selected.value?.status === 'running')
 const availableModels = computed(() => settings.data.value?.models ?? [])
@@ -119,6 +150,7 @@ async function select(session: AgentSession) {
 }
 
 async function create() {
+  if (!availableModels.value.some((item) => item.reference === model.value)) return
   const result = await action.run(() => agentsApi.create(model.value ? { model: model.value } : {}))
   if (!result) return
   showCreate.value = false
@@ -128,25 +160,42 @@ async function create() {
 }
 
 async function send() {
-  if (!draft.value.trim()) return
-  const text = draft.value
+  if (!draft.value.trim() || action.pending.value) return
+  const originalDraft = draft.value
+  const state = inputState.value
+  const text =
+    running.value && !draft.value.trim().startsWith('/') ? `/append ${draft.value}` : draft.value
   const sessionId = selected.value?.session_id ?? null
-  if (pendingInput.value?.text !== text || pendingInput.value.session !== sessionId) {
-    pendingInput.value = { session: sessionId, text, requestId: crypto.randomUUID() }
+  if (state.pendingInput?.draft !== originalDraft || state.pendingInput.session !== sessionId) {
+    state.sendUncertain = false
+    state.pendingInput = {
+      session: sessionId,
+      draft: originalDraft,
+      text,
+      requestId: crypto.randomUUID(),
+    }
+    state.sendRetrySafe = !/^\/(?:workflow\s+\S|(?:new|fork|compact)(?:\s|$))/.test(text.trim())
   }
-  const input = pendingInput.value
+  const input = state.pendingInput
   const result = await action.run(async () => {
+    const workflowModel = /^\/workflow\s+\S/.test(input.text.trim())
+      ? readDefaultAgentModel()
+      : undefined
     try {
-      return await agentsApi.command(input.session, text, input.requestId)
+      if (workflowModel !== undefined) {
+        return await agentsApi.command(input.session, input.text, input.requestId, workflowModel)
+      }
+      return await agentsApi.command(input.session, input.text, input.requestId)
     } catch (cause) {
-      sendUncertain.value = !(cause instanceof ApiError)
+      state.sendUncertain = !(cause instanceof ApiError) || cause.status >= 500
       throw cause
     }
   })
   if (!result) return
-  pendingInput.value = undefined
-  sendUncertain.value = false
-  draft.value = ''
+  state.pendingInput = undefined
+  state.sendUncertain = false
+  if (state.draft === originalDraft) state.draft = ''
+  if ((selected.value?.session_id ?? null) !== input.session) return
   if (result.kind === 'session') {
     await sessions.refresh()
     await select(result.result as AgentSession)
@@ -160,6 +209,10 @@ async function send() {
       await sessionQuery.refresh()
       return
     }
+    if (turn.status === 'queued') {
+      ElMessage.info('已排队，将在模型安全边界处理')
+      return
+    }
     selected.value = { ...selected.value, status: 'running', turn_id: turn.turn_id }
     stream.resume(turn.turn_id)
   }
@@ -168,17 +221,23 @@ async function send() {
 async function stop() {
   if (!selected.value) return
   const result = await stopAction.run(() => agentsApi.cancel(selected.value!.session_id))
-  if (result && selected.value?.session_id === result.session_id) selected.value = result
-  ElMessage.warning('会话执行已暂停 / 停止')
+  if (result && selected.value?.session_id === result.session_id) {
+    selected.value = result
+    ElMessage.info(result.status === 'running' ? '停止请求已提交，等待执行结束' : '会话执行已停止')
+  }
 }
 
 async function compact() {
   if (!selected.value) return
   const result = await action.run(() => agentsApi.compact(selected.value!.session_id))
   if (result && selected.value?.session_id === result.session_id) {
+    if (result.status === 'queued') {
+      ElMessage.info('压缩已排队，将在模型安全边界处理')
+      return
+    }
     selected.value = { ...selected.value, status: 'running', turn_id: result.turn_id }
     stream.resume(result.turn_id)
-    ElMessage.success('⚡ 上下文智能压缩已触发，将在新轮次完成归档')
+    ElMessage.info('压缩请求已提交，完成后显示摘要')
   }
 }
 
@@ -194,6 +253,8 @@ async function fork(targetSession?: AgentSession) {
 }
 
 function edit(event: AgentEvent) {
+  editBranch.value = undefined
+  editRequestId.value = crypto.randomUUID()
   editEvent.value = event
   editText.value = String(event.data.text ?? '')
 }
@@ -202,10 +263,13 @@ async function confirmEdit() {
   const event = editEvent.value
   if (!event || !editText.value.trim()) return
   const child = await action.run(async () => {
-    const branch = await agentsApi.fork(event.session_id, {
-      message_id: String(event.data.message_id),
-    })
-    await agentsApi.send(branch.session_id, crypto.randomUUID(), editText.value)
+    const branch =
+      editBranch.value ??
+      (await agentsApi.fork(event.session_id, {
+        message_id: String(event.data.message_id),
+      }))
+    editBranch.value = branch
+    await agentsApi.send(branch.session_id, editRequestId.value, editText.value)
     return branch
   })
   if (child) {
@@ -214,6 +278,23 @@ async function confirmEdit() {
     await select(child)
     ElMessage.success(`已创建分支并重新发送指令：${child.branch_id}`)
   }
+}
+
+async function openWorkflows() {
+  showWorkflows.value = true
+  const records = await workflowAction.run(() => runsApi.list({ limit: 100 }))
+  if (records) workflowHistory.value = records
+}
+
+function openCreate() {
+  try {
+    model.value = readDefaultAgentModel()
+  } catch {
+    model.value = ''
+    ElMessage.error('无法读取浏览器默认模型，请选择模型')
+  }
+  showCreate.value = true
+  void settings.refresh()
 }
 
 function openFile(path: string) {
@@ -242,13 +323,13 @@ async function setModel(value: string) {
 }
 
 // 斜杠快捷指令配置
-const slashCommands: SlashCommand[] = [
+const slashCommands = computed<SlashCommand[]>(() => [
   {
     key: '/fork',
     label: '创建分支',
     description: '从当前检查点派生新会话分支',
     icon: 'fork',
-    shortcut: '⌘+F',
+    disabled: !selected.value?.last_checkpoint_at || running.value,
     action: () => fork(),
   },
   {
@@ -257,6 +338,7 @@ const slashCommands: SlashCommand[] = [
     description: '精简早期历史轮次，腾出 Token 空间',
     icon: 'zap',
     badge: '减省 Token',
+    disabled: !selected.value?.continuable,
     action: () => compact(),
   },
   {
@@ -265,15 +347,16 @@ const slashCommands: SlashCommand[] = [
     description: '立即中断当前轮次生成',
     icon: 'pause',
     shortcut: 'Esc',
+    disabled: !running.value,
     action: () => stop(),
   },
   {
     key: '/resume',
     label: '恢复会话',
-    description: '从当前中断位置继续执行',
+    description: '选择历史会话继续讨论',
     icon: 'rotate',
     action: () => {
-      draft.value = '/resume '
+      showBranches.value = true
     },
   },
   {
@@ -282,7 +365,7 @@ const slashCommands: SlashCommand[] = [
     description: '开启新的 Agent 分析任务',
     icon: 'plus',
     action: () => {
-      showCreate.value = true
+      openCreate()
     },
   },
   {
@@ -318,8 +401,7 @@ const slashCommands: SlashCommand[] = [
     description: '从 Workflow 运行记录派生会话',
     icon: 'workflow',
     action: () => {
-      draft.value = '/workflow'
-      void send()
+      void openWorkflows()
     },
   },
   {
@@ -331,7 +413,7 @@ const slashCommands: SlashCommand[] = [
       draft.value = ''
     },
   },
-]
+])
 
 function executeSlashCommand(cmd: SlashCommand) {
   cmd.action()
@@ -341,17 +423,15 @@ function executeSlashCommand(cmd: SlashCommand) {
 <template>
   <div class="agent-view-shell">
     <PageHeader title="Agent 会话" description="文件优先的多轮深度分析入口">
-      <router-link to="/agent-demo">
-        <el-button type="success" plain size="small">
-          <AppIcon name="sparkles" size="sm" />
-          <span>查看 ChatGPT 交互演示</span>
-        </el-button>
-      </router-link>
+      <el-button @click="showSettings = true">
+        <AppIcon name="settings" size="sm" />
+        <span>全局设置</span>
+      </el-button>
       <el-button class="mobile-toggle-btn" @click="showBranches = true">
         <AppIcon name="fork" size="sm" />
         <span>分支树</span>
       </el-button>
-      <el-button type="primary" @click="showCreate = true">
+      <el-button type="primary" @click="openCreate">
         <AppIcon name="plus" size="sm" />
         <span>新会话</span>
       </el-button>
@@ -383,19 +463,14 @@ function executeSlashCommand(cmd: SlashCommand) {
       <!-- 1. ChatGPT 风格侧栏 -->
       <aside class="chatgpt-sidebar">
         <div class="sidebar-header">
-          <button type="button" class="sidebar-new-btn" @click="showCreate = true">
+          <button type="button" class="sidebar-new-btn" @click="openCreate">
             <AppIcon name="plus" size="sm" />
             <span>新会话</span>
           </button>
         </div>
 
         <div class="sidebar-search-box">
-          <el-input
-            v-model="sessionSearch"
-            placeholder="搜索会话与分支..."
-            size="small"
-            clearable
-          >
+          <el-input v-model="sessionSearch" placeholder="搜索会话与分支..." size="small" clearable>
             <template #prefix>
               <AppIcon name="search" size="sm" />
             </template>
@@ -422,11 +497,7 @@ function executeSlashCommand(cmd: SlashCommand) {
             <span class="session-badge" :class="s.status" />
           </button>
 
-          <el-empty
-            v-if="!filteredSessions.length"
-            description="暂无会话"
-            :image-size="48"
-          />
+          <el-empty v-if="!filteredSessions.length" description="暂无会话" :image-size="48" />
         </nav>
 
         <div class="sidebar-bottom-actions">
@@ -455,7 +526,7 @@ function executeSlashCommand(cmd: SlashCommand) {
             @open-files="openFile('AGENTS.md')"
             @open-settings="showSettings = true"
             @open-source="openSource"
-            @open-workflows="showWorkflows = true"
+            @open-workflows="openWorkflows"
             @compact="compact"
             @fork="fork()"
           />
@@ -492,19 +563,15 @@ function executeSlashCommand(cmd: SlashCommand) {
           </div>
           <h2>开启 Agent 智能会话</h2>
           <p>
-            选择左侧历史会话，或点击下方按钮开启新分析。支持输入 <code>/</code> 唤起快捷指令。
+            选择左侧历史会话，或点击下方按钮开启新分析。支持输入
+            <code>/</code>
+            唤起快捷指令。
           </p>
           <div class="flex gap-2 mt-4">
-            <el-button type="primary" @click="showCreate = true">
+            <el-button type="primary" @click="openCreate">
               <AppIcon name="plus" size="sm" />
               <span>新建会话</span>
             </el-button>
-            <router-link to="/agent-demo">
-              <el-button>
-                <AppIcon name="sparkles" size="sm" />
-                <span>体验 ChatGPT 交互演示</span>
-              </el-button>
-            </router-link>
           </div>
         </div>
 
@@ -512,8 +579,14 @@ function executeSlashCommand(cmd: SlashCommand) {
         <AgentComposer
           v-model:draft="draft"
           :running="running"
-          :disabled="selected?.continuable === false"
+          :disabled="
+            !selected ||
+            !selected.continuable ||
+            sessionQuery.pending.value ||
+            stream.state.value === 'loading'
+          "
           :send-uncertain="sendUncertain"
+          :send-retry-safe="sendRetrySafe"
           :pending="action.pending.value"
           :stop-pending="stopAction.pending.value"
           :commands="slashCommands"
@@ -526,6 +599,7 @@ function executeSlashCommand(cmd: SlashCommand) {
 
     <!-- 3. 全局设置抽屉/模态框 -->
     <AgentGlobalSettingsModal
+      v-if="showSettings"
       v-model="showSettings"
       @changed="settings.refresh"
     />
@@ -540,7 +614,12 @@ function executeSlashCommand(cmd: SlashCommand) {
     />
 
     <!-- 5. 工作区文件与产物抽屉 -->
-    <el-drawer v-model="showFiles" title="Agent 工作区文件" size="min(95vw, 720px)" destroy-on-close>
+    <el-drawer
+      v-model="showFiles"
+      title="Agent 工作区文件"
+      size="min(95vw, 720px)"
+      destroy-on-close
+    >
       <AgentFileDrawer
         v-if="selected && showFiles"
         :session-id="selected.session_id"
@@ -558,7 +637,21 @@ function executeSlashCommand(cmd: SlashCommand) {
 
     <!-- 7. Workflow 历史记录抽屉 -->
     <el-drawer v-model="showWorkflows" title="Workflow 历史" size="min(95vw, 640px)">
-      <p class="text-sm text-muted mb-3">使用 /workflow &lt;session_id&gt; 从指定最终结果创建会话：</p>
+      <el-alert
+        v-if="workflowAction.error.value"
+        :title="workflowAction.error.value"
+        type="error"
+        :closable="false"
+      />
+      <p v-if="workflowAction.pending.value" role="status">正在加载 Workflow 历史…</p>
+      <el-empty
+        v-else-if="!workflowHistory.length && !workflowAction.error.value"
+        description="暂无 Workflow 运行记录"
+      />
+      <el-button :loading="workflowAction.pending.value" @click="openWorkflows">刷新历史</el-button>
+      <p class="text-sm text-muted mb-3">
+        使用 /workflow &lt;session_id&gt; 从指定最终结果创建会话：
+      </p>
       <article
         v-for="record in workflowHistory"
         :key="record.session_id"
@@ -580,27 +673,30 @@ function executeSlashCommand(cmd: SlashCommand) {
 
     <!-- 8. 创建新会话 Dialog -->
     <el-dialog v-model="showCreate" title="创建 Agent 分析会话" width="min(90vw, 500px)">
+      <el-alert
+        v-if="action.error.value || settings.error.value"
+        :title="action.error.value || settings.error.value"
+        type="error"
+        :closable="false"
+      />
       <el-form label-position="top">
-        <el-form-item label="初始模型选择（可沿用系统默认）">
-          <el-select
+        <el-form-item label="供应商渠道 / 模型">
+          <AgentModelSelect
             v-model="model"
-            placeholder="选择模型（可选）"
-            clearable
-            class="w-full"
-            aria-label="新会话模型"
-          >
-            <el-option
-              v-for="item in availableModels"
-              :key="item.reference"
-              :value="item.reference"
-              :label="`${item.provider} / ${item.model || item.reference}`"
-            />
-          </el-select>
+            :models="availableModels"
+            label="新会话模型"
+            :disabled="settings.pending.value"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showCreate = false">取消</el-button>
-        <el-button type="primary" :loading="action.pending.value" @click="create">
+        <el-button
+          type="primary"
+          :loading="action.pending.value"
+          :disabled="!availableModels.some((item) => item.reference === model)"
+          @click="create"
+        >
           确认创建
         </el-button>
       </template>
@@ -612,13 +708,31 @@ function executeSlashCommand(cmd: SlashCommand) {
       title="编辑指令并派生新分支"
       width="min(90vw, 620px)"
       @close="editEvent = undefined"
+      :close-on-click-modal="!action.pending.value"
+      :close-on-press-escape="!action.pending.value"
+      :show-close="!action.pending.value"
     >
       <p class="text-sm text-muted mb-2">
         将从此消息节点创建全新的独立分支，并发送更新后的指令；原始分支与工具回执不受影响。
       </p>
-      <el-input v-model="editText" type="textarea" :rows="6" aria-label="分支消息" />
+      <el-alert
+        v-if="action.error.value"
+        :title="action.error.value"
+        type="error"
+        :closable="false"
+      />
+      <p v-if="editBranch">
+        分支 {{ editBranch.branch_id }} 已创建；重试发送将沿用该分支和请求编号。
+      </p>
+      <el-input
+        v-model="editText"
+        :disabled="!!editBranch || action.pending.value"
+        type="textarea"
+        :rows="6"
+        aria-label="分支消息"
+      />
       <template #footer>
-        <el-button @click="editEvent = undefined">取消</el-button>
+        <el-button :disabled="action.pending.value" @click="editEvent = undefined">取消</el-button>
         <el-button type="primary" :loading="action.pending.value" @click="confirmEdit">
           确认创建分支并发送
         </el-button>

@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
-import {
-  agentsApi,
-  type AgentConfig,
-  type AgentSettings as AgentSettingsData,
-} from '@/api/agents'
+import { agentsApi, type AgentConfig } from '@/api/agents'
 import { useQuery } from '@/composables/useQuery'
 import { useAsyncTask } from '@/composables/useAsyncTask'
 import AppIcon from '@/components/icons/AppIcon.vue'
 import { ElMessage } from 'element-plus'
+import AgentModelSelect from './AgentModelSelect.vue'
+import {
+  groupAgentModels,
+  readDefaultAgentModel,
+  saveDefaultAgentModel,
+} from '@/domain/agentModels'
 
 const props = defineProps<{
   modelValue: boolean
@@ -24,21 +26,30 @@ const query = useQuery((signal) => agentsApi.config(signal))
 const action = useAsyncTask()
 const toolsAction = useAsyncTask()
 const draft = ref<AgentConfig>()
+const defaultModel = ref('')
+const preferenceError = ref('')
+try {
+  defaultModel.value = readDefaultAgentModel()
+} catch {
+  preferenceError.value = '无法读取浏览器中的默认模型设置'
+}
 
 watch(
   () => props.modelValue,
   (open) => {
     if (open) {
+      draft.value = undefined
       void query.refresh()
     }
   },
 )
 
 watch(query.data, (value) => {
-  if (value) draft.value = structuredClone(value.config)
+  if (value && !draft.value) draft.value = structuredClone(value.config)
 })
 
 const models = computed(() => query.data.value?.models ?? [])
+const channels = computed(() => groupAgentModels(models.value).map((group) => group.channel))
 const tools = computed(() => query.data.value?.tools ?? [])
 const scheduler = computed(() => query.data.value?.scheduler ?? {})
 const sandbox = computed(() => query.data.value?.sandbox)
@@ -47,7 +58,16 @@ const readonlyPaths = computed(() => query.data.value?.readonly_paths ?? [])
 async function save() {
   if (!draft.value) return
   await action.run(async () => {
+    if (defaultModel.value && !models.value.some((item) => item.reference === defaultModel.value)) {
+      throw new Error('默认模型已不可用，请重新选择供应商渠道模型')
+    }
     await agentsApi.updateConfig(draft.value!)
+    try {
+      saveDefaultAgentModel(defaultModel.value)
+    } catch {
+      throw new Error('服务端设置已保存，但浏览器默认模型保存失败，请检查浏览器存储权限后重试')
+    }
+    preferenceError.value = ''
     ElMessage.success('全局设置已更新，将在下一轮交互时生效')
     await query.refresh()
     emit('changed')
@@ -74,6 +94,14 @@ async function toggleTool(plugin: string, enabled: boolean) {
     destroy-on-close
     @update:model-value="emit('update:modelValue', $event)"
   >
+    <el-alert
+      v-if="query.error.value || action.error.value || toolsAction.error.value || preferenceError"
+      :title="query.error.value || action.error.value || toolsAction.error.value || preferenceError"
+      type="error"
+      :closable="false"
+    />
+    <p v-if="query.pending.value" role="status">正在读取全局设置…</p>
+    <el-button v-if="query.error.value" @click="query.refresh">重新读取设置</el-button>
     <div class="settings-intro">
       <div class="intro-icon">
         <AppIcon name="sliders" size="md" />
@@ -90,11 +118,17 @@ async function toggleTool(plugin: string, enabled: boolean) {
       <!-- 1. 上下文与压缩预算 -->
       <el-tab-pane label="上下文与压缩预算" name="context">
         <el-form v-if="draft" label-position="top" class="settings-form">
+          <el-form-item label="默认供应商渠道 / 模型">
+            <AgentModelSelect v-model="defaultModel" :models="models" label="默认模型" optional />
+            <span class="field-hint">
+              保存在当前浏览器，新建会话与 Workflow 续接自动选用；已有会话保留自己的模型。
+            </span>
+          </el-form-item>
           <div class="form-grid-2">
             <el-form-item label="用户上下文窗口 (Tokens)">
               <el-input-number
                 v-model="draft.context_window"
-                :min="1000"
+                :min="1"
                 :step="4096"
                 class="w-full"
                 placeholder="留空沿用模型最大容量"
@@ -103,12 +137,7 @@ async function toggleTool(plugin: string, enabled: boolean) {
             </el-form-item>
 
             <el-form-item label="输出预留空间 (Tokens)">
-              <el-input-number
-                v-model="draft.output_tokens"
-                :min="512"
-                :step="512"
-                class="w-full"
-              />
+              <el-input-number v-model="draft.output_tokens" :min="1" :step="512" class="w-full" />
               <span class="field-hint">每次生成响应为 Agent 保留的输出缓冲区</span>
             </el-form-item>
           </div>
@@ -117,7 +146,7 @@ async function toggleTool(plugin: string, enabled: boolean) {
             <el-form-item label="自动压缩触发阈值 (Tokens)">
               <el-input-number
                 v-model="draft.trigger_tokens"
-                :min="1000"
+                :min="1"
                 :step="2048"
                 class="w-full"
               />
@@ -125,12 +154,7 @@ async function toggleTool(plugin: string, enabled: boolean) {
             </el-form-item>
 
             <el-form-item label="压缩时保留近期 Tokens">
-              <el-input-number
-                v-model="draft.keep_tokens"
-                :min="500"
-                :step="1024"
-                class="w-full"
-              />
+              <el-input-number v-model="draft.keep_tokens" :min="1" :step="1024" class="w-full" />
               <span class="field-hint">压缩时完整保留在会话尾部的近期活跃上下文</span>
             </el-form-item>
           </div>
@@ -142,15 +166,11 @@ async function toggleTool(plugin: string, enabled: boolean) {
               <el-select
                 v-model="draft.summary_ai"
                 clearable
+                :value-on-clear="null"
                 placeholder="默认复用主模型"
                 class="w-full"
               >
-                <el-option
-                  v-for="ai in [...new Set(models.map((item) => item.ai))]"
-                  :key="ai"
-                  :label="ai"
-                  :value="ai"
-                />
+                <el-option v-for="ai in channels" :key="ai" :label="ai" :value="ai" />
               </el-select>
               <span class="field-hint">可配置轻量级模型降低上下文压缩开销</span>
             </el-form-item>
@@ -158,7 +178,7 @@ async function toggleTool(plugin: string, enabled: boolean) {
             <el-form-item label="摘要输出上限">
               <el-input-number
                 v-model="draft.summary_max_tokens"
-                :min="256"
+                :min="1"
                 :step="256"
                 class="w-full"
               />
@@ -183,16 +203,16 @@ async function toggleTool(plugin: string, enabled: boolean) {
           <div class="scheduler-stat">
             <span class="stat-label">并发只读读锁</span>
             <strong class="stat-value">
-              {{ scheduler.reading ?? 0 }} / {{ scheduler.read_concurrency ?? 4 }}
+              {{ scheduler.reading ?? '未知' }} / {{ scheduler.read_concurrency ?? '未知' }}
             </strong>
           </div>
           <div class="scheduler-stat">
             <span class="stat-label">排他写锁占用</span>
-            <strong class="stat-value">{{ scheduler.writing ?? 0 }} / 1</strong>
+            <strong class="stat-value">{{ scheduler.writing ?? '未知' }} / 1</strong>
           </div>
           <div class="scheduler-stat">
             <span class="stat-label">排队等待中</span>
-            <strong class="stat-value">{{ scheduler.queued ?? 0 }} 项</strong>
+            <strong class="stat-value">{{ scheduler.queued ?? '未知' }} 项</strong>
           </div>
         </div>
 
@@ -209,12 +229,23 @@ async function toggleTool(plugin: string, enabled: boolean) {
                   <AppIcon name="terminal" size="sm" />
                   <strong>{{ tool.name }}</strong>
                 </span>
-                <span class="tool-badge" :class="tool.execution ?? 'read'">
-                  {{ tool.execution === 'exclusive' ? '工作区独占写' : '并发只读' }}
+                <span class="tool-badge" :class="tool.execution ?? ''">
+                  {{
+                    tool.execution === 'exclusive'
+                      ? '工作区独占写'
+                      : tool.execution === 'read'
+                        ? '并发只读'
+                        : '按调用动作确定'
+                  }}
                 </span>
                 <span class="tool-tokens">约 {{ tool.definition_tokens }} Tokens</span>
               </div>
               <p class="tool-desc">{{ tool.description }}</p>
+              <small>插件 {{ tool.plugin }} · 代次 {{ tool.generation ?? '未注册' }}</small>
+              <details v-if="tool.input_schema">
+                <summary>查看工具 Schema</summary>
+                <pre>{{ JSON.stringify(tool.input_schema, null, 2) }}</pre>
+              </details>
             </div>
             <div class="tool-switch">
               <el-switch
@@ -229,7 +260,11 @@ async function toggleTool(plugin: string, enabled: boolean) {
 
       <!-- 3. 沙箱隔离与安全 -->
       <el-tab-pane label="沙箱与安全隔离" name="sandbox">
-        <div class="sandbox-status-card" :class="{ secure: sandbox?.available }">
+        <div
+          v-if="sandbox"
+          class="sandbox-status-card"
+          :class="{ secure: sandbox.enabled && sandbox.available }"
+        >
           <div class="status-icon">
             <AppIcon name="shield" size="md" />
           </div>
@@ -243,9 +278,7 @@ async function toggleTool(plugin: string, enabled: boolean) {
                     : '沙箱环境不可用：宿主未检测到 bubblewrap'
               }}
             </strong>
-            <p>
-              沙箱限制工具的文件写入与越界访问，只读只写受白名单目录控制，保护宿主服务器数据安全。
-            </p>
+            <p>沙箱配置控制 Shell 子进程的隔离与网络访问，工作区文件权限由服务端执行。</p>
           </div>
         </div>
 
@@ -280,8 +313,14 @@ async function toggleTool(plugin: string, enabled: boolean) {
             </el-form-item>
 
             <el-form-item label="只读工具最大并发数">
-              <el-input-number v-model="draft.read_concurrency" :min="1" :max="16" class="w-full" />
+              <el-input-number v-model="draft.read_concurrency" :min="1" class="w-full" />
               <span class="field-hint">限制多工具并行读取任务的峰值线程</span>
+            </el-form-item>
+            <el-form-item label="模型无活动超时（秒）">
+              <el-input-number v-model="draft.idle_timeout" :min="1" />
+            </el-form-item>
+            <el-form-item label="摘要上下文容量（可选）">
+              <el-input-number v-model="draft.summary_context_window" :min="1" />
             </el-form-item>
           </div>
         </el-form>
@@ -291,7 +330,12 @@ async function toggleTool(plugin: string, enabled: boolean) {
     <template #footer>
       <div class="dialog-footer">
         <el-button @click="emit('update:modelValue', false)">取消</el-button>
-        <el-button type="primary" :loading="action.pending.value" @click="save">
+        <el-button
+          type="primary"
+          :disabled="!draft || query.pending.value"
+          :loading="action.pending.value"
+          @click="save"
+        >
           保存全局设置
         </el-button>
       </div>

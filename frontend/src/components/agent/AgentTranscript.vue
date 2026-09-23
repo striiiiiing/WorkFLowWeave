@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import type { AgentEvent, AgentTool } from '@/api/agents'
 import ReportText from '@/components/report/ReportText.vue'
 import AgentToolCall from './AgentToolCall.vue'
@@ -22,6 +22,29 @@ const emit = defineEmits<{
 }>()
 
 const copiedId = ref<string | null>(null)
+const viewport = ref<HTMLElement>()
+const following = ref(true)
+let copyTimer: ReturnType<typeof setTimeout> | undefined
+onBeforeUnmount(() => clearTimeout(copyTimer))
+
+function trackScroll() {
+  const el = viewport.value
+  if (el) following.value = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+}
+async function scrollToLatest() {
+  following.value = true
+  await nextTick()
+  const el = viewport.value
+  if (el) el.scrollTop = el.scrollHeight
+}
+watch(
+  () => props.events,
+  () => {
+    if (following.value) void scrollToLatest()
+  },
+  { deep: true },
+)
+watch(() => props.sessionId, scrollToLatest, { immediate: true })
 
 const groups = computed(() => {
   const result: Array<{ key: string; rows: TranscriptRow[]; read: boolean }> = []
@@ -47,17 +70,24 @@ async function copyText(text: string, id: string) {
     await navigator.clipboard.writeText(text)
     copiedId.value = id
     ElMessage.success('已复制到剪贴板')
-    setTimeout(() => {
+    clearTimeout(copyTimer)
+    copyTimer = setTimeout(() => {
       if (copiedId.value === id) copiedId.value = null
     }, 2000)
   } catch {
-    ElMessage.info(text)
+    ElMessage.error('复制失败，请选择消息文本后手动复制')
   }
 }
 </script>
 
 <template>
-  <section class="transcript-viewport" aria-live="polite" aria-label="Agent 对话历史">
+  <section
+    ref="viewport"
+    class="transcript-viewport"
+    aria-live="polite"
+    aria-label="Agent 对话历史"
+    @scroll="trackScroll"
+  >
     <div class="transcript-stream">
       <template v-for="group in groups" :key="group.key">
         <!-- 1. 并发只读工具批次组 -->
@@ -112,7 +142,7 @@ async function copyText(text: string, id: string) {
                       @click="emit('edit', row.event)"
                     >
                       <AppIcon name="fork" size="sm" />
-                      <span>编辑分支</span>
+                      <span>编辑并创建分支</span>
                     </button>
                   </div>
                 </div>
@@ -239,13 +269,32 @@ async function copyText(text: string, id: string) {
           <AppIcon name="bot" size="lg" />
         </div>
         <h3>开启 Agent 智能分析</h3>
-        <p>输入你的业务目标或日志分析诉求，或在输入框输入 <code>/</code> 快速唤起指令。</p>
+        <p>
+          输入你的业务目标或日志分析诉求，或在输入框输入
+          <code>/</code>
+          快速唤起指令。
+        </p>
       </div>
     </div>
+    <button v-if="!following" type="button" class="latest-message-btn" @click="scrollToLatest">
+      回到最新消息
+    </button>
   </section>
 </template>
 
 <style scoped>
+.latest-message-btn {
+  position: sticky;
+  bottom: 8px;
+  display: block;
+  margin: 0 auto;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--el-color-primary);
+  cursor: pointer;
+}
 .transcript-viewport {
   flex: 1;
   overflow-y: auto;

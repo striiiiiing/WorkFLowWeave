@@ -8,6 +8,7 @@ const props = defineProps<{
   running: boolean
   disabled?: boolean
   sendUncertain?: boolean
+  sendRetrySafe?: boolean
   commands: SlashCommand[]
   pending?: boolean
   stopPending?: boolean
@@ -24,13 +25,27 @@ const textareaRef = ref<HTMLTextAreaElement>()
 const slashMenuRef = ref<InstanceType<typeof AgentSlashMenu>>()
 const showSlashMenu = ref(false)
 const slashQuery = ref('')
+const menuVisible = computed(
+  () =>
+    showSlashMenu.value &&
+    props.commands.some(
+      (cmd) => !cmd.disabled && cmd.key.toLowerCase().startsWith(slashQuery.value.toLowerCase()),
+    ),
+)
+const canSend = computed(
+  () =>
+    Boolean(props.draft.trim()) &&
+    !props.disabled &&
+    !props.pending &&
+    !(props.sendUncertain && props.sendRetrySafe === false),
+)
 
 // Watch input changes for slash command trigger
 watch(
   () => props.draft,
   (val) => {
     // If text starts with '/' or contains a slash command trigger
-    if (val.startsWith('/')) {
+    if (/^\/\S*$/.test(val)) {
       showSlashMenu.value = true
       slashQuery.value = val
     } else {
@@ -41,7 +56,8 @@ watch(
 )
 
 function onKeyDown(e: KeyboardEvent) {
-  if (showSlashMenu.value) {
+  if (e.isComposing) return
+  if (menuVisible.value) {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       slashMenuRef.value?.moveSelection('down')
@@ -52,7 +68,7 @@ function onKeyDown(e: KeyboardEvent) {
       slashMenuRef.value?.moveSelection('up')
       return
     }
-    if (e.key === 'Enter' || e.key === 'Tab') {
+    if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') {
       e.preventDefault()
       slashMenuRef.value?.selectActive()
       return
@@ -67,14 +83,25 @@ function onKeyDown(e: KeyboardEvent) {
   // Normal enter to send
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
-    if (!props.running && props.draft.trim() && !props.disabled) {
-      emit('send')
-    }
+    submit()
   }
+  if (e.key === 'Escape' && props.running && !props.stopPending) emit('stop')
+}
+
+function submit() {
+  if (!canSend.value) return
+  const command = props.commands.find((item) => item.key === props.draft.trim())
+  if (command) {
+    if (!command.disabled) selectCommand(command)
+    return
+  }
+  emit('send')
 }
 
 function selectCommand(cmd: SlashCommand) {
+  if (props.pending || props.disabled || cmd.disabled) return
   showSlashMenu.value = false
+  emit('update:draft', '')
   emit('executeCommand', cmd)
 }
 
@@ -99,7 +126,7 @@ function handleInput(e: Event) {
 </script>
 
 <template>
-  <div class="composer-container">
+  <form class="composer-container" aria-label="Agent 输入" @submit.prevent="submit">
     <!-- 1. 浮动运行状态胶囊 (暂停 / 停止按钮集成在此) -->
     <transition name="fade">
       <div v-if="running" class="running-capsule">
@@ -122,7 +149,10 @@ function handleInput(e: Event) {
 
     <!-- 2. 发送异常提示 -->
     <div v-if="sendUncertain" class="composer-alert">
-      <span>发送结果未知，草稿与请求编号已保留。可点击发送重试。</span>
+      <span v-if="sendRetrySafe !== false">
+        发送结果未知，草稿与请求编号已保留。可点击发送重试。
+      </span>
+      <span v-else>操作结果未知；请先检查会话列表与执行历史，确认未生效后再编辑指令重试。</span>
     </div>
 
     <!-- 3. 输入框主卡片 -->
@@ -130,7 +160,7 @@ function handleInput(e: Event) {
       <!-- 斜杠指令浮层 -->
       <AgentSlashMenu
         ref="slashMenuRef"
-        :visible="showSlashMenu"
+        :visible="menuVisible"
         :query="slashQuery"
         :commands="commands"
         @select="selectCommand"
@@ -141,10 +171,13 @@ function handleInput(e: Event) {
         ref="textareaRef"
         :value="draft"
         class="composer-textarea"
+        aria-label="Agent 消息"
         :placeholder="
           disabled
             ? '当前会话不可继续'
-            : '向 Agent 发送指令或问题，输入 / 可唤起快捷功能...'
+            : running
+              ? '输入补充说明，发送后排队；/ 可打开命令菜单'
+              : '向 Agent 发送指令或问题，输入 / 可唤起快捷功能...'
         "
         :disabled="disabled"
         rows="2"
@@ -183,19 +216,18 @@ function handleInput(e: Event) {
 
           <!-- 空闲中：发送按钮 -->
           <button
-            v-else
-            type="button"
+            type="submit"
             class="action-circle-btn send-btn"
-            :disabled="!draft.trim() || disabled || pending"
-            title="发送 (Enter)"
-            @click="emit('send')"
+            :disabled="!canSend"
+            :title="running ? '追加到队列 (Enter)' : '发送 (Enter)'"
+            :aria-label="running ? '追加到队列' : '发送'"
           >
             <AppIcon name="send" size="sm" />
           </button>
         </div>
       </div>
     </div>
-  </div>
+  </form>
 </template>
 
 <style scoped>
@@ -261,11 +293,13 @@ function handleInput(e: Event) {
 }
 
 .capsule-text {
+  white-space: nowrap;
   font-weight: 500;
   color: var(--el-text-color-primary);
 }
 
 .capsule-stop-btn {
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -299,14 +333,18 @@ function handleInput(e: Event) {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 16px;
-  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px rgba(15, 23, 42, 0.04);
+  box-shadow:
+    0 4px 20px -2px rgba(15, 23, 42, 0.06),
+    0 2px 6px rgba(15, 23, 42, 0.04);
   padding: 12px 14px 10px;
   transition: all 0.2s ease;
 }
 
 .composer-box:focus-within {
   border-color: color-mix(in srgb, var(--el-color-primary) 50%, transparent);
-  box-shadow: 0 4px 24px -2px rgba(37, 99, 235, 0.12), 0 2px 8px rgba(15, 23, 42, 0.05);
+  box-shadow:
+    0 4px 24px -2px rgba(37, 99, 235, 0.12),
+    0 2px 8px rgba(15, 23, 42, 0.05);
 }
 
 .composer-textarea {
@@ -416,7 +454,9 @@ function handleInput(e: Event) {
 
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
 }
 
 .fade-enter-from,
