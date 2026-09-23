@@ -98,13 +98,13 @@ function copy() {
           <PluginReport v-if="item.sections?.length" :sections="item.sections" />
           <ReportText v-else-if="item.text" :text="item.text" />
           <details v-if="item.sections?.length && item.text" class="mt-3">
-            <summary class="cursor-pointer muted">查看提供给分析的正文</summary>
+            <summary class="report-disclosure muted">查看提供给分析的正文</summary>
             <ReportText :text="item.text" />
           </details>
         </article>
       </template>
       <details v-if="advanced && query.data.value.availability === 'available'" class="mt-4">
-        <summary class="cursor-pointer">原始 JSON · 版本 {{ version }}</summary>
+        <summary class="report-disclosure">原始 JSON · 版本 {{ version }}</summary>
         <el-button size="small" class="my-2" :loading="copyTask.pending.value" @click="copy">
           复制 JSON
         </el-button>

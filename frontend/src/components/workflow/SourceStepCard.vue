@@ -7,6 +7,7 @@ import { systemApi } from '@/api/system'
 import { useQuery } from '@/composables/useQuery'
 import ParameterField from '@/components/common/ParameterField.vue'
 import SectionCard from '@/components/common/SectionCard.vue'
+import SetterTemplateManager from '@/components/resources/SetterTemplateManager.vue'
 const model = defineModel<WorkflowDefinition>({ required: true })
 const props = defineProps<{ sources: SourceConfig[]; advanced?: boolean }>()
 const {
@@ -121,12 +122,11 @@ function sourceById(id: string) {
           label="本次采集参数"
           :schema="optionSchema(sourceCapabilities[sourceId]?.options_schema, 'workflow')"
         />
-        <el-form-item label="本次处理模板 ID（可选）">
-          <el-input
-            :model-value="model.source_overrides[sourceId].template ?? ''"
-            @update:model-value="model.source_overrides[sourceId].template = $event || null"
-          />
-        </el-form-item>
+        <SetterTemplateManager
+          :collector="sourceById(sourceId)?.collector ?? ''"
+          v-model="model.source_overrides[sourceId].template"
+          :schema="sourceCapabilities[sourceId]?.setters_schema"
+        />
         <ParameterField
           v-model="model.source_overrides[sourceId].setters"
           :prop="`source_overrides.${sourceId}.setters`"

@@ -161,10 +161,11 @@ function recover() {
             ['collect', 'analyze', 'finish'].includes(item.key),
           )"
           :key="stage.key"
-          class="border-b last:border-0 py-3"
+          class="border-b last:border-0"
         >
-          <summary class="cursor-pointer font-medium mb-3">{{ stage.label }}</summary>
+          <summary class="report-disclosure font-medium">{{ stage.label }}</summary>
           <PhaseReport
+            class="pb-3"
             :id="id"
             :version="session.version"
             :stage="stage.key"

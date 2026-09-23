@@ -51,6 +51,27 @@ pre {
 .muted {
   color: var(--muted);
 }
+.report-disclosure {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 12px;
+  text-align: left;
+  border-radius: 6px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.report-disclosure:hover {
+  background: var(--border);
+}
+.report-disclosure:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 2px;
+}
+details[open] > .report-disclosure {
+  margin-bottom: 12px;
+}
 .app-shell {
   display: flex;
   min-height: 100vh;
@@ -119,6 +140,72 @@ pre {
 .app-main {
   flex: 1;
   min-width: 0;
+}
+.agent-shell {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  min-height: calc(100vh - 120px);
+  gap: 24px;
+}
+.agent-sessions,
+.agent-conversation {
+  min-width: 0;
+}
+.agent-session-row {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  text-align: left;
+}
+.agent-session-row.active {
+  border-color: var(--el-color-primary);
+  background: #eff6ff;
+}
+.agent-conversation {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  min-height: 600px;
+}
+.agent-toolbar,
+.agent-composer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.agent-composer {
+  border-top: 1px solid var(--border);
+  border-bottom: 0;
+  align-items: flex-end;
+}
+.agent-messages {
+  flex: 1;
+  padding: 20px;
+  overflow: auto;
+}
+.agent-message {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.agent-message pre {
+  margin: 8px 0 0;
+}
+.agent-empty {
+  display: grid;
+  place-items: center;
+  min-height: 180px;
+  color: var(--muted);
 }
 .topbar {
   height: 56px;
@@ -214,6 +301,16 @@ pre {
   }
   .form-grid {
     grid-template-columns: 1fr;
+  }
+  .agent-shell {
+    grid-template-columns: 1fr;
+  }
+  .agent-conversation {
+    min-height: 520px;
+  }
+  .agent-composer {
+    flex-direction: column;
+    align-items: stretch;
   }
   .el-button {
     min-height: 44px;

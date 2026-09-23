@@ -5,12 +5,10 @@ import { idRule } from '@/domain/forms'
 import SectionCard from '@/components/common/SectionCard.vue'
 import AIModelSelect from './AIModelSelect.vue'
 const model = defineModel<WorkflowDefinition>({ required: true })
-const props = defineProps<{
+defineProps<{
   configs: AIConfig[]
   advanced?: boolean
-  modelsPending?: boolean
 }>()
-const emit = defineEmits<{ refreshModels: [] }>()
 const taskKeys = new WeakMap<object, number>()
 const draftIds = reactive(new Map<AnalysisTask, string>())
 let nextKey = 0
@@ -58,14 +56,6 @@ function remove(index: number) {
 <template>
   <SectionCard title="2. 并行 AI 分析" description="各任务使用同一份共享输入">
     <template #actions>
-      <el-button
-        size="small"
-        :loading="props.modelsPending"
-        :disabled="props.modelsPending"
-        @click="emit('refreshModels')"
-      >
-        刷新模型列表
-      </el-button>
       <el-button size="small" @click="add">添加任务</el-button>
     </template>
     <el-form-item

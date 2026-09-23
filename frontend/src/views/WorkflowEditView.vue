@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, onScopeDispose, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance } from 'element-plus'
 import { resourcesApi } from '@/api/resources'
@@ -27,6 +27,9 @@ const {
   error: modelsError,
   refresh: refreshModels,
 } = useQuery((signal) => resourcesApi.list('ai', signal))
+// Returning from provider configuration updates the catalog without replacing the workflow draft.
+onMounted(() => window.addEventListener('focus', refreshModels))
+onScopeDispose(() => window.removeEventListener('focus', refreshModels))
 const { data, pending, error, refresh } = useQuery(
   async (signal) => {
     const [sources, channels, existing] = await Promise.all([
@@ -115,13 +118,7 @@ function submit() {
           </div>
         </SectionCard>
         <SourceStepCard v-model="workflow" :sources="data.sources" :advanced="advanced" />
-        <FanOutTaskCard
-          v-model="workflow"
-          :configs="configs"
-          :models-pending="modelsPending"
-          :advanced="advanced"
-          @refresh-models="refreshModels"
-        />
+        <FanOutTaskCard v-model="workflow" :configs="configs" :advanced="advanced" />
         <FanInCard v-model="workflow" :configs="configs" :advanced="advanced" />
         <NotificationCard v-model="workflow" :channels="data.channels" :advanced="advanced" />
         <BackupMatrix v-if="advanced" v-model="workflow.backup" />
