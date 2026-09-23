@@ -517,10 +517,10 @@ class AgentService:
                     return {"session_id": session_id, "turn_id": previous[0], "deduplicated": True}
                 if not self._accepting:
                     raise LogAgentError("agent_busy", "Agent 当前暂停接收新轮次")
-                if session.finishing and session.task is not None:
+                if session.finishing and session.task is not None and not session.task.done():
                     # The final model boundary is already closed. Wait for
                     # its durable terminal fact before accepting a new turn.
-                    await asyncio.shield(session.task)
+                    await asyncio.wait({session.task})
                 if session.task is not None and not session.task.done():
                     if not queue:
                         raise LogAgentError("session_busy", "一个 session 同时只能运行一轮")
@@ -653,12 +653,13 @@ class AgentService:
                                          text=text, message_id=message_id, request_id=request_id)
                 additions.append(HumanMessage(content=text, id=message_id))
 
-        async def complete(*, compacted):
+        async def complete(*, compacted, error=None):
+            event_type = "command.failed" if error is not None else "command.completed"
             for _, _, request_id, _ in appends:
-                await session.log.append("command.completed", command="append",
-                                         turn_id=session.turn_id, request_id=request_id)
+                await session.log.append(event_type, command="append",
+                                         turn_id=session.turn_id, request_id=request_id, error=error)
             for event_id in compact_events:
-                await session.log.append("command.completed", command="compact",
+                await session.log.append(event_type, command="compact", error=error,
                                          turn_id=session.turn_id, command_event_id=event_id,
                                          compacted=compacted)
         return additions, bool(compact_events), complete
@@ -939,6 +940,7 @@ class AgentService:
             await log.append("turn.started", turn_id=turn_id, branch_id=session.branch_id)
             await log.append("turn.resources", turn_id=turn_id, model=turn_resources.model,
                              tools_generation=turn_resources.tools_generation)
+            await self._persist_session(session)
             identity = RuntimeIdentity(
                 session.session_id, turn_id, session.branch_id,
                 workflow_session_id=session.workflow_session_id, model=turn_resources.model,
@@ -1147,6 +1149,19 @@ class AgentService:
                     pending.append(call_id)
 
         if not pending:
+            terminal = next((event for event in reversed(log.events)
+                             if event["type"] in {"turn.completed", "turn.failed", "turn.cancelled", "turn.interrupted"}), None)
+            if (terminal is not None and terminal["type"] != "turn.completed"
+                    and set(next_nodes) <= set(getattr(graph, "nodes", {}))):
+                # Failed model/middleware nodes have no outstanding effects.
+                # Preserve their messages but discard scheduled work; only the
+                # explicitly admitted new input starts another graph execution.
+                await self._projection_graph().aupdate_state(
+                    config, {"messages": messages}, as_node="projection",
+                )
+                await log.append("checkpoint.repaired", turn_id=turn_id,
+                                 result="continuation_boundary", previous_terminal=terminal["type"])
+                return
             raise LogAgentError(
                 "checkpoint_corrupt", "Agent checkpoint 存在未完成节点但没有可修复工具调用",
                 {"next": list(next_nodes)},
