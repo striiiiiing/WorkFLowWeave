@@ -110,4 +110,23 @@ describe('transcriptRows for Agent events', () => {
     expect(rows[2].role).toBe('summary')
     expect(rows[2].text).toBe('Context compacted summary')
   })
+
+  it('keeps resource snapshots internal and localizes the completed turn state', () => {
+    const base = {
+      session_id: 's1',
+      turn_id: 't1',
+      at: '2026-09-23T10:00:00Z',
+    }
+    const rows = transcriptRows([
+      { ...base, id: 1, type: 'turn.resources', data: { model: 'channel-a:alpha' } },
+      { ...base, id: 2, type: 'turn.completed', data: { checkpoint_id: 'cp1' } },
+    ])
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      role: 'status',
+      status: 'completed',
+      text: '本轮分析已完成',
+    })
+  })
 })

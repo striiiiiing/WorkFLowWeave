@@ -224,18 +224,18 @@ async function copyText(text: string, id: string) {
 
             <!-- 2.5 指令与系统状态卡片 (停止 / 中断 / 恢复) -->
             <template v-else-if="row.role === 'status'">
-              <div class="status-banner" :class="row.text">
+              <div class="status-banner" :class="row.status">
                 <div class="status-icon">
-                  <AppIcon :name="row.text === 'cancelled' ? 'pause' : 'activity'" size="sm" />
+                  <AppIcon :name="row.status === 'cancelled' ? 'pause' : 'activity'" size="sm" />
                 </div>
                 <div class="status-text">
-                  <strong v-if="row.text === 'cancelled'">
+                  <strong v-if="row.status === 'cancelled'">
                     会话已暂停 / 停止。已执行的文件变更与外部操作保持原样。
                   </strong>
-                  <strong v-else-if="row.text === 'interrupted'">
+                  <strong v-else-if="row.status === 'interrupted'">
                     会话已中断，未确定的副作用不会自动重试。
                   </strong>
-                  <strong v-else>{{ row.text }} · {{ row.event.type }}</strong>
+                  <strong v-else>{{ row.text }}</strong>
                   <pre v-if="row.event.data.error" class="error-detail">{{
                     JSON.stringify(row.event.data.error, null, 2)
                   }}</pre>
@@ -297,6 +297,7 @@ async function copyText(text: string, id: string) {
 }
 .transcript-viewport {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 20px 16px;
   scroll-behavior: smooth;
@@ -541,6 +542,18 @@ async function copyText(text: string, id: string) {
   background: #fffbeb;
   border-color: #fde68a;
   color: #92400e;
+}
+
+.status-banner.completed {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.status-banner.failed {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
 }
 
 .status-banner.interrupted {
