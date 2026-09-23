@@ -27,6 +27,7 @@ from logagent.config import (
 from logagent.errors import LogAgentError
 from logagent.lifecycle.logging import JsonLogSink
 from logagent.models import (
+    CollectionContext,
     DiscoveryReport,
     ErrorInfo,
     HealthReport,
@@ -255,6 +256,9 @@ class ApplicationLifecycle:
                     plugins=plugins,
                     collectors=collectors,
                     channels=channels,
+                    collection_context_factory=lambda session: CollectionContext(
+                        "agent", session.session_id, self.config.log_file, credentials, session_view,
+                    ),
                 )
                 await agent.initialize()
                 self._agent = agent
