@@ -233,3 +233,38 @@ async def test_empty_compact_keeps_source_and_can_accept_first_message(tmp_path)
         assert metadata["last_checkpoint_at"] and metadata["continuable"]
     finally:
         await service.close()
+
+
+async def test_failed_boundary_summary_allows_explicit_next_message(tmp_path):
+    import pytest
+
+    from logagent.errors import LogAgentError
+    from tests.agent.test_admission import GatedModel
+
+    model = GatedModel(responses=[AIMessage(content="first " * 100), AIMessage(content="second " * 100),
+                                  AIMessage(content=""), AIMessage(content="continued")])
+    model.release.set()
+    service = AgentService(tmp_path / "workspace", tmp_path / "runtime",
+                           config=AgentConfig(keep_tokens=1), model_provider=lambda _: model)
+    try:
+        sid = (await service.create_session())["session_id"]
+        first = await service.submit(sid, "first", request_id="first")
+        await service.wait(first["turn_id"])
+        model.entered.clear()
+        model.release.clear()
+        second = await service.submit(sid, "second", request_id="second")
+        await asyncio.wait_for(model.entered.wait(), 1)
+        metadata = json.loads((service.runtime / "Sessions" / f"{sid}.json").read_text())
+        assert metadata["status"] == "running" and metadata["turn_id"] == second["turn_id"]
+        await service.compact(sid)
+        model.release.set()
+        with pytest.raises(LogAgentError) as error:
+            await service.wait(second["turn_id"])
+        assert error.value.code == "context_compaction_failed"
+        assert not any(event["type"] == "context.compacted" for event in await service.events(sid))
+        assert any(event["type"] == "command.failed" for event in await service.events(sid))
+        following = await service.submit(sid, "continue with original context", request_id="third")
+        assert (await service.wait(following["turn_id"]))["text"] == "continued"
+        assert any(message.content == "first" for message in model.seen[-1])
+    finally:
+        await service.close()
