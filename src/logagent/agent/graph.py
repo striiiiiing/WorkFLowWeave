@@ -43,6 +43,8 @@ class AgentToolContext:
     collection: CollectionContext | None = None
     tool_call_id: str | None = None
     read_enabled: bool = True
+    on_boundary: Any = None
+    context_middleware: ContextMiddleware | None = None
     tool_tasks: dict[str, asyncio.Task] = field(default_factory=dict)
     ordinals: dict[str, int] = field(default_factory=lambda: defaultdict(int))
 
@@ -166,12 +168,14 @@ def create_graph(*, model, declarations: Iterable[ToolDeclaration], context: Age
         async def record_budget(data):
             await context.event_log.append("context.budget", turn_id=context.turn_id, **data)
 
-        middleware.append(ContextMiddleware(
+        context.context_middleware = ContextMiddleware(
             model=model, config=context.config, system_prompt=system_prompt,
             tools=[convert_to_openai_tool(tool) for tool in tools],
             summary_model=summary_model, summary_timeout=summary_timeout,
             on_compacted=record_compaction, on_budget=record_budget,
-        ))
+            on_boundary=context.on_boundary,
+        )
+        middleware.append(context.context_middleware)
     return create_agent(model=model, tools=tools, system_prompt=system_prompt,
                         middleware=middleware, checkpointer=checkpointer,
                         name="logagent-agent")
