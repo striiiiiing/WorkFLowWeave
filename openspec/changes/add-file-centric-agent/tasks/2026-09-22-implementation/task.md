@@ -56,12 +56,12 @@
 
 ### E. 上下文与压缩（对应 5.1–5.3）
 
-- [ ] E1 每次请求重载 AGENTS、计算 system/tools 和当前模型预算；未知窗口必须显式配置，实际输出上限与预留一致。
-- [x] E2 动态委托官方 SummarizationMiddleware，关闭 4000-token 输入裁剪；固定提示和摘要参数按请求新建，错误传播。
-- [x] E3 一次请求至多一次逻辑压缩，摘要后再次检查；已验证长历史完整输入、ToolMessage 配对和容量超限错误。
+- [ ] E1 每轮捕获 AGENTS、prompt、工具及 AgentConfig，逐模型请求计算完整 system/tools/messages 预算；未知窗口必须显式配置，实际输出上限与预留一致。
+- [ ] E2 动态委托官方 SummarizationMiddleware，关闭 4000-token 输入裁剪；固定提示和摘要参数按请求新建，错误传播。
+- [ ] E3 一次请求至多一次逻辑压缩，摘要后再次检查；验证长历史完整输入、ToolMessage 配对和容量超限错误。
 - [x] E4 主模型无活动默认 300 秒，总 timeout 沿用 AIConfig；增量发布后失败不得重试拼接，工具不自动重试。
 
-预期改动：agent/context.py、配置模型、AI 共享入口与测试。C/R/P/H/B、80% 触发、20% 保留、min(4096,5%B) 摘要预算完全来自 design §8，不冒充模型实际 usage。
+预期改动：agent/context.py、配置模型、AI 共享入口与测试。现行依据为 design §3.1/§8 及设计修订任务：默认 200,000/180,000/40,000 固定 token 阈值，按完整消息计数；不再使用旧 80%/20% 自适应比例。估算与实际 usage 必须区分。
 
 ### F. HTTP、SSE、前端与最终验收（对应 6、7）
 
@@ -80,6 +80,10 @@
 - 审查重点：重复逻辑/第二事实来源、过度 gate、吞错、静默降级、禁用绕过、竞态、重复发送、凭据泄露和与设计未说明的偏离。
 
 ## 执行记录
+
+- E1 配置快照完成点（2026-09-23）：按 design §3.1/§9.1/§10，扩展已有 `_TurnResources` 捕获深拷贝 AgentConfig、工具 Schema 和无 ResourceStore 时的 AIConfig；主模型输出限制、摘要资源选择、工具参数及 idle timeout 不再读取活动轮中的 `self.config`。`update_config` 仅发布下一轮配置，调用方后续修改对象不会改变已发布值。工作区始终保持同一个 ToolScheduler/RWLock/Semaphore；新轮应用共享读容量，缩容等待既有读槽释放，取消归还已收回槽，不新建第二把锁或依赖信号量私有属性。该容量是工作区公共限制，模型生成不持工具锁。
+- E1 快照实测：`rtk proxy timeout 60s .venv/bin/pytest -q tests/agent/test_turn_config.py tests/agent/test_service.py tests/agent/test_admission.py tests/agent/test_task_ownership.py` → 38 passed / 4.97s。新增 4 项验证同轮工具后 prompt/Schema/config/idle timeout 固定、下一轮重新捕获及 provider 输出参数一致，配置更新后写锁仍阻止读取，缩扩容与取消不遗失容量。ruff、uv build、diff-check 通过；构建后单独重跑快照集成烟测 1 passed。E1 全项暂不勾选。
+- E2/E3 证据纠正：本轮代码核对发现旧勾选超出真实证据：graph 直接安装官方中间件，service 仅检查本轮新消息，尚未逐请求计入 checkpoint 历史/system/tools，也未接上摘要完整输入容量与结果复检。暂撤销 E2/E3 勾选，后续以真实 create_agent 接入测试恢复；先前测试/提交作为历史事实保留，不把辅助函数测试当作主路径验收。
 
 - 2026-09-23 委派授权更新：用户最新明确允许指定的 GPT-6 Astra xhigh 实施代理修改产品代码、测试和实施 task.md，并按完成点创建本地提交；主代理负责派发协调。本次 D1/D2 按该最新授权执行，覆盖上文旧的“子代理不得写代码/任务文档或提交”限制，不追溯改写此前执行事实。行为依据为现行 design.md 及 `../2026-09-22-design-revision/task.md`，不按旧记录推导冲突行为；不改 proposal/design。
 
