@@ -9,7 +9,8 @@ import logging
 import shutil
 from collections.abc import Callable
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from copy import deepcopy
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -63,6 +64,7 @@ class AgentSession:
 class _TurnResources:
     """Resources captured before a turn and never changed during that turn."""
 
+    config: AgentConfig
     ai_config: Any | None
     model: str | None
     summary_ai_config: Any | None
@@ -94,7 +96,7 @@ class AgentService:
                  gateway_factory: Callable[[AgentSession], Any] | None = None,
                  collection_context_factory: Callable[[AgentSession], CollectionContext] | None = None,
                  read_only_tools: bool = False):
-        self.config = config or AgentConfig()
+        self.config = (config or AgentConfig()).model_copy(deep=True)
         self.workspace = WorkspaceBackend(workspace, runtime)
         self.runtime = Path(runtime).absolute()
         self.scheduler = ToolScheduler(self.config.read_concurrency)
@@ -508,9 +510,8 @@ class AgentService:
 
     def update_config(self, config: AgentConfig) -> dict[str, Any]:
         """Publish configuration for subsequent turns."""
-        self.config = config
-        self.scheduler = ToolScheduler(config.read_concurrency)
-        return config.model_dump(mode="json")
+        self.config = config.model_copy(deep=True)
+        return self.config.model_dump(mode="json")
 
     async def compact(self, session_id: str) -> dict[str, Any]:
         """Queue a compact command at a running turn's next safe boundary.
@@ -555,7 +556,8 @@ class AgentService:
                 )
 
     @asynccontextmanager
-    async def _model(self, session: AgentSession, *, ai_config=None, model: str | None = None):
+    async def _model(self, session: AgentSession, *, output_tokens: int,
+                     ai_config=None, model: str | None = None):
         if self.model_provider is not None:
             value = self.model_provider(session)
             if inspect.isawaitable(value):
@@ -572,7 +574,7 @@ class AgentService:
             raise LogAgentError("model_unavailable", "Agent session 没有可用模型")
         async with self.ai_service.lease(
             ai_config, model=model, streaming=True,
-            max_output_tokens=self.config.output_tokens,
+            max_output_tokens=output_tokens,
         ) as model:
             yield model
 
@@ -624,9 +626,12 @@ class AgentService:
         raise LogAgentError("model_unavailable", "Agent session 没有可用模型")
 
     def _capture_turn_resources(self, session: AgentSession) -> _TurnResources:
-        declarations = self._tool_declarations()
+        config = self.config.model_copy(deep=True)
+        declarations = tuple(replace(item, input_schema=deepcopy(item.input_schema))
+                             for item in self._tool_declarations())
         if self.resources is None:
-            return _TurnResources(self.ai_config, session.model, None, None, None, declarations, None)
+            return _TurnResources(config, deepcopy(self.ai_config), session.model,
+                                  None, None, None, declarations, None)
         snapshot = self.resources.invocation_snapshot()
         ai_config = None
         model_name = session.model
@@ -634,9 +639,9 @@ class AgentService:
         summary_model = None
         if self.model_provider is None:
             ai_config, model_name = self._resolve_model(session.model, snapshot)
-            if self.config.summary_ai is not None:
+            if config.summary_ai is not None:
                 summary_ai_config, summary_model = self._resolve_summary_model(
-                    self.config.summary_ai, model_name, snapshot,
+                    config.summary_ai, model_name, snapshot,
                 )
         if self.gateway_factory is not None:
             gateway = self.gateway_factory(session)
@@ -652,7 +657,7 @@ class AgentService:
         else:
             gateway = None
         return _TurnResources(
-            ai_config, model_name, summary_ai_config, summary_model,
+            config, ai_config, model_name, summary_ai_config, summary_model,
             self.plugins.generation if self.plugins is not None else None,
             declarations, gateway,
         )
@@ -699,7 +704,7 @@ class AgentService:
         return delta or None
 
     async def _stream_graph(self, graph: Any, messages: list[Any], *, session: AgentSession,
-                            turn_id: str, log: EventLog,
+                            turn_id: str, log: EventLog, idle_timeout: float,
                             publication: list[bool] | None = None) -> tuple[dict[str, Any], bool]:
         """Consume graph events while enforcing the model inactivity boundary.
 
@@ -721,14 +726,14 @@ class AgentService:
                 if awaiting_model:
                     try:
                         event = await asyncio.wait_for(
-                            stream.__anext__(), timeout=self.config.idle_timeout,
+                            stream.__anext__(), timeout=idle_timeout,
                         )
                     except StopAsyncIteration:
                         break
                     except TimeoutError as exc:
                         raise LogAgentError(
                             "model_idle_timeout", "模型流式输出在无活动超时内没有新事件",
-                            {"idle_timeout": self.config.idle_timeout},
+                            {"idle_timeout": idle_timeout},
                         ) from exc
                 else:
                     try:
@@ -806,6 +811,8 @@ class AgentService:
         try:
             ready.set()
             turn_resources = self._capture_turn_resources(session)
+            config = turn_resources.config
+            await self.scheduler.resize(config.read_concurrency)
             await log.append("message.user", turn_id=turn_id, text=text)
             await log.append("turn.started", turn_id=turn_id, branch_id=session.branch_id)
             identity = RuntimeIdentity(
@@ -825,7 +832,7 @@ class AgentService:
             )
             context = AgentToolContext(
                 workspace=view, sandbox=ShellSandbox(view), gateway=turn_resources.gateway,
-                config=self.config,
+                config=config,
                 session_id=session.session_id, turn_id=turn_id, branch_id=session.branch_id,
                 event_log=log, scheduler=self.scheduler, artifacts=self.artifacts,
                 collection=(self.collection_context_factory(session)
@@ -844,7 +851,7 @@ class AgentService:
                 messages, system_prompt,
                 [{"name": item.name, "description": item.description,
                   "input_schema": item.input_schema} for item in turn_resources.declarations],
-                self.config,
+                config,
             )
             await self._ensure_checkpoint_present(
                 session, require_existing=had_previous_turn,
@@ -858,11 +865,13 @@ class AgentService:
                 timeout_context = _null_async_context()
             async with timeout_context:
                 async with self._model(session, ai_config=turn_resources.ai_config,
-                                       model=turn_resources.model) as model:
+                                       model=turn_resources.model,
+                                       output_tokens=config.output_tokens) as model:
                     if turn_resources.summary_ai_config is not None:
                         summary_context = self._model(
                             session, ai_config=turn_resources.summary_ai_config,
                             model=turn_resources.summary_model,
+                            output_tokens=config.summary_max_tokens,
                         )
                     else:
                         summary_context = _null_async_context(model)
@@ -882,7 +891,7 @@ class AgentService:
                         )
                         result, published = await self._stream_graph(
                             graph, messages, session=session, turn_id=turn_id, log=log,
-                            publication=publication,
+                            publication=publication, idle_timeout=config.idle_timeout,
                         )
             if session.compact_pending:
                 await log.append("context.compacted", turn_id=turn_id, empty=True)
