@@ -70,7 +70,7 @@
 - [ ] F3 /agents 两栏聊天与按需工具/文件/设置抽屉，复用 Markdown、报告、useQuery/useAsyncTask；新增单个导航。
 - [ ] F4 工具开关沿用插件配置与 reload；显示真实沙箱/并发/未知发送状态、上下文估算、压缩摘要、文件冲突保留草稿。
 - [ ] F5 前端单测、类型检查、构建；临时目录与假模型的真实后端/浏览器 SSE 烟测、窄屏、停止、重连、冲突，不连接真实渠道。
-- [x] F6 后端定向回归、静态检查、构建、旧 Workflow 回归、OpenSpec 严格验证与 diff 审查。
+- [ ] F6 后端定向回归、静态检查、构建、旧 Workflow 回归、OpenSpec 严格验证与 diff 审查。
 
 ## 验证与提交规则
 
@@ -79,7 +79,19 @@
 - 每个已完成里程碑提交实现与证据。若拆成更小提交，在此新增实际边界，不提前勾选更大的未完项。
 - 审查重点：重复逻辑/第二事实来源、过度 gate、吞错、静默降级、禁用绕过、竞态、重复发送、凭据泄露和与设计未说明的偏离。
 
+## F 最终契约收尾计划（2026-09-23）
+
+以现行 design §4.2/§8/§9/§10、frontend §1–7 与设计修订任务为最终验收依据；上文旧 F6 验证不覆盖本轮最终代码，暂时撤销勾选。根因是图执行、管理端点和页面投影各有未接通的公共契约，按结构性修复处理，不追加第二套调度/摘要/配置来源。
+
+1. 统一工具包装：Collector-only 网关，动态执行类别、完整 Artifact 与可归并工具事实；先验证调用/互斥/错误与取消。
+2. 命令和历史边界：复用 create_agent 中间件在完整工具组后的模型边界处理 append/compact；stop 取消优先；使用公开 checkpoint/state API 建分支，禁止直接操作 saver SQLite 表，编辑只切用户节点之前的投影。
+3. 管理与事件：HTTP 条件写、分页与共享锁、持久配置和真实工具状态；SSE 游标无缝连接、重连去重及慢连接隔离。
+4. 页面：真实分支树/编辑预览、文件分页/冲突草稿、来源/模型/设置/摘要/未知副作用、Workflow 最新和历史入口，复用 useQuery/useAsyncTask。
+5. 前端单测→类型→构建→真实临时 FastAPI/SSE Playwright，覆盖桌面/窄屏/发送/停止/重连/冲突；最后后端及旧 Workflow 回归、静态检查、OpenSpec strict、diff 自审。每批后端 timeout 60s，逐完成点本地提交，不推送、不混入共享脏文件。
+
 ## 执行记录
+
+- F 前置工具契约完成点（2026-09-23）：根据 design §4.2，移除 plugin 的 Channel list/schema/call 分支，既有 ChannelManager/Workflow 通知不变。真实 create_agent 包装现在按网关目标声明选择工作区 read/exclusive，结果经唯一 ArtifactStore 保存完整脱敏正文并返回有限预览；工具事实携带 name/arguments/execution/turn_id/tool_call_id，排队尚未开始的取消明确 cancelled，已开始后取消明确 outcome_unknown。无新的副作用重试。33 项 gateway/service/task-ownership/turn-config/最终集成回归在 timeout 60s 下 4.37s 通过；新增真实图验证写 Collector 等待读锁释放、仅调用一次、长输出 Artifact 完整、预览受限。ruff 与 diff-check 通过。F1–F6 尚未因此提前勾选。
 
 - E1/E2/E3 主路径完成点（2026-09-23，快照提交 `0a0a201` 之后）：按 design §3.1/§8 和设计修订任务，删除旧 `safety_ratio/trigger_ratio/keep_ratio/summary_ratio` 配置，改为固定绝对 `trigger_tokens=180000`、`keep_tokens=40000`，`context_window=200000` 仍为明确展示的项目用户预算，不宣称所有模型容量。已知模型公开 profile 容量与配置取较小值；context_window 为 null 且 profile 未知时明确 `context_budget_unavailable`。独立 summary_ai 不继承主模型容量，必须有其 profile 或显式 summary_context_window。主/摘要输出预留默认仍为 4096；两者不同时通过既有 AIService 租约构造各自上限的模型，不修改活动模型或另造 Provider 工厂。
 - 每次模型节点由 `ContextMiddleware` 计算固定 system/AGENTS、实际转换后的工具定义、包含 checkpoint 的完整 state.messages 及输出预留。优先模型 tokenizer，仅不支持/缺少依赖时使用明确标记的框架估算，其他异常传播；全部预算均带 estimated=true，不冒充 provider usage。普通请求达到固定阈值或实际容量才委托按请求新建的官方 SummarizationMiddleware；传消息深副本，`trim_tokens_to_summarize=None`，由框架选取完整消息组。摘要代理直接检查框架实际生成的完整序列化提示和独立输出预留，超限/空摘要/模型异常直接失败；一次逻辑调用后用公开 add_messages reducer 投影并再次检查完整请求，超限不循环摘要。历史 reported usage 不反向触发额外压缩，无可压缩前缀时手动 prepare(force=True) 无操作、自动超限明确失败；HTTP compact 的排队/空闲接入仍归 F，不以该辅助入口冒称管理 API 完成。

@@ -1,8 +1,7 @@
-"""On-demand access to a round's configured collectors and notification channels."""
+"""On-demand access to a round's configured collectors."""
 
 from __future__ import annotations
 
-import hashlib
 import json
 from copy import deepcopy
 from dataclasses import dataclass
@@ -12,14 +11,11 @@ from pydantic import Field, ValidationError
 
 from logagent.config.calls import (
     normalize_call_options,
-    resolve_channel_call,
     resolve_source_call,
 )
 from logagent.errors import LogAgentError, validation_error
 from logagent.models import (
-    ChannelOverride,
     JSONObject,
-    Notification,
     SourceOverride,
     StrictModel,
 )
@@ -29,17 +25,6 @@ from logagent.schema import call_options_schema
 class _SourceArguments(StrictModel):
     options: JSONObject = Field(default_factory=dict)
     setters: JSONObject = Field(default_factory=dict)
-
-
-class _NotificationBody(StrictModel):
-    title: str = ""
-    text: str
-    metadata: JSONObject = Field(default_factory=dict)
-
-
-class _ChannelArguments(StrictModel):
-    options: JSONObject = Field(default_factory=dict)
-    notification: _NotificationBody
 
 
 @dataclass(frozen=True)
@@ -59,18 +44,16 @@ class PluginGateway:
         self.data_dir = data_dir
         self._descriptions = {
             "sources": {item.name: item for item in snapshot.collectors.describe()},
-            "channels": {item.name: item for item in snapshot.channels.describe()
-                         if "notification" in item.capabilities},
         }
 
     def _target(self, target):
         if not isinstance(target, str) or ":" not in target:
-            raise LogAgentError("invalid_target", "目标需要 sources:id 或 channels:id")
+            raise LogAgentError("invalid_target", "目标需要 sources:id")
         kind, ident = target.split(":", 1)
         resource = self.snapshot.resources.get(kind, {}).get(ident)
         if kind not in self._descriptions or resource is None:
             raise LogAgentError("target_unavailable", "目标未配置或未启用")
-        name = resource.collector if kind == "sources" else resource.channel
+        name = resource.collector
         description = self._descriptions[kind].get(name)
         if description is None:
             raise LogAgentError("target_unavailable", "目标插件不可调用")
@@ -80,7 +63,7 @@ class PluginGateway:
         if arguments.get("action") in {"list", "schema"}:
             return "read"
         kind, _, description = self._target(arguments.get("target"))
-        return "exclusive" if kind == "channels" else description.execution
+        return description.execution
 
     def listing(self, *, query="", cursor=0, page_size):
         entries = []
@@ -89,12 +72,12 @@ class PluginGateway:
                 continue
             for ident in sorted(resources):
                 resource = resources[ident]
-                name = resource.collector if kind == "sources" else resource.channel
+                name = resource.collector
                 description = self._descriptions[kind].get(name)
                 if description is None:
                     continue
                 entry = {"target": f"{kind}:{ident}", "description": description.description,
-                         "execution": "exclusive" if kind == "channels" else description.execution}
+                         "execution": description.execution}
                 if query.casefold() in (entry["target"] + entry["description"]).casefold():
                     entries.append(entry)
         end = min(cursor + page_size, len(entries))
@@ -107,15 +90,11 @@ class PluginGateway:
         # An embedded schema needs its own local-reference base URI.
         options["$id"] = "urn:logagent:call-options"
         options["description"] = "Only explicit call overrides; saved values remain effective"
-        if kind == "sources":
-            setters = deepcopy(description.setters_schema)
-            setters.setdefault("$id", "urn:logagent:call-setters")
-            setters["description"] = "Setter overrides; omitted keys retain the saved values"
-            properties = {"options": options, "setters": setters}
-            required = ["options"] if options.get("required") else []
-        else:
-            properties = {"options": options, "notification": _NotificationBody.model_json_schema()}
-            required = ["notification", *(["options"] if options.get("required") else [])]
+        setters = deepcopy(description.setters_schema)
+        setters.setdefault("$id", "urn:logagent:call-setters")
+        setters["description"] = "Setter overrides; omitted keys retain the saved values"
+        properties = {"options": options, "setters": setters}
+        required = ["options"] if options.get("required") else []
         return {"type": "object", "properties": properties, "required": required,
                 "additionalProperties": False}
 
@@ -144,21 +123,12 @@ class PluginGateway:
             raise LogAgentError("invalid_argument", "未知 plugin action")
         kind, resource, description = self._target(target)
         try:
-            model = _SourceArguments if kind == "sources" else _ChannelArguments
-            values = model.model_validate(arguments.get("arguments", {}))
+            values = _SourceArguments.model_validate(arguments.get("arguments", {}))
         except ValidationError as exc:
             raise validation_error(exc, code="invalid_argument") from None
         options = normalize_call_options(values.options, description.options_schema,
                                          data_dir=self.data_dir)
-        if kind == "sources":
-            source = resolve_source_call(resource, {}, SourceOverride(options=options,
-                                                                      setters=values.setters))
-            result = await self.collectors.collect(source, context.collection)
-        else:
-            channel = resolve_channel_call(resource, ChannelOverride(options=options))
-            # Tool call IDs are provider-controlled and need not satisfy the public ID type.
-            output_id = hashlib.sha256(f"{context.turn_id}:{context.tool_call_id}".encode()).hexdigest()
-            notification = Notification(session_id=context.session_id, output_id=output_id,
-                                        **values.notification.model_dump())
-            result = await self.channels.send(channel, notification)
+        source = resolve_source_call(resource, {}, SourceOverride(options=options,
+                                                                  setters=values.setters))
+        result = await self.collectors.collect(source, context.collection)
         return result.model_dump(mode="json")
