@@ -70,8 +70,8 @@ def _langchain_tool(declaration: ToolDeclaration, context: AgentToolContext) -> 
             return completed.result or {}
 
         async def execute():
-            async with context.scheduler.acquire(declaration.execution):
-                try:
+            try:
+                async with context.scheduler.acquire(declaration.execution):
                     result = await declaration.invoke(
                         arguments, replace(context, tool_call_id=key)
                     )
@@ -79,13 +79,13 @@ def _langchain_tool(declaration: ToolDeclaration, context: AgentToolContext) -> 
                         result = {"status": "success", "value": result}
                     await context.event_log.complete_tool(key, arguments, result)
                     return result
-                except asyncio.CancelledError:
-                    await context.event_log.mark_unknown(key, arguments, reason="cancelled")
-                    raise
-                except LogAgentError as error:
-                    result = _tool_error(error)
-                    await context.event_log.complete_tool(key, arguments, result)
-                    return result
+            except asyncio.CancelledError:
+                await context.event_log.mark_unknown(key, arguments, reason="cancelled")
+                raise
+            except LogAgentError as error:
+                result = _tool_error(error)
+                await context.event_log.complete_tool(key, arguments, result)
+                return result
 
         task = asyncio.create_task(execute(), name=f"agent:tool:{declaration.name}")
         context.tool_tasks[key] = task

@@ -1,10 +1,16 @@
+import asyncio
+import json
 from types import SimpleNamespace
 
+import httpx
 from fastapi.testclient import TestClient
+from langchain_core.messages import AIMessage
 
+from logagent.agent.service import AgentService
 from logagent.errors import LogAgentError
 from logagent.interaction.app import create_app
 from logagent.interaction.errors import status_for_code
+from tests.agent.test_admission import GatedModel
 
 
 class FakeAgent:
@@ -90,3 +96,68 @@ def test_agent_tool_switch_uses_lifecycle_reload_boundary():
         response = client.put("/api/agents/tools/agent_shell", json={"enabled": False})
     assert response.status_code == 200
     assert owner.setting == ("agent_shell", False)
+
+
+async def test_real_sse_disconnect_keeps_turn_running_and_replays_its_completion(tmp_path):
+    model = GatedModel(responses=[AIMessage(content="answer after disconnect")])
+    service = AgentService(
+        tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model,
+    )
+    owner = Lifecycle()
+    owner.services.agent = service
+    app = create_app(owner)
+    try:
+        async with app.router.lifespan_context(app), httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            created = await client.post("/api/agents/sessions", json={"model": "test"})
+            assert created.status_code == 201
+            sid = created.json()["session_id"]
+            accepted = await client.post(f"/api/agents/sessions/{sid}/messages", json={
+                "request_id": "r1", "text": "hello",
+            })
+            assert accepted.status_code == 202
+            await asyncio.wait_for(model.entered.wait(), 1)
+            disconnected = asyncio.Event()
+            chunks = []
+            request_received = False
+
+            async def receive():
+                nonlocal request_received
+                if not request_received:
+                    request_received = True
+                    return {"type": "http.request", "body": b"", "more_body": False}
+                await disconnected.wait()
+                return {"type": "http.disconnect"}
+
+            async def send(message):
+                if message["type"] == "http.response.body" and b"data:" in message.get("body", b""):
+                    chunks.append(message["body"].decode())
+                    disconnected.set()
+
+            await asyncio.wait_for(app({
+                "type": "http", "asgi": {"version": "3.0", "spec_version": "2.0"},
+                "http_version": "1.1", "method": "GET", "scheme": "http",
+                "path": f"/api/agents/sessions/{sid}/events", "root_path": "",
+                "query_string": b"", "headers": [], "client": ("test", 1),
+                "server": ("test", 80),
+            }, receive, send), 2)
+            assert chunks and disconnected.is_set()
+            assert not service.sessions[sid].task.done()
+            cursor = max(int(line[4:]) for chunk in chunks for line in chunk.splitlines()
+                         if line.startswith("id: "))
+            model.release.set()
+            result = await service.wait(accepted.json()["turn_id"])
+            assert result["status"] == "completed"
+            replay = await client.get(f"/api/agents/sessions/{sid}/events", headers={
+                "Last-Event-ID": str(cursor),
+            })
+            assert replay.status_code == 200
+            events = [json.loads(line[6:]) for line in replay.text.splitlines()
+                      if line.startswith("data: ")]
+            assert events and all(event["id"] > cursor for event in events)
+            assert events[-1]["type"] == "turn.completed"
+            assert events[-1]["text"] == "answer after disconnect"
+            assert not any(event["type"] == "turn.cancelled" for event in events)
+    finally:
+        await service.close()

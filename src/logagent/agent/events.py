@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from logagent.agent.io import file_io
 from logagent.errors import LogAgentError
 
 
@@ -178,7 +179,7 @@ class EventLog:
                 "created_at": timestamp,
                 **fields,
             }
-            event, events = await asyncio.to_thread(self._append_locked, event)
+            event, events = await file_io(self._append_locked, event)
             self._replace_index(events)
             self._revision += 1
             async with self._changed:
