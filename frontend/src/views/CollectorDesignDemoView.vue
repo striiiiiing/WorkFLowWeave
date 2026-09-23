@@ -1,127 +1,143 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AppIcon from '@/components/icons/AppIcon.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import type { JsonObject } from '@/types'
 
 type CollectorKey = 'logs' | 'rss' | 'history'
-type ResourceStatus = 'enabled' | 'paused'
+type ViewMode = 'collection' | 'resources'
 type EditorMode = 'form' | 'json'
+type ResourceFilter = 'all' | 'shared' | 'single'
 
 interface CollectorCatalogItem {
   key: CollectorKey
   label: string
   description: string
   fields: string
-  icon: 'database' | 'workflow' | 'settings'
+  icon: 'database' | 'workflow' | 'history'
   tone: string
+  locationLabel: string
+  locationPlaceholder: string
+  fieldOptions: { key: string; label: string }[]
+  filterOptions: { value: string; label: string }[]
 }
 
 interface RuleForm {
-  fields: string
+  fields: string[]
   filter: string
   sortBy: string
-  groupBy: string
   format: string
   descending: boolean
 }
 
-interface ProcessingTemplate {
+interface SourceOptions {
+  location: string
+  apiKey: string
+  limit: number
+}
+
+interface SourceResource {
   id: string
   name: string
   collector: CollectorKey
-  description: string
+  enabled: boolean
+  options: SourceOptions
+  rules: JsonObject
   updatedAt: string
+}
+
+interface Workflow {
+  id: string
+  name: string
+  sourceIds: string[]
+}
+
+interface SourceDraft {
+  id: string
+  name: string
+  collector: CollectorKey
+  enabled: boolean
+  options: SourceOptions
   rules: JsonObject
 }
 
-interface CollectorInstance {
-  id: string
-  name: string
-  collector: CollectorKey
-  status: ResourceStatus
-  summary: string
-  options: {
-    path: string
-    apiKey: string
-    maxLines: number
-  }
-  templateId: string | null
-  localRules: JsonObject
-  timeout: number
+interface LocalOverride {
+  detached: boolean
+  draft: SourceDraft
 }
 
 const collectorCatalog: CollectorCatalogItem[] = [
   {
     key: 'logs',
     label: '运行日志',
-    description: '读取 LogAgent 诊断日志，适合监控错误、告警和运行状态。',
-    fields: 'message · level · module · session',
+    description: '从 LogAgent 日志中读取错误、告警和运行信息。',
+    fields: '时间 · 级别 · 模块 · 内容',
     icon: 'database',
     tone: '#2563eb',
+    locationLabel: '日志文件或接口地址',
+    locationPlaceholder: '/var/log/logagent/app.jsonl',
+    fieldOptions: [
+      { key: 'created_at', label: '发生时间' },
+      { key: 'level', label: '错误级别' },
+      { key: 'module', label: '来源模块' },
+      { key: 'message', label: '日志内容' },
+      { key: 'session', label: '运行会话' },
+    ],
+    filterOptions: [
+      { value: 'all', label: '不筛选' },
+      { value: 'alerts', label: '只看错误和告警' },
+    ],
   },
   {
     key: 'rss',
     label: 'RSS 订阅',
-    description: '读取订阅源的新内容，适合定时跟踪固定信息源。',
-    fields: 'title · link · published · summary',
+    description: '从固定订阅地址读取最近发布的内容。',
+    fields: '标题 · 链接 · 发布时间 · 摘要',
     icon: 'workflow',
     tone: '#0f766e',
+    locationLabel: '订阅地址',
+    locationPlaceholder: 'https://example.com/feed.xml',
+    fieldOptions: [
+      { key: 'title', label: '标题' },
+      { key: 'published', label: '发布时间' },
+      { key: 'summary', label: '内容摘要' },
+      { key: 'link', label: '原文链接' },
+    ],
+    filterOptions: [
+      { value: 'all', label: '不筛选' },
+      { value: 'recent', label: '只看最近 7 天' },
+    ],
   },
   {
     key: 'history',
-    label: '历史运行',
-    description: '读取历史工作流结果，用于对比、复盘和二次分析。',
-    fields: 'workflow · status · created_at · content',
-    icon: 'settings',
+    label: '历史运行结果',
+    description: '从过去的工作流结果中读取内容，方便复盘比较。',
+    fields: '工作流 · 状态 · 时间 · 正文',
+    icon: 'history',
     tone: '#c2410c',
+    locationLabel: '结果来源名称',
+    locationPlaceholder: 'weekly-report',
+    fieldOptions: [
+      { key: 'workflow_name', label: '工作流名称' },
+      { key: 'status', label: '运行状态' },
+      { key: 'created_at', label: '运行时间' },
+      { key: 'content', label: '运行结果' },
+    ],
+    filterOptions: [
+      { value: 'all', label: '不筛选' },
+      { value: 'complete', label: '只看已完成的结果' },
+    ],
   },
 ]
 
-const instances = ref<CollectorInstance[]>([
+const resources = ref<SourceResource[]>([
   {
     id: 'logs_daily',
     name: '每日运行日志',
     collector: 'logs',
-    status: 'enabled',
-    summary: '最近 24 小时 · 过滤 error / warning',
-    options: { path: '/var/log/logagent/app.jsonl', apiKey: '', maxLines: 500 },
-    templateId: 'tpl-log-alerts',
-    localRules: { descending: true },
-    timeout: 60,
-  },
-  {
-    id: 'rss_product',
-    name: '产品更新订阅',
-    collector: 'rss',
-    status: 'enabled',
-    summary: '3 个订阅源 · 只保留最近 7 天',
-    options: { path: 'https://example.com/feed.xml', apiKey: '', maxLines: 100 },
-    templateId: 'tpl-rss-brief',
-    localRules: {},
-    timeout: 45,
-  },
-  {
-    id: 'history_weekly',
-    name: '每周结果复盘',
-    collector: 'history',
-    status: 'paused',
-    summary: '最近 10 次运行 · 保留最终报告',
-    options: { path: 'weekly-report', apiKey: '', maxLines: 10 },
-    templateId: null,
-    localRules: { fields: ['workflow_name', 'status', 'content'] },
-    timeout: 90,
-  },
-])
-
-const templates = ref<ProcessingTemplate[]>([
-  {
-    id: 'tpl-log-alerts',
-    name: '错误与告警摘要',
-    collector: 'logs',
-    description: '保留错误上下文，并按时间倒序排列。',
-    updatedAt: '今天 09:42',
+    enabled: true,
+    options: { location: '/var/log/logagent/app.jsonl', apiKey: '', limit: 500 },
     rules: {
       fields: ['level', 'module', 'message', 'session'],
       filter: { level: ['error', 'warning'] },
@@ -129,13 +145,14 @@ const templates = ref<ProcessingTemplate[]>([
       descending: true,
       format: 'markdown',
     },
+    updatedAt: '今天 09:42',
   },
   {
-    id: 'tpl-rss-brief',
-    name: '简报输入',
+    id: 'rss_product',
+    name: '产品更新订阅',
     collector: 'rss',
-    description: '只把标题、时间和摘要交给后续分析。',
-    updatedAt: '昨天 18:10',
+    enabled: true,
+    options: { location: 'https://example.com/feed.xml', apiKey: '', limit: 100 },
     rules: {
       fields: ['title', 'published', 'summary', 'link'],
       filter: { published_within_days: 7 },
@@ -143,689 +160,2086 @@ const templates = ref<ProcessingTemplate[]>([
       descending: true,
       format: 'markdown',
     },
+    updatedAt: '昨天 18:10',
   },
   {
-    id: 'tpl-history-diff',
-    name: '复盘对比',
+    id: 'history_weekly',
+    name: '每周结果复盘',
     collector: 'history',
-    description: '提取运行状态和最终正文，便于周期性比较。',
-    updatedAt: '2026-09-21',
+    enabled: false,
+    options: { location: 'weekly-report', apiKey: '', limit: 10 },
     rules: {
       fields: ['workflow_name', 'status', 'created_at', 'content'],
       filter: { status: ['completed', 'partial'] },
       sort_by: 'created_at',
-      descending: false,
       format: 'markdown',
     },
+    updatedAt: '2026-09-21',
   },
 ])
 
-const search = ref('')
-const collectorFilter = ref<'all' | CollectorKey>('all')
-const selectedInstanceId = ref('logs_daily')
-const templateManagerOpen = ref(false)
-const templateTypeFilter = ref<'all' | CollectorKey>('all')
-const selectedTemplateId = ref('tpl-log-alerts')
-const templateDraft = ref<ProcessingTemplate | null>(null)
-const templateMode = ref<EditorMode>('form')
-const templateJson = ref('')
-const templateRuleForm = ref<RuleForm>(emptyRuleForm())
-const instanceDrawerOpen = ref(false)
-const instanceDraft = ref<CollectorInstance | null>(null)
-const instanceMode = ref<EditorMode>('form')
-const instanceJson = ref('')
-const instanceRuleForm = ref<RuleForm>(emptyRuleForm())
-const workflowOverrideEnabled = ref(false)
-const workflowTemplateId = ref('')
-const workflowMode = ref<EditorMode>('form')
-const workflowJson = ref('')
+const workflows = ref<Workflow[]>([
+  { id: 'daily-brief', name: '每日科技简报', sourceIds: ['logs_daily', 'rss_product'] },
+  { id: 'incident-alert', name: '异常告警', sourceIds: ['logs_daily'] },
+  { id: 'weekly-review', name: '每周结果复盘', sourceIds: ['history_weekly'] },
+])
+
+const localOverrides = ref<Record<string, Record<string, LocalOverride>>>({})
+const activeView = ref<ViewMode>('collection')
+const selectedWorkflowId = ref('daily-brief')
+const selectedWorkflowSourceId = ref('logs_daily')
+const selectedResourceId = ref('logs_daily')
+const collectionSearch = ref('')
+const resourceSearch = ref('')
+const resourceFilter = ref<ResourceFilter>('all')
+
+const workflowDraft = ref<SourceDraft | null>(null)
+const workflowDetached = ref(false)
+const workflowRuleMode = ref<EditorMode>('form')
 const workflowRuleForm = ref<RuleForm>(emptyRuleForm())
+const workflowRulesJson = ref('{}')
+
+const addCollectorOpen = ref(false)
+const loadCollectorOpen = ref(false)
+const newCollectorDraft = ref<SourceDraft>(emptySourceDraft('logs'))
+const newCollectorRuleMode = ref<EditorMode>('form')
+const newCollectorRuleForm = ref<RuleForm>(emptyRuleForm())
+const newCollectorRulesJson = ref('{}')
+const loadSearch = ref('')
+
+const resourceEditorOpen = ref(false)
+const attachNewCollectorToWorkflow = ref(true)
+const resourceDraft = ref<SourceDraft | null>(null)
+const resourceRuleMode = ref<EditorMode>('form')
+const resourceRuleForm = ref<RuleForm>(emptyRuleForm())
+const resourceRulesJson = ref('{}')
 
 function emptyRuleForm(): RuleForm {
-  return { fields: '', filter: '', sortBy: '', groupBy: '', format: 'markdown', descending: false }
+  return { fields: [], filter: 'all', sortBy: '', format: 'markdown', descending: false }
 }
 
-function catalogItem(key: CollectorKey) {
-  return collectorCatalog.find((item) => item.key === key) ?? collectorCatalog[0]
+function emptySourceDraft(collector: CollectorKey): SourceDraft {
+  return {
+    id: `source_${Date.now()}`,
+    name: '新的数据源',
+    collector,
+    enabled: true,
+    options: { location: '', apiKey: '', limit: 200 },
+    rules: {},
+  }
 }
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
 }
 
-function displayRules(rules: JsonObject) {
+function catalogItem(key: CollectorKey) {
+  return collectorCatalog.find((item) => item.key === key) ?? collectorCatalog[0]
+}
+
+function sourceById(id: string) {
+  return resources.value.find((source) => source.id === id)
+}
+
+function draftFromResource(source: SourceResource): SourceDraft {
+  return {
+    id: source.id,
+    name: source.name,
+    collector: source.collector,
+    enabled: source.enabled,
+    options: clone(source.options),
+    rules: clone(source.rules),
+  }
+}
+
+function rulesToJson(rules: JsonObject) {
   return JSON.stringify(rules, null, 2)
 }
 
-function formFromRules(rules: JsonObject): RuleForm {
-  const filter = rules.filter
+function filterPreset(value: unknown, collector: CollectorKey) {
+  if (!value || typeof value !== 'object') return 'all'
+  const serialized = JSON.stringify(value)
+  if (collector === 'logs' && serialized === JSON.stringify({ level: ['error', 'warning'] }))
+    return 'alerts'
+  if (collector === 'rss' && serialized === JSON.stringify({ published_within_days: 7 }))
+    return 'recent'
+  if (
+    collector === 'history' &&
+    serialized === JSON.stringify({ status: ['completed', 'partial'] })
+  )
+    return 'complete'
+  return 'custom'
+}
+
+function formFromRules(rules: JsonObject, collector: CollectorKey): RuleForm {
   return {
-    fields: Array.isArray(rules.fields) ? rules.fields.join(', ') : '',
-    filter: filter && typeof filter === 'object' ? JSON.stringify(filter) : '',
+    fields: Array.isArray(rules.fields)
+      ? rules.fields.filter((field): field is string => typeof field === 'string')
+      : [],
+    filter: filterPreset(rules.filter, collector),
     sortBy: typeof rules.sort_by === 'string' ? rules.sort_by : '',
-    groupBy: typeof rules.group_by === 'string' ? rules.group_by : '',
     format: typeof rules.format === 'string' ? rules.format : 'markdown',
     descending: rules.descending === true,
   }
 }
 
-function rulesFromForm(form: RuleForm): JsonObject {
-  const rules: JsonObject = {}
-  const fields = form.fields
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
-  if (fields.length) rules.fields = fields
-  if (form.filter.trim()) {
-    try {
-      rules.filter = JSON.parse(form.filter)
-    } catch {
-      rules.filter = form.filter
-    }
+function supportsBasicRuleEditor(rules: JsonObject, collector: CollectorKey) {
+  const supportedKeys = new Set(['fields', 'filter', 'sort_by', 'descending', 'format'])
+  if (Object.keys(rules).some((key) => !supportedKeys.has(key))) return false
+  if (Array.isArray(rules.fields)) {
+    const fields = new Set(catalogItem(collector).fieldOptions.map((field) => field.key))
+    if (rules.fields.some((field) => typeof field !== 'string' || !fields.has(field))) return false
+  } else if (rules.fields !== undefined) {
+    return false
   }
+  if (
+    typeof rules.sort_by === 'string' &&
+    !catalogItem(collector).fieldOptions.some((field) => field.key === rules.sort_by)
+  ) {
+    return false
+  }
+  if (rules.sort_by !== undefined && typeof rules.sort_by !== 'string') return false
+  if (filterPreset(rules.filter, collector) === 'custom') return false
+  if (rules.format !== undefined && !['markdown', 'json', 'text'].includes(String(rules.format)))
+    return false
+  return rules.descending === undefined || typeof rules.descending === 'boolean'
+}
+
+function rulesFromForm(form: RuleForm, collector: CollectorKey): JsonObject {
+  const rules: JsonObject = {}
+  if (form.fields.length) rules.fields = [...form.fields]
+  const filterSelection = form.filter
+  if (collector === 'logs' && filterSelection === 'alerts')
+    rules.filter = { level: ['error', 'warning'] }
+  if (collector === 'rss' && filterSelection === 'recent')
+    rules.filter = { published_within_days: 7 }
+  if (collector === 'history' && filterSelection === 'complete')
+    rules.filter = { status: ['completed', 'partial'] }
   if (form.sortBy.trim()) rules.sort_by = form.sortBy.trim()
-  if (form.groupBy.trim()) rules.group_by = form.groupBy.trim()
   if (form.format) rules.format = form.format
   if (form.descending) rules.descending = true
   return rules
 }
 
-const selectedInstance = computed(
-  () => instances.value.find((item) => item.id === selectedInstanceId.value) ?? instances.value[0],
-)
-const selectedCatalog = computed(() => catalogItem(selectedInstance.value?.collector ?? 'logs'))
-const filteredInstances = computed(() => {
-  const query = search.value.trim().toLowerCase()
-  return instances.value.filter((instance) => {
-    const matchesType = collectorFilter.value === 'all' || instance.collector === collectorFilter.value
-    const matchesSearch =
-      !query || `${instance.name} ${instance.id} ${catalogItem(instance.collector).label}`.toLowerCase().includes(query)
-    return matchesType && matchesSearch
-  })
-})
-const visibleTemplates = computed(() =>
-  templates.value.filter(
-    (template) => templateTypeFilter.value === 'all' || template.collector === templateTypeFilter.value,
-  ),
-)
-const instanceTemplates = computed(() =>
-  templates.value.filter((template) => template.collector === instanceDraft.value?.collector),
-)
-const instanceTemplate = computed(() =>
-  templates.value.find(
-    (template) =>
-      template.id === instanceDraft.value?.templateId && template.collector === instanceDraft.value?.collector,
-  ),
-)
-const templateUsage = computed(() =>
-  instances.value.filter((instance) => instance.templateId === templateDraft.value?.id),
-)
-const workflowTemplate = computed(() =>
-  templates.value.find((template) => template.id === workflowTemplateId.value),
-)
-const effectivePreviewRules = computed(() => {
-  const base = selectedInstance.value?.templateId
-    ? templates.value.find(
-        (template) =>
-          template.id === selectedInstance.value?.templateId &&
-          template.collector === selectedInstance.value?.collector,
-      )?.rules ?? {}
-    : {}
-  return { ...base, ...(selectedInstance.value?.localRules ?? {}) }
-})
-
-function openInstance(instance?: CollectorInstance) {
-  const defaultCollector = collectorFilter.value === 'all' ? 'logs' : collectorFilter.value
-  instanceDraft.value = clone(
-    instance ?? {
-      id: `collector_${Date.now()}`,
-      name: '新的采集器实例',
-      collector: defaultCollector,
-      status: 'enabled',
-      summary: '尚未配置处理规则',
-      options: { path: '', apiKey: '', maxLines: 200 },
-      templateId: null,
-      localRules: {},
-      timeout: 60,
-    },
-  )
-  instanceRuleForm.value = formFromRules(instanceDraft.value.localRules)
-  instanceJson.value = displayRules(instanceDraft.value.localRules)
-  instanceMode.value = 'form'
-  instanceDrawerOpen.value = true
-}
-
-function saveInstance() {
-  if (!instanceDraft.value) return
-  const localRules = readRules(instanceMode.value, instanceJson.value, instanceRuleForm.value)
-  if (!localRules) return
-  instanceDraft.value.localRules = localRules
-  instanceDraft.value.summary = instanceTemplate.value
-    ? `${instanceTemplate.value.name} · ${instanceDraft.value.options.maxLines} 条以内`
-    : '尚未加载处理模板 · 可继续编辑本地规则'
-  const index = instances.value.findIndex((item) => item.id === instanceDraft.value?.id)
-  if (index === -1) instances.value.push(clone(instanceDraft.value))
-  else instances.value[index] = clone(instanceDraft.value)
-  selectedInstanceId.value = instanceDraft.value.id
-  instanceDrawerOpen.value = false
-  ElMessage.success('采集器实例已保存（演示数据）')
-}
-
-function readRules(mode: EditorMode, json: string, form: RuleForm): JsonObject | null {
-  if (mode === 'form') return rulesFromForm(form)
+function parseRules(
+  mode: EditorMode,
+  json: string,
+  form: RuleForm,
+  collector: CollectorKey,
+): JsonObject | null {
+  if (mode === 'form') {
+    if (form.filter === 'custom') {
+      ElMessage.error('这份数据源包含高级筛选规则，请切换到高级 JSON 后保存')
+      return null
+    }
+    return rulesFromForm(form, collector)
+  }
   try {
     const parsed = JSON.parse(json)
-    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error()
-    return parsed
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object')
+      throw new Error('object required')
+    return parsed as JsonObject
   } catch {
-    ElMessage.error('高级 JSON 必须是一个有效对象')
+    ElMessage.error('高级 JSON 必须是一个有效的对象')
     return null
   }
 }
 
-function loadInstanceTemplate(templateId: string | null) {
-  if (!instanceDraft.value) return
-  instanceDraft.value.templateId = templateId || null
-  const template = templates.value.find((item) => item.id === templateId)
-  if (template) ElMessage.info(`已加载“${template.name}”，局部调整仍只属于当前实例`)
-}
-
-function openTemplateManager() {
-  templateManagerOpen.value = true
-  const first = visibleTemplates.value[0] ?? templates.value[0]
-  if (first) selectTemplate(first.id)
-}
-
-function selectTemplate(id: string) {
-  selectedTemplateId.value = id
-  const template = templates.value.find((item) => item.id === id)
-  if (!template) return
-  templateDraft.value = clone(template)
-  templateRuleForm.value = formFromRules(template.rules)
-  templateJson.value = displayRules(template.rules)
-  templateMode.value = 'form'
-}
-
-function createTemplate() {
-  const collector = templateTypeFilter.value === 'all' ? 'logs' : templateTypeFilter.value
-  const draft: ProcessingTemplate = {
-    id: `template_${Date.now()}`,
-    name: '新的处理模板',
-    collector,
-    description: '描述这份规则会保留哪些字段。',
-    updatedAt: '刚刚',
-    rules: {},
-  }
-  templates.value.push(draft)
-  selectTemplate(draft.id)
-  ElMessage.info('已创建模板草稿')
-}
-
-function saveTemplate() {
-  if (!templateDraft.value) return
-  const rules = readRules(templateMode.value, templateJson.value, templateRuleForm.value)
-  if (!rules) return
-  const usedBy = instances.value.filter((item) => item.templateId === templateDraft.value?.id)
-  if (usedBy.some((item) => item.collector !== templateDraft.value?.collector)) {
-    ElMessage.warning('该模板仍被其他采集器使用，不能更改为当前类型')
-    return
-  }
-  templateDraft.value.rules = rules
-  templateDraft.value.updatedAt = '刚刚'
-  const index = templates.value.findIndex((item) => item.id === templateDraft.value?.id)
-  if (index === -1) templates.value.push(clone(templateDraft.value))
-  else templates.value[index] = clone(templateDraft.value)
-  if (instanceDraft.value?.templateId === templateDraft.value.id) {
-    instanceJson.value = displayRules(rules)
-  }
-  ElMessage.success('处理模板已保存（演示数据）')
-}
-
-async function changeInstanceCollector(collector: CollectorKey) {
-  if (!instanceDraft.value) return
-  const currentTemplate = templates.value.find((template) => template.id === instanceDraft.value?.templateId)
-  if (currentTemplate && currentTemplate.collector !== collector) {
-    try {
-      await ElMessageBox.confirm(
-        `当前实例使用“${currentTemplate.name}”，它仅适用于${catalogItem(currentTemplate.collector).label}。切换后将移除模板引用。`,
-        '切换采集器类型',
-        { confirmButtonText: '继续切换', cancelButtonText: '取消', type: 'warning' },
-      )
-    } catch {
-      return
+function setRuleMode(
+  nextMode: EditorMode,
+  currentMode: EditorMode,
+  json: string,
+  form: { value: RuleForm },
+  collector: CollectorKey,
+  updateJson: (value: string) => void,
+) {
+  if (nextMode === currentMode) return true
+  if (nextMode === 'json') {
+    if (form.value.filter === 'custom') {
+      ElMessage.error('请在高级 JSON 中保留这份数据源已有的筛选条件')
+      return false
     }
-    instanceDraft.value.templateId = null
-    ElMessage.warning('采集器类型已切换，已移除不适用的处理模板')
+    updateJson(rulesToJson(rulesFromForm(form.value, collector)))
+    return true
   }
-  instanceDraft.value.collector = collector
+  try {
+    const parsed = JSON.parse(json)
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error()
+    const rules = parsed as JsonObject
+    if (!supportsBasicRuleEditor(rules, collector)) {
+      ElMessage.error('当前规则包含普通设置未覆盖的内容，请继续使用高级 JSON')
+      return false
+    }
+    form.value = formFromRules(rules, collector)
+    return true
+  } catch {
+    ElMessage.error('当前 JSON 无法转换为普通表单，请先修正它')
+    return false
+  }
 }
 
-function removeTemplate() {
-  if (!templateDraft.value) return
-  const usedBy = instances.value.filter((item) => item.templateId === templateDraft.value?.id)
-  if (usedBy.length) {
-    ElMessage.warning(`该模板仍被 ${usedBy.length} 个采集器实例使用，演示中不允许删除`)
+const selectedWorkflow = computed(
+  () =>
+    workflows.value.find((workflow) => workflow.id === selectedWorkflowId.value) ??
+    workflows.value[0],
+)
+const selectedWorkflowSource = computed(() => sourceById(selectedWorkflowSourceId.value))
+const selectedResource = computed(() => sourceById(selectedResourceId.value))
+const filteredCollectionSources = computed(() => {
+  const query = collectionSearch.value.trim().toLowerCase()
+  return (selectedWorkflow.value?.sourceIds ?? [])
+    .map((id) => sourceById(id))
+    .filter((source): source is SourceResource => Boolean(source))
+    .filter((source) => {
+      if (!query) return true
+      return `${source.name} ${source.id} ${catalogItem(source.collector).label}`
+        .toLowerCase()
+        .includes(query)
+    })
+})
+const filteredResources = computed(() => {
+  const query = resourceSearch.value.trim().toLowerCase()
+  return resources.value.filter((source) => {
+    const count = workflows.value.filter((workflow) =>
+      workflow.sourceIds.includes(source.id),
+    ).length
+    const matchesFilter =
+      resourceFilter.value === 'all' ||
+      (resourceFilter.value === 'shared' && count > 1) ||
+      (resourceFilter.value === 'single' && count <= 1)
+    const matchesSearch =
+      !query ||
+      `${source.name} ${source.id} ${catalogItem(source.collector).label}`
+        .toLowerCase()
+        .includes(query)
+    return matchesFilter && matchesSearch
+  })
+})
+const filteredLoadResources = computed(() => {
+  const query = loadSearch.value.trim().toLowerCase()
+  return resources.value.filter(
+    (source) =>
+      !query ||
+      `${source.name} ${source.id} ${catalogItem(source.collector).label}`
+        .toLowerCase()
+        .includes(query),
+  )
+})
+const selectedSharedUsageCount = computed(() =>
+  selectedWorkflowSource.value ? sharedUsageCount(selectedWorkflowSource.value.id) : 0,
+)
+const selectedResourceUsage = computed(() =>
+  selectedResource.value
+    ? workflows.value.filter((workflow) => workflow.sourceIds.includes(selectedResource.value!.id))
+    : [],
+)
+const workflowCanSave = computed(
+  () =>
+    Boolean(workflowDraft.value) && (workflowDetached.value || selectedSharedUsageCount.value <= 1),
+)
+const workflowRuleSummary = computed(() =>
+  summarizeRules(workflowDraft.value?.rules ?? {}, workflowDraft.value?.collector ?? 'logs'),
+)
+const resourceRuleSummary = computed(() =>
+  summarizeRules(selectedResource.value?.rules ?? {}, selectedResource.value?.collector ?? 'logs'),
+)
+
+function usageCount(sourceId: string) {
+  return workflows.value.filter((workflow) => workflow.sourceIds.includes(sourceId)).length
+}
+
+function sharedUsageCount(sourceId: string) {
+  return workflows.value.filter(
+    (workflow) => workflow.sourceIds.includes(sourceId) && !hasLocalOverride(workflow.id, sourceId),
+  ).length
+}
+
+function hasLocalOverride(workflowId: string, sourceId: string) {
+  return Boolean(localOverrides.value[workflowId]?.[sourceId]?.detached)
+}
+
+function isSharedInWorkflow(sourceId: string) {
+  return sharedUsageCount(sourceId) > 1 && !hasLocalOverride(selectedWorkflowId.value, sourceId)
+}
+
+function localOverride(workflowId: string, sourceId: string) {
+  return localOverrides.value[workflowId]?.[sourceId]
+}
+
+function loadWorkflowDraft() {
+  const source = selectedWorkflowSource.value
+  if (!source) {
+    workflowDraft.value = null
     return
   }
-  templates.value = templates.value.filter((item) => item.id !== templateDraft.value?.id)
-  const next = visibleTemplates.value[0] ?? templates.value[0]
-  if (next) selectTemplate(next.id)
-  else templateDraft.value = null
-  ElMessage.success('处理模板已删除（演示数据）')
+  const override = localOverride(selectedWorkflowId.value, source.id)
+  workflowDetached.value = Boolean(override?.detached)
+  workflowDraft.value = clone(override?.detached ? override.draft : draftFromResource(source))
+  workflowRuleForm.value = formFromRules(workflowDraft.value.rules, workflowDraft.value.collector)
+  workflowRulesJson.value = rulesToJson(workflowDraft.value.rules)
+  workflowRuleMode.value = supportsBasicRuleEditor(
+    workflowDraft.value.rules,
+    workflowDraft.value.collector,
+  )
+    ? 'form'
+    : 'json'
 }
 
-function openWorkflowOverride() {
-  workflowOverrideEnabled.value = !workflowOverrideEnabled.value
-  if (workflowOverrideEnabled.value) {
-    workflowTemplateId.value = selectedInstance.value?.templateId ?? ''
-    const rules = workflowTemplate.value?.rules ?? effectivePreviewRules.value
-    workflowRuleForm.value = formFromRules(rules)
-    workflowJson.value = displayRules(rules)
-    workflowMode.value = 'form'
-  }
+watch(selectedWorkflowSourceId, loadWorkflowDraft, { immediate: true })
+watch(selectedWorkflowId, () => {
+  const ids = selectedWorkflow.value?.sourceIds ?? []
+  selectedWorkflowSourceId.value = ids[0] ?? ''
+  loadWorkflowDraft()
+})
+
+function chooseWorkflowSource(sourceId: string) {
+  selectedWorkflowSourceId.value = sourceId
 }
 
-function updateWorkflowTemplate(templateId: string) {
-  workflowTemplateId.value = templateId
-  const template = templates.value.find((item) => item.id === templateId)
-  if (template) {
-    workflowRuleForm.value = formFromRules(template.rules)
-    workflowJson.value = displayRules(template.rules)
-  }
+function openAddCollector(attachToWorkflow = true) {
+  attachNewCollectorToWorkflow.value = attachToWorkflow
+  newCollectorDraft.value = emptySourceDraft('logs')
+  newCollectorRuleForm.value = emptyRuleForm()
+  newCollectorRulesJson.value = '{}'
+  newCollectorRuleMode.value = 'form'
+  addCollectorOpen.value = true
 }
 
-function applyWorkflowOverride() {
-  const rules = readRules(workflowMode.value, workflowJson.value, workflowRuleForm.value)
+function setNewCollectorType(collector: CollectorKey) {
+  newCollectorDraft.value.collector = collector
+  newCollectorRuleForm.value = emptyRuleForm()
+  newCollectorRulesJson.value = '{}'
+  newCollectorRuleMode.value = 'form'
+}
+
+function saveNewCollector() {
+  const draft = clone(newCollectorDraft.value)
+  const rules = parseRules(
+    newCollectorRuleMode.value,
+    newCollectorRulesJson.value,
+    newCollectorRuleForm.value,
+    draft.collector,
+  )
   if (!rules) return
-  ElMessage.success('工作流本次覆盖已更新（演示数据）')
+  if (!draft.name.trim() || !draft.options.location.trim()) {
+    ElMessage.warning('请先填写数据源名称和来源地址')
+    return
+  }
+  draft.rules = rules
+  draft.id = `source_${Date.now()}`
+  resources.value.push({ ...draft, updatedAt: '刚刚' })
+  if (
+    attachNewCollectorToWorkflow.value &&
+    selectedWorkflow.value &&
+    !selectedWorkflow.value.sourceIds.includes(draft.id)
+  ) {
+    selectedWorkflow.value.sourceIds.push(draft.id)
+  }
+  if (attachNewCollectorToWorkflow.value) selectedWorkflowSourceId.value = draft.id
+  selectedResourceId.value = draft.id
+  addCollectorOpen.value = false
+  ElMessage.success(
+    attachNewCollectorToWorkflow.value
+      ? '数据源已新增，并加载到当前工作流'
+      : '数据源已新增到资源配置中心',
+  )
 }
 
-function statusLabel(status: ResourceStatus) {
-  return status === 'enabled' ? '已启用' : '已停用'
+function openLoadCollector() {
+  loadSearch.value = ''
+  loadCollectorOpen.value = true
 }
 
-function copyJson(value: JsonObject) {
-  void navigator.clipboard?.writeText(displayRules(value))
+function loadCollector(sourceId: string) {
+  if (!selectedWorkflow.value) return
+  if (selectedWorkflow.value.sourceIds.includes(sourceId)) {
+    selectedWorkflowSourceId.value = sourceId
+    loadCollectorOpen.value = false
+    ElMessage.info('这个数据源已经在当前工作流中')
+    return
+  }
+  selectedWorkflow.value.sourceIds.push(sourceId)
+  selectedWorkflowSourceId.value = sourceId
+  loadCollectorOpen.value = false
+  ElMessage.success('数据源已加载到当前工作流')
+}
+
+async function detachWorkflowSource() {
+  const source = selectedWorkflowSource.value
+  if (!source || !workflowDraft.value) return
+  if (!isSharedInWorkflow(source.id)) {
+    ElMessage.info('这个数据源没有被其他工作流共用，可以直接保存')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `脱离后，${selectedWorkflow.value?.name} 的调整只会保存在这里，不会影响另外 ${selectedSharedUsageCount.value - 1} 个工作流。`,
+      '只修改当前工作流？',
+      { confirmButtonText: '脱离并继续', cancelButtonText: '先不修改', type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  const workflowId = selectedWorkflowId.value
+  localOverrides.value[workflowId] = {
+    ...(localOverrides.value[workflowId] ?? {}),
+    [source.id]: { detached: true, draft: clone(workflowDraft.value) },
+  }
+  workflowDetached.value = true
+  ElMessage.success('已脱离共同设置，现在可以只修改当前工作流')
+}
+
+function restoreSharedSource() {
+  const source = selectedWorkflowSource.value
+  if (!source) return
+  const overrides = { ...(localOverrides.value[selectedWorkflowId.value] ?? {}) }
+  delete overrides[source.id]
+  localOverrides.value = { ...localOverrides.value, [selectedWorkflowId.value]: overrides }
+  loadWorkflowDraft()
+  ElMessage.success('已恢复共同设置，当前工作流会跟随资源配置中心')
+}
+
+function saveWorkflowSource() {
+  const source = selectedWorkflowSource.value
+  const draft = workflowDraft.value
+  if (!source || !draft) return
+  if (selectedSharedUsageCount.value > 1 && !workflowDetached.value) {
+    ElMessage.warning('这份数据源正在被多个工作流使用。若只改当前工作流，请先点击“脱离共享设置”。')
+    return
+  }
+  const rules = parseRules(
+    workflowRuleMode.value,
+    workflowRulesJson.value,
+    workflowRuleForm.value,
+    draft.collector,
+  )
+  if (!rules) return
+  draft.rules = rules
+  if (workflowDetached.value) {
+    localOverrides.value[selectedWorkflowId.value] = {
+      ...(localOverrides.value[selectedWorkflowId.value] ?? {}),
+      [source.id]: { detached: true, draft: clone(draft) },
+    }
+    ElMessage.success('本次调整已保存，只影响当前工作流')
+    return
+  }
+  const index = resources.value.findIndex((item) => item.id === source.id)
+  if (index !== -1) {
+    resources.value[index] = { ...resources.value[index], ...clone(draft), updatedAt: '刚刚' }
+  }
+  loadWorkflowDraft()
+  ElMessage.success('数据源已保存')
+}
+
+function openResourceEditor(source: SourceResource) {
+  resourceDraft.value = draftFromResource(source)
+  resourceRuleForm.value = formFromRules(source.rules, source.collector)
+  resourceRulesJson.value = rulesToJson(source.rules)
+  resourceRuleMode.value = supportsBasicRuleEditor(source.rules, source.collector) ? 'form' : 'json'
+  resourceEditorOpen.value = true
+}
+
+function saveResource() {
+  const draft = resourceDraft.value
+  if (!draft) return
+  const rules = parseRules(
+    resourceRuleMode.value,
+    resourceRulesJson.value,
+    resourceRuleForm.value,
+    draft.collector,
+  )
+  if (!rules) return
+  if (!draft.name.trim() || !draft.options.location.trim()) {
+    ElMessage.warning('请先填写数据源名称和来源地址')
+    return
+  }
+  const index = resources.value.findIndex((item) => item.id === draft.id)
+  if (index === -1) return
+  resources.value[index] = { ...clone(draft), rules, updatedAt: '刚刚' }
+  selectedResourceId.value = draft.id
+  if (selectedWorkflowSourceId.value === draft.id && !workflowDetached.value) loadWorkflowDraft()
+  resourceEditorOpen.value = false
+  const count = sharedUsageCount(draft.id)
+  ElMessage.success(
+    count > 0 ? `已保存，并同步到 ${count} 个工作流` : '数据源已保存，暂未同步到工作流',
+  )
+}
+
+function switchWorkflowRuleMode(value: string | number | boolean | undefined) {
+  if (value !== 'form' && value !== 'json') return
+  const nextMode = value
+  if (
+    workflowDraft.value &&
+    setRuleMode(
+      nextMode,
+      workflowRuleMode.value,
+      workflowRulesJson.value,
+      workflowRuleForm,
+      workflowDraft.value.collector,
+      (value) => (workflowRulesJson.value = value),
+    )
+  ) {
+    workflowRuleMode.value = nextMode
+  }
+}
+
+function switchNewCollectorRuleMode(value: string | number | boolean | undefined) {
+  if (value !== 'form' && value !== 'json') return
+  const nextMode = value
+  if (
+    setRuleMode(
+      nextMode,
+      newCollectorRuleMode.value,
+      newCollectorRulesJson.value,
+      newCollectorRuleForm,
+      newCollectorDraft.value.collector,
+      (value) => (newCollectorRulesJson.value = value),
+    )
+  ) {
+    newCollectorRuleMode.value = nextMode
+  }
+}
+
+function switchResourceRuleMode(value: string | number | boolean | undefined) {
+  if (value !== 'form' && value !== 'json') return
+  const nextMode = value
+  if (
+    resourceDraft.value &&
+    setRuleMode(
+      nextMode,
+      resourceRuleMode.value,
+      resourceRulesJson.value,
+      resourceRuleForm,
+      resourceDraft.value.collector,
+      (value) => (resourceRulesJson.value = value),
+    )
+  ) {
+    resourceRuleMode.value = nextMode
+  }
+}
+
+function summarizeRules(rules: JsonObject, collector: CollectorKey) {
+  const fields = Array.isArray(rules.fields) ? rules.fields.length : 0
+  const filter = rules.filter && typeof rules.filter === 'object' ? '有筛选条件' : '不过滤'
+  const sortField = catalogItem(collector).fieldOptions.find(
+    (field) => field.key === rules.sort_by,
+  )?.label
+  const sort = sortField ? `按${sortField}排序` : '按来源顺序'
+  return `${fields ? `保留 ${fields} 个字段` : '保留来源字段'} · ${filter} · ${sort}`
+}
+
+function resourceImpact(sourceId: string) {
+  const count = sharedUsageCount(sourceId)
+  return count > 0 ? `保存会同步到 ${count} 个工作流` : '这个数据源暂未被工作流使用'
+}
+
+function sourceUsageLabel(sourceId: string) {
+  const count = usageCount(sourceId)
+  if (count > 1) return `${count} 个工作流共用`
+  return count === 1 ? '仅 1 个工作流使用' : '暂未使用'
+}
+
+function copyJson(rules: JsonObject) {
+  void navigator.clipboard?.writeText(rulesToJson(rules))
   ElMessage.success('JSON 已复制')
+}
+
+function statusLabel(source: SourceResource | SourceDraft) {
+  return source.enabled ? '已启用' : '已停用'
+}
+
+function iconName(source: SourceResource | SourceDraft) {
+  return catalogItem(source.collector).icon
 }
 </script>
 
 <template>
-  <PageHeader title="采集器配置" description="以采集器实例为主体，统一管理可复用的处理模板">
+  <PageHeader title="数据源配置演示" description="用“从哪里取数据”和“取到后怎么整理”完成一次采集">
     <el-tag type="info" effect="plain" class="demo-tag">前端演示 · 本地状态</el-tag>
-    <el-button @click="openTemplateManager">
-      <AppIcon name="settings" size="sm" />
-      <span>处理模板</span>
-    </el-button>
-    <el-button type="primary" @click="openInstance()">
-      <AppIcon name="plus" size="sm" />
-      <span>新增实例</span>
-    </el-button>
+    <el-radio-group
+      v-model="activeView"
+      size="small"
+      class="view-switcher"
+      aria-label="切换数据源视图"
+    >
+      <el-radio-button label="collection">数据采集</el-radio-button>
+      <el-radio-button label="resources">资源配置中心</el-radio-button>
+    </el-radio-group>
   </PageHeader>
 
   <div class="demo-alert">
-    <div class="alert-mark"><AppIcon name="settings" size="sm" /></div>
+    <span class="alert-mark"><AppIcon name="info" size="sm" /></span>
     <div>
-      <strong>把连接配置和处理规则分开管理</strong>
-      <p>实例保存“从哪里采集”，模板决定“采集后保留什么”。模板只能用于对应的采集器类型。</p>
+      <strong>数据源是一份可以重复使用的采集设置</strong>
+      <p>
+        在“数据采集”里只改当前工作流时，先脱离共享设置；在“资源配置中心”保存，会同步到所有使用它的工作流。
+      </p>
     </div>
   </div>
 
-  <div class="demo-layout">
-    <section class="surface-panel instance-panel">
-      <div class="panel-heading">
-        <div>
-          <div class="eyebrow">COLLECTOR INSTANCES</div>
-          <h2>采集器实例 <span>{{ instances.length }}</span></h2>
-        </div>
-        <el-button text aria-label="刷新演示数据" @click="ElMessage.info('演示数据已是最新')">
-          <AppIcon name="workflow" size="sm" />
-        </el-button>
-      </div>
-      <div class="instance-toolbar">
-        <el-input v-model="search" clearable placeholder="搜索实例名称或类型" class="search-input">
-          <template #prefix><AppIcon name="database" size="sm" /></template>
-        </el-input>
-        <el-select v-model="collectorFilter" class="type-filter" aria-label="按采集器类型筛选">
-          <el-option value="all" label="全部类型" />
-          <el-option v-for="item in collectorCatalog" :key="item.key" :value="item.key" :label="item.label" />
+  <template v-if="activeView === 'collection'">
+    <div class="workflow-bar surface-panel">
+      <div class="workflow-picker">
+        <span class="eyebrow">当前工作流</span>
+        <el-select v-model="selectedWorkflowId" aria-label="选择当前工作流" class="workflow-select">
+          <el-option
+            v-for="workflow in workflows"
+            :key="workflow.id"
+            :value="workflow.id"
+            :label="workflow.name"
+          />
         </el-select>
       </div>
-      <div class="instance-list">
-        <button
-          v-for="instance in filteredInstances"
-          :key="instance.id"
-          type="button"
-          class="instance-row"
-          :class="{ selected: selectedInstance?.id === instance.id }"
-          @click="selectedInstanceId = instance.id"
-        >
-          <span class="instance-icon" :style="{ color: catalogItem(instance.collector).tone }">
-            <AppIcon :name="catalogItem(instance.collector).icon" />
-          </span>
-          <span class="instance-content">
-            <span class="instance-title">
-              <strong>{{ instance.name }}</strong>
-              <el-tag v-if="instance.status === 'paused'" size="small" type="warning">已停用</el-tag>
-            </span>
-            <span class="instance-meta">{{ catalogItem(instance.collector).label }} · {{ instance.summary }}</span>
-          </span>
-          <span class="instance-chevron">›</span>
-        </button>
-        <el-empty v-if="!filteredInstances.length" description="没有匹配的采集器实例" :image-size="72" />
+      <div class="workflow-stats">
+        <span>{{ selectedWorkflow?.sourceIds.length ?? 0 }} 个数据源</span>
+        <span>修改会在保存时明确提示影响范围</span>
       </div>
-      <div class="panel-footnote">
-        <span class="status-dot success"></span>
-        {{ instances.filter((item) => item.status === 'enabled').length }} 个实例将在后续工作流中可用
-      </div>
-    </section>
+    </div>
 
-    <section class="surface-panel detail-panel" v-if="selectedInstance">
-      <div class="detail-heading">
-        <div class="detail-identity">
-          <span class="large-instance-icon" :style="{ color: selectedCatalog.tone }">
-            <AppIcon :name="selectedCatalog.icon" size="lg" />
+    <div class="collection-layout">
+      <section class="surface-panel source-list-panel">
+        <div class="panel-heading">
+          <div>
+            <div class="eyebrow">DATA SOURCES</div>
+            <h2>
+              本次要取哪些数据
+              <span>{{ selectedWorkflow?.sourceIds.length ?? 0 }}</span>
+            </h2>
+          </div>
+          <el-button text aria-label="刷新数据源" @click="ElMessage.info('演示数据已是最新')">
+            <AppIcon name="rotate" size="sm" />
+          </el-button>
+        </div>
+        <div class="source-actions">
+          <el-button type="primary" @click="openAddCollector()">
+            <AppIcon name="plus" size="sm" />
+            <span>新增采集器</span>
+          </el-button>
+          <el-button @click="openLoadCollector">
+            <AppIcon name="archive" size="sm" />
+            <span>加载采集器</span>
+          </el-button>
+        </div>
+        <el-input
+          v-model="collectionSearch"
+          clearable
+          placeholder="搜索当前工作流的数据源"
+          class="source-search"
+        >
+          <template #prefix><AppIcon name="search" size="sm" /></template>
+        </el-input>
+        <div class="source-list">
+          <button
+            v-for="source in filteredCollectionSources"
+            :key="source.id"
+            type="button"
+            class="source-row"
+            :class="{ selected: selectedWorkflowSourceId === source.id }"
+            @click="chooseWorkflowSource(source.id)"
+          >
+            <span class="source-icon" :style="{ color: catalogItem(source.collector).tone }">
+              <AppIcon :name="iconName(source)" />
+            </span>
+            <span class="source-row-main">
+              <span class="source-row-title">
+                <strong>{{ source.name }}</strong>
+                <el-tag v-if="!source.enabled" size="small" type="warning">已停用</el-tag>
+              </span>
+              <span class="source-row-meta">
+                {{ catalogItem(source.collector).label }} · {{ sourceUsageLabel(source.id) }}
+              </span>
+              <span v-if="hasLocalOverride(selectedWorkflowId, source.id)" class="local-mark">
+                当前工作流有单独设置
+              </span>
+            </span>
+            <AppIcon name="chevronRight" size="sm" />
+          </button>
+          <el-empty
+            v-if="!filteredCollectionSources.length"
+            description="当前工作流还没有数据源"
+            :image-size="64"
+          />
+        </div>
+        <p class="panel-footnote">
+          <span class="status-dot success"></span>
+          数据源可以在多个工作流中重复使用
+        </p>
+      </section>
+
+      <section
+        v-if="workflowDraft && selectedWorkflowSource"
+        class="surface-panel source-editor-panel"
+      >
+        <div class="detail-heading">
+          <div class="detail-identity">
+            <span
+              class="large-source-icon"
+              :style="{ color: catalogItem(workflowDraft.collector).tone }"
+            >
+              <AppIcon :name="iconName(workflowDraft)" size="lg" />
+            </span>
+            <div>
+              <div class="eyebrow">{{ catalogItem(workflowDraft.collector).label }}</div>
+              <h2>{{ workflowDraft.name }}</h2>
+              <p class="muted">{{ catalogItem(workflowDraft.collector).description }}</p>
+            </div>
+          </div>
+          <div class="detail-actions">
+            <el-tag :type="workflowDraft.enabled ? 'success' : 'warning'" effect="plain">
+              {{ statusLabel(workflowDraft) }}
+            </el-tag>
+            <el-button :disabled="!workflowCanSave" @click="saveWorkflowSource">
+              <AppIcon name="check" size="sm" />
+              <span>保存</span>
+            </el-button>
+          </div>
+        </div>
+
+        <div class="sharing-banner" :class="{ detached: workflowDetached }">
+          <span class="sharing-icon">
+            <AppIcon :name="workflowDetached ? 'sliders' : 'layers'" size="sm" />
           </span>
           <div>
-            <div class="eyebrow">{{ selectedCatalog.label }}</div>
-            <h2>{{ selectedInstance.name }}</h2>
-            <p class="muted">{{ selectedCatalog.description }}</p>
+            <strong v-if="workflowDetached">当前工作流正在使用单独设置</strong>
+            <strong v-else-if="selectedSharedUsageCount > 1">
+              这份数据源正在被 {{ selectedSharedUsageCount }} 个工作流共同使用
+            </strong>
+            <strong v-else>这份共享设置只有当前工作流使用</strong>
+            <p v-if="workflowDetached">
+              保存只影响“{{ selectedWorkflow?.name }}”，资源配置中心的修改不会覆盖这里。
+            </p>
+            <p v-else-if="selectedSharedUsageCount > 1">
+              想只改这一次，请先脱离共享设置；资源配置中心的保存会同步到所有仍使用共同设置的位置。
+            </p>
+            <p v-else>当前没有其他工作流跟随这份共享设置，可以直接保存本次修改。</p>
           </div>
-        </div>
-        <div class="detail-actions">
-          <el-tag :type="selectedInstance.status === 'enabled' ? 'success' : 'warning'" effect="plain">
-            {{ statusLabel(selectedInstance.status) }}
-          </el-tag>
-          <el-button @click="openInstance(selectedInstance)">
-            <AppIcon name="settings" size="sm" />
-            <span>编辑实例</span>
+          <el-button v-if="workflowDetached" text @click="restoreSharedSource">
+            恢复共同设置
+          </el-button>
+          <el-button
+            v-else-if="selectedSharedUsageCount > 1"
+            type="warning"
+            plain
+            @click="detachWorkflowSource"
+          >
+            脱离共享设置
           </el-button>
         </div>
-      </div>
 
-      <div class="metric-strip">
-        <div><span>实例 ID</span><strong class="mono">{{ selectedInstance.id }}</strong></div>
-        <div><span>默认处理模板</span><strong>{{ templates.find((item) => item.id === selectedInstance.templateId)?.name ?? '未设置' }}</strong></div>
-        <div><span>采集字段</span><strong>{{ selectedCatalog.fields }}</strong></div>
-      </div>
-
-      <div class="detail-section">
-        <div class="section-title-row">
-          <div><h3>处理规则</h3><p>规则属于 {{ selectedCatalog.label }}，可以被同类型实例复用。</p></div>
-          <el-button text @click="openTemplateManager">
-            <AppIcon name="settings" size="sm" />
-            <span>管理模板</span>
-          </el-button>
-        </div>
-        <div class="template-highlight" :class="{ empty: !selectedInstance.templateId }">
-          <span class="template-symbol"><AppIcon name="settings" size="sm" /></span>
-          <div class="template-highlight-main">
-            <strong>{{ templates.find((item) => item.id === selectedInstance.templateId)?.name ?? '未加载模板' }}</strong>
-            <p>{{ selectedInstance.templateId ? '实例继承模板，并保留自己的局部调整。' : '当前实例直接使用局部规则。' }}</p>
+        <div class="editor-section">
+          <div class="section-title-row">
+            <div>
+              <h3>从哪里取数据</h3>
+              <p>这些是数据源本身的设置，包含地址、密钥和读取数量。</p>
+            </div>
           </div>
-          <el-button @click="openInstance(selectedInstance)">{{ selectedInstance.templateId ? '调整规则' : '配置规则' }}</el-button>
-        </div>
-        <pre class="json-preview">{{ displayRules(effectivePreviewRules) }}</pre>
-        <div class="json-actions">
-          <span class="muted text-xs">只读预览 · 最终规则由实例模板和局部调整合并得到</span>
-          <el-button text size="small" @click="copyJson(effectivePreviewRules)">复制 JSON</el-button>
-        </div>
-      </div>
-
-      <div class="detail-section workflow-section">
-        <div class="section-title-row">
-          <div><h3>工作流本次覆盖</h3><p>演示当前实例在“每日科技简报”中的一次性调整。</p></div>
-          <el-switch :model-value="workflowOverrideEnabled" @update:model-value="openWorkflowOverride" />
-        </div>
-        <div class="workflow-context">
-          <span class="workflow-mark"><AppIcon name="workflow" size="sm" /></span>
-          <div><strong>每日科技简报</strong><span>下次运行 · 今天 10:00</span></div>
-          <el-tag v-if="workflowOverrideEnabled" type="warning" effect="plain">本次覆盖</el-tag>
-          <el-tag v-else type="info" effect="plain">继承实例默认值</el-tag>
-        </div>
-        <div v-if="workflowOverrideEnabled" class="override-editor">
-          <el-form label-position="top">
-            <el-form-item label="本次使用的处理模板">
-              <el-select :model-value="workflowTemplateId" class="full-control" @update:model-value="updateWorkflowTemplate">
-                <el-option value="" label="不使用模板，仅保留本次规则" />
-                <el-option v-for="template in templates.filter((item) => item.collector === selectedInstance.collector)" :key="template.id" :value="template.id" :label="template.name" />
+          <div class="form-grid">
+            <el-form-item label="数据源名称">
+              <el-input v-model="workflowDraft.name" />
+            </el-form-item>
+            <el-form-item label="采集器类型">
+              <el-select v-model="workflowDraft.collector" disabled>
+                <el-option
+                  v-for="item in collectorCatalog"
+                  :key="item.key"
+                  :value="item.key"
+                  :label="item.label"
+                />
               </el-select>
             </el-form-item>
-            <el-tabs v-model="workflowMode" class="compact-tabs">
-              <el-tab-pane label="快速调整" name="form">
-                <div class="rule-grid compact-rule-grid">
-                  <el-form-item label="保留字段"><el-input v-model="workflowRuleForm.fields" placeholder="message, level" /></el-form-item>
-                  <el-form-item label="排序字段"><el-input v-model="workflowRuleForm.sortBy" placeholder="created_at" /></el-form-item>
-                  <el-form-item label="格式"><el-select v-model="workflowRuleForm.format"><el-option label="Markdown" value="markdown" /><el-option label="纯文本" value="text" /></el-select></el-form-item>
-                  <el-form-item label="倒序"><el-switch v-model="workflowRuleForm.descending" /></el-form-item>
-                </div>
-              </el-tab-pane>
-              <el-tab-pane label="高级 JSON" name="json"><el-input v-model="workflowJson" type="textarea" :rows="7" class="code-input" /></el-tab-pane>
-            </el-tabs>
-            <div class="override-footer"><span class="muted text-xs">只影响当前工作流，不会修改实例或共享模板</span><el-button type="primary" size="small" @click="applyWorkflowOverride">应用本次调整</el-button></div>
-          </el-form>
-        </div>
-      </div>
-    </section>
-  </div>
-
-  <el-dialog v-model="templateManagerOpen" width="1080px" top="6vh" class="template-dialog" destroy-on-close>
-    <template #header>
-      <div class="dialog-heading">
-        <span class="dialog-icon"><AppIcon name="settings" /></span>
-        <div><strong>处理模板</strong><span>统一管理可复用的 JSON 处理规则</span></div>
-      </div>
-    </template>
-    <div class="template-manager">
-      <aside class="template-sidebar">
-        <div class="manager-toolbar">
-          <el-select v-model="templateTypeFilter" size="small" aria-label="按采集器筛选模板">
-            <el-option value="all" label="全部采集器" />
-            <el-option v-for="item in collectorCatalog" :key="item.key" :value="item.key" :label="item.label" />
-          </el-select>
-          <el-button type="primary" size="small" @click="createTemplate"><AppIcon name="plus" size="sm" />新增</el-button>
-        </div>
-        <button v-for="template in visibleTemplates" :key="template.id" type="button" class="template-row" :class="{ selected: selectedTemplateId === template.id }" @click="selectTemplate(template.id)">
-          <span class="template-row-icon"><AppIcon :name="catalogItem(template.collector).icon" size="sm" /></span>
-          <span><strong>{{ template.name }}</strong><small>{{ catalogItem(template.collector).label }} · {{ template.updatedAt }}</small></span>
-          <span class="row-arrow">›</span>
-        </button>
-        <el-empty v-if="!visibleTemplates.length" description="暂无模板" :image-size="60" />
-      </aside>
-      <section v-if="templateDraft" class="template-editor">
-        <div class="editor-heading">
-          <div><div class="eyebrow">PROCESSING TEMPLATE</div><h2>{{ templateDraft.name }}</h2><p>仅适用于 <strong>{{ catalogItem(templateDraft.collector).label }}</strong> 采集器</p></div>
-          <el-tag type="info" effect="plain">{{ templateDraft.id }}</el-tag>
-        </div>
-        <el-form label-position="top" class="template-form">
-          <div class="form-grid">
-            <el-form-item label="模板名称"><el-input v-model="templateDraft.name" /></el-form-item>
-            <el-form-item label="指定采集器"><el-select v-model="templateDraft.collector" class="full-control" :disabled="templateUsage.length > 0"><el-option v-for="item in collectorCatalog" :key="item.key" :value="item.key" :label="item.label" /></el-select><p v-if="templateUsage.length" class="field-note">已被 {{ templateUsage.length }} 个实例使用，采集器类型已锁定。</p></el-form-item>
+            <el-form-item
+              :label="catalogItem(workflowDraft.collector).locationLabel"
+              class="span-2"
+            >
+              <el-input
+                v-model="workflowDraft.options.location"
+                :placeholder="catalogItem(workflowDraft.collector).locationPlaceholder"
+              />
+            </el-form-item>
+            <el-form-item label="接口密钥（可选）">
+              <el-input
+                v-model="workflowDraft.options.apiKey"
+                type="password"
+                show-password
+                placeholder="暂时没有也可以留空"
+              />
+            </el-form-item>
+            <el-form-item label="最多读取条数">
+              <el-input-number
+                v-model="workflowDraft.options.limit"
+                :min="1"
+                :max="10000"
+                controls-position="right"
+              />
+            </el-form-item>
           </div>
-          <el-form-item label="用途说明"><el-input v-model="templateDraft.description" placeholder="例如：只保留错误日志并按时间倒序" /></el-form-item>
-          <el-tabs v-model="templateMode" class="editor-tabs">
-            <el-tab-pane label="快速配置" name="form">
-              <div class="rule-grid">
-                <el-form-item label="保留字段"><el-input v-model="templateRuleForm.fields" placeholder="message, level, module" /></el-form-item>
-                <el-form-item label="过滤条件"><el-input v-model="templateRuleForm.filter" placeholder='{"level":["error"]}' /></el-form-item>
-                <el-form-item label="排序字段"><el-input v-model="templateRuleForm.sortBy" placeholder="created_at" /></el-form-item>
-                <el-form-item label="分组字段"><el-input v-model="templateRuleForm.groupBy" placeholder="module" /></el-form-item>
-                <el-form-item label="输出格式"><el-select v-model="templateRuleForm.format" class="full-control"><el-option label="Markdown" value="markdown" /><el-option label="纯文本" value="text" /><el-option label="JSON 行" value="jsonl" /></el-select></el-form-item>
-                <el-form-item label="按时间倒序"><el-switch v-model="templateRuleForm.descending" /></el-form-item>
-              </div>
-              <div class="schema-hint"><AppIcon name="settings" size="sm" /><span>可用字段由 {{ catalogItem(templateDraft.collector).label }} 采集器提供：{{ catalogItem(templateDraft.collector).fields }}</span></div>
-            </el-tab-pane>
-            <el-tab-pane label="高级 JSON" name="json">
-              <el-input v-model="templateJson" type="textarea" :rows="15" class="code-input" />
-              <p class="muted text-xs mt-2">保存时校验 JSON 对象，并交给采集器 Schema 做最终校验。</p>
-            </el-tab-pane>
-          </el-tabs>
-        </el-form>
-        <div class="template-editor-footer">
-          <el-button type="danger" text @click="removeTemplate">删除模板</el-button>
-          <div class="footer-actions"><el-button @click="templateManagerOpen = false">取消</el-button><el-button type="primary" @click="saveTemplate">保存模板</el-button></div>
+          <div class="inline-setting">
+            <el-switch v-model="workflowDraft.enabled" />
+            <div>
+              <strong>启用这个数据源</strong>
+              <span>停用后，工作流会跳过它，但保留原来的设置。</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="editor-section rules-section">
+          <div class="section-title-row">
+            <div>
+              <h3>取到后怎么整理</h3>
+              <p>
+                {{
+                  catalogItem(workflowDraft.collector).fields
+                }}。这些规则保存在数据源里，也可以按需脱离后只改当前工作流。
+              </p>
+            </div>
+            <el-radio-group
+              :model-value="workflowRuleMode"
+              size="small"
+              @update:model-value="switchWorkflowRuleMode"
+            >
+              <el-radio-button label="form">普通设置</el-radio-button>
+              <el-radio-button label="json">高级 JSON</el-radio-button>
+            </el-radio-group>
+          </div>
+          <div v-if="workflowRuleMode === 'form'" class="rule-form-grid">
+            <el-form-item label="保留哪些内容" class="span-2">
+              <el-checkbox-group v-model="workflowRuleForm.fields" class="field-options">
+                <el-checkbox
+                  v-for="field in catalogItem(workflowDraft.collector).fieldOptions"
+                  :key="field.key"
+                  :label="field.key"
+                >
+                  {{ field.label }}
+                </el-checkbox>
+              </el-checkbox-group>
+            </el-form-item>
+            <el-form-item label="筛选内容">
+              <el-select v-model="workflowRuleForm.filter">
+                <el-option
+                  v-for="filter in catalogItem(workflowDraft.collector).filterOptions"
+                  :key="filter.value"
+                  :value="filter.value"
+                  :label="filter.label"
+                />
+                <el-option
+                  v-if="workflowRuleForm.filter === 'custom'"
+                  value="custom"
+                  label="已有高级筛选"
+                  disabled
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="排序方式">
+              <el-select v-model="workflowRuleForm.sortBy" clearable placeholder="保持来源顺序">
+                <el-option
+                  v-for="field in catalogItem(workflowDraft.collector).fieldOptions"
+                  :key="field.key"
+                  :value="field.key"
+                  :label="field.label"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="输出格式">
+              <el-select v-model="workflowRuleForm.format">
+                <el-option value="markdown" label="Markdown" />
+                <el-option value="json" label="JSON" />
+                <el-option value="text" label="纯文本" />
+              </el-select>
+            </el-form-item>
+            <el-form-item class="span-2">
+              <el-checkbox v-model="workflowRuleForm.descending">排序从新到旧</el-checkbox>
+            </el-form-item>
+          </div>
+          <div v-else class="advanced-editor">
+            <el-input
+              v-model="workflowRulesJson"
+              type="textarea"
+              :rows="11"
+              class="json-input"
+              spellcheck="false"
+            />
+            <div class="advanced-footer">
+              <span>高级模式编辑的是同一份处理规则 JSON，保存前会检查格式。</span>
+              <el-button text @click="copyJson(workflowDraft.rules)">
+                <AppIcon name="copy" size="sm" />
+                复制示例
+              </el-button>
+            </div>
+          </div>
+          <div class="rule-summary">
+            <AppIcon name="sliders" size="sm" />
+            {{ workflowRuleSummary }}
+          </div>
+        </div>
+
+        <div class="editor-footer">
+          <span v-if="!workflowCanSave && selectedSharedUsageCount > 1" class="save-hint">
+            这份数据源被多个工作流使用，先脱离共享设置后才能保存单独修改。
+          </span>
+          <span v-else class="save-hint">保存后只会改变当前允许的范围，页面会显示同步结果。</span>
+          <el-button type="primary" :disabled="!workflowCanSave" @click="saveWorkflowSource">
+            <AppIcon name="check" size="sm" />
+            保存本次设置
+          </el-button>
         </div>
       </section>
-      <el-empty v-else description="选择或新建一个模板" />
+      <el-empty v-else description="选择一个数据源开始配置" />
+    </div>
+
+    <div class="collection-note surface-panel">
+      <span class="note-icon"><AppIcon name="info" size="sm" /></span>
+      <div>
+        <strong>这次演示先解决“看得懂、改得对”</strong>
+        <p>
+          模板版本、批量迁移和真实采集预览留给后续版本；高级 JSON 入口保留给需要精细控制的用户。
+        </p>
+      </div>
+    </div>
+  </template>
+
+  <template v-else>
+    <div class="resource-toolbar surface-panel">
+      <div>
+        <div class="eyebrow">SHARED RESOURCES</div>
+        <h2>资源配置中心</h2>
+        <p class="muted">
+          从这里修改会同步到所有使用位置；只想改一处，请回到数据采集并先脱离共享设置。
+        </p>
+      </div>
+      <div class="resource-toolbar-actions">
+        <el-input
+          v-model="resourceSearch"
+          clearable
+          placeholder="搜索数据源"
+          class="resource-search"
+        >
+          <template #prefix><AppIcon name="search" size="sm" /></template>
+        </el-input>
+        <el-select v-model="resourceFilter" aria-label="筛选数据源使用范围" class="resource-filter">
+          <el-option value="all" label="全部数据源" />
+          <el-option value="shared" label="多人共用" />
+          <el-option value="single" label="单独使用" />
+        </el-select>
+        <el-button type="primary" @click="openAddCollector(false)">
+          <AppIcon name="plus" size="sm" />
+          新增数据源
+        </el-button>
+      </div>
+    </div>
+
+    <div class="resource-layout">
+      <section class="surface-panel resource-list-panel">
+        <div class="panel-heading compact-heading">
+          <div>
+            <h2>
+              数据源
+              <span>{{ filteredResources.length }}</span>
+            </h2>
+          </div>
+        </div>
+        <div class="resource-list">
+          <button
+            v-for="source in filteredResources"
+            :key="source.id"
+            type="button"
+            class="resource-row"
+            :class="{ selected: selectedResourceId === source.id }"
+            @click="selectedResourceId = source.id"
+          >
+            <span class="source-icon" :style="{ color: catalogItem(source.collector).tone }">
+              <AppIcon :name="iconName(source)" />
+            </span>
+            <span class="resource-row-main">
+              <span class="source-row-title">
+                <strong>{{ source.name }}</strong>
+                <el-tag v-if="!source.enabled" size="small" type="warning">已停用</el-tag>
+              </span>
+              <span class="source-row-meta">
+                {{ catalogItem(source.collector).label }} · {{ sourceUsageLabel(source.id) }}
+              </span>
+            </span>
+            <AppIcon name="chevronRight" size="sm" />
+          </button>
+          <el-empty
+            v-if="!filteredResources.length"
+            description="没有匹配的数据源"
+            :image-size="64"
+          />
+        </div>
+      </section>
+
+      <section v-if="selectedResource" class="surface-panel resource-detail-panel">
+        <div class="detail-heading">
+          <div class="detail-identity">
+            <span
+              class="large-source-icon"
+              :style="{ color: catalogItem(selectedResource.collector).tone }"
+            >
+              <AppIcon :name="iconName(selectedResource)" size="lg" />
+            </span>
+            <div>
+              <div class="eyebrow">{{ catalogItem(selectedResource.collector).label }}</div>
+              <h2>{{ selectedResource.name }}</h2>
+              <p class="muted">{{ catalogItem(selectedResource.collector).description }}</p>
+            </div>
+          </div>
+          <div class="detail-actions">
+            <el-tag :type="selectedResource.enabled ? 'success' : 'warning'" effect="plain">
+              {{ statusLabel(selectedResource) }}
+            </el-tag>
+            <el-button type="primary" @click="openResourceEditor(selectedResource)">
+              <AppIcon name="settings" size="sm" />
+              编辑数据源
+            </el-button>
+          </div>
+        </div>
+
+        <div class="sync-callout">
+          <span class="sharing-icon"><AppIcon name="layers" size="sm" /></span>
+          <div>
+            <strong>{{ resourceImpact(selectedResource.id) }}</strong>
+            <p>
+              这是共享数据源的统一配置。需要只改一处时，请到“数据采集”选择对应工作流，再脱离共享设置。
+            </p>
+          </div>
+        </div>
+
+        <div class="metric-strip">
+          <div>
+            <span>来源地址</span>
+            <strong class="mono">{{ selectedResource.options.location }}</strong>
+          </div>
+          <div>
+            <span>最多读取</span>
+            <strong>{{ selectedResource.options.limit }} 条</strong>
+          </div>
+          <div>
+            <span>最近保存</span>
+            <strong>{{ selectedResource.updatedAt }}</strong>
+          </div>
+        </div>
+
+        <div class="detail-section">
+          <div class="section-title-row">
+            <div>
+              <h3>从哪里取数据</h3>
+              <p>数据源级设置会被所有使用位置继承。</p>
+            </div>
+          </div>
+          <div class="resource-facts">
+            <div>
+              <span>采集器</span>
+              <strong>{{ catalogItem(selectedResource.collector).label }}</strong>
+            </div>
+            <div>
+              <span>密钥</span>
+              <strong>{{ selectedResource.options.apiKey ? '已配置' : '未配置' }}</strong>
+            </div>
+            <div>
+              <span>使用位置</span>
+              <strong>{{ selectedResourceUsage.length }} 个工作流</strong>
+            </div>
+          </div>
+          <div class="usage-list">
+            <span v-for="workflow in selectedResourceUsage" :key="workflow.id" class="usage-chip">
+              <AppIcon name="workflow" size="sm" />
+              {{ workflow.name }}
+            </span>
+            <span v-if="!selectedResourceUsage.length" class="muted">暂未被工作流使用</span>
+          </div>
+        </div>
+
+        <div class="detail-section">
+          <div class="section-title-row">
+            <div>
+              <h3>取到后怎么整理</h3>
+              <p>规则仍然是这份数据源里的 JSON，不再单独拆成另一类资源。</p>
+            </div>
+            <el-button text @click="copyJson(selectedResource.rules)">
+              <AppIcon name="copy" size="sm" />
+              复制 JSON
+            </el-button>
+          </div>
+          <pre class="json-preview">{{ rulesToJson(selectedResource.rules) }}</pre>
+          <div class="rule-summary">
+            <AppIcon name="sliders" size="sm" />
+            {{ resourceRuleSummary }}
+          </div>
+        </div>
+      </section>
+      <el-empty v-else description="选择一个数据源查看配置" />
+    </div>
+  </template>
+
+  <el-dialog
+    v-model="addCollectorOpen"
+    :title="attachNewCollectorToWorkflow ? '新增采集器' : '新增数据源'"
+    width="720px"
+    destroy-on-close
+  >
+    <div class="dialog-intro">
+      <span class="note-icon"><AppIcon name="plus" size="sm" /></span>
+      <p>
+        先告诉我从哪里取数据，处理规则可以稍后再细调。{{
+          attachNewCollectorToWorkflow
+            ? '保存后会加载到当前工作流，也会出现在资源配置中心。'
+            : '保存后会出现在资源配置中心。'
+        }}
+      </p>
+    </div>
+    <div class="form-grid dialog-form">
+      <el-form-item label="数据源名称">
+        <el-input v-model="newCollectorDraft.name" placeholder="例如：客户反馈订阅" />
+      </el-form-item>
+      <el-form-item label="采集器类型">
+        <el-select
+          :model-value="newCollectorDraft.collector"
+          @update:model-value="setNewCollectorType"
+        >
+          <el-option
+            v-for="item in collectorCatalog"
+            :key="item.key"
+            :value="item.key"
+            :label="item.label"
+          />
+        </el-select>
+      </el-form-item>
+      <el-form-item :label="catalogItem(newCollectorDraft.collector).locationLabel" class="span-2">
+        <el-input
+          v-model="newCollectorDraft.options.location"
+          :placeholder="catalogItem(newCollectorDraft.collector).locationPlaceholder"
+        />
+      </el-form-item>
+      <el-form-item label="接口密钥（可选）">
+        <el-input v-model="newCollectorDraft.options.apiKey" type="password" show-password />
+      </el-form-item>
+      <el-form-item label="最多读取条数">
+        <el-input-number
+          v-model="newCollectorDraft.options.limit"
+          :min="1"
+          :max="10000"
+          controls-position="right"
+        />
+      </el-form-item>
+    </div>
+    <div class="dialog-rule-header">
+      <div>
+        <h3>取到后怎么整理</h3>
+        <p class="muted">可以先使用默认设置，之后在数据采集处继续调整。</p>
+      </div>
+      <el-radio-group
+        :model-value="newCollectorRuleMode"
+        size="small"
+        @update:model-value="switchNewCollectorRuleMode"
+      >
+        <el-radio-button label="form">普通设置</el-radio-button>
+        <el-radio-button label="json">高级 JSON</el-radio-button>
+      </el-radio-group>
+    </div>
+    <div v-if="newCollectorRuleMode === 'form'" class="rule-form-grid dialog-rules">
+      <el-form-item label="保留哪些内容" class="span-2">
+        <el-checkbox-group v-model="newCollectorRuleForm.fields" class="field-options">
+          <el-checkbox
+            v-for="field in catalogItem(newCollectorDraft.collector).fieldOptions"
+            :key="field.key"
+            :label="field.key"
+          >
+            {{ field.label }}
+          </el-checkbox>
+        </el-checkbox-group>
+      </el-form-item>
+      <el-form-item label="筛选内容">
+        <el-select v-model="newCollectorRuleForm.filter">
+          <el-option
+            v-for="filter in catalogItem(newCollectorDraft.collector).filterOptions"
+            :key="filter.value"
+            :value="filter.value"
+            :label="filter.label"
+          />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="排序方式">
+        <el-select v-model="newCollectorRuleForm.sortBy" clearable placeholder="保持来源顺序">
+          <el-option
+            v-for="field in catalogItem(newCollectorDraft.collector).fieldOptions"
+            :key="field.key"
+            :value="field.key"
+            :label="field.label"
+          />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="输出格式">
+        <el-select v-model="newCollectorRuleForm.format">
+          <el-option value="markdown" label="Markdown" />
+          <el-option value="json" label="JSON" />
+          <el-option value="text" label="纯文本" />
+        </el-select>
+      </el-form-item>
+      <el-form-item class="span-2">
+        <el-checkbox v-model="newCollectorRuleForm.descending">由新到旧排列</el-checkbox>
+      </el-form-item>
+    </div>
+    <el-input
+      v-else
+      v-model="newCollectorRulesJson"
+      type="textarea"
+      :rows="10"
+      class="json-input"
+      spellcheck="false"
+    />
+    <template #footer>
+      <el-button @click="addCollectorOpen = false">取消</el-button>
+      <el-button type="primary" @click="saveNewCollector">
+        <AppIcon name="check" size="sm" />
+        {{ attachNewCollectorToWorkflow ? '保存并加载' : '保存数据源' }}
+      </el-button>
+    </template>
+  </el-dialog>
+
+  <el-dialog v-model="loadCollectorOpen" title="加载已有采集器" width="640px" destroy-on-close>
+    <p class="muted dialog-description">
+      选择一个已经配置好的数据源，加载到“{{
+        selectedWorkflow?.name
+      }}”。它仍然会和其他工作流共享同一份设置。
+    </p>
+    <el-input v-model="loadSearch" clearable placeholder="搜索数据源" class="dialog-search">
+      <template #prefix><AppIcon name="search" size="sm" /></template>
+    </el-input>
+    <div class="load-list">
+      <button
+        v-for="source in filteredLoadResources"
+        :key="source.id"
+        type="button"
+        class="load-row"
+        @click="loadCollector(source.id)"
+      >
+        <span class="source-icon" :style="{ color: catalogItem(source.collector).tone }">
+          <AppIcon :name="iconName(source)" />
+        </span>
+        <span class="source-row-main">
+          <span class="source-row-title">
+            <strong>{{ source.name }}</strong>
+            <el-tag v-if="selectedWorkflow?.sourceIds.includes(source.id)" size="small" type="info">
+              已加载
+            </el-tag>
+          </span>
+          <span class="source-row-meta">
+            {{ catalogItem(source.collector).label }} · {{ sourceUsageLabel(source.id) }}
+          </span>
+        </span>
+        <AppIcon name="chevronRight" size="sm" />
+      </button>
+      <el-empty
+        v-if="!filteredLoadResources.length"
+        description="没有匹配的数据源"
+        :image-size="64"
+      />
     </div>
   </el-dialog>
 
-  <el-drawer v-model="instanceDrawerOpen" size="min(720px, 100%)" direction="rtl" destroy-on-close>
-    <template #header>
-      <div class="drawer-heading"><span class="dialog-icon"><AppIcon name="database" /></span><div><strong>{{ instanceDraft?.id.startsWith('collector_') ? '新增采集器实例' : '编辑采集器实例' }}</strong><span>实例配置与默认处理规则</span></div></div>
+  <el-dialog
+    v-model="resourceEditorOpen"
+    :title="`编辑数据源：${resourceDraft?.name ?? ''}`"
+    width="720px"
+    destroy-on-close
+  >
+    <template v-if="resourceDraft">
+      <div class="sync-callout compact-callout">
+        <span class="sharing-icon"><AppIcon name="layers" size="sm" /></span>
+        <div>
+          <strong>{{ resourceImpact(resourceDraft.id) }}</strong>
+          <p>只改一个工作流，请关闭窗口回到“数据采集”操作。</p>
+        </div>
+      </div>
+      <div class="form-grid dialog-form">
+        <el-form-item label="数据源名称"><el-input v-model="resourceDraft.name" /></el-form-item>
+        <el-form-item label="采集器类型">
+          <el-select v-model="resourceDraft.collector" disabled>
+            <el-option
+              v-for="item in collectorCatalog"
+              :key="item.key"
+              :value="item.key"
+              :label="item.label"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="catalogItem(resourceDraft.collector).locationLabel" class="span-2">
+          <el-input v-model="resourceDraft.options.location" />
+        </el-form-item>
+        <el-form-item label="接口密钥（可选）">
+          <el-input v-model="resourceDraft.options.apiKey" type="password" show-password />
+        </el-form-item>
+        <el-form-item label="最多读取条数">
+          <el-input-number
+            v-model="resourceDraft.options.limit"
+            :min="1"
+            :max="10000"
+            controls-position="right"
+          />
+        </el-form-item>
+      </div>
+      <div class="inline-setting">
+        <el-switch v-model="resourceDraft.enabled" />
+        <div>
+          <strong>启用这个数据源</strong>
+          <span>停用只影响后续运行，不会删除使用位置。</span>
+        </div>
+      </div>
+      <div class="dialog-rule-header">
+        <div>
+          <h3>取到后怎么整理</h3>
+          <p class="muted">处理规则随数据源一起保存。</p>
+        </div>
+        <el-radio-group
+          :model-value="resourceRuleMode"
+          size="small"
+          @update:model-value="switchResourceRuleMode"
+        >
+          <el-radio-button label="form">普通设置</el-radio-button>
+          <el-radio-button label="json">高级 JSON</el-radio-button>
+        </el-radio-group>
+      </div>
+      <div v-if="resourceRuleMode === 'form'" class="rule-form-grid dialog-rules">
+        <el-form-item label="保留哪些内容" class="span-2">
+          <el-checkbox-group v-model="resourceRuleForm.fields" class="field-options">
+            <el-checkbox
+              v-for="field in catalogItem(resourceDraft.collector).fieldOptions"
+              :key="field.key"
+              :label="field.key"
+            >
+              {{ field.label }}
+            </el-checkbox>
+          </el-checkbox-group>
+        </el-form-item>
+        <el-form-item label="筛选内容">
+          <el-select v-model="resourceRuleForm.filter">
+            <el-option
+              v-for="filter in catalogItem(resourceDraft.collector).filterOptions"
+              :key="filter.value"
+              :value="filter.value"
+              :label="filter.label"
+            />
+            <el-option
+              v-if="resourceRuleForm.filter === 'custom'"
+              value="custom"
+              label="已有高级筛选"
+              disabled
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="排序方式">
+          <el-select v-model="resourceRuleForm.sortBy" clearable placeholder="保持来源顺序">
+            <el-option
+              v-for="field in catalogItem(resourceDraft.collector).fieldOptions"
+              :key="field.key"
+              :value="field.key"
+              :label="field.label"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="输出格式">
+          <el-select v-model="resourceRuleForm.format">
+            <el-option value="markdown" label="Markdown" />
+            <el-option value="json" label="JSON" />
+            <el-option value="text" label="纯文本" />
+          </el-select>
+        </el-form-item>
+        <el-form-item class="span-2">
+          <el-checkbox v-model="resourceRuleForm.descending">由新到旧排列</el-checkbox>
+        </el-form-item>
+      </div>
+      <el-input
+        v-else
+        v-model="resourceRulesJson"
+        type="textarea"
+        :rows="10"
+        class="json-input"
+        spellcheck="false"
+      />
     </template>
-    <el-form v-if="instanceDraft" label-position="top" class="instance-editor-form">
-      <div class="editor-section"><div class="section-kicker">01 · 实例信息</div><div class="form-grid"><el-form-item label="实例名称"><el-input v-model="instanceDraft.name" /></el-form-item><el-form-item label="采集器类型"><el-select :model-value="instanceDraft.collector" class="full-control" @update:model-value="changeInstanceCollector"><el-option v-for="item in collectorCatalog" :key="item.key" :value="item.key" :label="item.label" /></el-select></el-form-item></div><el-form-item label="启用实例"><el-switch v-model="instanceDraft.status" active-value="enabled" inactive-value="paused" /></el-form-item></div>
-      <div class="editor-section"><div class="section-kicker">02 · 连接与采集设置</div><p class="muted text-sm">这些字段属于实例本身，工作流只覆盖查询范围等调用级参数。</p><el-form-item label="来源地址 / 文件路径"><el-input v-model="instanceDraft.options.path" placeholder="/var/log/logagent/app.jsonl" /></el-form-item><el-form-item label="访问 Key（可选）"><el-input v-model="instanceDraft.options.apiKey" type="password" show-password placeholder="演示字段，不会提交后端" /></el-form-item><div class="form-grid"><el-form-item label="最大读取条数"><el-input-number v-model="instanceDraft.options.maxLines" :min="1" class="full-control" /></el-form-item><el-form-item label="超时 / 秒"><el-input-number v-model="instanceDraft.timeout" :min="1" class="full-control" /></el-form-item></div></div>
-      <div class="editor-section"><div class="section-kicker">03 · 默认处理规则</div><el-form-item label="加载处理模板"><el-select :model-value="instanceDraft.templateId ?? ''" class="full-control" clearable placeholder="不使用共享模板" @update:model-value="loadInstanceTemplate"><el-option v-for="template in instanceTemplates" :key="template.id" :value="template.id" :label="template.name" /></el-select><p class="field-note">只显示适用于 {{ catalogItem(instanceDraft.collector).label }} 的模板。</p></el-form-item><div v-if="instanceTemplate" class="loaded-template"><span class="template-symbol"><AppIcon name="settings" size="sm" /></span><div><strong>{{ instanceTemplate.name }}</strong><span>已加载共享模板 · 修改下方内容只影响本实例</span></div></div><el-tabs v-model="instanceMode" class="editor-tabs"><el-tab-pane label="快速调整" name="form"><div class="rule-grid"><el-form-item label="保留字段"><el-input v-model="instanceRuleForm.fields" placeholder="message, level" /></el-form-item><el-form-item label="过滤条件"><el-input v-model="instanceRuleForm.filter" placeholder='{"level":["error"]}' /></el-form-item><el-form-item label="排序字段"><el-input v-model="instanceRuleForm.sortBy" placeholder="created_at" /></el-form-item><el-form-item label="倒序"><el-switch v-model="instanceRuleForm.descending" /></el-form-item></div></el-tab-pane><el-tab-pane label="高级 JSON" name="json"><el-input v-model="instanceJson" type="textarea" :rows="12" class="code-input" /></el-tab-pane></el-tabs></div>
-      <div class="drawer-footer"><el-button @click="instanceDrawerOpen = false">取消</el-button><el-button type="primary" @click="saveInstance">保存实例</el-button></div>
-    </el-form>
-  </el-drawer>
+    <template #footer>
+      <el-button @click="resourceEditorOpen = false">取消</el-button>
+      <el-button type="primary" @click="saveResource">
+        <AppIcon name="check" size="sm" />
+        保存并同步
+      </el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <style scoped>
-.demo-alert {
+.demo-tag {
+  margin-right: 4px;
+}
+.view-switcher {
+  flex-shrink: 0;
+}
+.demo-alert,
+.collection-note,
+.sync-callout,
+.sharing-banner {
   display: flex;
   gap: 12px;
   align-items: flex-start;
-  padding: 16px 18px;
-  margin-bottom: 20px;
   border: 1px solid #bfdbfe;
   border-radius: 8px;
-  background: #eff6ff;
+  background: #f8fbff;
   color: #1e3a8a;
 }
-.demo-alert p { margin: 4px 0 0; color: #475569; }
-.alert-mark, .dialog-icon, .workflow-mark, .template-symbol {
+.demo-alert {
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+.demo-alert strong,
+.collection-note strong,
+.sync-callout strong,
+.sharing-banner strong {
+  display: block;
+  font-size: 13px;
+}
+.demo-alert p,
+.collection-note p,
+.sync-callout p,
+.sharing-banner p {
+  margin: 4px 0 0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.alert-mark,
+.note-icon,
+.sharing-icon {
   display: grid;
-  flex: 0 0 auto;
   place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: 6px;
   background: #dbeafe;
   color: #2563eb;
 }
-.demo-layout { display: grid; grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.55fr); gap: 20px; align-items: start; }
-.surface-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
-.instance-panel { min-height: 710px; }
-.panel-heading, .detail-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 22px 22px 16px; border-bottom: 1px solid var(--border); }
-.eyebrow, .section-kicker { color: var(--muted); font-size: 11px; letter-spacing: .08em; font-weight: 700; }
-.panel-heading h2, .detail-heading h2 { margin: 4px 0 0; font-size: 20px; }
-.panel-heading h2 span { color: var(--muted); font-size: 13px; font-weight: 500; }
-.instance-toolbar { display: flex; gap: 10px; padding: 16px 22px; border-bottom: 1px solid var(--border); }
-.search-input { flex: 1; min-width: 0; }
-.type-filter { width: 132px; }
-.instance-list { padding: 8px 10px; }
-.instance-row { display: flex; width: 100%; gap: 12px; align-items: center; padding: 14px 12px; margin: 2px 0; border: 1px solid transparent; border-radius: 7px; background: transparent; color: inherit; text-align: left; cursor: pointer; transition: background .15s ease, border-color .15s ease; }
-.instance-row:hover { background: #f8fafc; border-color: var(--border); }
-.instance-row.selected { background: #eff6ff; border-color: #93c5fd; }
-.instance-icon { display: grid; flex: 0 0 auto; place-items: center; width: 36px; height: 36px; border-radius: 8px; background: #f1f5f9; }
-.instance-content { display: grid; min-width: 0; gap: 4px; flex: 1; }
-.instance-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.instance-title strong, .instance-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.instance-meta { color: var(--muted); font-size: 12px; }
-.instance-chevron, .row-arrow { color: #94a3b8; font-size: 22px; line-height: 1; }
-.panel-footnote { display: flex; gap: 8px; align-items: center; padding: 14px 22px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
-.status-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; }
-.detail-panel { overflow: hidden; }
-.detail-identity { display: flex; gap: 12px; min-width: 0; align-items: center; }
-.large-instance-icon { display: grid; place-items: center; width: 46px; height: 46px; flex: 0 0 auto; border-radius: 10px; background: #f1f5f9; }
-.detail-heading p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
-.detail-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.metric-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--border); }
-.metric-strip div { display: grid; gap: 5px; min-width: 0; padding: 16px 20px; border-right: 1px solid var(--border); }
-.metric-strip div:last-child { border-right: 0; }
-.metric-strip span { color: var(--muted); font-size: 12px; }
-.metric-strip strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.detail-section { padding: 22px; border-bottom: 1px solid var(--border); }
-.detail-section:last-child { border-bottom: 0; }
-.section-title-row { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
-.section-title-row h3 { margin: 0; font-size: 16px; }
-.section-title-row p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
-.template-highlight { display: flex; gap: 12px; align-items: center; margin-top: 16px; padding: 14px; border: 1px solid #bfdbfe; border-radius: 7px; background: #f8fbff; }
-.template-highlight.empty { border-color: var(--border); background: transparent; }
-.template-highlight-main { min-width: 0; flex: 1; }
-.template-highlight-main strong, .template-highlight-main p { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.template-highlight-main p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
-.json-preview { max-height: 180px; margin: 12px 0 0; padding: 14px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; background: #f8fafc; color: #334155; font-size: 12px; line-height: 1.55; }
-.json-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 4px; }
-.workflow-context { display: flex; gap: 10px; align-items: center; margin-top: 16px; padding: 12px; border: 1px solid var(--border); border-radius: 7px; }
-.workflow-context > div { display: grid; gap: 3px; flex: 1; }
-.workflow-context span:not(.workflow-mark) { color: var(--muted); font-size: 12px; }
-.override-editor { margin-top: 12px; padding: 14px; border-left: 3px solid #f59e0b; background: #fffbeb; }
-.full-control { width: 100%; }
-.rule-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
-.compact-rule-grid { gap: 0 12px; }
-.code-input :deep(textarea) { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.55; }
-.override-footer, .template-editor-footer, .drawer-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.template-manager { display: grid; grid-template-columns: 300px minmax(0, 1fr); min-height: 600px; margin: -8px -20px -20px; border-top: 1px solid var(--border); }
-.template-sidebar { padding: 16px; border-right: 1px solid var(--border); background: #f8fafc; }
-.manager-toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
-.manager-toolbar .el-select { min-width: 0; flex: 1; }
-.template-row { display: flex; width: 100%; gap: 10px; align-items: center; padding: 12px 10px; margin-bottom: 5px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
-.template-row:hover { background: var(--surface); border-color: var(--border); }
-.template-row.selected { background: var(--surface); border-color: #93c5fd; box-shadow: 0 1px 3px rgba(15, 23, 42, .05); }
-.template-row > span:nth-child(2) { display: grid; min-width: 0; flex: 1; gap: 3px; }
-.template-row strong, .template-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.template-row small { color: var(--muted); font-size: 11px; }
-.template-row-icon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; background: #e0f2fe; color: #0369a1; }
-.template-editor { display: flex; min-width: 0; flex-direction: column; padding: 24px 28px 20px; }
-.editor-heading { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
-.editor-heading h2 { margin: 4px 0; font-size: 20px; }
-.editor-heading p { margin: 0; color: var(--muted); font-size: 13px; }
-.template-form { flex: 1; }
-.editor-tabs { margin-top: 6px; }
-.schema-hint { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 6px; background: #f8fafc; color: var(--muted); font-size: 12px; }
-.template-editor-footer { padding-top: 18px; margin-top: 16px; border-top: 1px solid var(--border); }
-.footer-actions { display: flex; gap: 8px; }
-.drawer-heading, .dialog-heading { display: flex; gap: 10px; align-items: center; }
-.drawer-heading > div, .dialog-heading > div { display: grid; gap: 3px; }
-.drawer-heading span, .dialog-heading span { color: var(--muted); font-size: 12px; }
-.instance-editor-form { padding-bottom: 70px; }
-.editor-section { padding: 0 0 22px; margin-bottom: 22px; border-bottom: 1px solid var(--border); }
-.editor-section:last-of-type { border-bottom: 0; }
-.editor-section > p { margin: 6px 0 16px; }
-.field-note { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
-.loaded-template { display: flex; gap: 10px; align-items: center; padding: 12px; margin-bottom: 14px; border: 1px solid #bfdbfe; border-radius: 6px; background: #f8fbff; }
-.loaded-template > div { display: grid; gap: 3px; }
-.loaded-template span:last-child { color: var(--muted); font-size: 12px; }
-.drawer-footer { position: fixed; right: 0; bottom: 0; left: auto; width: min(720px, 100%); padding: 14px 24px; border-top: 1px solid var(--border); background: var(--surface); }
-:global(.dark) .demo-alert { border-color: #1d4ed8; background: #172554; color: #dbeafe; }
-:global(.dark) .demo-alert p { color: #cbd5e1; }
-:global(.dark) .instance-row:hover, :global(.dark) .instance-row.selected, :global(.dark) .template-row.selected { background: #172554; }
-:global(.dark) .instance-icon, :global(.dark) .large-instance-icon { background: #1e293b; }
-:global(.dark) .template-highlight, :global(.dark) .loaded-template { border-color: #1d4ed8; background: #172554; }
-:global(.dark) .json-preview, :global(.dark) .schema-hint, :global(.dark) .template-sidebar { background: #0f172a; }
-:global(.dark) .json-preview { color: #cbd5e1; }
-:global(.dark) .override-editor { background: #422006; }
+.surface-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.workflow-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  margin-bottom: 18px;
+}
+.workflow-picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 260px;
+}
+.workflow-select {
+  width: 220px;
+}
+.workflow-stats {
+  display: flex;
+  gap: 16px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.collection-layout,
+.resource-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.source-list-panel,
+.resource-list-panel {
+  min-height: 680px;
+  overflow: hidden;
+}
+.panel-heading,
+.detail-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px;
+  border-bottom: 1px solid var(--border);
+}
+.panel-heading h2,
+.resource-toolbar h2 {
+  margin: 4px 0 0;
+  font-size: 18px;
+}
+.panel-heading h2 span,
+.compact-heading h2 span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+.eyebrow {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.source-actions {
+  display: flex;
+  gap: 8px;
+  padding: 16px 20px 4px;
+}
+.source-search,
+.resource-search,
+.dialog-search {
+  margin: 12px 20px;
+  width: calc(100% - 40px);
+}
+.source-list,
+.resource-list {
+  padding: 4px 10px 10px;
+}
+.source-row,
+.resource-row,
+.load-row {
+  display: flex;
+  width: 100%;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.source-row:hover,
+.resource-row:hover,
+.load-row:hover {
+  background: #f8fafc;
+  border-color: var(--border);
+}
+.source-row.selected,
+.resource-row.selected {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+.source-icon,
+.large-source-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 7px;
+  background: #f1f5f9;
+}
+.source-icon {
+  width: 30px;
+  height: 30px;
+}
+.large-source-icon {
+  width: 42px;
+  height: 42px;
+  background: #eff6ff;
+}
+.source-row-main,
+.resource-row-main {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 3px;
+}
+.source-row-title {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+.source-row-title strong,
+.source-row-meta,
+.local-mark {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-row-title strong {
+  font-size: 13px;
+}
+.source-row-meta,
+.local-mark {
+  color: var(--muted);
+  font-size: 11px;
+}
+.local-mark {
+  color: #b45309;
+}
+.panel-footnote {
+  padding: 12px 20px;
+  margin: 0;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+}
+.status-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: #22c55e;
+}
+.detail-heading {
+  padding: 24px;
+}
+.detail-identity {
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+  align-items: center;
+}
+.detail-identity h2 {
+  margin: 3px 0 0;
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+.detail-identity p {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+.sharing-banner,
+.sync-callout {
+  padding: 13px 16px;
+  margin: 18px 22px 0;
+}
+.sharing-banner.detached {
+  border-color: #f6c453;
+  background: #fffbeb;
+  color: #92400e;
+}
+.sharing-banner.detached .sharing-icon {
+  background: #fef3c7;
+  color: #b45309;
+}
+.sharing-banner .el-button {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.editor-section,
+.detail-section {
+  padding: 22px;
+  border-bottom: 1px solid var(--border);
+}
+.section-title-row,
+.dialog-rule-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.section-title-row h3,
+.dialog-rule-header h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.section-title-row p,
+.dialog-rule-header p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.form-grid,
+.rule-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+  margin-top: 16px;
+}
+.field-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+}
+.span-2 {
+  grid-column: 1 / -1;
+}
+.el-form-item {
+  margin-bottom: 16px;
+}
+.inline-setting {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+.inline-setting > div {
+  display: grid;
+  gap: 3px;
+}
+.inline-setting span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.rules-section {
+  border-bottom: 0;
+}
+.advanced-editor {
+  margin-top: 16px;
+}
+.json-input :deep(textarea),
+.json-preview {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.advanced-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.rule-summary {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  padding: 10px 12px;
+  margin-top: 14px;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 12px;
+}
+.editor-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 22px;
+  border-top: 1px solid var(--border);
+}
+.save-hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.collection-note {
+  padding: 14px 16px;
+  margin-top: 18px;
+  border-color: var(--border);
+  background: var(--surface);
+  color: inherit;
+}
+.collection-note p {
+  color: var(--muted);
+}
+.resource-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 20px;
+  margin-bottom: 18px;
+}
+.resource-toolbar p {
+  max-width: 640px;
+  margin: 5px 0 0;
+  font-size: 12px;
+}
+.resource-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.resource-toolbar-actions .resource-search {
+  width: 190px;
+  margin: 0;
+}
+.resource-filter {
+  width: 130px;
+}
+.resource-list-panel {
+  min-height: 620px;
+}
+.compact-heading {
+  padding: 18px 20px;
+}
+.resource-detail-panel {
+  overflow: hidden;
+}
+.sync-callout {
+  margin-top: 20px;
+}
+.compact-callout {
+  margin: 0 0 18px;
+}
+.metric-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 20px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.metric-strip > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 14px 22px;
+  border-right: 1px solid var(--border);
+}
+.metric-strip > div:last-child {
+  border-right: 0;
+}
+.metric-strip span,
+.resource-facts span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.metric-strip strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.resource-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+.resource-facts > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.resource-facts strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.usage-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+.usage-chip {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: #334155;
+  font-size: 12px;
+}
+.json-preview {
+  max-height: 230px;
+  margin: 16px 0 0;
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #334155;
+}
+.dialog-intro {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px;
+  margin-bottom: 16px;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+.dialog-intro p,
+.dialog-description {
+  margin: 2px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.dialog-form {
+  margin-top: 0;
+}
+.dialog-rule-header {
+  align-items: center;
+  padding-top: 12px;
+  margin: 2px 0 8px;
+  border-top: 1px solid var(--border);
+}
+.dialog-rules {
+  margin-top: 8px;
+}
+.load-list {
+  max-height: 390px;
+  padding: 4px 8px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+.load-row {
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+}
+.load-row:last-child {
+  border-bottom: 0;
+}
 @media (max-width: 1100px) {
-  .demo-layout { grid-template-columns: 1fr; }
-  .instance-panel { min-height: 0; }
-  .instance-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .panel-footnote { grid-column: 1 / -1; }
+  .collection-layout,
+  .resource-layout {
+    grid-template-columns: 1fr;
+  }
+  .source-list-panel,
+  .resource-list-panel {
+    min-height: 0;
+  }
+  .source-list,
+  .resource-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .panel-footnote {
+    grid-column: 1 / -1;
+  }
 }
 @media (max-width: 720px) {
-  .demo-alert { padding: 14px; }
-  .demo-layout { gap: 14px; }
-  .panel-heading, .detail-heading { padding: 16px; flex-direction: column; }
-  .detail-actions { width: 100%; }
-  .instance-toolbar { padding: 12px 16px; flex-direction: column; }
-  .type-filter { width: 100%; }
-  .instance-list { grid-template-columns: 1fr; }
-  .metric-strip { grid-template-columns: 1fr; }
-  .metric-strip div { border-right: 0; border-bottom: 1px solid var(--border); }
-  .metric-strip div:last-child { border-bottom: 0; }
-  .detail-section { padding: 16px; }
-  .template-highlight { align-items: flex-start; flex-wrap: wrap; }
-  .template-highlight > .el-button { margin-left: 44px; }
-  .rule-grid { grid-template-columns: 1fr; }
-  .template-manager { grid-template-columns: 1fr; margin: -8px -20px -20px; }
-  .template-sidebar { border-right: 0; border-bottom: 1px solid var(--border); max-height: 230px; overflow: auto; }
-  .template-editor { padding: 18px 16px 16px; }
-  .editor-heading { flex-direction: column; }
-  .template-editor-footer { align-items: stretch; flex-direction: column-reverse; }
-  .footer-actions { justify-content: flex-end; }
-  .drawer-footer { width: 100%; padding: 12px 16px; }
+  .view-switcher {
+    width: 100%;
+  }
+  .view-switcher :deep(.el-radio-button) {
+    flex: 1;
+  }
+  .workflow-bar,
+  .resource-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .workflow-picker {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .workflow-select {
+    width: 100%;
+  }
+  .workflow-stats {
+    flex-wrap: wrap;
+    gap: 8px 14px;
+  }
+  .source-list,
+  .resource-list {
+    grid-template-columns: 1fr;
+  }
+  .panel-heading,
+  .detail-heading {
+    padding: 16px;
+    flex-direction: column;
+  }
+  .detail-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .sharing-banner,
+  .sync-callout {
+    margin-right: 16px;
+    margin-left: 16px;
+  }
+  .sharing-banner {
+    flex-wrap: wrap;
+  }
+  .sharing-banner .el-button {
+    margin-left: 40px;
+  }
+  .editor-section,
+  .detail-section {
+    padding: 16px;
+  }
+  .section-title-row,
+  .dialog-rule-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .form-grid,
+  .rule-form-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .span-2 {
+    grid-column: auto;
+  }
+  .metric-strip,
+  .resource-facts {
+    grid-template-columns: 1fr;
+  }
+  .metric-strip > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .metric-strip > div:last-child {
+    border-bottom: 0;
+  }
+  .resource-toolbar-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .resource-toolbar-actions .resource-search,
+  .resource-filter {
+    width: 100%;
+  }
+  .editor-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .advanced-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+:global(.dark) .demo-alert,
+:global(.dark) .sync-callout,
+:global(.dark) .sharing-banner {
+  border-color: #1d4ed8;
+  background: #172554;
+  color: #dbeafe;
+}
+:global(.dark) .demo-alert p,
+:global(.dark) .sync-callout p,
+:global(.dark) .sharing-banner p {
+  color: #cbd5e1;
+}
+:global(.dark) .sharing-banner.detached {
+  border-color: #92400e;
+  background: #422006;
+  color: #fde68a;
+}
+:global(.dark) .source-row:hover,
+:global(.dark) .resource-row:hover,
+:global(.dark) .load-row:hover,
+:global(.dark) .source-row.selected,
+:global(.dark) .resource-row.selected {
+  background: #172554;
+}
+:global(.dark) .source-icon,
+:global(.dark) .large-source-icon,
+:global(.dark) .dialog-intro,
+:global(.dark) .rule-summary,
+:global(.dark) .json-preview {
+  background: #0f172a;
+}
+:global(.dark) .json-preview {
+  color: #cbd5e1;
 }
 </style>
