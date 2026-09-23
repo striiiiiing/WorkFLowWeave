@@ -41,6 +41,7 @@
 - [x] C3 共享 aiorwlock 与读 semaphore；排队、取消、超时均可见，读 4/写 1且写与读互斥；调度器已提供给后续 AgentService 复用。
 - [x] C4 bubblewrap 单次进程、最小环境、只读事实挂载、网络开关、进程树清理；实际隔离不可用时明确失败，关闭沙箱使用固定最小环境。
 - [x] C5 工具完整输出文件化、预览预算和 16 MiB 超量失败；AGENTS 常驻、Memory 按时区、History 笔记与事实分离。
+- [ ] C6 补齐 design §2/§4.1/§4.2 的公共 Collector HTTP/CLI 入口；Agent 和 HTTP 共用调用应用服务，CLI 只包装 HTTP。
 
 预期改动：agent/{workspace,sandbox,tools,gateway}.py、内置 tool 插件及测试。数值沿用 tasks.md 已列理由：200 行、50 命中、20 目录项、60 秒 Shell、约 2000-token 预览；不新增隐含硬上限。
 
@@ -74,6 +75,11 @@
 - [x] F6 后端定向回归、静态检查、构建、旧 Workflow 回归、OpenSpec 严格验证与 diff 审查。
 
 ## 验证与提交规则
+
+- 2026-09-23 续接补漏基线：HEAD `710d93f`。复核发现索引 2.3 的 HTTP/CLI/application service 勾选超前，现有调用仅在 Agent gateway；新增 C6 并重新打开索引 2.3，不改 design。用户要求不新增或重新派发 subagent，主代理直接完成这一整包；真实浏览器仍由用户验收。
+- C6 结构性修复计划：把 gateway 的参数模型、目标解析、Schema 投影和单次采集抽到 `collection/invocation.py`；HTTP 增加 `/api/sources/{id}/call-schema` 与 `/api/sources/{id}/collect`，CLI 增加 `collect`/`collect-schema`，复用生命周期资源快照、CollectorManager、凭据和 SessionView。依据 design §4.1/§5，公共入口不获取 Agent workspace 锁；资源模板沿用 `invocation_snapshot` 展开，实例参数限制沿用 `normalize_call_options`，不复制 Schema/重试规则。
+- C6 默认值依据：HTTP 独立采集上下文使用 `workflow_id=collection` 和服务端生成 UUID 作为 `session_id`，仅标识本次调用，不伪造 Workflow/Agent 会话；沿用生命周期日志/凭据/历史查询依赖。CLI 采集请求保留现有 30 秒连接/写入限制，取消客户端读取超时，由已有 `SourceConfig.timeout` 限制业务执行，避免原 CLI 30 秒先截断长采集；响应未知不自动重试。输入文件使用 UTF-8 JSON 的 `{options,setters}`，空参数沿用资源保存值。
+- C6 验证计划：共享服务/Agent/HTTP/CLI 对同一资源覆盖、模板和空 Setter 的一致性，拒绝实例字段与无效目标，状态/超时/取消保真和无自动重试；单批后端测试硬限 60 秒，随后 ruff、Python 构建、真实 localhost HTTP/CLI 非浏览器烟测，完成后补证据并单独提交。
 
 - 后端每批测试使用 `timeout 60s`；按定向单测 → 静态/类型 → 构建 → 最小烟测执行。
 - 检查具有行为意义：副作用只执行一次、互斥无重叠、恢复不重放、摘要输入不丢失、前端续传不重复和冲突不覆盖。

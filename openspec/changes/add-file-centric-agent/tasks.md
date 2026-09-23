@@ -13,11 +13,11 @@
 - [x] 1.5 校准 Runtime 可读文件路径，并将 checkpoint 清理统一为整条 thread 生命周期规则；依据见 [设计一致性校准记录](tasks/2026-09-22-design-alignment/task.md)。
 - [x] 1.6 修正多会话 Runtime 入口：使用会话作用域的 `Runtime/self.json`，不使用共享工作区的 `Runtime/current.json`；依据见 [会话上下文入口记录](tasks/2026-09-22-session-context/task.md)。
 
-## 2. 实施顺序（新版，本轮已完成）
+## 2. 实施顺序（新版）
 
 - [x] 2.1 验证锁文件中的 LangChain/LangGraph 1.x、checkpoint/sqlite、Provider 与 Workflow 副本回归；不在 SQLite 中直接删除中间 checkpoint。
 - [x] 2.2 抽取共享模型租约和无工具 Workflow 文本入口；验证 Agent tool calling/streaming 入口。
-- [x] 2.3 扩展 PluginRegistry 的 tool kind、Collector 调用 Schema 投影、公共 HTTP/CLI/application service 和五个内置工具插件。
+- [ ] 2.3 扩展 PluginRegistry 的 tool kind、Collector 调用 Schema 投影、公共 HTTP/CLI/application service 和五个内置工具插件。2026-09-23 复核发现公共 Collector HTTP/CLI 尚缺，按实施记录 C6 补齐后再勾选。
 - [x] 2.4 实现固定工作区级读写调度、取消、稳定 tool key、事件 JSONL 和 `created_at/updated_at` thread 元数据。
 - [x] 2.5 实现文件记忆、Runtime 映射、bubblewrap/关闭模式、按日时区和 Artifact 预算。
 - [x] 2.6 实现 Workflow 结果续接、命令优先级、`/append`/`/compact` 边界、Pi 式 fork 分支和模型输出只读。
