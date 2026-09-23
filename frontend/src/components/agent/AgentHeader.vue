@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { AgentModel, AgentSession, ContextBudget } from '@/api/agents'
 import AppIcon from '@/components/icons/AppIcon.vue'
+import { groupAgentModels } from '@/domain/agentModels'
 
 const props = defineProps<{
   session: AgentSession
@@ -22,6 +23,7 @@ const emit = defineEmits<{
 }>()
 
 const budget = computed<ContextBudget | null>(() => props.session.context_budget)
+const modelGroups = computed(() => groupAgentModels(props.models))
 
 const tokenPercent = computed(() => {
   if (!budget.value || !budget.value.window) return 0
@@ -37,7 +39,7 @@ const budgetTone = computed(() => {
 
 const currentModelLabel = computed(() => {
   const m = props.models.find((item) => item.reference === props.session.model)
-  return m ? `${m.model || m.reference}` : props.session.model || '选择模型'
+  return m ? `${m.ai} / ${m.model}` : props.session.model || '选择供应商渠道模型'
 })
 </script>
 
@@ -46,7 +48,7 @@ const currentModelLabel = computed(() => {
     <div class="header-left">
       <!-- 1. 模型选择器 Pill -->
       <el-dropdown trigger="click" @command="emit('changeModel', $event)">
-        <button type="button" class="header-pill model-pill">
+        <button type="button" class="header-pill model-pill" aria-label="切换供应商渠道模型">
           <span class="pill-icon">
             <AppIcon name="sparkles" size="sm" />
           </span>
@@ -55,20 +57,24 @@ const currentModelLabel = computed(() => {
         </button>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item
-              v-for="item in models"
-              :key="item.reference"
-              :command="item.reference"
-              :class="{ 'is-active': item.reference === session.model }"
-            >
-              <div class="model-option">
-                <strong>{{ item.model || item.reference }}</strong>
-                <small>{{ item.provider }} · {{ item.ai }}</small>
-              </div>
-            </el-dropdown-item>
-            <el-dropdown-item v-if="!models.length" disabled>
-              暂无可用模型配置
-            </el-dropdown-item>
+            <template v-for="group in modelGroups" :key="group.channel">
+              <li class="px-3 py-2 text-xs text-muted" role="presentation">{{ group.channel }}</li>
+              <el-dropdown-item
+                v-for="item in group.models"
+                :key="item.reference"
+                :command="item.reference"
+                :class="{ 'is-active': item.reference === session.model }"
+              >
+                <div class="model-option">
+                  <strong>{{ item.model || item.reference }}</strong>
+                  <small>{{ item.provider }} · {{ item.ai }}</small>
+                </div>
+              </el-dropdown-item>
+            </template>
+            <el-dropdown-item v-if="!models.length" disabled>暂无可用模型配置</el-dropdown-item>
+            <li class="px-3 py-2">
+              <a href="/resources?kind=ai" target="_blank" rel="noopener">管理供应商渠道</a>
+            </li>
           </el-dropdown-menu>
         </template>
       </el-dropdown>
@@ -94,7 +100,9 @@ const currentModelLabel = computed(() => {
               ? '实时已连'
               : streamState === 'reconnecting'
                 ? '续传重连'
-                : '已同步'
+                : streamState === 'loading'
+                  ? '加载中'
+                  : '已同步'
           }}
         </span>
       </span>
@@ -109,8 +117,11 @@ const currentModelLabel = computed(() => {
               <div class="token-bar" :style="{ width: `${tokenPercent}%` }" />
             </div>
             <span class="token-label">
-              {{ budget ? `${Math.round(budget.total / 1000)}k` : '0k' }} /
-              {{ budget ? `${Math.round(budget.window / 1000)}k` : '32k' }}
+              {{
+                budget
+                  ? `${Math.round(budget.total / 1000)}k / ${Math.round(budget.window / 1000)}k`
+                  : '预算待计算'
+              }}
             </span>
           </button>
         </template>
@@ -122,14 +133,11 @@ const currentModelLabel = computed(() => {
           </div>
 
           <div class="budget-progress-track">
-            <div
-              class="progress-fill"
-              :class="budgetTone"
-              :style="{ width: `${tokenPercent}%` }"
-            />
+            <div class="progress-fill" :class="budgetTone" :style="{ width: `${tokenPercent}%` }" />
           </div>
 
           <div v-if="budget" class="budget-breakdown">
+            <p>{{ budget.estimated ? '估算用量' : '实际用量' }} · {{ budget.token_counter }}</p>
             <div class="breakdown-row">
               <span>历史消息 Tokens</span>
               <strong>{{ budget.messages.toLocaleString() }}</strong>
@@ -150,6 +158,7 @@ const currentModelLabel = computed(() => {
               <span>自动压缩触发阈值</span>
               <strong>{{ budget.trigger.toLocaleString() }}</strong>
             </div>
+            <p v-else>历史未记录触发线，下轮重新计算。</p>
           </div>
           <div v-else class="text-xs text-muted py-2">
             尚无本轮请求消耗数据，发送第一条消息后将动态计算。
@@ -164,7 +173,7 @@ const currentModelLabel = computed(() => {
               @click="emit('compact')"
             >
               <AppIcon name="zap" size="sm" />
-              <span>立即压缩上下文 (释放空间)</span>
+              <span>{{ running ? '排队压缩上下文' : '压缩上下文' }}</span>
             </el-button>
           </div>
         </div>
@@ -176,6 +185,7 @@ const currentModelLabel = computed(() => {
           <button
             type="button"
             class="action-btn"
+            aria-label="派生新分支"
             :disabled="running || !session.last_checkpoint_at"
             @click="emit('fork')"
           >
@@ -184,25 +194,45 @@ const currentModelLabel = computed(() => {
         </el-tooltip>
 
         <el-tooltip content="工作区文件与产物" placement="bottom">
-          <button type="button" class="action-btn" @click="emit('openFiles')">
+          <button
+            type="button"
+            class="action-btn"
+            aria-label="工作区文件"
+            @click="emit('openFiles')"
+          >
             <AppIcon name="file" size="sm" />
           </button>
         </el-tooltip>
 
         <el-tooltip content="只读 Workflow 来源" placement="bottom">
-          <button type="button" class="action-btn" @click="emit('openSource')">
+          <button
+            type="button"
+            class="action-btn"
+            aria-label="Workflow 来源"
+            @click="emit('openSource')"
+          >
             <AppIcon name="info" size="sm" />
           </button>
         </el-tooltip>
 
         <el-tooltip content="Workflow 历史" placement="bottom">
-          <button type="button" class="action-btn" @click="emit('openWorkflows')">
+          <button
+            type="button"
+            class="action-btn"
+            aria-label="Workflow 历史"
+            @click="emit('openWorkflows')"
+          >
             <AppIcon name="history" size="sm" />
           </button>
         </el-tooltip>
 
         <el-tooltip content="全局设置与沙箱" placement="bottom">
-          <button type="button" class="action-btn" @click="emit('openSettings')">
+          <button
+            type="button"
+            class="action-btn"
+            aria-label="全局设置"
+            @click="emit('openSettings')"
+          >
             <AppIcon name="settings" size="sm" />
           </button>
         </el-tooltip>
@@ -465,6 +495,23 @@ const currentModelLabel = computed(() => {
 }
 
 @media (max-width: 640px) {
+  .chat-header {
+    flex-wrap: wrap;
+    padding: 8px;
+  }
+  .header-left,
+  .header-right {
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+  .model-pill {
+    max-width: 240px;
+  }
+  .pill-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .connection-badge,
   .token-pill {
     display: none;
