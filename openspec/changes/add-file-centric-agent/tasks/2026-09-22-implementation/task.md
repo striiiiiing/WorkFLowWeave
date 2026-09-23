@@ -71,7 +71,7 @@
 - [x] F4 工具开关沿用插件配置与 reload；显示真实沙箱/并发/未知发送状态、上下文估算、压缩摘要、文件冲突保留草稿。
 - [x] F5a 本轮：前端组件/流状态单测、类型检查、构建；临时目录与假模型的非浏览器真实后端 HTTP/SSE 验证，覆盖停止、重连、冲突，不连接真实渠道。
 - [ ] F5b 用户独立方案待验收：真实浏览器操作、窄屏视觉与真实浏览器 SSE；不属于本轮 Agent 完成阻塞，不声称已通过。
-- [ ] F6 后端定向回归、静态检查、构建、旧 Workflow 回归、OpenSpec 严格验证与 diff 审查。
+- [x] F6 后端定向回归、静态检查、构建、旧 Workflow 回归、OpenSpec 严格验证与 diff 审查。
 
 ## 验证与提交规则
 
@@ -166,3 +166,11 @@
 - F4 预算决策：依据 design §3.1/§8 的按轮快照约束，context.budget 新增本轮有效 trigger=min(trigger_tokens, window)，页面使用该事件值展示触发线；设置更改只影响下一轮，不能用新配置倒推当前预算。旧历史缺少 trigger 时明确显示“历史未记录，下轮重新计算”。context/final_contracts 定向 28 passed /23.17s（timeout60s），ruff 通过。
 - F5a 前端验证：共享工作树 Vitest 22 files/112 tests passed /71.57s；随后在 37a13bc 加本任务精确暂存补丁的隔离 worktree 验证 Agent 三文件与基线 ReportText 共 18 passed /32.18s（Agent15+报告3），最后追加的未知发送同 ID 重试用例所在 agent-view 文件 4 passed /50.54s，新增 Agent 共16项均有通过证据，不将追加后未重跑的全量描述为113项通过。隔离前端 npm run typecheck、npm run build 通过（Vite 3556 modules/32.45s）；其 frontend 文件与本任务暂存内容逐字节一致，未借用共享脏报告组件或样式。共享工作树另有 CollectorDesignDemoView.vue:254 的 selectedTemplate 未使用导致 TS6133，属于其他任务，未改动或提交；本任务类型/构建结论以隔离检出为界。
 - F5a 非浏览器烟测：临时目录、假模型、真实 Uvicorn/FastAPI/EventLog/checkpoint/Workspace，经 localhost:14301 的真实 HTTP/SSE 验证创建201、发送202、9条连续持久事件、Last-Event-ID 仅回放缺失末条、新建 If-None-Match:*、If-Match 改写和 stale409 保留远端，以及独立 stop 得到 cancelled。首次10秒就绪窗口被繁忙导入耗尽，改为明确40秒就绪窗口后上述业务断言通过；未改变产品超时。进程与临时目录已清理，未连接真实渠道，未启动浏览器或准备浏览器依赖。F5b 仍由用户独立验收，不以组件/HTTP结果声称真实浏览器或窄屏视觉已通过。
+
+### F6 本轮最终验收（2026-09-23）
+
+- 本轮完成提交：`e472e17` 工具/Collector/Artifact 契约、`0b2b2c3` 模型边界命令和精确 fork、`122c6f3` 管理与持久流、`37a13bc` 失败后的明确续接、`54e6290` 会话/文件/Workflow 前端。已完成 F1–F4、F5a、F6；F5b 保持用户待验收。proposal/design/frontend 未改，未推送。
+- 后端均按批次 `timeout 60s .venv/bin/pytest`：最终 Agent+HTTP 124 passed /52.68s；最后预算字段改动的 context/final_contracts 28 passed /23.17s。旧 Workflow 的 test_recovery_availability、test_session_search、test_session_store、test_workflow_interval、test_workflow_lifecycle、test_workflow_recovery 六文件 67 passed /10.28s；test_workflow_process_recovery 单独3 passed /36.53s。lifecycle 两文件、AI model_lease 与 test_service 的确定性部分（`-k 'not request_roles_prompt_credentials_and_usage'`）43 passed /14.71s、1 skipped、4 deselected。排除项原因如下，不将这些定向批次描述为全量后端通过。
+- 外部服务失败如实保留：一次包含 turn_config/model_lease/ai service/interaction/recovery_query 的批次结果为46 passed、2 failed、3 skipped /19.25s；两个失败均为已有 `tests/ai/test_service.py::test_request_roles_prompt_credentials_and_usage[mock-...]`，默认请求 localhost:19026/v1。`tests/ai/live_helpers.py:73` 要求 mock 正文包含“测试”，当前本地服务实际返回 `LOGAGENT_OK`。未修改外部服务或放宽断言，也未再次请求该服务/真实模型；确定性模型租约和配置测试另批通过。
+- 静态/构建与烟测：`ruff check src tests frontend/tests/serve_agent_backend.py` 通过，最后 context 字段改动另行 ruff 通过；最终代码 `uv build` 产出 sdist/wheel。前端最终冻结文件的隔离 typecheck 与格式检查通过，隔离构建和16项 Agent 测试证据见 F5a；共享 CollectorDesignDemoView.vue 的 TS6133 边界同上。真实 ASGI 断连/续传和 localhost HTTP/SSE 烟测通过，未用启动日志代替业务验证。OpenSpec strict 与 diff-check 通过。
+- 最终差异自审：复用唯一配置、插件发现、模型租约、Workspace 调度、公开 checkpoint 和官方摘要入口；无第二 Schema/模型池/摘要实现、无静默失败成功化、无自动重做未知副作用、无链上中间 checkpoint 删除。事件游标跨分支去重，停止不等待共享动作，文件部分读取不能覆盖全文，冲突与响应未知均保留用户输入。仅提交本任务文件及必要接线 hunks，保留其他任务共享脏改动；最终索引以本轮证据覆盖历史勾选，不追改历史执行事实。
