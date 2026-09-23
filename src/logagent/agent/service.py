@@ -30,6 +30,7 @@ from logagent.agent.sandbox import ShellSandbox
 from logagent.agent.scheduling import ToolScheduler
 from logagent.agent.workspace import RuntimeIdentity, WorkspaceBackend
 from logagent.errors import LogAgentError
+from logagent.models import CollectionContext
 
 ModelProvider = Callable[["AgentSession"], Any]
 
@@ -89,6 +90,7 @@ class AgentService:
                  resources=None, plugins=None, collectors=None, channels=None,
                  declarations: list[ToolDeclaration] | None = None,
                  gateway_factory: Callable[[AgentSession], Any] | None = None,
+                 collection_context_factory: Callable[[AgentSession], CollectionContext] | None = None,
                  read_only_tools: bool = False):
         self.config = config or AgentConfig()
         self.workspace = WorkspaceBackend(workspace, runtime)
@@ -107,6 +109,7 @@ class AgentService:
         self._checkpointer_context = None
         self._owns_checkpointer = checkpointer is None
         self.gateway_factory = gateway_factory
+        self.collection_context_factory = collection_context_factory
         self._declarations = declarations or [plugin.plugin, read.plugin, write.plugin,
                                                grep.plugin, shell.plugin]
         if read_only_tools:
@@ -179,7 +182,7 @@ class AgentService:
             session = AgentSession(
                 directory.name, created.get("branch_id", _new_id("branch_")),
                 created.get("model"), created.get("workflow_session_id"),
-                workflow.get("input") if workflow else None, now, now,
+                workflow.get("input") if workflow else None, now, log.events[-1]["created_at"],
                 status=status, turn_id=turn_id, log=log,
                 parent_session_id=created.get("parent_session_id"),
                 parent_turn_id=created.get("parent_turn_id"),
@@ -242,29 +245,32 @@ class AgentService:
             if not self._accepting:
                 raise LogAgentError("agent_busy", "Agent 当前暂停接收新会话")
             await self.initialize()
-        sid = session_id or _new_id("agent_")
-        if sid in self.sessions:
-            raise LogAgentError("session_conflict", "Agent session 已存在")
-        now = datetime.now(UTC).isoformat()
-        session = AgentSession(
-            sid, _new_id("branch_"), model or self.default_model,
-            workflow_session_id, workflow_result, now, now,
-            log=EventLog(self.runtime, sid),
-            parent_session_id=parent_session_id,
-            parent_turn_id=parent_turn_id,
-            parent_branch_id=parent_branch_id,
-        )
-        await session.log.initialize()
-        self.sessions[sid] = session
-        await session.log.append("session.created", branch_id=session.branch_id,
-                                 model=session.model, workflow_session_id=workflow_session_id,
-                                 parent_session_id=parent_session_id,
-                                 parent_turn_id=parent_turn_id,
-                                 parent_branch_id=parent_branch_id)
-        if workflow_result is not None:
-            await session.log.append("workflow.input", workflow_session_id=workflow_session_id,
-                                     input=workflow_result)
-        return self._session_view(session)
+            sid = session_id or _new_id("agent_")
+            if sid in self.sessions:
+                raise LogAgentError("session_conflict", "Agent session 已存在")
+            now = datetime.now(UTC).isoformat()
+            session = AgentSession(
+                sid, _new_id("branch_"), model or self.default_model,
+                workflow_session_id, workflow_result, now, now,
+                log=EventLog(self.runtime, sid),
+                parent_session_id=parent_session_id,
+                parent_turn_id=parent_turn_id,
+                parent_branch_id=parent_branch_id,
+            )
+            await session.log.initialize()
+            created = await session.log.append(
+                "session.created", branch_id=session.branch_id,
+                model=session.model, workflow_session_id=workflow_session_id,
+                parent_session_id=parent_session_id, parent_turn_id=parent_turn_id,
+                parent_branch_id=parent_branch_id,
+            )
+            if workflow_result is not None:
+                await session.log.append("workflow.input", workflow_session_id=workflow_session_id,
+                                         input=workflow_result)
+            session.created_at = created["created_at"]
+            session.updated_at = session.log.events[-1]["created_at"]
+            self.sessions[sid] = session
+            return self._session_view(session)
 
     async def _copy_checkpoint_thread(self, source_session_id: str,
                                       target_session_id: str) -> None:
@@ -367,37 +373,18 @@ class AgentService:
         """Record and launch a turn while the admission/session locks are held."""
         turn_id = turn_id or _new_id("turn_")
         digest = digest or _digest(text)
-        session.request_ids[request_id] = (turn_id, digest)
         await session.log.append("request.accepted", request_id=request_id,
                                  turn_id=turn_id, text_digest=digest)
-        await session.log.append("message.user", turn_id=turn_id, text=text)
+        session.request_ids[request_id] = (turn_id, digest)
         task = asyncio.create_task(self._run_turn(session, turn_id, text),
                                    name=f"agent:turn:{turn_id}")
         session.task = task
         self._turns[turn_id] = task
+        session.status, session.turn_id = "running", turn_id
         return {"session_id": session.session_id, "turn_id": turn_id, "deduplicated": False}
 
     async def submit(self, session_id: str, text: str, *, request_id: str) -> dict[str, Any]:
-        if not isinstance(text, str) or not text.strip():
-            raise LogAgentError("invalid_argument", "消息不能为空")
-        if not isinstance(request_id, str) or not request_id.strip():
-            raise LogAgentError("invalid_argument", "request_id 不能为空")
-        session = self._session(session_id)
-        digest = _digest(text)
-        previous = session.request_ids.get(request_id)
-        if previous is not None:
-            if previous[1] != digest:
-                raise LogAgentError("request_conflict", "request_id 已用于其他消息")
-            return {"session_id": session_id, "turn_id": previous[0], "deduplicated": True}
-        async with self._admission_lock:
-            if not self._accepting:
-                raise LogAgentError("agent_busy", "Agent 当前暂停接收新轮次")
-            async with session.lock:
-                if session.task is not None and not session.task.done():
-                    raise LogAgentError("session_busy", "一个 session 同时只能运行一轮")
-                return await self._start_turn_locked(
-                    session, text, request_id=request_id, digest=digest,
-                )
+        return await self._accept_message(session_id, text, request_id=request_id, queue=False)
 
     async def append(self, session_id: str, text: str, *, request_id: str) -> dict[str, Any]:
         """Append a user message at the next safe model boundary.
@@ -406,30 +393,37 @@ class AgentService:
         records a durable command and starts the queued turn only after the
         current turn has reached a terminal event.
         """
+        return await self._accept_message(session_id, text, request_id=request_id, queue=True)
+
+    async def _accept_message(self, session_id: str, text: str, *,
+                              request_id: str, queue: bool) -> dict[str, Any]:
+        """Serialize deduplication and publication for both message entrypoints."""
         if not isinstance(text, str) or not text.strip():
             raise LogAgentError("invalid_argument", "消息不能为空")
         if not isinstance(request_id, str) or not request_id.strip():
             raise LogAgentError("invalid_argument", "request_id 不能为空")
         session = self._session(session_id)
         digest = _digest(text)
-        previous = session.request_ids.get(request_id)
-        if previous is not None:
-            if previous[1] != digest:
-                raise LogAgentError("request_conflict", "request_id 已用于其他消息")
-            return {"session_id": session_id, "turn_id": previous[0], "deduplicated": True}
         async with self._admission_lock:
-            if not self._accepting:
-                raise LogAgentError("agent_busy", "Agent 当前暂停接收新轮次")
             async with session.lock:
+                previous = session.request_ids.get(request_id)
+                if previous is not None:
+                    if previous[1] != digest:
+                        raise LogAgentError("request_conflict", "request_id 已用于其他消息")
+                    return {"session_id": session_id, "turn_id": previous[0], "deduplicated": True}
+                if not self._accepting:
+                    raise LogAgentError("agent_busy", "Agent 当前暂停接收新轮次")
                 if session.task is not None and not session.task.done():
+                    if not queue:
+                        raise LogAgentError("session_busy", "一个 session 同时只能运行一轮")
                     turn_id = _new_id("turn_")
-                    session.request_ids[request_id] = (turn_id, digest)
-                    session.pending_appends.append((turn_id, text, request_id, digest))
                     event = await session.log.append(
                         "command.queued", command="append", turn_id=session.turn_id,
                         queued_turn_id=turn_id, request_id=request_id,
                         text_digest=digest, text=text,
                     )
+                    session.request_ids[request_id] = (turn_id, digest)
+                    session.pending_appends.append((turn_id, text, request_id, digest))
                     return {"session_id": session_id, "turn_id": turn_id,
                             "status": "queued", "deduplicated": False,
                             "event_id": event["id"]}
@@ -767,12 +761,13 @@ class AgentService:
         session.status, session.turn_id = "running", turn_id
         session.updated_at = datetime.now(UTC).isoformat()
         log = session.log
-        await log.append("turn.started", turn_id=turn_id, branch_id=session.branch_id)
         context = None
         published = False
         publication = [False]
         try:
             turn_resources = self._capture_turn_resources(session)
+            await log.append("message.user", turn_id=turn_id, text=text)
+            await log.append("turn.started", turn_id=turn_id, branch_id=session.branch_id)
             identity = RuntimeIdentity(
                 session.session_id, turn_id, session.branch_id,
                 workflow_session_id=session.workflow_session_id, model=session.model,
@@ -780,6 +775,8 @@ class AgentService:
                 workspace=str(self.workspace.root),
             )
             view = self.workspace.for_identity(identity)
+            if turn_resources.gateway is not None:
+                await turn_resources.gateway.catalog(view, revision=turn_id)
             instructions = await view.instructions()
             system_prompt = build_system_prompt(
                 agents=instructions, session_id=session.session_id, branch_id=session.branch_id,
@@ -791,6 +788,9 @@ class AgentService:
                 config=self.config,
                 session_id=session.session_id, turn_id=turn_id, branch_id=session.branch_id,
                 event_log=log, scheduler=self.scheduler, artifacts=self.artifacts,
+                collection=(self.collection_context_factory(session)
+                            if self.collection_context_factory is not None
+                            else CollectionContext("agent", session.session_id)),
             )
             messages = []
             if session.workflow_input is not None and not any(
@@ -852,8 +852,8 @@ class AgentService:
             if not published:
                 completed["text"] = answer
             await log.append("message.completed", **completed)
-            session.status = "completed"
             await log.append("turn.completed", turn_id=turn_id, text=answer)
+            session.status = "completed"
             return {"turn_id": turn_id, "status": "completed", "text": answer}
         except asyncio.CancelledError:
             published = published or publication[0]
@@ -881,7 +881,7 @@ class AgentService:
                              partial=published)
             raise
         finally:
-            session.updated_at = datetime.now(UTC).isoformat()
+            session.updated_at = log.events[-1]["created_at"]
             await self._drain_append(session, finishing_task=asyncio.current_task())
 
     async def _ensure_checkpoint_present(self, session: AgentSession, *,

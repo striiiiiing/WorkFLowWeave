@@ -19,6 +19,7 @@ from logagent.agent.context import summarization_middleware
 from logagent.agent.events import EventLog
 from logagent.agent.scheduling import ToolScheduler
 from logagent.errors import LogAgentError
+from logagent.models import CollectionContext
 
 
 @dataclass(slots=True)
@@ -33,6 +34,7 @@ class AgentToolContext:
     event_log: EventLog
     scheduler: ToolScheduler
     artifacts: ArtifactStore | None = None
+    collection: CollectionContext | None = None
     tool_call_id: str | None = None
     tool_tasks: dict[str, asyncio.Task] = field(default_factory=dict)
     ordinals: dict[str, int] = field(default_factory=lambda: defaultdict(int))

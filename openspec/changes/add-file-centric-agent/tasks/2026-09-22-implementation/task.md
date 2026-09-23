@@ -46,7 +46,7 @@
 
 ### D. 会话、图与持久一致性（对应 3.2、5.4–5.6）
 
-- [ ] D1 AgentService 持有后台轮任务、每会话单轮、request_id 幂等；每轮固定资源/插件同代快照。
+- [x] D1 AgentService 持有后台轮任务、每会话单轮、request_id 幂等；每轮固定资源/插件同代快照。
 - [ ] D2 使用 create_agent 与独立 SQLite checkpointer，整轮持有模型租约；连接断开不取消运行，显式取消释放工具与租约。
 - [x] D3 JSONL 原子占用/started fsync/结果提交；稳定调用键复用、同键异参冲突、活动键共享任务、发送前记账。
 - [x] D4 重启标记 interrupted/outcome_unknown，不重做旧副作用；补齐工具消息后接收新消息，checkpoint 缺失/损坏明确不可继续。
@@ -80,6 +80,11 @@
 - 审查重点：重复逻辑/第二事实来源、过度 gate、吞错、静默降级、禁用绕过、竞态、重复发送、凭据泄露和与设计未说明的偏离。
 
 ## 执行记录
+
+- 2026-09-23 委派授权更新：用户最新明确允许指定的 GPT-6 Astra xhigh 实施代理修改产品代码、测试和实施 task.md，并按完成点创建本地提交；主代理负责派发协调。本次 D1/D2 按该最新授权执行，覆盖上文旧的“子代理不得写代码/任务文档或提交”限制，不追溯改写此前执行事实。行为依据为现行 design.md 及 `../2026-09-22-design-revision/task.md`，不按旧记录推导冲突行为；不改 proposal/design。
+
+- D1 收尾完成（2026-09-23）：依据 design §9.1/§9.3/§10 和设计修订任务的按轮快照要求，普通消息与 append 共用一个锁内去重/冲突/持久接收入口；事件成功落盘后才发布 request_id 和队列视图，避免并发相同 ID 误报 busy、重复排队及落盘失败留下假成功。创建会话也在同一准入边界完成，阻止同 ID 并发创建和关停交叉；created_at/updated_at 从持久事件取值并在重启时恢复。资源沿用一次 ResourceStore.invocation_snapshot，工具/Manager 继续由 lifecycle 的活动轮 reload 禁止规则固定代次；每轮 Catalog 由该快照按 generation/turn_id 写出，旧目录保留。补齐 CollectorManager 所需 CollectionContext，lifecycle 注入现有凭据、日志路径、SessionView；没有新增资源、凭据或插件发现来源。
+- D1 实测：`rtk proxy timeout 60s .venv/bin/pytest -q tests/agent/test_admission.py tests/agent/test_service.py tests/agent/test_gateway.py tests/lifecycle/test_lifecycle.py` → 51 passed / 18.59s。新增 10 项覆盖并发同键同文/异文、普通提交/排队、落盘失败无幽灵接收、同会话单轮及跨会话同时生成、重启幂等与时间戳、会话创建竞争，以及真实 create_agent → plugin → CollectorManager 单次调用时 AI/Schema/Catalog/工具启停快照一致。初跑明确发现并修复 created_at 重启漂移和同 ID 会话创建竞争。定向 ruff、`rtk proxy uv build`、`rtk proxy git diff --check` 通过；自审未新增第二事实库、吞错或自动重试。D2 的断连与取消清理顺序继续单独验收。
 
 - 已完成：提交实施前基线，并在任何业务实现之前建立本记录。
 - A 已完成（依赖由外部新增提交 `119e486` 收录，保留该提交，不重复提交相同变更）。锁定 langchain 1.4.2、core 1.6.4、langgraph 1.2.12、prebuilt 1.1.0、checkpoint 4.2.0、sqlite 3.1.1、aiorwlock 1.5.1；新环境 `/tmp/logagent-agent-implementation-venv`，原 `.venv` 仍保留旧版本供交叉验证。
