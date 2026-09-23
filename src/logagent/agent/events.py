@@ -143,7 +143,7 @@ class EventLog:
     def _append_index(self, event: dict[str, Any]) -> None:
         self._events.append(event)
         key = event.get("tool_key")
-        if key is None:
+        if key is None or event["type"] == "tool.queued":
             return
         current = self._tools.setdefault(key, {
             "arguments_digest": event.get("arguments_digest"),
@@ -212,15 +212,15 @@ class EventLog:
         with self._file_lock():
             return self._read_events_unlocked()
 
-    async def reserve_tool(self, key: str, arguments: Any) -> ToolReservation:
+    async def reserve_tool(self, key: str, raw_arguments: Any, **metadata: Any) -> ToolReservation:
         if not key or not isinstance(key, str):
             raise LogAgentError("invalid_argument", "工具稳定键不能为空")
-        arguments_digest = _digest(arguments)
+        arguments_digest = _digest(raw_arguments)
         async with self._lock:
             if not self._loaded:
                 await asyncio.to_thread(self._load)
             reservation, events = await asyncio.to_thread(
-                self._reserve_locked, key, arguments_digest,
+                self._reserve_locked, key, arguments_digest, metadata,
             )
             self._replace_index(events)
             return reservation
@@ -259,7 +259,7 @@ class EventLog:
             events = self._read_events_unlocked()
             item = None
             for event in events:
-                if event.get("tool_key") != key:
+                if event.get("tool_key") != key or event["type"] == "tool.queued":
                     continue
                 if item is None:
                     item = {"arguments_digest": event.get("arguments_digest"), "completed": None}
@@ -275,13 +275,13 @@ class EventLog:
                                        completed.get("result")), events
             return ToolReservation(key, arguments_digest, "active"), events
 
-    def _reserve_locked(self, key: str, arguments_digest: str) -> tuple[ToolReservation, list[dict[str, Any]]]:
+    def _reserve_locked(self, key: str, arguments_digest: str, metadata: dict) -> tuple[ToolReservation, list[dict[str, Any]]]:
         with self._file_lock():
             events = self._read_events_unlocked()
             tools: dict[str, dict[str, Any]] = {}
             for event in events:
                 event_key = event.get("tool_key")
-                if event_key is None:
+                if event_key is None or event["type"] == "tool.queued":
                     continue
                 item = tools.setdefault(event_key, {
                     "arguments_digest": event.get("arguments_digest"),
@@ -299,9 +299,9 @@ class EventLog:
                                            completed.get("result")), events
                 return ToolReservation(key, arguments_digest, "active"), events
             timestamp = self._timestamp()
-            payload = {"tool_key": key, "arguments_digest": arguments_digest}
+            payload = {**metadata, "tool_key": key, "arguments_digest": arguments_digest}
             event = {"id": len(events) + 1, "session_id": self.session_id,
-                     "turn_id": None, "type": "tool.started", "at": timestamp,
+                     "turn_id": metadata.get("turn_id"), "type": "tool.started", "at": timestamp,
                      "data": payload, "created_at": timestamp, **payload}
             with self.path.open("ab") as stream:
                 stream.write((json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n").encode())
@@ -338,10 +338,10 @@ class EventLog:
             if completed is not None:
                 return completed, events, completed.get("result") or {}
             timestamp = self._timestamp()
-            payload = {"tool_key": key, "arguments_digest": arguments_digest,
+            payload = {**current.get("data", {}), "tool_key": key, "arguments_digest": arguments_digest,
                        "result": result}
             event = {"id": len(events) + 1, "session_id": self.session_id,
-                     "turn_id": None, "type": "tool.completed", "at": timestamp,
+                     "turn_id": current.get("turn_id"), "type": "tool.completed", "at": timestamp,
                      "data": payload, "created_at": timestamp, **payload}
             with self.path.open("ab") as stream:
                 stream.write((json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n").encode())
@@ -378,10 +378,10 @@ class EventLog:
             if completed is not None:
                 return completed, events, completed
             timestamp = self._timestamp()
-            payload = {"tool_key": key, "arguments_digest": arguments_digest,
-                       "result": {"status": reason}}
+            payload = {**current.get("data", {}), "tool_key": key, "arguments_digest": arguments_digest,
+                       "result": {"status": "outcome_unknown", "reason": reason}}
             event = {"id": len(events) + 1, "session_id": self.session_id,
-                     "turn_id": None, "type": "tool.outcome_unknown", "at": timestamp,
+                     "turn_id": current.get("turn_id"), "type": "tool.outcome_unknown", "at": timestamp,
                      "data": payload, "created_at": timestamp, **payload}
             with self.path.open("ab") as stream:
                 stream.write((json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n").encode())

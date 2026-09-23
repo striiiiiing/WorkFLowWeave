@@ -153,7 +153,7 @@ async def test_stop_disconnect_and_repeated_stop_preserve_cleanup_inside_model_l
     }
     events = await service.events(sid)
     unknown = [event for event in events if event["type"] == "tool.outcome_unknown"]
-    assert len(unknown) == 1 and unknown[0]["result"]["status"] == "cancelled"
+    assert len(unknown) == 1 and unknown[0]["result"] == {"status": "outcome_unknown", "reason": "cancelled"}
     assert unknown[0]["id"] < events[-1]["id"]
     assert events[-1]["type"] == "turn.cancelled"
 
@@ -193,7 +193,9 @@ async def test_cancelled_tool_waiting_for_workspace_lock_never_executes(services
         assert service.scheduler.queued == 0
     assert not invoked
     events = await service.events(sid)
-    assert any(event["type"] == "tool.outcome_unknown" for event in events)
+    assert not any(event["type"] in {"tool.started", "tool.outcome_unknown"} for event in events)
+    assert any(event["type"] == "tool.completed" and event["result"]["status"] == "cancelled"
+               for event in events)
     assert events[-1]["type"] == "turn.cancelled"
     async with service.scheduler.acquire("exclusive"):
         assert service.scheduler.writing == 1

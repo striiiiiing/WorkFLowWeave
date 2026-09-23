@@ -85,9 +85,8 @@ def setup_gateway(tmp_path):
 async def test_gateway_discovers_and_projects_local_references_without_account_values(tmp_path):
     gateway, context, _, _ = setup_gateway(tmp_path)
     first = gateway.listing(page_size=1)
-    assert len(first["entries"]) == 1 and first["next_cursor"] == 1
+    assert len(first["entries"]) == 1 and first["next_cursor"] is None
     assert gateway.execution({"action": "call", "target": "sources:logs"}) == "read"
-    assert gateway.execution({"action": "call", "target": "channels:mail"}) == "exclusive"
     schema = gateway.schema("sources:logs")
     assert "private" not in str(schema)
     assert schema["properties"]["options"]["properties"]["limit"]["default"] == 5
@@ -111,17 +110,11 @@ async def test_gateway_calls_once_preserves_saved_defaults_and_explicit_empty_se
     assert len(collector.calls) == 1
 
 
-async def test_gateway_channel_ids_are_runtime_owned_and_only_one_send_occurs(tmp_path):
+@pytest.mark.parametrize("action", ["schema", "call"])
+async def test_gateway_never_exposes_or_sends_to_channels(tmp_path, action):
     gateway, context, _, channels = setup_gateway(tmp_path)
-    arguments = {"action": "call", "target": "channels:mail", "arguments": {
-        "options": {"recipient": "new"}, "notification": {"title": "Report", "text": "Body"}}}
-    result = await gateway.invoke(arguments, context)
-    assert result["status"] == "success"
-    assert channels.send.await_count == 1
-    config, notification = channels.send.call_args.args
-    assert config.options == {"account": "private", "recipient": "new"}
-    assert notification.session_id == "session" and len(notification.output_id) == 64
-    arguments["arguments"]["notification"]["session_id"] = "forged"
-    with pytest.raises(LogAgentError):
-        await gateway.invoke(arguments, context)
-    assert channels.send.await_count == 1
+    assert all(item["target"].startswith("sources:")
+               for item in gateway.listing(page_size=20)["entries"])
+    with pytest.raises(LogAgentError, match="未配置或未启用"):
+        await gateway.invoke({"action": action, "target": "channels:mail"}, context)
+    channels.send.assert_not_awaited()
