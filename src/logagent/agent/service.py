@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import logging
 import shutil
 from collections.abc import Callable
 from contextlib import asynccontextmanager
@@ -33,6 +34,7 @@ from logagent.errors import LogAgentError
 from logagent.models import CollectionContext
 
 ModelProvider = Callable[["AgentSession"], Any]
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -116,6 +118,7 @@ class AgentService:
             self._declarations = [item for item in self._declarations if item.execution == "read"]
         self.sessions: dict[str, AgentSession] = {}
         self._turns: dict[str, asyncio.Task] = {}
+        self._admissions: set[asyncio.Task] = set()
         self._initialized = False
         self._accepting = True
         self._admission_lock = asyncio.Lock()
@@ -224,9 +227,12 @@ class AgentService:
     async def close(self) -> None:
         async with self._admission_lock:
             self._accepting = False
+        if self._admissions:
+            await asyncio.shield(asyncio.gather(*self._admissions, return_exceptions=True))
         tasks = [task for task in self._turns.values() if not task.done()]
         for task in tasks:
-            task.cancel()
+            if not task.cancelling():
+                task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         self._turns.clear()
@@ -376,11 +382,14 @@ class AgentService:
         await session.log.append("request.accepted", request_id=request_id,
                                  turn_id=turn_id, text_digest=digest)
         session.request_ids[request_id] = (turn_id, digest)
-        task = asyncio.create_task(self._run_turn(session, turn_id, text),
+        ready = asyncio.Event()
+        task = asyncio.create_task(self._run_turn(session, turn_id, text, ready),
                                    name=f"agent:turn:{turn_id}")
         session.task = task
         self._turns[turn_id] = task
         session.status, session.turn_id = "running", turn_id
+        # Stop/close cannot cancel a coroutine before it enters its cleanup scope.
+        await ready.wait()
         return {"session_id": session.session_id, "turn_id": turn_id, "deduplicated": False}
 
     async def submit(self, session_id: str, text: str, *, request_id: str) -> dict[str, Any]:
@@ -397,6 +406,23 @@ class AgentService:
 
     async def _accept_message(self, session_id: str, text: str, *,
                               request_id: str, queue: bool) -> dict[str, Any]:
+        task = asyncio.create_task(
+            self._admit_message(session_id, text, request_id=request_id, queue=queue),
+            name=f"agent:admit:{session_id}",
+        )
+        self._admissions.add(task)
+        task.add_done_callback(self._admission_done)
+        return await asyncio.shield(task)
+
+    def _admission_done(self, task: asyncio.Task) -> None:
+        self._admissions.discard(task)
+        if not task.cancelled():
+            error = task.exception()
+            if error is not None and not isinstance(error, LogAgentError):
+                logger.error("Agent request admission failed", exc_info=error)
+
+    async def _admit_message(self, session_id: str, text: str, *,
+                             request_id: str, queue: bool) -> dict[str, Any]:
         """Serialize deduplication and publication for both message entrypoints."""
         if not isinstance(text, str) or not text.strip():
             raise LogAgentError("invalid_argument", "消息不能为空")
@@ -439,15 +465,17 @@ class AgentService:
 
     async def cancel(self, session_id: str) -> dict[str, Any]:
         session = self._session(session_id)
-        task = session.task
-        if task is None or task.done():
-            return self._session_view(session)
-        task.cancel()
+        async with session.lock:
+            task = session.task
+            if task is None or task.done():
+                return self._session_view(session)
+            if not task.cancelling():
+                task.cancel()
         # The API acknowledges stop only after the turn has recorded its
         # terminal fact and released tool/scheduler resources.  A caller may
         # disconnect after this response without leaving a hidden background
         # cancellation race.
-        await asyncio.gather(task, return_exceptions=True)
+        await asyncio.shield(asyncio.gather(task, return_exceptions=True))
         return self._session_view(session)
 
     async def events(self, session_id: str, *, after: int = 0) -> list[dict[str, Any]]:
@@ -752,11 +780,22 @@ class AgentService:
             return
         tasks = list(context.tool_tasks.values())
         for task in tasks:
-            if not task.done():
+            if not task.done() and not task.cancelling():
                 task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for result in results:
+            if isinstance(result, BaseException) and not isinstance(result, asyncio.CancelledError):
+                raise result
 
-    async def _run_turn(self, session: AgentSession, turn_id: str, text: str) -> dict[str, Any]:
+    @asynccontextmanager
+    async def _tool_scope(self, context: AgentToolContext):
+        try:
+            yield
+        finally:
+            await self._cancel_tools(context)
+
+    async def _run_turn(self, session: AgentSession, turn_id: str, text: str,
+                        ready: asyncio.Event) -> dict[str, Any]:
         had_previous_turn = any(event["type"].startswith("turn.") for event in session.log.events)
         session.status, session.turn_id = "running", turn_id
         session.updated_at = datetime.now(UTC).isoformat()
@@ -765,6 +804,7 @@ class AgentService:
         published = False
         publication = [False]
         try:
+            ready.set()
             turn_resources = self._capture_turn_resources(session)
             await log.append("message.user", turn_id=turn_id, text=text)
             await log.append("turn.started", turn_id=turn_id, branch_id=session.branch_id)
@@ -826,7 +866,7 @@ class AgentService:
                         )
                     else:
                         summary_context = _null_async_context(model)
-                    async with summary_context as summary_model:
+                    async with summary_context as summary_model, self._tool_scope(context):
                         graph = create_graph(
                             model=model, summary_model=summary_model,
                             summary_timeout=(
@@ -857,13 +897,11 @@ class AgentService:
             return {"turn_id": turn_id, "status": "completed", "text": answer}
         except asyncio.CancelledError:
             published = published or publication[0]
-            await self._cancel_tools(context)
             session.status = "cancelled"
             await log.append("turn.cancelled", turn_id=turn_id, partial=published)
             raise
         except TimeoutError as exc:
             published = bool(getattr(exc, "_agent_published", published or publication[0]))
-            await self._cancel_tools(context)
             session.status = "failed"
             await log.append(
                 "turn.failed", turn_id=turn_id,
@@ -874,7 +912,6 @@ class AgentService:
                                 {"timeout": getattr(turn_resources.ai_config, "timeout", None)}) from exc
         except Exception as exc:
             published = bool(getattr(exc, "_agent_published", published or publication[0]))
-            await self._cancel_tools(context)
             session.status = "failed"
             await log.append("turn.failed", turn_id=turn_id,
                              error={"type": type(exc).__name__, "message": str(exc)},

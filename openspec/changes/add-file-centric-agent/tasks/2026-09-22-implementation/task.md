@@ -47,7 +47,7 @@
 ### D. 会话、图与持久一致性（对应 3.2、5.4–5.6）
 
 - [x] D1 AgentService 持有后台轮任务、每会话单轮、request_id 幂等；每轮固定资源/插件同代快照。
-- [ ] D2 使用 create_agent 与独立 SQLite checkpointer，整轮持有模型租约；连接断开不取消运行，显式取消释放工具与租约。
+- [x] D2 使用 create_agent 与独立 SQLite checkpointer，整轮持有模型租约；连接断开不取消运行，显式取消释放工具与租约。
 - [x] D3 JSONL 原子占用/started fsync/结果提交；稳定调用键复用、同键异参冲突、活动键共享任务、发送前记账。
 - [x] D4 重启标记 interrupted/outcome_unknown，不重做旧副作用；补齐工具消息后接收新消息，checkpoint 缺失/损坏明确不可继续。
 - [x] D5 lifecycle 装配、关停、插件 reload 在活动 Agent 轮时 busy；资源更新只影响下一轮。
@@ -85,6 +85,9 @@
 
 - D1 收尾完成（2026-09-23）：依据 design §9.1/§9.3/§10 和设计修订任务的按轮快照要求，普通消息与 append 共用一个锁内去重/冲突/持久接收入口；事件成功落盘后才发布 request_id 和队列视图，避免并发相同 ID 误报 busy、重复排队及落盘失败留下假成功。创建会话也在同一准入边界完成，阻止同 ID 并发创建和关停交叉；created_at/updated_at 从持久事件取值并在重启时恢复。资源沿用一次 ResourceStore.invocation_snapshot，工具/Manager 继续由 lifecycle 的活动轮 reload 禁止规则固定代次；每轮 Catalog 由该快照按 generation/turn_id 写出，旧目录保留。补齐 CollectorManager 所需 CollectionContext，lifecycle 注入现有凭据、日志路径、SessionView；没有新增资源、凭据或插件发现来源。
 - D1 实测：`rtk proxy timeout 60s .venv/bin/pytest -q tests/agent/test_admission.py tests/agent/test_service.py tests/agent/test_gateway.py tests/lifecycle/test_lifecycle.py` → 51 passed / 18.59s。新增 10 项覆盖并发同键同文/异文、普通提交/排队、落盘失败无幽灵接收、同会话单轮及跨会话同时生成、重启幂等与时间戳、会话创建竞争，以及真实 create_agent → plugin → CollectorManager 单次调用时 AI/Schema/Catalog/工具启停快照一致。初跑明确发现并修复 created_at 重启漂移和同 ID 会话创建竞争。定向 ruff、`rtk proxy uv build`、`rtk proxy git diff --check` 通过；自审未新增第二事实库、吞错或自动重试。D2 的断连与取消清理顺序继续单独验收。
+- D2 收尾完成（2026-09-23，D1 提交 `c273f7e` 之后）：依据 design §3.1/§3.2/§9.1，保留 create_agent 原生图与独立 `runtime/checkpoints.sqlite`；消息接收本身改由服务持有任务并 shield，避免 HTTP 在 fsync/准入中断开留下已接收却无人执行的轮次。202 返回前只等待轮协程进入清理范围，不等待模型；显式 stop 对活动轮只注入一次取消，停止请求断连不重复取消工具清理。工具任务的 finally 清理位于模型/摘要租约内部，先等运行/排队工具结束及锁释放，再退出租约；清理中的非取消异常继续抛出。排队工具取消也落明确终态；普通事件追加复用既有 file_io 等待取消中的持久写完成，不让后台 fsync 越过取消终态。
+- D2 实测：`rtk proxy timeout 60s .venv/bin/pytest -q tests/agent/test_task_ownership.py tests/agent/test_admission.py tests/agent/test_service.py` → 34 passed / 4.17s；`rtk proxy timeout 60s .venv/bin/pytest -q tests/interaction/test_agent_api.py tests/agent/test_framework_contracts.py tests/agent/test_execution.py tests/lifecycle/test_lifecycle.py` → 42 passed / 20.77s。新增 7 项所有权测试验证接收/等待方取消不传递、立即 stop、模型→工具→模型全程一个租约、stop 断连/重复 stop、排队工具取消、同轮工具失败清理同伴、Agent/Workflow 使用相同 thread ID 仍隔离且重启后保留 Agent 上下文及多条 checkpoint。新增真实 FastAPI ASGI/SSE 烟测发送 `http.disconnect`，证明后台继续完成且 Last-Event-ID 回放无重复。修正测试忙轮询为 Event 后对应两文件 12 passed / 10.32s；ruff、uv build、diff-check 通过，构建后单独重跑真实 SSE smoke 通过。唯一测试警告为 Starlette 的 anyio BlockingPortal 弃用提示；未修改第三方依赖。
+- D1/D2 自审与后续边界：无新第二事实来源、宽泛吞错成功或副作用重试；保留现有其他任务未提交改动，未修改 proposal/design，未推送。供后续 E1/F 审查：AgentConfig 仍需按 turn 固定（_model/_stream_graph 读取 self.config），update_config 不应在活动工具持锁时创建另一把工作区锁；plugin 当前 channels 分支与 design Collector-only 的偏离仍由最终接口收尾处理，本次未冒称已验收该范围。
 
 - 已完成：提交实施前基线，并在任何业务实现之前建立本记录。
 - A 已完成（依赖由外部新增提交 `119e486` 收录，保留该提交，不重复提交相同变更）。锁定 langchain 1.4.2、core 1.6.4、langgraph 1.2.12、prebuilt 1.1.0、checkpoint 4.2.0、sqlite 3.1.1、aiorwlock 1.5.1；新环境 `/tmp/logagent-agent-implementation-venv`，原 `.venv` 仍保留旧版本供交叉验证。
