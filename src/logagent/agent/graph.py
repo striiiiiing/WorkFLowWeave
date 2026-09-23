@@ -7,19 +7,22 @@ from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from typing import Annotated, Any
+from uuid import uuid4
 
 from langchain.agents import create_agent
 from langchain_core.tools import InjectedToolArg, StructuredTool
+from langchain_core.utils.function_calling import convert_to_openai_tool
 from langgraph.prebuilt.tool_node import ToolRuntime
 
 from logagent.agent.artifacts import ArtifactStore
 from logagent.agent.builtin.declaration import ToolDeclaration
 from logagent.agent.config import AgentConfig
-from logagent.agent.context import summarization_middleware
+from logagent.agent.context import ContextMiddleware
 from logagent.agent.events import EventLog
 from logagent.agent.scheduling import ToolScheduler
 from logagent.errors import LogAgentError
 from logagent.models import CollectionContext
+from logagent.redaction import redact_text
 
 
 @dataclass(slots=True)
@@ -115,9 +118,24 @@ def create_graph(*, model, declarations: Iterable[ToolDeclaration], context: Age
     """
     tools = [_langchain_tool(declaration, context) for declaration in declarations]
     middleware = []
-    if use_summarization and context.config.context_window is not None:
-        middleware.append(summarization_middleware(
-            summary_model or model, context.config, summary_timeout=summary_timeout,
+    if use_summarization:
+        async def record_compaction(data):
+            path = f"History/{context.session_id}/summaries/{uuid4().hex}.md"
+            await context.workspace.save_runtime(path, redact_text(data["summary"]).encode("utf-8"))
+            await context.event_log.append(
+                "context.compacted", turn_id=context.turn_id, artifact_path=path,
+                source_event_range={"start": 1, "end": context.event_log.events[-1]["id"]},
+                **data,
+            )
+
+        async def record_budget(data):
+            await context.event_log.append("context.budget", turn_id=context.turn_id, **data)
+
+        middleware.append(ContextMiddleware(
+            model=model, config=context.config, system_prompt=system_prompt,
+            tools=[convert_to_openai_tool(tool) for tool in tools],
+            summary_model=summary_model, summary_timeout=summary_timeout,
+            on_compacted=record_compaction, on_budget=record_budget,
         ))
     return create_agent(model=model, tools=tools, system_prompt=system_prompt,
                         middleware=middleware, checkpointer=checkpointer,
