@@ -6,7 +6,6 @@ import asyncio
 import inspect
 import json
 import logging
-import shutil
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from copy import deepcopy
@@ -18,7 +17,7 @@ from uuid import uuid4
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-from langgraph.graph import END
+from langgraph.graph import END, MessagesState, StateGraph
 
 from logagent.agent.artifacts import ArtifactStore
 from logagent.agent.builtin import grep, plugin, read, shell, write
@@ -54,9 +53,13 @@ class AgentSession:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     task: asyncio.Task | None = None
     compact_pending: bool = False
+    compact_events: list[int] = field(default_factory=list)
+    stop_requested: bool = False
+    finishing: bool = False
     parent_session_id: str | None = None
     parent_turn_id: str | None = None
     parent_branch_id: str | None = None
+    parent_event_id: int | None = None
     pending_appends: list[tuple[str, str, str, str]] = field(default_factory=list)
 
 
@@ -192,6 +195,7 @@ class AgentService:
                 parent_session_id=created.get("parent_session_id"),
                 parent_turn_id=created.get("parent_turn_id"),
                 parent_branch_id=created.get("parent_branch_id"),
+                parent_event_id=created.get("parent_event_id"),
             )
             started_turns = {
                 event.get("turn_id") for event in log.events
@@ -214,10 +218,9 @@ class AgentService:
                         and isinstance(request_id, str) and isinstance(digest, str)
                         and queued_turn not in started_turns
                         and queued_turn not in finished_turns):
-                    session.pending_appends.append((queued_turn, text, request_id, digest))
                     session.request_ids[request_id] = (queued_turn, digest)
             for event in log.events:
-                if event["type"] == "request.accepted":
+                if event["type"] in {"request.accepted", "command.queued"} and event.get("request_id"):
                     request_id = event.get("request_id")
                     digest = event.get("text_digest")
                     accepted_turn = event.get("turn_id")
@@ -248,7 +251,9 @@ class AgentService:
                              session_id: str | None = None,
                              parent_session_id: str | None = None,
                              parent_turn_id: str | None = None,
-                             parent_branch_id: str | None = None) -> dict[str, Any]:
+                             parent_branch_id: str | None = None,
+                             parent_event_id: int | None = None,
+                             initial_messages: list | None = None) -> dict[str, Any]:
         async with self._admission_lock:
             if not self._accepting:
                 raise LogAgentError("agent_busy", "Agent 当前暂停接收新会话")
@@ -263,14 +268,18 @@ class AgentService:
                 log=EventLog(self.runtime, sid),
                 parent_session_id=parent_session_id,
                 parent_turn_id=parent_turn_id,
-                parent_branch_id=parent_branch_id,
+                parent_branch_id=parent_branch_id, parent_event_id=parent_event_id,
             )
             await session.log.initialize()
+            if initial_messages is not None:
+                await self._projection_graph().aupdate_state(
+                    {"configurable": {"thread_id": sid}}, {"messages": initial_messages}, as_node="projection",
+                )
             created = await session.log.append(
                 "session.created", branch_id=session.branch_id,
                 model=session.model, workflow_session_id=workflow_session_id,
                 parent_session_id=parent_session_id, parent_turn_id=parent_turn_id,
-                parent_branch_id=parent_branch_id,
+                parent_branch_id=parent_branch_id, parent_event_id=parent_event_id,
             )
             if workflow_result is not None:
                 await session.log.append("workflow.input", workflow_session_id=workflow_session_id,
@@ -280,79 +289,79 @@ class AgentService:
             self.sessions[sid] = session
             return self._session_view(session)
 
-    async def _copy_checkpoint_thread(self, source_session_id: str,
-                                      target_session_id: str) -> None:
-        """Copy a complete SQLite checkpoint chain for a fork.
-
-        The installed AsyncSqliteSaver exposes ``acopy_thread`` only as an
-        abstract placeholder.  Its public async cursor and serializer-backed
-        tables are stable in the supported version, so copy every namespace,
-        checkpoint and pending write in one transaction.  Unknown saver
-        implementations fail explicitly instead of creating a branch with a
-        missing context.
-        """
-        saver = self.checkpointer
-        if saver is None or not hasattr(saver, "conn") or not hasattr(saver, "lock"):
-            raise LogAgentError("checkpoint_fork_unavailable", "当前 checkpoint 不支持安全分支")
-        await saver.setup()
-        async with saver.lock, saver.conn.cursor() as cursor:
-            await cursor.execute(
-                "SELECT checkpoint_ns, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata "
-                "FROM checkpoints WHERE thread_id = ? ORDER BY checkpoint_ns, checkpoint_id",
-                (source_session_id,),
-            )
-            checkpoints = await cursor.fetchall()
-            if not checkpoints:
-                raise LogAgentError("checkpoint_missing", "源会话 checkpoint 缺失，不能创建分支")
-            await cursor.execute(
-                "SELECT checkpoint_ns, checkpoint_id, task_id, idx, channel, type, value "
-                "FROM writes WHERE thread_id = ? ORDER BY checkpoint_ns, checkpoint_id, task_id, idx",
-                (source_session_id,),
-            )
-            writes = await cursor.fetchall()
-            await cursor.executemany(
-                "INSERT INTO checkpoints (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [(target_session_id, *row) for row in checkpoints],
-            )
-            await cursor.executemany(
-                "INSERT INTO writes (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, value) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                [(target_session_id, *row) for row in writes],
-            )
-            await saver.conn.commit()
+    def _projection_graph(self):
+        """Public state API for copying a message projection, never pending tasks."""
+        builder = StateGraph(MessagesState)
+        builder.add_node("projection", lambda state: {})
+        builder.set_entry_point("projection")
+        builder.add_edge("projection", END)
+        return builder.compile(checkpointer=self.checkpointer)
 
     async def fork(self, session_id: str, *, turn_id: str | None = None,
-                   model: str | None = None) -> dict[str, Any]:
-        """Create a read-only parent branch and a new session at its checkpoint."""
+                   model: str | None = None, message_id: str | None = None) -> dict[str, Any]:
         source = self._session(session_id)
-        if source.task is not None and not source.task.done():
-            raise LogAgentError("session_busy", "运行中的 session 不能创建分支")
-        selected_turn = turn_id or source.turn_id
-        if selected_turn is not None and not any(
-                event.get("turn_id") == selected_turn
-                and event["type"] in {"turn.completed", "turn.failed", "turn.cancelled", "turn.interrupted"}
-                for event in source.log.events):
-            raise LogAgentError("turn_not_found", "分支起点轮次不存在或尚未结束")
+        async with source.lock:
+            if source.task is not None and not source.task.done():
+                raise LogAgentError("session_busy", "运行中的 session 不能创建分支")
+            user = None
+            if message_id is not None:
+                user = next((event for event in source.log.events
+                             if event["type"] == "message.user" and event.get("message_id") == message_id), None)
+                if user is None:
+                    raise LogAgentError("message_not_found", "只能从用户消息创建编辑分支")
+            selected_turn = user["turn_id"] if user else turn_id or source.turn_id
+            terminal = next((event for event in source.log.events
+                             if event.get("turn_id") == selected_turn and event["type"] == "turn.completed"), None)
+            if terminal is None:
+                raise LogAgentError("turn_not_found", "分支起点必须是已完成轮次")
+            checkpoint_id = terminal.get("checkpoint_id")
+            if not checkpoint_id:
+                raise LogAgentError("checkpoint_missing", "该历史节点缺少精确 checkpoint，不能猜测分支边界")
+            graph = self._projection_graph()
+            state = await graph.aget_state({"configurable": {
+                "thread_id": session_id, "checkpoint_id": checkpoint_id,
+            }})
+            messages = deepcopy(state.values.get("messages", []))
+            if not messages:
+                raise LogAgentError("checkpoint_missing", "分支起点 checkpoint 缺失")
+            if user is not None:
+                index = next((i for i, message in enumerate(messages) if message.id == message_id), None)
+                if index is None:
+                    # The end checkpoint may already summarize the edited node.
+                    # Read its original input checkpoint through the public history API.
+                    async for snapshot in graph.aget_state_history({"configurable": {"thread_id": session_id}}):
+                        candidate = snapshot.values.get("messages", [])
+                        index = next((i for i, message in enumerate(candidate) if message.id == message_id), None)
+                        if index is not None:
+                            messages = deepcopy(candidate)
+                            break
+                if index is None:
+                    raise LogAgentError("checkpoint_missing", "用户消息的原始 checkpoint 不可用")
+                messages = messages[:index]
         child = await self.create_session(
             model=model or source.model,
             workflow_session_id=source.workflow_session_id,
-            parent_session_id=source.session_id,
-            parent_turn_id=selected_turn,
+            parent_session_id=source.session_id, parent_turn_id=selected_turn,
             parent_branch_id=source.branch_id,
+            parent_event_id=user["id"] - 1 if user else terminal["id"],
+            initial_messages=messages,
         )
-        try:
-            await self._copy_checkpoint_thread(source.session_id, child["session_id"])
-        except Exception:
-            self.sessions.pop(child["session_id"], None)
-            shutil.rmtree(self.runtime / "History" / child["session_id"], ignore_errors=True)
-            raise
-        child_session = self.sessions[child["session_id"]]
-        await child_session.log.append(
-            "branch.created", parent_session_id=source.session_id,
-            parent_turn_id=selected_turn, parent_branch_id=source.branch_id,
+        await self.sessions[child["session_id"]].log.append(
+            "branch.created", parent_session_id=session_id, parent_turn_id=selected_turn,
+            parent_branch_id=source.branch_id, source_checkpoint_id=checkpoint_id,
+            edited_message_id=message_id,
         )
-        return self._session_view(child_session)
+        return child
+
+    async def history(self, session_id: str) -> list[dict[str, Any]]:
+        session = self._session(session_id)
+        inherited = []
+        if session.parent_session_id is not None:
+            parent = await self.history(session.parent_session_id)
+            inherited = [event for event in parent
+                         if event["session_id"] != session.parent_session_id
+                         or event["id"] <= (session.parent_event_id or 0)]
+        return [*inherited, *await session.log.replay()]
 
     def _session_view(self, session: AgentSession) -> dict[str, Any]:
         budget = next((event["data"] for event in reversed(session.log.events)
@@ -362,6 +371,7 @@ class AgentService:
                 "parent_session_id": session.parent_session_id,
                 "parent_turn_id": session.parent_turn_id,
                 "parent_branch_id": session.parent_branch_id,
+                "parent_event_id": session.parent_event_id,
                 "created_at": session.created_at, "updated_at": session.updated_at,
                 "status": session.status, "turn_id": session.turn_id,
                 "context_budget": budget}
@@ -380,7 +390,8 @@ class AgentService:
 
     async def _start_turn_locked(self, session: AgentSession, text: str, *,
                                  request_id: str, turn_id: str | None = None,
-                                 digest: str | None = None) -> dict[str, Any]:
+                                 digest: str | None = None,
+                                 compact_only: bool = False) -> dict[str, Any]:
         """Record and launch a turn while the admission/session locks are held."""
         turn_id = turn_id or _new_id("turn_")
         digest = digest or _digest(text)
@@ -388,7 +399,9 @@ class AgentService:
                                  turn_id=turn_id, text_digest=digest)
         session.request_ids[request_id] = (turn_id, digest)
         ready = asyncio.Event()
-        task = asyncio.create_task(self._run_turn(session, turn_id, text, ready),
+        session.stop_requested = False
+        session.finishing = False
+        task = asyncio.create_task(self._run_turn(session, turn_id, text, ready, compact_only=compact_only),
                                    name=f"agent:turn:{turn_id}")
         session.task = task
         self._turns[turn_id] = task
@@ -404,8 +417,8 @@ class AgentService:
         """Append a user message at the next safe model boundary.
 
         An idle session starts a normal turn immediately.  A running session
-        records a durable command and starts the queued turn only after the
-        current turn has reached a terminal event.
+        records a durable command and injects it after the current model and
+        its complete tool group, within the same owned turn.
         """
         return await self._accept_message(session_id, text, request_id=request_id, queue=True)
 
@@ -444,10 +457,16 @@ class AgentService:
                     return {"session_id": session_id, "turn_id": previous[0], "deduplicated": True}
                 if not self._accepting:
                     raise LogAgentError("agent_busy", "Agent 当前暂停接收新轮次")
+                if session.finishing and session.task is not None:
+                    # The final model boundary is already closed. Wait for
+                    # its durable terminal fact before accepting a new turn.
+                    await asyncio.shield(session.task)
                 if session.task is not None and not session.task.done():
                     if not queue:
                         raise LogAgentError("session_busy", "一个 session 同时只能运行一轮")
-                    turn_id = _new_id("turn_")
+                    if session.stop_requested:
+                        raise LogAgentError("session_busy", "停止中的轮次不再接收命令")
+                    turn_id = session.turn_id
                     event = await session.log.append(
                         "command.queued", command="append", turn_id=session.turn_id,
                         queued_turn_id=turn_id, request_id=request_id,
@@ -470,12 +489,12 @@ class AgentService:
 
     async def cancel(self, session_id: str) -> dict[str, Any]:
         session = self._session(session_id)
-        async with session.lock:
-            task = session.task
-            if task is None or task.done():
-                return self._session_view(session)
-            if not task.cancelling():
-                task.cancel()
+        task = session.task
+        if task is None or task.done():
+            return self._session_view(session)
+        session.stop_requested = True
+        if not task.cancelling():
+            task.cancel()
         # The API acknowledges stop only after the turn has recorded its
         # terminal fact and released tool/scheduler resources.  A caller may
         # disconnect after this response without leaving a hidden background
@@ -517,46 +536,65 @@ class AgentService:
         return self.config.model_dump(mode="json")
 
     async def compact(self, session_id: str) -> dict[str, Any]:
-        """Queue a compact command at a running turn's next safe boundary.
-
-        The first implementation records the command durably; an idle session
-        with no compactable checkpoint is an explicit no-op rather than a
-        fabricated summary.
-        """
         session = self._session(session_id)
-        async with session.lock:
+        async with self._admission_lock, session.lock:
+            if not self._accepting:
+                raise LogAgentError("agent_busy", "Agent 当前暂停接收命令")
             if session.task is not None and not session.task.done():
-                session.compact_pending = True
+                if session.stop_requested:
+                    raise LogAgentError("session_busy", "停止中的轮次不再接收命令")
                 event = await session.log.append(
                     "command.queued", command="compact", turn_id=session.turn_id,
                 )
+                session.compact_pending = True
+                session.compact_events.append(event["id"])
                 return {"session_id": session_id, "status": "queued", "event_id": event["id"]}
-            event = await session.log.append(
-                "context.compacted", turn_id=session.turn_id, empty=True,
+            accepted = await self._start_turn_locked(
+                session, "", request_id=_new_id("compact_"), compact_only=True,
             )
-            return {"session_id": session_id, "status": "completed", "empty": True,
-                    "event_id": event["id"]}
+            return {**accepted, "status": "running"}
 
-    async def _drain_append(self, session: AgentSession,
-                            *, finishing_task: asyncio.Task | None = None) -> None:
-        """Start one queued append after the current turn terminal fact."""
-        if not self._accepting:
-            return
-        async with self._admission_lock:
-            if not self._accepting:
-                return
-            async with session.lock:
-                if not session.pending_appends:
-                    return
-                if session.task is finishing_task:
-                    session.task = None
-                if session.task is not None and not session.task.done():
-                    return
-                turn_id, text, request_id, digest = session.pending_appends.pop(0)
-                await self._start_turn_locked(
-                    session, text, request_id=request_id,
-                    turn_id=turn_id, digest=digest,
-                )
+    async def _take_commands(self, session: AgentSession, *, final=False):
+        async with session.lock:
+            if session.stop_requested:
+                raise asyncio.CancelledError
+            session.finishing = final and not session.pending_appends
+            if not session.pending_appends and not session.compact_pending:
+                return None
+            appends = list(session.pending_appends)
+            compact_events = list(session.compact_events)
+            session.pending_appends.clear()
+            session.compact_pending = False
+            session.compact_events.clear()
+            additions = []
+            for turn_id, text, request_id, digest in appends:
+                message_id = _new_id("message_")
+                await session.log.append("request.accepted", request_id=request_id,
+                                         turn_id=turn_id, text_digest=digest)
+                await session.log.append("message.user", turn_id=turn_id,
+                                         text=text, message_id=message_id, request_id=request_id)
+                additions.append(HumanMessage(content=text, id=message_id))
+
+        async def complete(*, compacted):
+            for _, _, request_id, _ in appends:
+                await session.log.append("command.completed", command="append",
+                                         turn_id=session.turn_id, request_id=request_id)
+            for event_id in compact_events:
+                await session.log.append("command.completed", command="compact",
+                                         turn_id=session.turn_id, command_event_id=event_id,
+                                         compacted=compacted)
+        return additions, bool(compact_events), complete
+
+    async def _cancel_pending_commands(self, session: AgentSession):
+        for _, _, request_id, _ in session.pending_appends:
+            await session.log.append("command.cancelled", command="append",
+                                     turn_id=session.turn_id, request_id=request_id)
+        for event_id in session.compact_events:
+            await session.log.append("command.cancelled", command="compact",
+                                     turn_id=session.turn_id, command_event_id=event_id)
+        session.pending_appends.clear()
+        session.compact_events.clear()
+        session.compact_pending = False
 
     @asynccontextmanager
     async def _model(self, session: AgentSession, *, output_tokens: int,
@@ -804,7 +842,7 @@ class AgentService:
             await self._cancel_tools(context)
 
     async def _run_turn(self, session: AgentSession, turn_id: str, text: str,
-                        ready: asyncio.Event) -> dict[str, Any]:
+                        ready: asyncio.Event, *, compact_only: bool = False) -> dict[str, Any]:
         had_previous_turn = any(event["type"].startswith("turn.") for event in session.log.events)
         session.status, session.turn_id = "running", turn_id
         session.updated_at = datetime.now(UTC).isoformat()
@@ -817,7 +855,9 @@ class AgentService:
             turn_resources = self._capture_turn_resources(session)
             config = turn_resources.config
             await self.scheduler.resize(config.read_concurrency)
-            await log.append("message.user", turn_id=turn_id, text=text)
+            message_id = _new_id("message_")
+            if not compact_only:
+                await log.append("message.user", turn_id=turn_id, text=text, message_id=message_id)
             await log.append("turn.started", turn_id=turn_id, branch_id=session.branch_id)
             identity = RuntimeIdentity(
                 session.session_id, turn_id, session.branch_id,
@@ -839,6 +879,8 @@ class AgentService:
                 config=config,
                 session_id=session.session_id, turn_id=turn_id, branch_id=session.branch_id,
                 event_log=log, scheduler=self.scheduler, artifacts=self.artifacts,
+                read_enabled=any(item.name == "read" for item in turn_resources.declarations),
+                on_boundary=lambda **kwargs: self._take_commands(session, **kwargs),
                 collection=(self.collection_context_factory(session)
                             if self.collection_context_factory is not None
                             else CollectionContext("agent", session.session_id)),
@@ -850,7 +892,8 @@ class AgentService:
                 messages.append(HumanMessage(content=json.dumps(
                     {"input": session.workflow_input}, ensure_ascii=False, sort_keys=True)))
                 await log.append("workflow.input.used", turn_id=turn_id)
-            messages.append(HumanMessage(content=text))
+            if not compact_only:
+                messages.append(HumanMessage(content=text, id=message_id))
             await self._ensure_checkpoint_present(
                 session, require_existing=had_previous_turn,
             )
@@ -890,19 +933,34 @@ class AgentService:
                         await self._prepare_checkpoint(
                             session, graph, log, turn_id, require_existing=had_previous_turn,
                         )
-                        result, published = await self._stream_graph(
-                            graph, messages, session=session, turn_id=turn_id, log=log,
-                            publication=publication, idle_timeout=config.idle_timeout,
-                        )
-            if session.compact_pending:
-                await log.append("context.compacted", turn_id=turn_id, empty=True)
-                session.compact_pending = False
-            answer = _last_text(result)
+                        graph_config = {"configurable": {"thread_id": session.session_id}}
+                        if compact_only:
+                            state = await graph.aget_state(graph_config)
+                            update = await context.context_middleware.prepare(
+                                state.values.get("messages", []), force=True,
+                            )
+                            if update:
+                                await self._projection_graph().aupdate_state(
+                                    graph_config, update, as_node="projection",
+                                )
+                            await log.append("command.completed", command="compact", turn_id=turn_id,
+                                             compacted=update is not None)
+                            result = {"messages": []}
+                        else:
+                            result, published = await self._stream_graph(
+                                graph, messages, session=session, turn_id=turn_id, log=log,
+                                publication=publication, idle_timeout=config.idle_timeout,
+                            )
+                        state = await graph.aget_state(graph_config)
+                        checkpoint_id = state.config.get("configurable", {}).get("checkpoint_id")
+            answer = "" if compact_only else _last_text(result)
             completed = {"turn_id": turn_id, "incremental": published}
             if not published:
                 completed["text"] = answer
-            await log.append("message.completed", **completed)
-            await log.append("turn.completed", turn_id=turn_id, text=answer)
+            if not compact_only:
+                await log.append("message.completed", **completed)
+            await log.append("turn.completed", turn_id=turn_id, text=answer,
+                             checkpoint_id=checkpoint_id, command="compact" if compact_only else None)
             session.status = "completed"
             return {"turn_id": turn_id, "status": "completed", "text": answer}
         except asyncio.CancelledError:
@@ -930,7 +988,7 @@ class AgentService:
             raise
         finally:
             session.updated_at = log.events[-1]["created_at"]
-            await self._drain_append(session, finishing_task=asyncio.current_task())
+            await self._cancel_pending_commands(session)
 
     async def _ensure_checkpoint_present(self, session: AgentSession, *,
                                          require_existing: bool) -> None:

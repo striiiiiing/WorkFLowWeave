@@ -39,6 +39,7 @@ class AgentMessage(StrictModel):
 class AgentForkRequest(StrictModel):
     turn_id: ID | None = None
     model: str | None = None
+    message_id: ID | None = None
 
 
 class AgentFileWrite(StrictModel):
@@ -109,8 +110,12 @@ def build_agent_router():
     async def fork_agent_session(session_id: ID, payload: AgentForkRequest,
                                  services: Services):
         return await _agent(services).fork(
-            session_id, turn_id=payload.turn_id, model=payload.model,
+            session_id, turn_id=payload.turn_id, model=payload.model, message_id=payload.message_id,
         )
+
+    @router.get("/sessions/{session_id}/history")
+    async def agent_history(session_id: ID, services: Services):
+        return await _agent(services).history(session_id)
 
     @router.post("/sessions/{session_id}/cancel")
     async def cancel_agent_session(session_id: ID, services: Services):

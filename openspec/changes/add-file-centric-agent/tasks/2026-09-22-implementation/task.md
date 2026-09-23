@@ -91,6 +91,8 @@
 
 ## 执行记录
 
+- F 命令与分支完成点（2026-09-23）：依据 design §1/§8/§9，ContextMiddleware 通过 create_agent 官方 before/after_model 钩子在完整工具组之后接收 append，保持同轮快照与租约；无工具的模型返回也会消费命令，最终边界关闭后的输入等待终态再启动新轮。运行 compact 复用同一 prepare(force=True)，空闲 compact 是 AgentService 持有的可取消任务，无可压缩前缀以 command.completed.compacted=false 表示，不伪造 context.compacted。停止独立取消当前任务并撤销排队命令，不启动旧 append。fork 删除私有 saver.conn/SQLite 拷贝，改用公开 StateGraph 状态投影与事件记录的精确 checkpoint_id；编辑仅接受 message.user 的 message_id，子树继承截止父事件的只读历史，不复制未来/待执行工具。46 项服务/图/准入/任务归属/快照/最终契约在 5.27s 通过；新增运行 compact 与停止竞争的最后定向批次 13 passed / 4.58s，均 timeout 60s。ruff/diff-check 通过；接口新增 message_id fork 和 history 投影，F 全项待其余管理/API/UI验收。
+
 - F 前置工具契约完成点（2026-09-23）：根据 design §4.2，移除 plugin 的 Channel list/schema/call 分支，既有 ChannelManager/Workflow 通知不变。真实 create_agent 包装现在按网关目标声明选择工作区 read/exclusive，结果经唯一 ArtifactStore 保存完整脱敏正文并返回有限预览；工具事实携带 name/arguments/execution/turn_id/tool_call_id，排队尚未开始的取消明确 cancelled，已开始后取消明确 outcome_unknown。无新的副作用重试。33 项 gateway/service/task-ownership/turn-config/最终集成回归在 timeout 60s 下 4.37s 通过；新增真实图验证写 Collector 等待读锁释放、仅调用一次、长输出 Artifact 完整、预览受限。ruff 与 diff-check 通过。F1–F6 尚未因此提前勾选。
 
 - E1/E2/E3 主路径完成点（2026-09-23，快照提交 `0a0a201` 之后）：按 design §3.1/§8 和设计修订任务，删除旧 `safety_ratio/trigger_ratio/keep_ratio/summary_ratio` 配置，改为固定绝对 `trigger_tokens=180000`、`keep_tokens=40000`，`context_window=200000` 仍为明确展示的项目用户预算，不宣称所有模型容量。已知模型公开 profile 容量与配置取较小值；context_window 为 null 且 profile 未知时明确 `context_budget_unavailable`。独立 summary_ai 不继承主模型容量，必须有其 profile 或显式 summary_context_window。主/摘要输出预留默认仍为 4096；两者不同时通过既有 AIService 租约构造各自上限的模型，不修改活动模型或另造 Provider 工厂。
