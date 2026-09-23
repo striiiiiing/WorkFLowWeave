@@ -242,7 +242,11 @@ class ContextMiddleware(AgentMiddleware):
             return None
         additions, force, complete = batch
         combined = add_messages(messages, additions)
-        result = await self.prepare(combined, runtime, force=force)
+        try:
+            result = await self.prepare(combined, runtime, force=force)
+        except (Exception, asyncio.CancelledError) as exc:
+            await complete(compacted=False, error={"type": type(exc).__name__, "message": str(exc)})
+            raise
         await complete(compacted=result is not None)
         update = result or ({"messages": additions} if additions else {})
         if additions and final:
