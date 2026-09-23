@@ -15,6 +15,7 @@ import { idRule, sourcePolicies } from '@/domain/forms'
 import ParameterField from '@/components/common/ParameterField.vue'
 import AIProviderEditor from './AIProviderEditor.vue'
 import CredentialEditor from './CredentialEditor.vue'
+import SetterTemplateManager from './SetterTemplateManager.vue'
 import type { Credential, JsonObject } from '@/types'
 import { systemApi } from '@/api/system'
 import { useQuery } from '@/composables/useQuery'
@@ -233,7 +234,7 @@ function submit() {
         v-model="draft.options"
         :excluded-properties="credentialNames"
         prop="options"
-        label="插件参数 (options)"
+        :label="'on_error' in draft ? '数据源共用配置 (options)' : '插件参数 (options)'"
         :key="`options-${capabilityName}`"
         :schema="optionParameterSchema"
       />
@@ -249,12 +250,11 @@ function submit() {
         <el-input-number v-model="draft.timeout" :min="0.001" />
       </el-form-item>
       <template v-if="'on_error' in draft">
-        <el-form-item label="处理模板 ID（可选）">
-          <el-input
-            :model-value="draft.template ?? ''"
-            @update:model-value="draft.template = $event || null"
-          />
-        </el-form-item>
+        <SetterTemplateManager
+          :collector="draft.collector"
+          v-model="draft.template"
+          :schema="capability?.setters_schema"
+        />
         <div class="form-grid">
           <el-form-item v-for="field in policyFields" :key="field.key" :label="field.label">
             <el-select v-model="draft[field.key]">

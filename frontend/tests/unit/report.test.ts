@@ -109,3 +109,12 @@ it('does not execute HTML or unsafe URLs inside reports', () => {
   expect(wrapper.find('a').exists()).toBe(false)
   expect(wrapper.get('strong').text()).toBe('正常文字')
 })
+
+it('marks report code blocks and inline code for theme-aware styling', () => {
+  const wrapper = mount(ReportText, {
+    props: { text: '字段 `level`\n\n```json\n{"level":"INFO"}\n```' },
+  })
+  wrappers.push(wrapper)
+  expect(wrapper.get('code').text()).toBe('level')
+  expect(wrapper.find('pre').exists()).toBe(true)
+})

@@ -7,4 +7,5 @@ export const navigation = [
   { path: '/collector-demo', title: '数据源配置演示', icon: 'database' },
   { path: '/plugins', title: '插件与能力', icon: 'cpu' },
   { path: '/agents', title: 'Agent 会话', icon: 'bot' },
+  { path: '/agent-demo', title: 'Agent 交互演示', icon: 'sparkles' },
 ] as const satisfies ReadonlyArray<{ path: string; title: string; icon: IconName }>
