@@ -1,310 +1,516 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import { agentsApi, type AgentEvent, type AgentFile, type AgentSession } from '@/api/agents'
-import { errorMessage } from '@/api/client'
-import AppIcon from '@/components/icons/AppIcon.vue'
+import { computed, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import {
+  agentsApi,
+  type AgentEvent,
+  type AgentSession,
+  type ContextBudget,
+  type TurnAccepted,
+} from '@/api/agents'
+import { useQuery } from '@/composables/useQuery'
+import { useAsyncTask } from '@/composables/useAsyncTask'
+import { useAgentStream } from '@/composables/useAgentStream'
 import PageHeader from '@/components/common/PageHeader.vue'
-import ReportText from '@/components/report/ReportText.vue'
-
-const sessions = ref<AgentSession[]>([])
-const selected = ref<AgentSession | null>(null)
-const events = ref<AgentEvent[]>([])
+import AgentBranchTree from '@/components/agent/AgentBranchTree.vue'
+import AgentTranscript from '@/components/agent/AgentTranscript.vue'
+import AgentFileDrawer from '@/components/agent/AgentFileDrawer.vue'
+import AgentSettings from '@/components/agent/AgentSettings.vue'
+import AgentContinueButton from '@/components/agent/AgentContinueButton.vue'
+import type { SessionRecord } from '@/types'
+import { ApiError } from '@/api/client'
+const route = useRoute()
+const router = useRouter()
+const sessions = useQuery((signal) => agentsApi.list(signal))
+const settings = useQuery((signal) => agentsApi.config(signal))
+const action = useAsyncTask()
+const stopAction = useAsyncTask()
+const selected = ref<AgentSession>()
+const sessionQuery = useQuery(
+  (signal) =>
+    typeof route.params.sessionId === 'string'
+      ? agentsApi.get(route.params.sessionId, signal)
+      : Promise.resolve(undefined),
+  [() => route.params.sessionId],
+)
 const draft = ref('')
-const loading = ref(false)
-const error = ref('')
-const tools = ref<Awaited<ReturnType<typeof agentsApi.tools>>>([])
-const showTools = ref(false)
-const showSettings = ref(false)
+const pendingInput = ref<{ session: string | null; text: string; requestId: string }>()
+const sendUncertain = ref(false)
+const model = ref('')
+const showCreate = ref(false)
+const showSessions = ref(false)
 const showFiles = ref(false)
+const showSettings = ref(false)
+const showSource = ref(false)
+const showWorkflows = ref(false)
+const workflowHistory = ref<SessionRecord[]>([])
 const filePath = ref('AGENTS.md')
-const fileDraft = ref('')
-const fileHash = ref<string | undefined>()
-const fileReadOnly = ref(false)
-const fileLoading = ref(false)
-const commandMode = ref<'send' | 'append'>('send')
-const agentConfig = ref<Awaited<ReturnType<typeof agentsApi.config>> | null>(null)
-let stream: EventSource | undefined
-let lastEventId = 0
-let expectedStreamClose = false
-
-const messages = computed(() => events.value.filter((event) =>
-  ['message.user', 'message.delta', 'message.completed', 'turn.completed', 'turn.failed',
-    'turn.cancelled', 'turn.interrupted', 'context.compacted', 'tool.queued',
-    'tool.started', 'tool.completed', 'tool.outcome_unknown'].includes(event.type),
-))
-
-async function refresh() {
-  try {
-    sessions.value = await agentsApi.list()
-    if (!selected.value && sessions.value[0]) await select(sessions.value[0])
-  } catch (err) {
-    error.value = errorMessage(err)
+const source = ref<Awaited<ReturnType<typeof agentsApi.source>>>()
+const editEvent = ref<AgentEvent>()
+const editText = ref('')
+const running = computed(() => selected.value?.status === 'running')
+const budget = computed(() => selected.value?.context_budget)
+const stream = useAgentStream((event) => {
+  if (!selected.value || selected.value.session_id !== event.session_id) return
+  if (event.type === 'turn.started')
+    selected.value = { ...selected.value, status: 'running', turn_id: event.turn_id }
+  if (event.type === 'context.budget')
+    selected.value = { ...selected.value, context_budget: event.data as unknown as ContextBudget }
+  if (event.type === 'turn.resources')
+    selected.value = {
+      ...selected.value,
+      active_resources: event.data as AgentSession['active_resources'],
+    }
+  if (
+    ['turn.completed', 'turn.failed', 'turn.cancelled', 'turn.interrupted'].includes(event.type)
+  ) {
+    const error = event.data.error as AgentSession['continuation_error']
+    selected.value = {
+      ...selected.value,
+      status: event.type.slice(5),
+      ...(event.data.checkpoint_id ? { last_checkpoint_at: event.at } : {}),
+      ...(error && ['checkpoint_missing', 'checkpoint_corrupt'].includes(error.code)
+        ? { continuable: false, continuation_error: error }
+        : {}),
+    }
+    void sessions.refresh()
   }
+})
+watch(sessionQuery.data, async (session) => {
+  selected.value = session
+  showFiles.value = false
+  showSource.value = false
+  if (session) {
+    const latest = await stream.select(session.session_id)
+    if (latest && route.params.sessionId === latest.session_id) selected.value = latest
+  } else stream.clear()
+})
+async function select(session: AgentSession) {
+  showSessions.value = false
+  if (route.params.sessionId === session.session_id) {
+    await sessionQuery.refresh()
+    return
+  }
+  await router.push(`/agents/${encodeURIComponent(session.session_id)}`)
 }
 async function create() {
-  try {
-    await select(await agentsApi.create({}))
-  } catch (err) {
-    ElMessage.error(errorMessage(err))
+  const result = await action.run(() => agentsApi.create(model.value ? { model: model.value } : {}))
+  if (!result) return
+  showCreate.value = false
+  await sessions.refresh()
+  await select(result)
+}
+async function send() {
+  if (!draft.value.trim()) return
+  const text = draft.value
+  const sessionId = selected.value?.session_id ?? null
+  if (pendingInput.value?.text !== text || pendingInput.value.session !== sessionId) {
+    pendingInput.value = { session: sessionId, text, requestId: crypto.randomUUID() }
+  }
+  const input = pendingInput.value
+  const result = await action.run(async () => {
+    try {
+      return await agentsApi.command(input.session, text, input.requestId)
+    } catch (cause) {
+      sendUncertain.value = !(cause instanceof ApiError)
+      throw cause
+    }
+  })
+  if (!result) return
+  pendingInput.value = undefined
+  sendUncertain.value = false
+  draft.value = ''
+  if (result.kind === 'session') {
+    await sessions.refresh()
+    await select(result.result as AgentSession)
+  } else if (result.kind === 'workflows') {
+    workflowHistory.value = result.result as SessionRecord[]
+    showWorkflows.value = true
+  } else if (selected.value) {
+    const turn = result.result as TurnAccepted
+    if (selected.value.session_id !== turn.session_id) return
+    if (turn.deduplicated) {
+      await sessionQuery.refresh()
+      return
+    }
+    selected.value = { ...selected.value, status: 'running', turn_id: turn.turn_id }
+    stream.resume(turn.turn_id)
+  }
+}
+function command(text: string) {
+  draft.value = text
+}
+async function stop() {
+  if (!selected.value) return
+  const result = await stopAction.run(() => agentsApi.cancel(selected.value!.session_id))
+  if (result && selected.value?.session_id === result.session_id) selected.value = result
+}
+async function compact() {
+  if (!selected.value) return
+  const result = await action.run(() => agentsApi.compact(selected.value!.session_id))
+  if (result && selected.value?.session_id === result.session_id) {
+    selected.value = { ...selected.value, status: 'running', turn_id: result.turn_id }
+    stream.resume(result.turn_id)
   }
 }
 async function fork() {
   if (!selected.value) return
-  try {
-    await select(await agentsApi.fork(selected.value.session_id))
-    await refresh()
-  } catch (err) {
-    ElMessage.error(errorMessage(err))
+  const child = await action.run(() => agentsApi.fork(selected.value!.session_id))
+  if (child) {
+    await sessions.refresh()
+    await select(child)
   }
 }
-async function select(session: AgentSession) {
-  selected.value = session
-  events.value = []
-  expectedStreamClose = true
-  stream?.close()
-  lastEventId = 0
-  expectedStreamClose = false
-  stream = new EventSource(`/api/agents/sessions/${encodeURIComponent(session.session_id)}/events?after=${lastEventId}`)
-  stream.onmessage = (event) => {
-    const value = JSON.parse(event.data) as AgentEvent
-    lastEventId = Math.max(lastEventId, value.id)
-    if (!events.value.some((item) => item.id === value.id)) events.value.push(value)
-    if (value.type === 'turn.started') selected.value = { ...session, status: 'running' }
-    if (['turn.completed', 'turn.failed', 'turn.cancelled', 'turn.interrupted'].includes(value.type)) {
-      selected.value = { ...session, status: value.type.slice('turn.'.length) }
-      void refresh()
-      expectedStreamClose = true
-      stream?.close()
-      stream = undefined
-    }
-  }
-  stream.onerror = () => {
-    stream?.close()
-    stream = undefined
-    if (expectedStreamClose) return
-    if (selected.value?.session_id === session.session_id) {
-      window.setTimeout(() => {
-        if (selected.value?.session_id === session.session_id) {
-          stream = new EventSource(`/api/agents/sessions/${encodeURIComponent(session.session_id)}/events?after=${lastEventId}`)
-          stream.onmessage = (event) => {
-            const value = JSON.parse(event.data) as AgentEvent
-            lastEventId = Math.max(lastEventId, value.id)
-            if (!events.value.some((item) => item.id === value.id)) events.value.push(value)
-            if (value.type === 'turn.started') selected.value = { ...session, status: 'running' }
-            if (['turn.completed', 'turn.failed', 'turn.cancelled', 'turn.interrupted'].includes(value.type)) {
-              selected.value = { ...session, status: value.type.slice('turn.'.length) }
-              expectedStreamClose = true
-              stream?.close()
-              stream = undefined
-            }
-          }
-        }
-      }, 500)
-    }
+function edit(event: AgentEvent) {
+  editEvent.value = event
+  editText.value = String(event.data.text ?? '')
+}
+async function confirmEdit() {
+  const event = editEvent.value
+  if (!event || !editText.value.trim()) return
+  const child = await action.run(async () => {
+    const branch = await agentsApi.fork(event.session_id, {
+      message_id: String(event.data.message_id),
+    })
+    await agentsApi.send(branch.session_id, crypto.randomUUID(), editText.value)
+    return branch
+  })
+  if (child) {
+    editEvent.value = undefined
+    await sessions.refresh()
+    await select(child)
   }
 }
-async function send() {
-  if (!selected.value || !draft.value.trim() || loading.value) return
-  loading.value = true
-  const text = draft.value.trim()
-  draft.value = ''
-  try {
-    const requestId = crypto.randomUUID()
-    if (commandMode.value === 'append') {
-      await agentsApi.append(selected.value.session_id, requestId, text)
-    } else {
-      await agentsApi.send(selected.value.session_id, requestId, text)
-    }
-  } catch (err) {
-    draft.value = text
-    ElMessage.error(errorMessage(err))
-  } finally {
-    loading.value = false
-  }
+function openFile(path: string) {
+  filePath.value = path
+  showFiles.value = true
 }
-async function loadFile() {
-  if (!selected.value || !filePath.value.trim()) return
-  fileLoading.value = true
-  try {
-    const result = await agentsApi.readFile(selected.value.session_id, filePath.value) as AgentFile
-    fileDraft.value = typeof result.content === 'string' ? result.content : JSON.stringify(result, null, 2)
-    fileHash.value = typeof result.hash === 'string' ? result.hash : undefined
-    fileReadOnly.value = filePath.value.startsWith('Runtime/')
-  } catch (err) {
-    ElMessage.error(errorMessage(err))
-  } finally {
-    fileLoading.value = false
-  }
-}
-async function saveFile() {
-  if (!selected.value || fileReadOnly.value) return
-  try {
-    const result = await agentsApi.writeFile(
-      selected.value.session_id, filePath.value,
-      { mode: 'overwrite', content: fileDraft.value }, fileHash.value,
-    )
-    fileHash.value = typeof result.hash === 'string' ? result.hash : fileHash.value
-    ElMessage.success('文件已保存，下一轮生效')
-  } catch (err) {
-    // Keep the draft in place on conflict so the user can reload or merge it.
-    ElMessage.error(errorMessage(err))
-  }
-}
-async function cancel() {
+async function openSource() {
   if (!selected.value) return
-  await agentsApi.cancel(selected.value.session_id)
+  const sessionId = selected.value.session_id
+  const value = await action.run(() => agentsApi.source(sessionId))
+  if (value && selected.value?.session_id === sessionId) {
+    source.value = value
+    showSource.value = true
+  }
 }
-async function compact() {
+async function setModel(value: string) {
   if (!selected.value) return
-  try {
-    await agentsApi.compact(selected.value.session_id)
-  } catch (err) {
-    ElMessage.error(errorMessage(err))
+  const result = await action.run(() => agentsApi.setModel(selected.value!.session_id, value))
+  if (result && selected.value?.session_id === result.session_id) {
+    selected.value = result
+    await sessions.refresh()
   }
 }
-async function loadTools() {
-  try {
-    tools.value = await agentsApi.tools()
-  } catch (err) {
-    ElMessage.error(errorMessage(err))
-  }
-}
-async function loadConfig() {
-  try {
-    agentConfig.value = await agentsApi.config()
-  } catch (err) {
-    ElMessage.error(errorMessage(err))
-  }
-}
-async function toggleTool(plugin: string, enabled: boolean) {
-  try {
-    await agentsApi.updateTool(plugin, enabled)
-    await loadTools()
-  } catch (err) {
-    ElMessage.error(errorMessage(err))
-  }
-}
-function eventText(event: AgentEvent): string {
-  if (typeof event.text === 'string') return event.text
-  if (typeof event.content === 'string') return event.content
-  if (typeof event.error === 'object' && event.error !== null) return JSON.stringify(event.error)
-  return ''
-}
-function eventRole(event: AgentEvent): string {
-  if (event.type === 'message.user') return 'user'
-  if (event.type.startsWith('tool.')) return 'tool'
-  if (event.type === 'context.compacted') return 'compacted'
-  if (event.type.startsWith('turn.')) return 'status'
-  return 'assistant'
-}
-void refresh()
-onBeforeUnmount(() => stream?.close())
 </script>
-
 <template>
-  <div class="agent-shell">
-    <aside class="agent-sessions">
-      <PageHeader title="Agent 会话" description="文件优先的多轮分析入口">
-        <el-button type="primary" @click="create"><AppIcon name="plus" />新会话</el-button>
-      </PageHeader>
-      <el-alert v-if="error" :title="error" type="error" :closable="false" />
-      <button
-        v-for="session in sessions"
-        :key="session.session_id"
-        class="agent-session-row"
-        :class="{ active: selected?.session_id === session.session_id }"
-        @click="select(session)"
-      >
-        <strong>{{ session.session_id.slice(0, 12) }}</strong>
-        <span class="muted">{{ session.status }}</span>
-      </button>
+  <PageHeader title="Agent 会话" description="文件优先的多轮分析入口">
+    <el-button class="mobile-sessions" @click="showSessions = true">会话与分支</el-button>
+    <el-button type="primary" @click="showCreate = true">新会话</el-button>
+  </PageHeader>
+  <el-alert
+    v-if="
+      sessionQuery.error.value ||
+      action.error.value ||
+      stopAction.error.value ||
+      sessions.error.value ||
+      settings.error.value ||
+      stream.error.value
+    "
+    :title="
+      sessionQuery.error.value ||
+      action.error.value ||
+      stopAction.error.value ||
+      sessions.error.value ||
+      settings.error.value ||
+      stream.error.value
+    "
+    type="error"
+    :closable="false"
+  />
+  <div class="agent-layout">
+    <aside class="session-sidebar">
+      <AgentBranchTree
+        :sessions="sessions.data.value ?? []"
+        :selected="selected?.session_id"
+        @select="select"
+      />
     </aside>
-    <main class="agent-conversation">
-      <div v-if="!selected" class="agent-empty">选择或创建一个会话</div>
-      <template v-else>
+    <main class="conversation">
+      <template v-if="selected">
         <header class="agent-toolbar">
-          <div><strong>{{ selected.session_id }}</strong><span class="muted"> · {{ selected.status }}</span></div>
+          <strong>{{ selected.session_id }}</strong>
+          <span>
+            分支 {{ selected.branch_id }} · {{ selected.status }} ·
+            {{
+              stream.state.value === 'reconnecting'
+                ? '连接中断，正在续传'
+                : stream.state.value === 'connected'
+                  ? '已连接'
+                  : '历史已同步'
+            }}
+          </span>
+          <el-select
+            :model-value="selected.model"
+            placeholder="选择下轮模型"
+            aria-label="Agent 模型"
+            @change="setModel"
+          >
+            <el-option
+              v-for="item in settings.data.value?.models"
+              :key="item.reference"
+              :value="item.reference"
+              :label="`${item.provider} / ${item.reference}`"
+            />
+          </el-select>
+          <small v-if="running">
+            本轮模型 {{ selected.active_resources?.model ?? selected.model }} · 工具代次
+            {{ selected.active_resources?.tools_generation ?? '未发布' }}；设置变更下一轮生效
+          </small>
           <div class="agent-actions">
-            <el-button text @click="showTools = !showTools; showTools && loadTools()">工具</el-button>
-            <el-button text @click="showFiles = !showFiles; showFiles && loadFile()">文件</el-button>
-            <el-button text @click="showSettings = !showSettings; showSettings && loadConfig()">设置</el-button>
-            <el-button text @click="fork">分支</el-button>
-            <el-button text :disabled="selected.status === 'running'" @click="compact">压缩</el-button>
-            <el-button text :disabled="selected.status !== 'running'" @click="cancel"><AppIcon name="square" />停止</el-button>
-          </div>
-        </header>
-        <section class="agent-messages" aria-live="polite">
-          <article v-for="message in messages" :key="message.id" class="agent-message" :class="`agent-message-${eventRole(message)}`">
-            <span class="muted">{{ eventRole(message) }} · {{ message.type }}</span>
-            <ReportText v-if="eventRole(message) === 'assistant' && eventText(message)" :text="eventText(message)" />
-            <pre v-else-if="eventText(message)">{{ eventText(message) }}</pre>
-          </article>
-          <div v-if="!messages.length" class="agent-empty">发送第一条消息开始</div>
-        </section>
-        <form class="agent-composer" @submit.prevent="send">
-          <el-input v-model="draft" type="textarea" :rows="3" aria-label="Agent 消息" placeholder="询问日志、分析结果或工作区文件" />
-          <div class="agent-compose-actions">
-            <el-button text @click="commandMode = commandMode === 'send' ? 'append' : 'send'">
-              {{ commandMode === 'append' ? '追加到当前轮后' : '新轮次' }}
+            <el-button text @click="openSource">来源</el-button>
+            <el-button text @click="openFile('AGENTS.md')">文件</el-button>
+            <el-button text @click="showSettings = true">设置与工具</el-button>
+            <el-button text :disabled="running || !selected.last_checkpoint_at" @click="fork">
+              创建分支
             </el-button>
-            <el-button type="primary" native-type="submit" :loading="loading" :disabled="!draft.trim()"><AppIcon name="send" />发送</el-button>
+            <el-button text :disabled="!selected.continuable" @click="compact">压缩</el-button>
+            <el-button text :disabled="!running" :loading="stopAction.pending.value" @click="stop">
+              停止
+            </el-button>
           </div>
-        </form>
-        <aside v-if="showTools" class="agent-tools" aria-label="Agent 工具">
-          <strong>当前工具</strong>
-          <div v-for="tool in tools" :key="tool.name" class="agent-tool-row">
-            <span>{{ tool.name }} <small class="muted">{{ tool.plugin ?? '' }}</small></span>
-            <span class="agent-tool-meta">
-              <span class="muted">{{ tool.execution }} · gen {{ tool.generation ?? '?' }} · ~{{ tool.definition_tokens ?? '?' }} tokens</span>
-              <el-switch
-                v-if="tool.plugin"
-                :model-value="tool.enabled"
-                :aria-label="`切换 ${tool.name}`"
-                @change="(value) => toggleTool(tool.plugin!, Boolean(value))"
-              />
+          <p v-if="budget" class="context-budget">
+            上下文 {{ budget.total.toLocaleString() }} / {{ budget.window.toLocaleString() }} ·
+            {{ budget.estimated ? '估算' : '实际值' }} · 输出预留 {{ budget.output }} · 消息预算
+            {{ budget.window - budget.system - budget.tools - budget.output }} · 触发线
+            <span v-if="budget.trigger !== undefined">
+              {{ budget.trigger }} Tokens（{{
+                Math.round((budget.trigger / budget.window) * 100)
+              }}%）
             </span>
-          </div>
-        </aside>
-        <aside v-if="showFiles" class="agent-files" aria-label="Agent 文件">
-          <div class="agent-file-toolbar">
-            <el-input v-model="filePath" size="small" placeholder="AGENTS.md / Memory/..." @keyup.enter="loadFile" />
-            <el-button size="small" :loading="fileLoading" @click="loadFile">读取</el-button>
-            <el-button size="small" type="primary" :disabled="fileReadOnly" @click="saveFile">保存</el-button>
-          </div>
-          <el-alert v-if="fileReadOnly" title="Runtime 文件只读" type="info" :closable="false" />
-          <el-input v-model="fileDraft" type="textarea" :rows="8" :readonly="fileReadOnly" aria-label="文件内容" />
-          <span class="muted">保存携带当前版本；冲突时保留草稿，可重新读取后合并。</span>
-        </aside>
-        <aside v-if="showSettings" class="agent-settings" aria-label="Agent 设置">
-          <template v-if="agentConfig">
-            <span>沙箱：{{ agentConfig.sandbox.status }} · 网络{{ agentConfig.sandbox.network ? '开启' : '关闭' }}</span>
-            <span>并发：读 {{ agentConfig.scheduler.reading ?? 0 }}/{{ agentConfig.scheduler.read_concurrency ?? '?' }} · 写 {{ agentConfig.scheduler.writing ?? 0 }}/1 · 排队 {{ agentConfig.scheduler.queued ?? 0 }}</span>
-            <span>上下文窗口：{{ agentConfig.config.context_window ?? '未配置' }} · 输出预留 {{ agentConfig.config.output_tokens ?? '默认' }}</span>
-          </template>
-          <span v-else class="muted">正在读取设置</span>
-        </aside>
+            <span v-else>历史未记录，下轮重新计算</span>
+          </p>
+          <p v-else class="context-budget">
+            用户上下文预算 C={{
+              settings.data.value?.config.context_window ?? '未知，需配置或模型声明'
+            }}
+            · 输出预留 R={{ settings.data.value?.config.output_tokens }} · 尚无请求用量
+          </p>
+          <small>
+            沙箱：{{
+              !settings.data.value?.sandbox.enabled
+                ? '按服务进程权限运行'
+                : settings.data.value.sandbox.available
+                  ? '已开启（执行时验证隔离）'
+                  : '隔离启动失败：bubblewrap 不可用'
+            }}
+          </small>
+        </header>
+        <div v-if="!selected.continuable">
+          <el-alert
+            :title="selected.continuation_error?.message ?? 'checkpoint 不可用，无法继续此会话'"
+            type="error"
+            :closable="false"
+          />
+          <el-button @click="openFile(selected.history_path)">读取原始事件文件</el-button>
+        </div>
+        <AgentTranscript
+          :events="stream.events.value"
+          :tools="settings.data.value?.tools"
+          :session-id="selected.session_id"
+          :running="running"
+          @edit="edit"
+          @file="openFile"
+        />
       </template>
+      <el-empty v-else description="选择或创建一个会话，也可使用 /new、/resume、/workflow" />
+      <form class="agent-composer" @submit.prevent="send">
+        <el-alert
+          v-if="sendUncertain"
+          title="发送结果未知。草稿和请求编号已保留；普通消息与 /append 可用同一编号重试，其他指令请先查看历史。"
+          type="warning"
+          :closable="false"
+        />
+        <el-input
+          v-model="draft"
+          type="textarea"
+          :rows="3"
+          aria-label="Agent 消息"
+          placeholder="输入消息或 /append 追加内容；/workflow 查看历史"
+          :disabled="selected?.continuable === false"
+        />
+        <div class="compose-actions">
+          <el-button
+            v-for="cmd in ['/new', '/resume ', '/workflow', '/append ', '/compact', '/fork']"
+            :key="cmd"
+            text
+            size="small"
+            @click="command(cmd)"
+          >
+            {{ cmd.trim() }}
+          </el-button>
+          <el-button
+            type="primary"
+            native-type="submit"
+            :loading="action.pending.value"
+            :disabled="!draft.trim() || selected?.continuable === false"
+          >
+            发送
+          </el-button>
+        </div>
+        <small>
+          优先级：停止 &gt; 指令 &gt; 普通对话。运行时使用 /append 追加；停止不撤销已完成的副作用。
+        </small>
+      </form>
     </main>
   </div>
+  <el-drawer v-model="showSessions" title="会话与分支" size="min(90vw, 380px)">
+    <AgentBranchTree
+      :sessions="sessions.data.value ?? []"
+      :selected="selected?.session_id"
+      @select="select"
+    />
+  </el-drawer>
+  <el-drawer v-model="showFiles" title="Agent 文件" size="min(95vw, 720px)" destroy-on-close>
+    <AgentFileDrawer
+      v-if="selected && showFiles"
+      :session-id="selected.session_id"
+      :initial-path="filePath"
+    />
+  </el-drawer>
+  <el-drawer
+    v-model="showSettings"
+    title="Agent 设置与工具"
+    size="min(95vw, 640px)"
+    destroy-on-close
+  >
+    <AgentSettings v-if="showSettings" @changed="settings.refresh" />
+  </el-drawer>
+  <el-drawer v-model="showSource" title="只读 Workflow 来源" size="min(95vw, 640px)">
+    <p>Workflow session：{{ source?.workflow_session_id ?? '无' }}</p>
+    <p>绑定时间 {{ source?.created_at }}</p>
+    <p>模型 {{ selected?.model }}</p>
+    <pre>{{ JSON.stringify(source?.input, null, 2) }}</pre>
+  </el-drawer>
+  <el-drawer v-model="showWorkflows" title="Workflow 历史" size="min(95vw, 640px)">
+    <p>使用 /workflow &lt;session_id&gt; 从指定最终结果创建会话。</p>
+    <article v-for="record in workflowHistory" :key="record.session_id" class="workflow-history">
+      <router-link :to="`/runs/${record.session_id}`">
+        {{ record.workflow_id }} / {{ record.session_id }}
+      </router-link>
+      <p>{{ record.status }} · {{ record.finished_at ?? record.updated_at }}</p>
+      <AgentContinueButton
+        v-if="['completed', 'partial'].includes(record.status)"
+        :workflow-session-id="record.session_id"
+      />
+    </article>
+  </el-drawer>
+  <el-dialog v-model="showCreate" title="创建 Agent 会话" width="min(90vw, 520px)">
+    <el-select v-model="model" placeholder="选择模型（可选）" clearable aria-label="新会话模型">
+      <el-option
+        v-for="item in settings.data.value?.models"
+        :key="item.reference"
+        :value="item.reference"
+        :label="`${item.provider} / ${item.reference}`"
+      />
+    </el-select>
+    <template #footer>
+      <el-button @click="showCreate = false">取消</el-button>
+      <el-button type="primary" :loading="action.pending.value" @click="create">创建</el-button>
+    </template>
+  </el-dialog>
+  <el-dialog
+    :model-value="!!editEvent"
+    title="编辑分支预览"
+    width="min(90vw, 620px)"
+    @close="editEvent = undefined"
+  >
+    <p>将从此用户消息之前创建分支，再发送下面的新内容；父分支和工具回执保留。</p>
+    <el-input v-model="editText" type="textarea" :rows="6" aria-label="分支消息" />
+    <template #footer>
+      <el-button @click="editEvent = undefined">取消</el-button>
+      <el-button type="primary" :loading="action.pending.value" @click="confirmEdit">
+        确认创建分支并发送
+      </el-button>
+    </template>
+  </el-dialog>
 </template>
-
 <style scoped>
-.agent-actions { display: flex; gap: 4px; }
-.agent-compose-actions, .agent-tool-meta, .agent-file-toolbar { display: flex; align-items: center; gap: 8px; }
-.agent-message-user { background: color-mix(in srgb, var(--el-color-primary) 10%, transparent); }
-.agent-message-compacted { border-left: 3px solid var(--el-color-primary); }
-.agent-tools { padding: 12px 16px; border-top: 1px solid var(--border); }
-.agent-tool-row { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; }
-.agent-files { padding: 12px 16px; border-top: 1px solid var(--border); display: grid; gap: 8px; }
-.agent-settings { padding: 12px 16px; border-top: 1px solid var(--border); display: grid; gap: 4px; }
-.agent-file-toolbar :deep(.el-input) { flex: 1; }
+.agent-layout {
+  display: grid;
+  grid-template-columns: minmax(180px, 250px) minmax(0, 1fr);
+  gap: 16px;
+}
+.session-sidebar {
+  max-height: calc(100vh - 170px);
+  overflow-y: auto;
+}
+.conversation {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  min-height: 65vh;
+  max-height: calc(100vh - 150px);
+}
+.agent-toolbar {
+  display: grid;
+  gap: 6px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.agent-toolbar .el-select {
+  max-width: 360px;
+}
+.agent-actions,
+.compose-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.context-budget,
+small {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.agent-composer {
+  display: grid;
+  align-items: stretch;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--border);
+}
+.workflow-history {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.mobile-sessions {
+  display: none;
+}
 @media (max-width: 720px) {
-  .agent-shell { display: block; }
-  .agent-sessions { margin-bottom: 12px; }
-  .agent-toolbar { align-items: flex-start; flex-direction: column; }
-  .agent-composer { flex-direction: column; align-items: stretch; }
-  .agent-compose-actions { justify-content: space-between; }
-  .agent-tool-meta { align-items: flex-end; flex-direction: column; }
+  .agent-layout {
+    display: block;
+  }
+  .session-sidebar {
+    display: none;
+  }
+  .mobile-sessions {
+    display: inline-flex;
+  }
+  .conversation {
+    max-height: none;
+    min-height: 60vh;
+  }
+  .agent-toolbar {
+    padding: 10px;
+  }
 }
 </style>
