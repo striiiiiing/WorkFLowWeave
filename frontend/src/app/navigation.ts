@@ -1,4 +1,4 @@
-import type { IconName } from '@/components/icons/registry'
+import type { IconName } from '@/shared/ui/icons/registry'
 export const navigation = [
   { path: '/', title: '监控总览', icon: 'dashboard' },
   { path: '/workflows', title: '工作流管理', icon: 'workflow' },

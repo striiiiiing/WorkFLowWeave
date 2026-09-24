@@ -2,7 +2,7 @@ import { defineComponent, ref } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
 import ElementPlus, { ElSelect, type FormInstance } from 'element-plus'
 import { describe, expect, it, vi } from 'vitest'
-import ParameterField from '@/components/common/ParameterField.vue'
+import ParameterField from '@/shared/schema/ParameterField.vue'
 import type { JsonObject } from '@/types'
 
 function editor(initial: JsonObject, schema?: JsonObject) {

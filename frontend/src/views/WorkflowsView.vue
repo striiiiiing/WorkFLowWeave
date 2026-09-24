@@ -1,17 +1,17 @@
 <script setup lang="ts">
+import { workflowsApi } from '@/api/workflows'
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { resourcesApi } from '@/api/resources'
 import { runsApi } from '@/api/runs'
-import { useQuery } from '@/composables/useQuery'
-import { useAsyncTask } from '@/composables/useAsyncTask'
-import PageHeader from '@/components/common/PageHeader.vue'
-import AppIcon from '@/components/icons/AppIcon.vue'
+import { useQuery } from '@/shared/async/useQuery'
+import { useAsyncTask } from '@/shared/async/useAsyncTask'
+import PageHeader from '@/shared/ui/PageHeader.vue'
+import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 import AgentContinueButton from '@/components/agent/AgentContinueButton.vue'
 const router = useRouter()
 const search = ref('')
 const { data, pending, error, refresh } = useQuery((signal) =>
-  resourcesApi.list('workflows', signal),
+  workflowsApi.list(signal),
 )
 const action = useAsyncTask()
 const filtered = computed(
@@ -28,7 +28,7 @@ function trigger(id: string) {
 }
 function remove(id: string) {
   void action.run(async () => {
-    await resourcesApi.delete('workflows', id)
+    await workflowsApi.delete(id)
     await refresh()
   })
 }

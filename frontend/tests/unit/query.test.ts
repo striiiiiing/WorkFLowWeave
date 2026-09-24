@@ -4,7 +4,7 @@
 import { effectScope, nextTick, ref } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
-import { useQuery } from '@/composables/useQuery'
+import { useQuery } from '@/shared/async/useQuery'
 import { useSession, POLL_INTERVAL_MS } from '@/composables/useSession'
 import { runsApi } from '@/api/runs'
 import type { SessionRecord } from '@/types'

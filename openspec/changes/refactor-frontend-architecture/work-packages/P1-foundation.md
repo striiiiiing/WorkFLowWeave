@@ -34,4 +34,22 @@ Axios 受控 adapter 验证 URL、0/false/空值参数、JSON 一次序列化、
 
 ## 实施证据
 
-待填真实导出、命令/退出码、浏览器动作、commit、过渡出口和消费者注意事项。未填不等于通过。
+### 阶段 A：类型、HTTP 工厂和入口迁移（2026-09-24）
+
+依据原设计 §3.1/§8.1/§10，将 `app/main.ts`、`app/App.vue`、router/navigation/layout/styles 和 shared 基础 UI/Schema 迁为唯一实现；业务 Views 仍由现有懒加载路由使用。`createHttpClient` 在 app services 建一次 Axios 实例（`/api`、timeout 0、无重试），模块 API 均以 HttpClient 注入。`ApiError` 保留 status/info/path；无响应的网络错误与取消有独立错误类型，204 为 undefined，其余成功 JSON 严格解析。合法 health 503 的结构判断在 system API，传输不包含业务规则。
+
+DTO 已分别归 modules/{resources,workflows,runs,agents,system}/model/types，shared/types 仅 JSON/ErrorInfo；ResourceMap 无 workflows，旧页面工作流 CRUD 及对应测试已改用 workflowsApi。旧 API 是 app/services 唯一实例的 re-export，无第二客户端；业务字段中文映射暂在 app/errorMessage 显式装配，shared/api 无业务词典。
+
+验证命令（cwd `/mnt/d/code/LogAgent/frontend`，均退出 0）：
+
+- `rtk npm test -- --reporter=dot tests/unit/api.test.ts tests/unit/runs-api.test.ts tests/unit/provider-api.test.ts tests/unit/agent-channel-api.test.ts tests/unit/schema-validation.test.ts tests/unit/query.test.ts`：6 文件、35 项通过，10.28s。
+- `rtk npm run typecheck`：通过；修复移动 ReportText 的相对引用和两个原模板匿名函数的显式输入类型。
+- `rtk npm test -- --reporter=dot`：28 文件、140 项通过，82.16s（原 async-validator 校验提示仍预期输出）。
+- `rtk npm run build`：通过，3663 模块；入口 `index-BAKNaJ0k.js` 291.32 kB / gzip 108.56 kB。相对 P0 入口增加约 60.69 kB，包含 Axios 与应用装配，未宣称性能改善。
+- 四份 HTTP 测试已改受控 Axios adapter，实际经过 Axios 请求转换，保留 URL/405/文件/命令原契约；更完整取消/序列化/架构用例由阶段 B 补齐。
+
+阶段 A 可供协调者审查提交；尚未浏览器验收，尚未完成 P1 退出条件。根 tasks 不由本 worker 更新。阶段 B 待完成 Query 读取时间/只读状态、显式 action 结果、下游前置控制器/资源 gateway/使用位置投影与 AST 边界检查。
+
+过渡出口：`api/{resources,workflows,runs,agents,system}.ts → app/services.ts`（分别随 P2/P3/P4/P5/P6 消费者迁移，P7 清零）；`api/client.ts → shared/api + app/errorMessage`（P7）；`types/index.ts → 各所有者类型`（P7）；`composables/{useQuery,useAsyncTask}.ts → shared/async`、`domain/{parameters,capabilities}.ts/adapters/schemaValidation.ts → shared/schema`、`components/icons/registry.ts → shared/ui/icons`（P7）。旧 SFC 已更新所有引用并直接移动，无转发壳、无双份实现。
+
+Commit：待协调者审查并填写。

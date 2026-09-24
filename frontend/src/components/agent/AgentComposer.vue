@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import AppIcon from '@/components/icons/AppIcon.vue'
+import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 import AgentSlashMenu, { type SlashCommand } from './AgentSlashMenu.vue'
 
 const props = defineProps<{

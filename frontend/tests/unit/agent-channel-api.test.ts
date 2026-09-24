@@ -1,15 +1,10 @@
-import { afterEach, expect, it, vi } from 'vitest'
-import { agentsApi } from '@/api/agents'
-
-afterEach(() => vi.unstubAllGlobals())
+import { expect, it } from 'vitest'
+import { createHttpHarness } from '../helpers/httpHarness'
 
 it('routes every conversation action through the Web channel and unwraps its result', async () => {
   const result = { session_id: 'session', turn_id: 'turn' }
-  const fetch = vi.fn(
-    async (_input: RequestInfo | URL, _options?: RequestInit) =>
-      new Response(JSON.stringify({ kind: 'turn', result })),
-  )
-  vi.stubGlobal('fetch', fetch)
+  const { agentsApi, respond, lastRequest } = createHttpHarness()
+  const adapter = respond({ kind: 'turn', result })
 
   const cases = [
     [() => agentsApi.create({ model: 'model' }), { action: 'new', model: 'model' }],
@@ -35,20 +30,20 @@ it('routes every conversation action through the Web channel and unwraps its res
 
   for (const [call, payload] of cases) {
     expect(await call()).toEqual(result)
-    expect(fetch).toHaveBeenLastCalledWith(
-      '/api/channels/web/commands',
+    expect(adapter).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        method: 'POST',
-        body: expect.any(String),
+        url: '/channels/web/commands',
+        method: 'post',
+        data: expect.any(String),
       }),
     )
-    const options = fetch.mock.lastCall![1] as RequestInit
-    expect(JSON.parse(options.body as string)).toMatchObject({ channel: 'web', ...payload })
+    const options = lastRequest()
+    expect(JSON.parse(options.data as string)).toMatchObject({ channel: 'web', ...payload })
   }
 
   await agentsApi.command('session', '/stop', 'stop-id')
-  const options = fetch.mock.lastCall![1] as RequestInit
-  expect(JSON.parse(options.body as string)).toEqual({
+  const options = lastRequest()
+  expect(JSON.parse(options.data as string)).toEqual({
     channel: 'web',
     session: 'session',
     text: '/stop',

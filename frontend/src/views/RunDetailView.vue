@@ -4,8 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { runsApi } from '@/api/runs'
 import { useSession } from '@/composables/useSession'
-import { useQuery } from '@/composables/useQuery'
-import { useAsyncTask } from '@/composables/useAsyncTask'
+import { useQuery } from '@/shared/async/useQuery'
+import { useAsyncTask } from '@/shared/async/useAsyncTask'
 import {
   availabilityLabels,
   stages,
@@ -13,8 +13,8 @@ import {
   formatWorkflowName,
   formatTime,
 } from '@/domain/session'
-import PageHeader from '@/components/common/PageHeader.vue'
-import SectionCard from '@/components/common/SectionCard.vue'
+import PageHeader from '@/shared/ui/PageHeader.vue'
+import SectionCard from '@/shared/ui/SectionCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import PhaseReport from '@/components/report/PhaseReport.vue'
 import AgentContinueButton from '@/components/agent/AgentContinueButton.vue'

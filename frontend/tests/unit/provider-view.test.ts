@@ -1,3 +1,4 @@
+vi.mock('@/api/workflows', () => ({ workflowsApi: { list: vi.fn().mockResolvedValue([]) } }))
 import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import { createMemoryHistory, createRouter } from 'vue-router'
