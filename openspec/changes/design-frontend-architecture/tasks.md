@@ -34,3 +34,7 @@
 ## 4. 后续移交
 
 本 change 的完成仅代表草案交付，不代表架构决策已全部获批或重构已实施。后续按 design §11 的 P0 建立可复现基线，在独立分支和新的实施 tasks 中逐批记录验证；不要把本次设计复选框当作实现进度。
+
+## 5. 实施移交（2026-09-24）
+
+用户后续要求依据本设计在独立分支实施，已建立 [refactor-frontend-architecture 实施 change](../refactor-frontend-architecture/proposal.md)；唯一实施清单为 [tasks.md](../refactor-frontend-architecture/tasks.md)。原 proposal/design 保留本次设计阶段的历史内容，不因移交重写。当前实施计划仍待用户审核，审核前只交付规划及只读基线证据，不启动业务代码重构。
