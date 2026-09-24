@@ -4,11 +4,11 @@
 
 ## 当前执行约束（用户审核后更新）
 
-本包只在 `/mnt/d/code/LogAgent` 内就地执行，按根 tasks 的文件所有权与其他 worker 并发；不新建或使用其他工作目录/worktree。worker 禁止切 branch、stash、reset 或 commit，只改获分配文件，公共文件请求唯一集成 worker 串行处理。主代理审查并提交本任务 diff，逐个 commit 排除后端及其他任务文件，沿用现有 post-commit 钩子。后端双向 channel 正在另一任务中演进；本包仅记录真实契约测试当时的 HEAD/dirty 与协议差异，不要求其全局不变，不干预或静默兼容不匹配的后端。前端针对性测试可独立继续。
+本包只在 `/mnt/d/code/LogAgent` 内就地执行，按根 tasks 的文件所有权与其他 worker 并发；不新建或使用其他工作目录/worktree。新 worker 统一使用 GPT-6 Astra medium，只改获分配文件，禁止切 branch、stash、reset。普通实施 worker 禁止 commit；唯一获授权的集成 worker 串行处理公共文件、审查验证并精确提交，逐个 commit 排除后端及其他任务文件，沿用现有 post-commit 自动推送钩子，禁止 SKIP_WORKFLOW_PUSH 或覆盖 hooksPath。主代理仅编排和传递交接信息，不执行代码检查或验证。后端双向 channel 正在另一任务中演进；本包仅记录真实契约测试当时的 HEAD/dirty 与协议差异，不要求其全局不变，不干预或静默兼容不匹配的后端。前端针对性测试可独立继续。
 
 ## 输入与所有权
 
-历史 P0 在 `/mnt/d/code/LogAgent-frontend-architecture` 的前端/设计快照 `4e3c524f799edd079356f8c3975632b7968fccbd` 上完成，原 HEAD 为 `cb01cd6`；当时后端未复制，契约测试使用 `PYTHONPATH=/mnt/d/code/LogAgent/src`，原工作区只读，`.venv` 为测试 worktree 的本地 symlink。这些是当时事实，不再作为当前就地执行限制。旧清单 `/tmp/logagent-frontend-architecture-original-manifest.json` 仅作历史证据；后续真实测试记录当时后端 HEAD/dirty 和协议状态。P0 只读测试/调查可由 GPT-5.5 xhigh 承担，不修改业务源码或运行数据。
+历史 P0 在 `/mnt/d/code/LogAgent-frontend-architecture` 的前端/设计快照 `4e3c524f799edd079356f8c3975632b7968fccbd` 上完成，原 HEAD 为 `cb01cd6`；当时后端未复制，契约测试使用 `PYTHONPATH=/mnt/d/code/LogAgent/src`，原工作区只读，`.venv` 为测试 worktree 的本地 symlink。这些是当时事实，不再作为当前就地执行限制。旧清单 `/tmp/logagent-frontend-architecture-original-manifest.json` 仅作历史证据；后续真实测试记录当时后端 HEAD/dirty 和协议状态。P0 后续只读测试/调查由 GPT-6 Astra medium 承担，不修改业务源码或运行数据。
 
 依据：[原设计](../../design-frontend-architecture/design.md) §2.1、§11.1、§12.1；前端 package.json 的现有命令和对应 Playwright config 是实际验证入口。测试运行前核对 config 的后端启动路径、当时 HEAD/dirty 和双向 channel 协议状态；历史通过结果不能证明并行重构后的后端仍兼容。
 

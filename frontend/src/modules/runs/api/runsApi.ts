@@ -33,10 +33,11 @@ export function createRunsApi(http: HttpClient) {
         params: { version },
         signal,
       }),
-    trigger: (id: string) =>
+    trigger: (id: string, signal?: AbortSignal) =>
       http.request<{ session_id: string }>({
         url: `/workflows/${segment(id)}/run`,
         method: 'POST',
+        signal,
       }),
     recover: (id: string) =>
       http.request<{ session_id: string }>({

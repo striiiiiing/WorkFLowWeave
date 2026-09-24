@@ -9,7 +9,7 @@ import {
   type TurnAccepted,
 } from '@/api/agents'
 import { useQuery } from '@/shared/async/useQuery'
-import { useAsyncTask } from '@/shared/async/useAsyncTask'
+import { isTaskSuccess, useAsyncTask } from '@/shared/async/useAsyncTask'
 import { useAgentStream } from '@/composables/useAgentStream'
 import PageHeader from '@/shared/ui/PageHeader.vue'
 import AgentHeader from '@/components/agent/AgentHeader.vue'
@@ -161,7 +161,7 @@ async function create() {
   const modelReference = model.value
   if (!availableModels.value.some((item) => item.reference === modelReference)) return
   const result = await createAction.run(() => agentsApi.create({ model: modelReference }))
-  if (result) await finishCreate(result)
+  if (isTaskSuccess(result)) await finishCreate(result.value)
 }
 
 async function send() {
@@ -196,19 +196,19 @@ async function send() {
       throw cause
     }
   })
-  if (!result) return
+  if (!isTaskSuccess(result)) return
   state.pendingInput = undefined
   state.sendUncertain = false
   if (state.draft === originalDraft) state.draft = ''
   if ((selected.value?.session_id ?? null) !== input.session) return
-  if (result.kind === 'session') {
+  if (result.value.kind === 'session') {
     await sessions.refresh()
-    await select(result.result as AgentSession)
-  } else if (result.kind === 'workflows') {
-    workflowHistory.value = result.result as SessionRecord[]
+    await select(result.value.result as AgentSession)
+  } else if (result.value.kind === 'workflows') {
+    workflowHistory.value = result.value.result as SessionRecord[]
     showWorkflows.value = true
   } else if (selected.value) {
-    const turn = result.result as TurnAccepted
+    const turn = result.value.result as TurnAccepted
     if (selected.value.session_id !== turn.session_id) return
     if (turn.deduplicated) {
       await sessionQuery.refresh()
@@ -226,22 +226,24 @@ async function send() {
 async function stop() {
   if (!selected.value) return
   const result = await stopAction.run(() => agentsApi.cancel(selected.value!.session_id))
-  if (result && selected.value?.session_id === result.session_id) {
-    selected.value = result
-    ElMessage.info(result.status === 'running' ? '停止请求已提交，等待执行结束' : '会话执行已停止')
+  if (isTaskSuccess(result) && selected.value?.session_id === result.value.session_id) {
+    selected.value = result.value
+    ElMessage.info(
+      result.value.status === 'running' ? '停止请求已提交，等待执行结束' : '会话执行已停止',
+    )
   }
 }
 
 async function compact() {
   if (!selected.value) return
   const result = await action.run(() => agentsApi.compact(selected.value!.session_id))
-  if (result && selected.value?.session_id === result.session_id) {
-    if (result.status === 'queued') {
+  if (isTaskSuccess(result) && selected.value?.session_id === result.value.session_id) {
+    if (result.value.status === 'queued') {
       ElMessage.info('压缩已排队，将在模型安全边界处理')
       return
     }
-    selected.value = { ...selected.value, status: 'running', turn_id: result.turn_id }
-    stream.resume(result.turn_id)
+    selected.value = { ...selected.value, status: 'running', turn_id: result.value.turn_id }
+    stream.resume(result.value.turn_id)
     ElMessage.info('压缩请求已提交，完成后显示摘要')
   }
 }
@@ -250,10 +252,10 @@ async function fork(targetSession?: AgentSession) {
   const session = targetSession ?? selected.value
   if (!session) return
   const child = await action.run(() => agentsApi.fork(session.session_id))
-  if (child) {
+  if (isTaskSuccess(child)) {
     await sessions.refresh()
-    await select(child)
-    ElMessage.success(`已派生新分支：${child.branch_id}`)
+    await select(child.value)
+    ElMessage.success(`已派生新分支：${child.value.branch_id}`)
   }
 }
 
@@ -277,18 +279,18 @@ async function confirmEdit() {
     await agentsApi.send(branch.session_id, editRequestId.value, editText.value)
     return branch
   })
-  if (child) {
+  if (isTaskSuccess(child)) {
     editEvent.value = undefined
     await sessions.refresh()
-    await select(child)
-    ElMessage.success(`已创建分支并重新发送指令：${child.branch_id}`)
+    await select(child.value)
+    ElMessage.success(`已创建分支并重新发送指令：${child.value.branch_id}`)
   }
 }
 
 async function openWorkflows() {
   showWorkflows.value = true
   const records = await workflowAction.run(() => runsApi.list({ limit: 100 }))
-  if (records) workflowHistory.value = records
+  if (isTaskSuccess(records)) workflowHistory.value = records.value
 }
 
 async function openCreate() {
@@ -318,8 +320,8 @@ async function openCreate() {
     return agentsApi.create({ model: defaultModel })
   })
 
-  if (result) {
-    await finishCreate(result)
+  if (isTaskSuccess(result) && result.value) {
+    await finishCreate(result.value)
     return
   }
   if (!createAction.error.value) showCreate.value = true
@@ -334,8 +336,8 @@ async function openSource() {
   if (!selected.value) return
   const sessionId = selected.value.session_id
   const value = await action.run(() => agentsApi.source(sessionId))
-  if (value && selected.value?.session_id === sessionId) {
-    source.value = value
+  if (isTaskSuccess(value) && selected.value?.session_id === sessionId) {
+    source.value = value.value
     showSource.value = true
   }
 }
@@ -343,8 +345,8 @@ async function openSource() {
 async function setModel(value: string) {
   if (!selected.value) return
   const result = await action.run(() => agentsApi.setModel(selected.value!.session_id, value))
-  if (result && selected.value?.session_id === result.session_id) {
-    selected.value = result
+  if (isTaskSuccess(result) && selected.value?.session_id === result.value.session_id) {
+    selected.value = result.value
     await sessions.refresh()
     ElMessage.success(`已更新下轮模型：${value}`)
   }

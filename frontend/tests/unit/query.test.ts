@@ -36,16 +36,41 @@ describe('request ownership', () => {
     scope.stop()
   })
   it('aborts a request and prevents delayed refresh after disposal', async () => {
-    let signal!: AbortSignal
+    const pending = deferred<string>()
+    const fetcher = vi.fn().mockReturnValue(pending.promise)
     const scope = effectScope()
-    scope.run(() =>
-      useQuery((current) => {
-        signal = current
-        return new Promise(() => {})
-      }),
-    )
+    const query = scope.run(() => useQuery(fetcher))!
     scope.stop()
-    expect(signal.aborted).toBe(true)
+    expect(fetcher.mock.calls[0][0].aborted).toBe(true)
+    pending.resolve('late result')
+    await flushPromises()
+    expect(query.data.value).toBeUndefined()
+    expect(query.readAt.value).toBeUndefined()
+    expect(query.pending.value).toBe(false)
+    await query.refresh()
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+  it('records read time only for the accepted response and keeps stale data on same identity failure', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce('initial')
+      .mockRejectedValue(new Error('refresh failed'))
+    const key = ref('same')
+    const scope = effectScope()
+    const query = scope.run(() => useQuery(fetcher, [key]))!
+    await flushPromises()
+    expect(query.data.value).toBe('initial')
+    expect(query.readAt.value).toEqual(expect.any(Number))
+    const firstRead = query.readAt.value
+    await query.refresh()
+    expect(query.data.value).toBe('initial')
+    expect(query.readAt.value).toBe(firstRead)
+    expect(query.error.value).toBe('refresh failed')
+    key.value = 'changed'
+    await nextTick()
+    expect(query.data.value).toBeUndefined()
+    expect(query.readAt.value).toBeUndefined()
+    scope.stop()
   })
 })
 it('does not start new reads after its scope is disposed', async () => {

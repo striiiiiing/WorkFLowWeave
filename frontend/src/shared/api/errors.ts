@@ -1,5 +1,17 @@
 import type { ErrorInfo } from '@/shared/types'
 
+export function isErrorInfo(value: unknown): value is ErrorInfo {
+  if (!value || typeof value !== 'object') return false
+  const info = value as Partial<ErrorInfo>
+  return (
+    typeof info.code === 'string' &&
+    typeof info.message === 'string' &&
+    !!info.details &&
+    typeof info.details === 'object' &&
+    !Array.isArray(info.details)
+  )
+}
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,

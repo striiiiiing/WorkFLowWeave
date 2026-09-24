@@ -4,11 +4,11 @@
 
 ## 当前执行约束（用户审核后更新）
 
-本包只在 `/mnt/d/code/LogAgent` 内就地执行，按根 tasks 的文件所有权与其他 worker 并发；不新建或使用其他工作目录/worktree。worker 禁止切 branch、stash、reset 或 commit，只改获分配文件，公共文件请求唯一集成 worker 串行处理。主代理审查并提交本任务 diff，逐个 commit 排除后端及其他任务文件，沿用现有 post-commit 钩子。后端双向 channel 正在另一任务中演进；本包仅记录真实契约测试当时的 HEAD/dirty 与协议差异，不要求其全局不变，不干预或静默兼容不匹配的后端。前端针对性测试可独立继续。
+本包只在 `/mnt/d/code/LogAgent` 内就地执行，按根 tasks 的文件所有权与其他 worker 并发；不新建或使用其他工作目录/worktree。新 worker 统一使用 GPT-6 Astra medium，只改获分配文件，禁止切 branch、stash、reset。普通实施 worker 禁止 commit；唯一获授权的集成 worker 串行处理公共文件、审查验证并精确提交，逐个 commit 排除后端及其他任务文件，沿用现有 post-commit 自动推送钩子，禁止 SKIP_WORKFLOW_PUSH 或覆盖 hooksPath。主代理仅编排和传递交接信息，不执行代码检查或验证。后端双向 channel 正在另一任务中演进；本包仅记录真实契约测试当时的 HEAD/dirty 与协议差异，不要求其全局不变，不干预或静默兼容不匹配的后端。前端针对性测试可独立继续。
 
 ## 所有权与收口
 
-GPT-6 Astra xhigh 集成 worker 在锁定范围内修改 app/router/bootstrap、跨模块 ContinueInAgent、公共配置/规则与最终 E2E；主代理只负责协调、汇总就地 diff、审查和最终提交；P2–P6 期间的路线切换由协调者串行完成并在各包记录，P7 最终审查。pages 用已有 runs 上下文创建 Agent，会缺必要信息才补读；按钮只发意图，agents/runs 互不导入。
+GPT-6 Astra medium 集成 worker 在锁定范围内修改 app/router/bootstrap、跨模块 ContinueInAgent、公共配置/规则与最终 E2E；主代理只负责协调与汇总交接，专职集成 worker 负责审查、验证和最终提交；P2–P6 期间的路线切换由协调者串行完成并在各包记录，P7 最终审查。pages 用已有 runs 上下文创建 Agent，会缺必要信息才补读；按钮只发意图，agents/runs 互不导入。
 
 核对所有原 URL/query、命名导航、懒加载、404、collector-demo 重定向。删除未引用的两个旧 Demo、旧 View/API/types/composables/domain 出口和零消费者文件，不能留下旧目录中第二实现或永久 compatibility flag。README 说明真实结构、依赖规则、运行/测试入口。
 
@@ -22,7 +22,7 @@ GPT-6 Astra xhigh 集成 worker 在锁定范围内修改 app/router/bootstrap、
 
 ## 提交与回退
 
-仅主代理执行正常 commit/post-commit 自动推送，精确纳入本 change 与前端变动，worker 禁止 commit；每次提交都审查暂存路径和 diff，排除并行后端及其他任务。按包记录完整 commit 链和依赖；回退底层时必须处理依赖其 API 的下游提交，不可只还原 shared 保留调用方。本任务不改变后端持久化或并行后端工作，回退单位为可独立验证的前端批次；回退也不得还原其他任务修改。
+仅唯一获授权的集成 worker 执行正常 commit/post-commit 自动推送，精确纳入本 change 与前端变动，普通实施 worker 禁止 commit；每次提交都审查暂存路径和 diff，排除并行后端及其他任务。按包记录完整 commit 链和依赖；回退底层时必须处理依赖其 API 的下游提交，不可只还原 shared 保留调用方。本任务不改变后端持久化或并行后端工作，回退单位为可独立验证的前端批次；回退也不得还原其他任务修改。
 
 ## 最终结果
 

@@ -1,3 +1,5 @@
 export type * from './model/types'
+export { sourceUsage } from './model/sourceUsage'
+export * from './composables/useWorkflowList'
 export * from './api/workflowsApi'
 export * from './api/dependencies'

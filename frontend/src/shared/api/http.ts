@@ -1,6 +1,5 @@
 import axios, { type AxiosAdapter } from 'axios'
-import type { ErrorInfo } from '@/shared/types'
-import { ApiError, NetworkError, RequestCancelledError } from './errors'
+import { ApiError, NetworkError, RequestCancelledError, isErrorInfo } from './errors'
 
 export interface HttpRequest {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -18,17 +17,6 @@ export interface HttpClient {
 export interface HttpClientOptions {
   baseURL?: string
   adapter?: AxiosAdapter
-}
-function isErrorInfo(value: unknown): value is ErrorInfo {
-  if (!value || typeof value !== 'object') return false
-  const info = value as Partial<ErrorInfo>
-  return (
-    typeof info.code === 'string' &&
-    typeof info.message === 'string' &&
-    !!info.details &&
-    typeof info.details === 'object' &&
-    !Array.isArray(info.details)
-  )
 }
 
 /** One Axios instance per application. No retries or implicit execution deadline. */

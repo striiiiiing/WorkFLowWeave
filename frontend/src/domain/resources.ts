@@ -1,4 +1,4 @@
-import type { AIConfig, ChannelConfig, JsonObject, SourceConfig, WorkflowDefinition } from '@/types'
+import type { AIConfig, ChannelConfig, JsonObject, SourceConfig } from '@/types'
 export type EditableKind = 'sources' | 'ai' | 'channels'
 export type EditableResource = SourceConfig | AIConfig | ChannelConfig
 export const resourceNames: Record<EditableKind, string> = {
@@ -68,12 +68,5 @@ export function sourceName(source: SourceConfig): string {
   return source.display_name || source.id
 }
 
-export function sourceUsage(sourceId: string, workflows: WorkflowDefinition[]) {
-  return workflows
-    .filter((workflow) => workflow.sources.includes(sourceId))
-    .map((workflow) => ({
-      id: workflow.id,
-      name: workflow.name || workflow.id,
-      detached: !!workflow.source_overrides[sourceId]?.source,
-    }))
-}
+// Transitional export; source usage is owned by workflows/model and removed by P7.
+export { sourceUsage } from '@/modules/workflows/public'

@@ -10,22 +10,16 @@ import SectionCard from '@/shared/ui/SectionCard.vue'
 import SessionTable from '@/components/common/SessionTable.vue'
 
 const advanced = ref(false)
-const updatedAt = ref<Record<string, string>>({})
-
-function tracked<T>(key: string, fetcher: (signal: AbortSignal) => Promise<T>) {
-  return async (signal: AbortSignal) => {
-    const value = await fetcher(signal)
-    updatedAt.value = { ...updatedAt.value, [key]: new Date().toISOString() }
-    return value
-  }
+const workflowsQuery = useQuery((signal) => workflowsApi.list(signal))
+const sessionsQuery = useQuery((signal) => runsApi.list({ limit: 5 }, signal))
+const pluginsQuery = useQuery((signal) => systemApi.plugins(signal))
+const healthQuery = useQuery((signal) => systemApi.health(signal))
+const readTimes = {
+  workflows: workflowsQuery.readAt,
+  sessions: sessionsQuery.readAt,
+  plugins: pluginsQuery.readAt,
+  health: healthQuery.readAt,
 }
-
-const workflowsQuery = useQuery(
-  tracked('workflows', (signal) => workflowsApi.list(signal)),
-)
-const sessionsQuery = useQuery(tracked('sessions', (signal) => runsApi.list({ limit: 5 }, signal)))
-const pluginsQuery = useQuery(tracked('plugins', (signal) => systemApi.plugins(signal)))
-const healthQuery = useQuery(tracked('health', (signal) => systemApi.health(signal)))
 
 const workflows = workflowsQuery.data
 const workflowsPending = workflowsQuery.pending
@@ -49,12 +43,12 @@ const acceptingRuns = computed(() =>
   health.value ? (health.value.accepting_runs ? '是' : '否') : '—',
 )
 
-function formatUpdated(key: string) {
-  const value = updatedAt.value[key]
+function formatUpdated(key: keyof typeof readTimes) {
+  const value = readTimes[key].value
   return value ? `上次成功读取：${new Date(value).toLocaleString('zh-CN')}` : ''
 }
 
-function staleMessage(key: string, error: string, hasData: boolean) {
+function staleMessage(key: keyof typeof readTimes, error: string, hasData: boolean) {
   if (!error) return ''
   return hasData
     ? `${error}；以下内容来自上次成功读取（${formatUpdated(key).replace('上次成功读取：', '')}）`

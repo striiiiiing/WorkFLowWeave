@@ -16,7 +16,6 @@ import FanInCard from '@/components/workflow/FanInCard.vue'
 import NotificationCard from '@/components/workflow/NotificationCard.vue'
 import BackupMatrix from '@/components/workflow/BackupMatrix.vue'
 import AppIcon from '@/shared/ui/icons/AppIcon.vue'
-import type { SourceConfig } from '@/types'
 const route = useRoute()
 const router = useRouter()
 const id = computed(() => (route.params.id ? String(route.params.id) : undefined))
@@ -47,8 +46,7 @@ const {
   return { sources, channels, workflows }
 })
 const { data, pending, error, refresh } = useQuery(
-  (signal) =>
-    id.value ? workflowsApi.get(id.value, signal) : Promise.resolve(createWorkflow()),
+  (signal) => (id.value ? workflowsApi.get(id.value, signal) : Promise.resolve(createWorkflow())),
   [id],
 )
 watch(data, (value) => {
@@ -85,12 +83,8 @@ const activeStage = computed(() =>
 function selectStage(stage: string) {
   void router.replace({ query: { ...route.query, stage } })
 }
-function savedSource(source: SourceConfig) {
-  if (!catalog.value) return
-  const sources = catalog.value.sources.some((item) => item.id === source.id)
-    ? catalog.value.sources.map((item) => (item.id === source.id ? source : item))
-    : [...catalog.value.sources, source]
-  catalog.value = { ...catalog.value, sources }
+function savedSource() {
+  void refreshCatalog()
 }
 // Returning from the resource center refreshes references without replacing unsaved edits.
 onMounted(() => window.addEventListener('focus', refreshCatalog))
