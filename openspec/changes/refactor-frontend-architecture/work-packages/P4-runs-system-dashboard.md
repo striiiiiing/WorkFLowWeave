@@ -2,6 +2,10 @@
 
 根任务：[tasks.md §5](../tasks.md#5-p4--运行系统与首页闭环)。依赖 P1，独立于 P2/P3/P5/P6。依据：[原设计](../../design-frontend-architecture/design.md) §3.3、§3.4、§4、§5、§9。
 
+## 当前执行约束（用户审核后更新）
+
+本包只在 `/mnt/d/code/LogAgent` 内就地执行，按根 tasks 的文件所有权与其他 worker 并发；不新建或使用其他工作目录/worktree。worker 禁止切 branch、stash、reset 或 commit，只改获分配文件，公共文件请求唯一集成 worker 串行处理。主代理审查并提交本任务 diff，逐个 commit 排除后端及其他任务文件，沿用现有 post-commit 钩子。后端双向 channel 正在另一任务中演进；本包仅记录真实契约测试当时的 HEAD/dirty 与协议差异，不要求其全局不变，不干预或静默兼容不匹配的后端。前端针对性测试可独立继续。
+
 ## 文件所有权
 
 写 `modules/runs/**`、`modules/system/**`、`pages/runs/**`、`pages/plugins/**`、`pages/dashboard/**` 及相应测试；迁移旧 RunsView/RunDetailView/PluginsView/DashboardView、report UI、SessionTable/StatusBadge、useSession、domain/session/report/pluginHealth/capabilities。P1 的 system 能力查询与 workflows 列表公开契约需保持稳定，P2/P3 在消费它们。

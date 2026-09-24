@@ -2,6 +2,10 @@
 
 根任务：[tasks.md §3](../tasks.md#3-p2--资源闭环)。依赖 P1，可与 P4/P5 并行；交接给 P3。依据：[原设计](../../design-frontend-architecture/design.md) §3.4、§5、§6、§8.2。
 
+## 当前执行约束（用户审核后更新）
+
+本包只在 `/mnt/d/code/LogAgent` 内就地执行，按根 tasks 的文件所有权与其他 worker 并发；不新建或使用其他工作目录/worktree。worker 禁止切 branch、stash、reset 或 commit，只改获分配文件，公共文件请求唯一集成 worker 串行处理。主代理审查并提交本任务 diff，逐个 commit 排除后端及其他任务文件，沿用现有 post-commit 钩子。后端双向 channel 正在另一任务中演进；本包仅记录真实契约测试当时的 HEAD/dirty 与协议差异，不要求其全局不变，不干预或静默兼容不匹配的后端。前端针对性测试可独立继续。
+
 ## 文件所有权
 
 写 `modules/resources/**`、`pages/resources/**`、`pages/integrations/useSourceUsage.ts`、资源相关 unit 测试；迁移/删除旧 `views/ResourcesView.vue`、`components/resources/*`、`domain/resources.ts` 中资源部分。P1 已移出的 sourceUsage 不再复制回来。P1 确立的 workflows/system 公共查询/投影只消费，不修改其内部实现；路由/bootstrap/依赖/共享 Schema 变更由 GPT-6 Astra xhigh 集成 worker 按协调者安排串行落盘。
