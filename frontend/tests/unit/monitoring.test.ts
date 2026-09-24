@@ -5,13 +5,13 @@ import DashboardView from '@/views/DashboardView.vue'
 import RunsView from '@/views/RunsView.vue'
 import SessionTable from '@/components/common/SessionTable.vue'
 import { pluginHealthRows } from '@/domain/pluginHealth'
-import { resourcesApi } from '@/api/resources'
+import { workflowsApi } from '@/api/workflows'
 import { runsApi } from '@/api/runs'
 import type { CapabilityDescription, HealthReport, SessionRecord } from '@/types'
 
 const { health, plugins } = vi.hoisted(() => ({ health: vi.fn(), plugins: vi.fn() }))
 vi.mock('@/api/system', () => ({ systemApi: { health, plugins } }))
-vi.mock('@/api/resources', () => ({ resourcesApi: { list: vi.fn() } }))
+vi.mock('@/api/workflows', () => ({ workflowsApi: { list: vi.fn() } }))
 vi.mock('@/api/runs', () => ({ runsApi: { list: vi.fn() } }))
 
 const capability: CapabilityDescription = {
@@ -86,7 +86,7 @@ describe('monitoring diagnostics', () => {
   })
 
   it('keeps system health visible when the plugin list query fails', async () => {
-    vi.mocked(resourcesApi.list).mockResolvedValue([])
+    vi.mocked(workflowsApi.list).mockResolvedValue([])
     vi.mocked(runsApi.list).mockResolvedValue([])
     health.mockResolvedValue({ ...healthReport, status: 'ready', components: [] })
     plugins.mockRejectedValue(new Error('插件目录读取失败'))

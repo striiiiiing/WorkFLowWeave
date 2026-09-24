@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ParameterInput, ValueDraft, ValueType } from '@/domain/parameters'
+import type { ParameterInput, ValueDraft, ValueType } from '@/shared/schema/parameters'
 
 const props = defineProps<{ modelValue: ValueDraft; field: ParameterInput; label: string }>()
 const emit = defineEmits<{ 'update:modelValue': [value: ValueDraft] }>()

@@ -1,3 +1,4 @@
+import { workflowsApi } from '@/api/workflows'
 import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus, { ElForm } from 'element-plus'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -8,6 +9,7 @@ import WorkflowEditView from '@/views/WorkflowEditView.vue'
 import { createFanIn } from '@/domain/workflow'
 import type { AIConfig, WorkflowDefinition } from '@/types'
 
+vi.mock('@/api/workflows', () => ({ workflowsApi: { list: vi.fn().mockResolvedValue([]) } }))
 vi.mock('@/api/resources', () => ({ resourcesApi: { list: vi.fn() } }))
 vi.mock('vue-router', () => ({ useRoute: () => ({ params: {} }), useRouter: () => ({}) }))
 
@@ -72,17 +74,16 @@ it('updates both model selectors on return without replacing the workflow draft,
     'ai',
     'sources',
     'channels',
-    'workflows',
     'ai',
     'sources',
     'channels',
-    'workflows',
   ])
   expect(wrapper.text()).not.toContain('刷新模型列表')
   wrapper.unmount()
   wrappers.length = 0
   window.dispatchEvent(new Event('focus'))
-  expect(resourcesApi.list).toHaveBeenCalledTimes(8)
+  expect(resourcesApi.list).toHaveBeenCalledTimes(6)
+  expect(workflowsApi.list).toHaveBeenCalledTimes(2)
 })
 
 it('shows catalog update failures and retries without losing edits', async () => {

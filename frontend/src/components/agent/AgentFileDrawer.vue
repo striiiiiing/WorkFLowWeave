@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { agentsApi, type AgentFile } from '@/api/agents'
 import { ApiError } from '@/api/client'
-import { useAsyncTask } from '@/composables/useAsyncTask'
+import { useAsyncTask } from '@/shared/async/useAsyncTask'
 const props = defineProps<{ sessionId: string; initialPath: string }>()
 const task = useAsyncTask()
 const path = ref(props.initialPath)

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { resourcesApi } from '@/api/resources'
-import { useQuery } from '@/composables/useQuery'
+import { useQuery } from '@/shared/async/useQuery'
 import ResourceEditor from './ResourceEditor.vue'
 import type { SourceConfig, SourceOverride } from '@/types'
 import type { EditableResource } from '@/domain/resources'

@@ -2,7 +2,7 @@
 import { computed, ref, toRaw, watch, nextTick } from 'vue'
 import { ElMessage, type FormInstance } from 'element-plus'
 import { resourcesApi } from '@/api/resources'
-import { useAsyncTask } from '@/composables/useAsyncTask'
+import { useAsyncTask } from '@/shared/async/useAsyncTask'
 import {
   createResource,
   credentialPropertyNames,
@@ -10,14 +10,14 @@ import {
   type EditableKind,
   type EditableResource,
 } from '@/domain/resources'
-import { optionSchema } from '@/domain/capabilities'
+import { optionSchema } from '@/shared/schema/capabilities'
 import { idRule, sourcePolicies } from '@/domain/forms'
-import ParameterField from '@/components/common/ParameterField.vue'
+import ParameterField from '@/shared/schema/ParameterField.vue'
 import AIProviderEditor from './AIProviderEditor.vue'
 import CredentialEditor from './CredentialEditor.vue'
 import type { Credential, JsonObject } from '@/types'
 import { systemApi } from '@/api/system'
-import { useQuery } from '@/composables/useQuery'
+import { useQuery } from '@/shared/async/useQuery'
 const props = defineProps<{ kind: EditableKind; initial?: EditableResource; local?: boolean }>()
 const emit = defineEmits<{ saved: [value?: EditableResource]; cancel: [] }>()
 const initialDraft = props.initial

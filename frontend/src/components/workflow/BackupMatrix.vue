@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { BackupPolicy } from '@/types'
-import SectionCard from '@/components/common/SectionCard.vue'
+import SectionCard from '@/shared/ui/SectionCard.vue'
 const model = defineModel<BackupPolicy>({ required: true })
 const fields = [
   { key: 'snapshot', label: '工作流快照' },

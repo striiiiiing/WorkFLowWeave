@@ -182,7 +182,7 @@ describe('editor task regressions', () => {
 // UI fields must preserve the API distinction between resource and call options.
 describe('capability form scope', () => {
   it('defers required call options and excludes instance-only fields in a workflow', async () => {
-    const { optionSchema, partialSchema } = await import('@/domain/capabilities')
+    const { optionSchema, partialSchema } = await import('@/shared/schema/capabilities')
     const schema = {
       type: 'object',
       required: ['account', 'limit'],

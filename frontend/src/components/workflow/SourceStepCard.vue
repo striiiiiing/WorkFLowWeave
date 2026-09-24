@@ -2,14 +2,14 @@
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { resourcesApi } from '@/api/resources'
-import { useAsyncTask } from '@/composables/useAsyncTask'
+import { useAsyncTask } from '@/shared/async/useAsyncTask'
 import { sourceName, sourceUsage } from '@/domain/resources'
 import { sourcePolicies } from '@/domain/forms'
 import type { SourceConfig, WorkflowDefinition } from '@/types'
-import SectionCard from '@/components/common/SectionCard.vue'
+import SectionCard from '@/shared/ui/SectionCard.vue'
 import SourceEditorDrawer from '@/components/resources/SourceEditorDrawer.vue'
 import SourceSummary from '@/components/resources/SourceSummary.vue'
-import AppIcon from '@/components/icons/AppIcon.vue'
+import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 
 const model = defineModel<WorkflowDefinition>({ required: true })
 const props = withDefaults(
