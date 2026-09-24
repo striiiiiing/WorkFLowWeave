@@ -1,2245 +1,3985 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AppIcon from '@/components/icons/AppIcon.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
-import type { JsonObject } from '@/types'
 
-type CollectorKey = 'logs' | 'rss' | 'history'
-type ViewMode = 'collection' | 'resources'
-type EditorMode = 'form' | 'json'
-type ResourceFilter = 'all' | 'shared' | 'single'
+// ==========================================
+// 1. 类型定义
+// ==========================================
+type CollectorType = 'logs' | 'history' | 'mock'
+type SourcePolicy = 'stop' | 'notice' | 'skip'
 
-interface CollectorCatalogItem {
-  key: CollectorKey
-  label: string
-  description: string
-  fields: string
-  icon: 'database' | 'workflow' | 'history'
-  tone: string
-  locationLabel: string
-  locationPlaceholder: string
-  fieldOptions: { key: string; label: string }[]
-  filterOptions: { value: string; label: string }[]
+// 不规则字段抽取规则定义
+interface FieldExtractionRule {
+  id: string
+  targetField: string
+  sourceType: 'json_path' | 'regex' | 'default_value'
+  expression: string // e.g. "$.meta.trace_id" 或 "client=(?P<client_ip>\d+\.\d+\.\d+\.\d+)"
+  fallbackValue?: string
+  description?: string
 }
 
-interface RuleForm {
-  fields: string[]
-  filter: string
-  sortBy: string
-  format: string
-  descending: boolean
+// 采集器高级扩展设置 (对齐真实系统 SourceConfig 与不规则字段抽取)
+interface SourceAdvancedSettings {
+  extractions: FieldExtractionRule[]
+  filterExpr: string // 原始布尔表达式，如: status >= 500 or latency_ms > 1000
+  excludeFields: string[] // 脱敏/排除字段
+  timeout: number // 采集超时 (秒)
+  onError: SourcePolicy // 报错时策略
+  onMissing: SourcePolicy // 目标不存在时策略
+  onEmpty: SourcePolicy // 采集结果为空时策略
+  onFilteredEmpty: SourcePolicy // 过滤后为空时策略
+  rawOptionsJson?: string // 原始底层 Options JSON
+  rawSettersJson?: string // 原始底层 Setters JSON
 }
 
-interface SourceOptions {
-  location: string
-  apiKey: string
-  limit: number
-}
-
-interface SourceResource {
+interface CentralDataSource {
   id: string
   name: string
-  collector: CollectorKey
-  enabled: boolean
-  options: SourceOptions
-  rules: JsonObject
+  collector: CollectorType
+  status: 'enabled' | 'paused'
+  description: string
+  options: {
+    path: string
+    maxLines: number
+    apiKey?: string
+  }
+  rules: {
+    fields: string[]
+    filterLevel?: string[]
+    sortBy: string
+    descending: boolean
+    format: 'markdown' | 'text' | 'jsonl'
+  }
+  // 高级设置 (不规则字段抽取、异常策略与原始Setters)
+  advanced: SourceAdvancedSettings
   updatedAt: string
 }
 
-interface Workflow {
-  id: string
-  name: string
-  sourceIds: string[]
+interface WorkflowSourceBinding {
+  bindingId: string
+  sourceId: string
+  mode: 'linked' | 'detached' // linked: 跟随全局模板 | detached: 独立专属配置
+  expandedAdvanced?: boolean // UI卡片是否展开不规则字段预览
+  customConfig?: {
+    name: string
+    collector?: CollectorType
+    description?: string
+    options: {
+      path: string
+      maxLines: number
+    }
+    rules: {
+      fields: string[]
+      filterLevel?: string[]
+      sortBy: string
+      descending: boolean
+      format: 'markdown' | 'text' | 'jsonl'
+    }
+    advanced: SourceAdvancedSettings
+  }
 }
 
-interface SourceDraft {
+interface AnalysisTask {
   id: string
   name: string
-  collector: CollectorKey
+  model: string
+  prompt: string
+}
+
+interface FanInConfig {
   enabled: boolean
-  options: SourceOptions
-  rules: JsonObject
+  order: string[]
+  model: string
+  prompt: string
+  separator?: string
 }
 
-interface LocalOverride {
-  detached: boolean
-  draft: SourceDraft
+interface ChannelItem {
+  id: string
+  name: string
+  type: 'email' | 'webhook' | 'file'
+  target: string
 }
 
-const collectorCatalog: CollectorCatalogItem[] = [
-  {
-    key: 'logs',
-    label: '运行日志',
-    description: '从 LogAgent 日志中读取错误、告警和运行信息。',
-    fields: '时间 · 级别 · 模块 · 内容',
-    icon: 'database',
-    tone: '#2563eb',
-    locationLabel: '日志文件或接口地址',
-    locationPlaceholder: '/var/log/logagent/app.jsonl',
-    fieldOptions: [
-      { key: 'created_at', label: '发生时间' },
-      { key: 'level', label: '错误级别' },
-      { key: 'module', label: '来源模块' },
-      { key: 'message', label: '日志内容' },
-      { key: 'session', label: '运行会话' },
-    ],
-    filterOptions: [
-      { value: 'all', label: '不筛选' },
-      { value: 'alerts', label: '只看错误和告警' },
-    ],
-  },
-  {
-    key: 'rss',
-    label: 'RSS 订阅',
-    description: '从固定订阅地址读取最近发布的内容。',
-    fields: '标题 · 链接 · 发布时间 · 摘要',
-    icon: 'workflow',
-    tone: '#0f766e',
-    locationLabel: '订阅地址',
-    locationPlaceholder: 'https://example.com/feed.xml',
-    fieldOptions: [
-      { key: 'title', label: '标题' },
-      { key: 'published', label: '发布时间' },
-      { key: 'summary', label: '内容摘要' },
-      { key: 'link', label: '原文链接' },
-    ],
-    filterOptions: [
-      { value: 'all', label: '不筛选' },
-      { value: 'recent', label: '只看最近 7 天' },
-    ],
-  },
-  {
-    key: 'history',
-    label: '历史运行结果',
-    description: '从过去的工作流结果中读取内容，方便复盘比较。',
-    fields: '工作流 · 状态 · 时间 · 正文',
-    icon: 'history',
-    tone: '#c2410c',
-    locationLabel: '结果来源名称',
-    locationPlaceholder: 'weekly-report',
-    fieldOptions: [
-      { key: 'workflow_name', label: '工作流名称' },
-      { key: 'status', label: '运行状态' },
-      { key: 'created_at', label: '运行时间' },
-      { key: 'content', label: '运行结果' },
-    ],
-    filterOptions: [
-      { value: 'all', label: '不筛选' },
-      { value: 'complete', label: '只看已完成的结果' },
-    ],
-  },
-]
+interface WorkflowDefinitionDemo {
+  id: string
+  name: string
+  description: string
+  cron: string
+  // 1. 数据采集
+  sources: WorkflowSourceBinding[]
+  // 工作流级采集高级运行参数 (来自真实系统 WorkflowDefinition)
+  collectionConcurrency: number
+  onAllEmpty: SourcePolicy
+  inputSeparator: string
+  includeCounts: boolean
+  // 2. 并行 AI 分析
+  analyses: AnalysisTask[]
+  // 3. 汇聚汇总
+  fanIn: FanInConfig
+  // 4. 渠道分发
+  channels: string[]
+}
 
-const resources = ref<SourceResource[]>([
+// ==========================================
+// 2. 模拟数据：资源配置中心 (全局数据源、模型与渠道)
+// ==========================================
+const centralDataSources = ref<CentralDataSource[]>([
   {
-    id: 'logs_daily',
-    name: '每日运行日志',
+    id: 'src_cluster_logs',
+    name: '应用集群运行日志',
     collector: 'logs',
-    enabled: true,
-    options: { location: '/var/log/logagent/app.jsonl', apiKey: '', limit: 500 },
+    status: 'enabled',
+    description: '采集生产业务集群的标准应用日志，包含不规则嵌套字段抽取与异常策略。',
+    options: { path: '/var/log/logagent/app.jsonl', maxLines: 500 },
     rules: {
-      fields: ['level', 'module', 'message', 'session'],
-      filter: { level: ['error', 'warning'] },
-      sort_by: 'created_at',
+      fields: ['time', 'level', 'module', 'message'],
+      filterLevel: ['error', 'warning'],
+      sortBy: 'time',
       descending: true,
       format: 'markdown',
     },
-    updatedAt: '今天 09:42',
+    advanced: {
+      extractions: [
+        {
+          id: 'ex_1',
+          targetField: 'trace_id',
+          sourceType: 'json_path',
+          expression: '$.meta.trace.id',
+          fallbackValue: 'none',
+          description: '从深层嵌套对象抽取链路追踪 ID',
+        },
+        {
+          id: 'ex_2',
+          targetField: 'client_ip',
+          sourceType: 'regex',
+          expression: 'client=(?P<client_ip>\\d+\\.\\d+\\.\\d+\\.\\d+)',
+          fallbackValue: '127.0.0.1',
+          description: '从半结构化原始正文捕获 Client IP',
+        },
+        {
+          id: 'ex_3',
+          targetField: 'cluster_env',
+          sourceType: 'default_value',
+          expression: 'prod-shanghai-01',
+          fallbackValue: 'prod-shanghai-01',
+          description: '附加环境变量标签',
+        },
+      ],
+      filterExpr: "status_code >= 500 or level == 'error'",
+      excludeFields: ['authorization', 'user_password'],
+      timeout: 45,
+      onError: 'notice',
+      onMissing: 'notice',
+      onEmpty: 'notice',
+      onFilteredEmpty: 'skip',
+    },
+    updatedAt: '今天 15:30',
   },
   {
-    id: 'rss_product',
-    name: '产品更新订阅',
-    collector: 'rss',
-    enabled: true,
-    options: { location: 'https://example.com/feed.xml', apiKey: '', limit: 100 },
+    id: 'src_gateway_access',
+    name: 'API 网关访问日志 (半结构化 Nginx)',
+    collector: 'logs',
+    status: 'enabled',
+    description: '入口网关 Nginx 流量日志，配置复杂正则提取与慢查过滤。',
+    options: { path: '/var/log/nginx/access.log', maxLines: 1000 },
     rules: {
-      fields: ['title', 'published', 'summary', 'link'],
-      filter: { published_within_days: 7 },
-      sort_by: 'published',
+      fields: ['time', 'client_ip', 'method', 'uri', 'status', 'latency_ms'],
+      filterLevel: [],
+      sortBy: 'latency_ms',
       descending: true,
       format: 'markdown',
     },
-    updatedAt: '昨天 18:10',
-  },
-  {
-    id: 'history_weekly',
-    name: '每周结果复盘',
-    collector: 'history',
-    enabled: false,
-    options: { location: 'weekly-report', apiKey: '', limit: 10 },
-    rules: {
-      fields: ['workflow_name', 'status', 'created_at', 'content'],
-      filter: { status: ['completed', 'partial'] },
-      sort_by: 'created_at',
-      format: 'markdown',
+    advanced: {
+      extractions: [
+        {
+          id: 'ex_4',
+          targetField: 'user_agent_device',
+          sourceType: 'regex',
+          expression: '(?P<user_agent_device>Mobile|Tablet|PC|Bot)',
+          fallbackValue: 'PC',
+          description: '从 User-Agent 提取终端设备类别',
+        },
+        {
+          id: 'ex_5',
+          targetField: 'upstream_service',
+          sourceType: 'json_path',
+          expression: '$.upstream.target_svc',
+          fallbackValue: 'gateway-core',
+          description: '提取网关目标微服务路由标识',
+        },
+      ],
+      filterExpr: 'latency_ms > 1500 or status >= 500',
+      excludeFields: ['cookie', 'bearer_token'],
+      timeout: 60,
+      onError: 'skip',
+      onMissing: 'notice',
+      onEmpty: 'skip',
+      onFilteredEmpty: 'skip',
     },
     updatedAt: '2026-09-21',
   },
+  {
+    id: 'src_workflow_history',
+    name: '历史巡检归档记录',
+    collector: 'history',
+    status: 'enabled',
+    description: '读取过往工作流分析结论与诊断摘要，用于趋势对比与复盘。',
+    options: { path: 'daily-inspection', maxLines: 15 },
+    rules: {
+      fields: ['session_id', 'status', 'created_at', 'content'],
+      filterLevel: [],
+      sortBy: 'created_at',
+      descending: true,
+      format: 'markdown',
+    },
+    advanced: {
+      extractions: [
+        {
+          id: 'ex_6',
+          targetField: 'ai_root_cause_tag',
+          sourceType: 'json_path',
+          expression: '$.diagnosis.tags[0]',
+          fallbackValue: '未标注',
+          description: '提取上期巡检标记的第一根因',
+        },
+      ],
+      filterExpr: "status in ('failed', 'partial')",
+      excludeFields: [],
+      timeout: 30,
+      onError: 'notice',
+      onMissing: 'skip',
+      onEmpty: 'notice',
+      onFilteredEmpty: 'notice',
+    },
+    updatedAt: '昨天 18:20',
+  },
+  {
+    id: 'src_mock_orders',
+    name: '离线订单测试样例 (深层业务对象)',
+    collector: 'mock',
+    status: 'enabled',
+    description: '用于测试与离线演示的静态订单流水桩数据，演示深层字段解析。',
+    options: { path: 'samples/order-mock.jsonl', maxLines: 100 },
+    rules: {
+      fields: ['order_id', 'user_id', 'amount', 'status'],
+      filterLevel: [],
+      sortBy: 'order_id',
+      descending: false,
+      format: 'jsonl',
+    },
+    advanced: {
+      extractions: [
+        {
+          id: 'ex_7',
+          targetField: 'pay_channel',
+          sourceType: 'json_path',
+          expression: '$.payment.channel_name',
+          fallbackValue: 'wechat_pay',
+          description: '抽取支付渠道名称',
+        },
+        {
+          id: 'ex_8',
+          targetField: 'item_count',
+          sourceType: 'json_path',
+          expression: '$.cart.items.length',
+          fallbackValue: '1',
+          description: '计算购物车购买商品条目数',
+        },
+      ],
+      filterExpr: 'amount >= 500',
+      excludeFields: ['card_cvv'],
+      timeout: 20,
+      onError: 'stop',
+      onMissing: 'stop',
+      onEmpty: 'stop',
+      onFilteredEmpty: 'stop',
+    },
+    updatedAt: '2026-09-18',
+  },
 ])
 
-const workflows = ref<Workflow[]>([
-  { id: 'daily-brief', name: '每日科技简报', sourceIds: ['logs_daily', 'rss_product'] },
-  { id: 'incident-alert', name: '异常告警', sourceIds: ['logs_daily'] },
-  { id: 'weekly-review', name: '每周结果复盘', sourceIds: ['history_weekly'] },
+const availableModels = [
+  { id: 'deepseek-r1', name: 'DeepSeek-R1 (推理思维链)' },
+  { id: 'qwen-2.5-72b', name: 'Qwen 2.5 72B (日志与结构化分析)' },
+  { id: 'claude-3-5-sonnet', name: 'Claude 3.5 Sonnet (综合报告撰写)' },
+  { id: 'gpt-4o', name: 'GPT-4o (通用分析)' },
+]
+
+const centralChannels = ref<ChannelItem[]>([
+  { id: 'chan_ops_email', name: '运维专家团队邮件', type: 'email', target: 'ops-team@company.com' },
+  { id: 'chan_dingtalk_webhook', name: '大促值班钉钉群 Webhook', type: 'webhook', target: 'https://oapi.dingtalk.com/robot/send?...' },
+  { id: 'chan_archive_file', name: '本地报告文件归档', type: 'file', target: 'data/notifications/daily-summary.txt' },
 ])
 
-const localOverrides = ref<Record<string, Record<string, LocalOverride>>>({})
-const activeView = ref<ViewMode>('collection')
-const selectedWorkflowId = ref('daily-brief')
-const selectedWorkflowSourceId = ref('logs_daily')
-const selectedResourceId = ref('logs_daily')
-const collectionSearch = ref('')
-const resourceSearch = ref('')
-const resourceFilter = ref<ResourceFilter>('all')
+// ==========================================
+// 3. 模拟数据：工作流列表 (完整 4 阶段配置)
+// ==========================================
+const workflows = ref<WorkflowDefinitionDemo[]>([
+  {
+    id: 'wf_daily_health',
+    name: '每日集群运行体检与告警归因',
+    description: '每天上午 9 点自动采集应用错误日志与历史基线，由 AI 并行分析后汇总通知',
+    cron: '0 9 * * *',
+    // 1. 数据采集
+    sources: [
+      {
+        bindingId: 'b_1',
+        sourceId: 'src_cluster_logs',
+        mode: 'linked',
+        expandedAdvanced: false,
+      },
+      {
+        bindingId: 'b_2',
+        sourceId: 'src_workflow_history',
+        mode: 'detached',
+        expandedAdvanced: false,
+        customConfig: {
+          name: '历史巡检归档 (本流专属只读最近3次)',
+          options: { path: 'daily-inspection', maxLines: 3 },
+          rules: {
+            fields: ['session_id', 'status', 'content'],
+            filterLevel: [],
+            sortBy: 'created_at',
+            descending: true,
+            format: 'markdown',
+          },
+          advanced: {
+            extractions: [
+              {
+                id: 'ex_6_custom',
+                targetField: 'ai_root_cause_tag',
+                sourceType: 'json_path',
+                expression: '$.diagnosis.tags[0]',
+                fallbackValue: '未标注',
+                description: '提取上期巡检标记的第一根因',
+              },
+            ],
+            filterExpr: "status == 'failed'",
+            excludeFields: [],
+            timeout: 20,
+            onError: 'notice',
+            onMissing: 'skip',
+            onEmpty: 'notice',
+            onFilteredEmpty: 'notice',
+          },
+        },
+      },
+    ],
+    // 工作流级采集高级运行参数 (对齐真实系统参数)
+    collectionConcurrency: 2,
+    onAllEmpty: 'notice',
+    inputSeparator: '\n\n',
+    includeCounts: true,
+    // 2. 并行 AI 分析
+    analyses: [
+      {
+        id: 'task_root_cause',
+        name: '错误根因与故障定位',
+        model: 'qwen-2.5-72b',
+        prompt: '仔细分析日志中的异常堆栈和错误频次，列出最核心的 3 个潜在根因与影响面。',
+      },
+      {
+        id: 'task_perf_bottleneck',
+        name: '性能与长事务诊断',
+        model: 'deepseek-r1',
+        prompt: '识别耗时突增的事务与数据库调用，指出潜在的连接池或慢查瓶颈。',
+      },
+    ],
+    // 3. 汇聚汇总
+    fanIn: {
+      enabled: true,
+      order: ['$input', 'task_root_cause', 'task_perf_bottleneck'],
+      model: 'claude-3-5-sonnet',
+      prompt: '将输入背景和两个 AI 专家的分析结论综合提炼为一份高层易读的系统健康体检简报，列出紧急程度和行动建议。',
+    },
+    // 4. 渠道分发
+    channels: ['chan_ops_email', 'chan_dingtalk_webhook'],
+  },
+  {
+    id: 'wf_security_audit',
+    name: '安全访问与越权审计',
+    description: '持续扫描高危接口调用与异常 IP 行为',
+    cron: '0 * * * *',
+    sources: [
+      {
+        bindingId: 'b_3',
+        sourceId: 'src_cluster_logs',
+        mode: 'linked',
+        expandedAdvanced: false,
+      },
+      {
+        bindingId: 'b_4',
+        sourceId: 'src_gateway_access',
+        mode: 'linked',
+        expandedAdvanced: false,
+      },
+    ],
+    collectionConcurrency: 3,
+    onAllEmpty: 'skip',
+    inputSeparator: '\n---\n',
+    includeCounts: false,
+    analyses: [
+      {
+        id: 'task_threat_detection',
+        name: '未授权与越权访问检测',
+        model: 'deepseek-r1',
+        prompt: '检查 URI 中是否存在越权注入行为，标记涉嫌恶意的 Client IP 列表。',
+      },
+    ],
+    fanIn: {
+      enabled: false,
+      order: [],
+      model: '',
+      prompt: '',
+    },
+    channels: ['chan_dingtalk_webhook'],
+  },
+])
 
-const workflowDraft = ref<SourceDraft | null>(null)
-const workflowDetached = ref(false)
-const workflowRuleMode = ref<EditorMode>('form')
-const workflowRuleForm = ref<RuleForm>(emptyRuleForm())
-const workflowRulesJson = ref('{}')
+const route = useRoute()
+const router = useRouter()
 
-const addCollectorOpen = ref(false)
-const loadCollectorOpen = ref(false)
-const newCollectorDraft = ref<SourceDraft>(emptySourceDraft('logs'))
-const newCollectorRuleMode = ref<EditorMode>('form')
-const newCollectorRuleForm = ref<RuleForm>(emptyRuleForm())
-const newCollectorRulesJson = ref('{}')
-const loadSearch = ref('')
+// 导航当前活动标签：'workflows' (工作流管理) VS 'resources' (资源配置中心)
+const activeNav = ref<'workflows' | 'resources'>('workflows')
+const selectedWorkflowId = ref('wf_daily_health')
 
-const resourceEditorOpen = ref(false)
-const attachNewCollectorToWorkflow = ref(true)
-const resourceDraft = ref<SourceDraft | null>(null)
-const resourceRuleMode = ref<EditorMode>('form')
-const resourceRuleForm = ref<RuleForm>(emptyRuleForm())
-const resourceRulesJson = ref('{}')
+// 流程阶段分步查看：'sources' (1.采集) | 'analyses' (2.分析) | 'fanin' (3.汇总) | 'channels' (4.分发) | 'all' (全览)
+const activeStage = ref<'sources' | 'analyses' | 'fanin' | 'channels' | 'all'>('sources')
 
-function emptyRuleForm(): RuleForm {
-  return { fields: [], filter: 'all', sortBy: '', format: 'markdown', descending: false }
-}
-
-function emptySourceDraft(collector: CollectorKey): SourceDraft {
-  return {
-    id: `source_${Date.now()}`,
-    name: '新的数据源',
-    collector,
-    enabled: true,
-    options: { location: '', apiKey: '', limit: 200 },
-    rules: {},
-  }
-}
-
-function clone<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T
-}
-
-function catalogItem(key: CollectorKey) {
-  return collectorCatalog.find((item) => item.key === key) ?? collectorCatalog[0]
-}
-
-function sourceById(id: string) {
-  return resources.value.find((source) => source.id === id)
-}
-
-function draftFromResource(source: SourceResource): SourceDraft {
-  return {
-    id: source.id,
-    name: source.name,
-    collector: source.collector,
-    enabled: source.enabled,
-    options: clone(source.options),
-    rules: clone(source.rules),
-  }
-}
-
-function rulesToJson(rules: JsonObject) {
-  return JSON.stringify(rules, null, 2)
-}
-
-function filterPreset(value: unknown, collector: CollectorKey) {
-  if (!value || typeof value !== 'object') return 'all'
-  const serialized = JSON.stringify(value)
-  if (collector === 'logs' && serialized === JSON.stringify({ level: ['error', 'warning'] }))
-    return 'alerts'
-  if (collector === 'rss' && serialized === JSON.stringify({ published_within_days: 7 }))
-    return 'recent'
-  if (
-    collector === 'history' &&
-    serialized === JSON.stringify({ status: ['completed', 'partial'] })
-  )
-    return 'complete'
-  return 'custom'
-}
-
-function formFromRules(rules: JsonObject, collector: CollectorKey): RuleForm {
-  return {
-    fields: Array.isArray(rules.fields)
-      ? rules.fields.filter((field): field is string => typeof field === 'string')
-      : [],
-    filter: filterPreset(rules.filter, collector),
-    sortBy: typeof rules.sort_by === 'string' ? rules.sort_by : '',
-    format: typeof rules.format === 'string' ? rules.format : 'markdown',
-    descending: rules.descending === true,
-  }
-}
-
-function supportsBasicRuleEditor(rules: JsonObject, collector: CollectorKey) {
-  const supportedKeys = new Set(['fields', 'filter', 'sort_by', 'descending', 'format'])
-  if (Object.keys(rules).some((key) => !supportedKeys.has(key))) return false
-  if (Array.isArray(rules.fields)) {
-    const fields = new Set(catalogItem(collector).fieldOptions.map((field) => field.key))
-    if (rules.fields.some((field) => typeof field !== 'string' || !fields.has(field))) return false
-  } else if (rules.fields !== undefined) {
-    return false
-  }
-  if (
-    typeof rules.sort_by === 'string' &&
-    !catalogItem(collector).fieldOptions.some((field) => field.key === rules.sort_by)
-  ) {
-    return false
-  }
-  if (rules.sort_by !== undefined && typeof rules.sort_by !== 'string') return false
-  if (filterPreset(rules.filter, collector) === 'custom') return false
-  if (rules.format !== undefined && !['markdown', 'json', 'text'].includes(String(rules.format)))
-    return false
-  return rules.descending === undefined || typeof rules.descending === 'boolean'
-}
-
-function rulesFromForm(form: RuleForm, collector: CollectorKey): JsonObject {
-  const rules: JsonObject = {}
-  if (form.fields.length) rules.fields = [...form.fields]
-  const filterSelection = form.filter
-  if (collector === 'logs' && filterSelection === 'alerts')
-    rules.filter = { level: ['error', 'warning'] }
-  if (collector === 'rss' && filterSelection === 'recent')
-    rules.filter = { published_within_days: 7 }
-  if (collector === 'history' && filterSelection === 'complete')
-    rules.filter = { status: ['completed', 'partial'] }
-  if (form.sortBy.trim()) rules.sort_by = form.sortBy.trim()
-  if (form.format) rules.format = form.format
-  if (form.descending) rules.descending = true
-  return rules
-}
-
-function parseRules(
-  mode: EditorMode,
-  json: string,
-  form: RuleForm,
-  collector: CollectorKey,
-): JsonObject | null {
-  if (mode === 'form') {
-    if (form.filter === 'custom') {
-      ElMessage.error('这份数据源包含高级筛选规则，请切换到高级 JSON 后保存')
-      return null
-    }
-    return rulesFromForm(form, collector)
-  }
-  try {
-    const parsed = JSON.parse(json)
-    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object')
-      throw new Error('object required')
-    return parsed as JsonObject
-  } catch {
-    ElMessage.error('高级 JSON 必须是一个有效的对象')
-    return null
-  }
-}
-
-function setRuleMode(
-  nextMode: EditorMode,
-  currentMode: EditorMode,
-  json: string,
-  form: { value: RuleForm },
-  collector: CollectorKey,
-  updateJson: (value: string) => void,
-) {
-  if (nextMode === currentMode) return true
-  if (nextMode === 'json') {
-    if (form.value.filter === 'custom') {
-      ElMessage.error('请在高级 JSON 中保留这份数据源已有的筛选条件')
-      return false
-    }
-    updateJson(rulesToJson(rulesFromForm(form.value, collector)))
-    return true
-  }
-  try {
-    const parsed = JSON.parse(json)
-    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error()
-    const rules = parsed as JsonObject
-    if (!supportsBasicRuleEditor(rules, collector)) {
-      ElMessage.error('当前规则包含普通设置未覆盖的内容，请继续使用高级 JSON')
-      return false
-    }
-    form.value = formFromRules(rules, collector)
-    return true
-  } catch {
-    ElMessage.error('当前 JSON 无法转换为普通表单，请先修正它')
-    return false
-  }
-}
-
-const selectedWorkflow = computed(
-  () =>
-    workflows.value.find((workflow) => workflow.id === selectedWorkflowId.value) ??
-    workflows.value[0],
-)
-const selectedWorkflowSource = computed(() => sourceById(selectedWorkflowSourceId.value))
-const selectedResource = computed(() => sourceById(selectedResourceId.value))
-const filteredCollectionSources = computed(() => {
-  const query = collectionSearch.value.trim().toLowerCase()
-  return (selectedWorkflow.value?.sourceIds ?? [])
-    .map((id) => sourceById(id))
-    .filter((source): source is SourceResource => Boolean(source))
-    .filter((source) => {
-      if (!query) return true
-      return `${source.name} ${source.id} ${catalogItem(source.collector).label}`
-        .toLowerCase()
-        .includes(query)
-    })
-})
-const filteredResources = computed(() => {
-  const query = resourceSearch.value.trim().toLowerCase()
-  return resources.value.filter((source) => {
-    const count = workflows.value.filter((workflow) =>
-      workflow.sourceIds.includes(source.id),
-    ).length
-    const matchesFilter =
-      resourceFilter.value === 'all' ||
-      (resourceFilter.value === 'shared' && count > 1) ||
-      (resourceFilter.value === 'single' && count <= 1)
-    const matchesSearch =
-      !query ||
-      `${source.name} ${source.id} ${catalogItem(source.collector).label}`
-        .toLowerCase()
-        .includes(query)
-    return matchesFilter && matchesSearch
+// 同步更新 Vue Router query，实现点击选择、前进后退及刷新状态保持
+function syncRouteQuery() {
+  router.replace({
+    query: {
+      ...route.query,
+      tab: activeNav.value,
+      wf: selectedWorkflowId.value,
+      stage: activeStage.value,
+    },
   })
-})
-const filteredLoadResources = computed(() => {
-  const query = loadSearch.value.trim().toLowerCase()
-  return resources.value.filter(
-    (source) =>
-      !query ||
-      `${source.name} ${source.id} ${catalogItem(source.collector).label}`
-        .toLowerCase()
-        .includes(query),
-  )
-})
-const selectedSharedUsageCount = computed(() =>
-  selectedWorkflowSource.value ? sharedUsageCount(selectedWorkflowSource.value.id) : 0,
-)
-const selectedResourceUsage = computed(() =>
-  selectedResource.value
-    ? workflows.value.filter((workflow) => workflow.sourceIds.includes(selectedResource.value!.id))
-    : [],
-)
-const workflowCanSave = computed(
-  () =>
-    Boolean(workflowDraft.value) && (workflowDetached.value || selectedSharedUsageCount.value <= 1),
-)
-const workflowRuleSummary = computed(() =>
-  summarizeRules(workflowDraft.value?.rules ?? {}, workflowDraft.value?.collector ?? 'logs'),
-)
-const resourceRuleSummary = computed(() =>
-  summarizeRules(selectedResource.value?.rules ?? {}, selectedResource.value?.collector ?? 'logs'),
-)
-
-function usageCount(sourceId: string) {
-  return workflows.value.filter((workflow) => workflow.sourceIds.includes(sourceId)).length
 }
 
-function sharedUsageCount(sourceId: string) {
-  return workflows.value.filter(
-    (workflow) => workflow.sourceIds.includes(sourceId) && !hasLocalOverride(workflow.id, sourceId),
-  ).length
+function selectNav(nav: 'workflows' | 'resources') {
+  activeNav.value = nav
+  syncRouteQuery()
 }
 
-function hasLocalOverride(workflowId: string, sourceId: string) {
-  return Boolean(localOverrides.value[workflowId]?.[sourceId]?.detached)
+function selectWorkflow(id: string) {
+  selectedWorkflowId.value = id
+  syncRouteQuery()
 }
 
-function isSharedInWorkflow(sourceId: string) {
-  return sharedUsageCount(sourceId) > 1 && !hasLocalOverride(selectedWorkflowId.value, sourceId)
+function selectStage(stage: 'sources' | 'analyses' | 'fanin' | 'channels' | 'all') {
+  activeStage.value = stage
+  syncRouteQuery()
 }
 
-function localOverride(workflowId: string, sourceId: string) {
-  return localOverrides.value[workflowId]?.[sourceId]
+// 采集源顺序调整 (真实反映采集流水线先后排序)
+function moveSourceUp(index: number) {
+  if (index <= 0) return
+  const list = activeWorkflow.value.sources
+  const [item] = list.splice(index, 1)
+  list.splice(index - 1, 0, item)
+  ElMessage.success('已调整采集源顺序')
 }
 
-function loadWorkflowDraft() {
-  const source = selectedWorkflowSource.value
-  if (!source) {
-    workflowDraft.value = null
-    return
+function moveSourceDown(index: number) {
+  const list = activeWorkflow.value.sources
+  if (index >= list.length - 1) return
+  const [item] = list.splice(index, 1)
+  list.splice(index + 1, 0, item)
+  ElMessage.success('已调整采集源顺序')
+}
+
+// 并行 AI 分析任务顺序调整 (直接决定聚合汇总与报告各段结论的输入排序)
+function moveAnalysisUp(index: number) {
+  if (index <= 0) return
+  const list = activeWorkflow.value.analyses
+  const [item] = list.splice(index, 1)
+  list.splice(index - 1, 0, item)
+  ElMessage.success(`已调整分析任务顺序`)
+}
+
+function moveAnalysisDown(index: number) {
+  const list = activeWorkflow.value.analyses
+  if (index >= list.length - 1) return
+  const [item] = list.splice(index, 1)
+  list.splice(index + 1, 0, item)
+  ElMessage.success(`已调整分析任务顺序`)
+}
+
+onMounted(() => {
+  const q = route.query
+  if (q.tab === 'workflows' || q.tab === 'resources') {
+    activeNav.value = q.tab
   }
-  const override = localOverride(selectedWorkflowId.value, source.id)
-  workflowDetached.value = Boolean(override?.detached)
-  workflowDraft.value = clone(override?.detached ? override.draft : draftFromResource(source))
-  workflowRuleForm.value = formFromRules(workflowDraft.value.rules, workflowDraft.value.collector)
-  workflowRulesJson.value = rulesToJson(workflowDraft.value.rules)
-  workflowRuleMode.value = supportsBasicRuleEditor(
-    workflowDraft.value.rules,
-    workflowDraft.value.collector,
-  )
-    ? 'form'
-    : 'json'
-}
-
-watch(selectedWorkflowSourceId, loadWorkflowDraft, { immediate: true })
-watch(selectedWorkflowId, () => {
-  const ids = selectedWorkflow.value?.sourceIds ?? []
-  selectedWorkflowSourceId.value = ids[0] ?? ''
-  loadWorkflowDraft()
+  if (typeof q.wf === 'string' && workflows.value.some((w) => w.id === q.wf)) {
+    selectedWorkflowId.value = q.wf
+  }
+  if (typeof q.stage === 'string' && ['sources', 'analyses', 'fanin', 'channels', 'all'].includes(q.stage)) {
+    activeStage.value = q.stage as any
+  }
 })
 
-function chooseWorkflowSource(sourceId: string) {
-  selectedWorkflowSourceId.value = sourceId
-}
+watch(
+  () => route.query,
+  (q) => {
+    if (q.tab === 'workflows' || q.tab === 'resources') {
+      activeNav.value = q.tab
+    }
+    if (typeof q.wf === 'string' && workflows.value.some((w) => w.id === q.wf)) {
+      selectedWorkflowId.value = q.wf
+    }
+    if (typeof q.stage === 'string' && ['sources', 'analyses', 'fanin', 'channels', 'all'].includes(q.stage)) {
+      activeStage.value = q.stage as any
+    }
+  },
+)
 
-function openAddCollector(attachToWorkflow = true) {
-  attachNewCollectorToWorkflow.value = attachToWorkflow
-  newCollectorDraft.value = emptySourceDraft('logs')
-  newCollectorRuleForm.value = emptyRuleForm()
-  newCollectorRulesJson.value = '{}'
-  newCollectorRuleMode.value = 'form'
-  addCollectorOpen.value = true
-}
+// 工作流级高级运行参数是否展开
+const isWorkflowAdvancedExpanded = ref(false)
 
-function setNewCollectorType(collector: CollectorKey) {
-  newCollectorDraft.value.collector = collector
-  newCollectorRuleForm.value = emptyRuleForm()
-  newCollectorRulesJson.value = '{}'
-  newCollectorRuleMode.value = 'form'
-}
+const activeWorkflow = computed(
+  () => workflows.value.find((w) => w.id === selectedWorkflowId.value) ?? workflows.value[0],
+)
 
-function saveNewCollector() {
-  const draft = clone(newCollectorDraft.value)
-  const rules = parseRules(
-    newCollectorRuleMode.value,
-    newCollectorRulesJson.value,
-    newCollectorRuleForm.value,
-    draft.collector,
-  )
-  if (!rules) return
-  if (!draft.name.trim() || !draft.options.location.trim()) {
-    ElMessage.warning('请先填写数据源名称和来源地址')
-    return
-  }
-  draft.rules = rules
-  draft.id = `source_${Date.now()}`
-  resources.value.push({ ...draft, updatedAt: '刚刚' })
-  if (
-    attachNewCollectorToWorkflow.value &&
-    selectedWorkflow.value &&
-    !selectedWorkflow.value.sourceIds.includes(draft.id)
-  ) {
-    selectedWorkflow.value.sourceIds.push(draft.id)
-  }
-  if (attachNewCollectorToWorkflow.value) selectedWorkflowSourceId.value = draft.id
-  selectedResourceId.value = draft.id
-  addCollectorOpen.value = false
-  ElMessage.success(
-    attachNewCollectorToWorkflow.value
-      ? '数据源已新增，并加载到当前工作流'
-      : '数据源已新增到资源配置中心',
+// 引用关系辅助计算
+function getLinkedWorkflows(sourceId: string): WorkflowDefinitionDemo[] {
+  return workflows.value.filter((w) =>
+    w.sources.some((s) => s.sourceId === sourceId && s.mode === 'linked'),
   )
 }
 
-function openLoadCollector() {
-  loadSearch.value = ''
-  loadCollectorOpen.value = true
+function getLinkedCount(sourceId: string): number {
+  return getLinkedWorkflows(sourceId).length
 }
 
-function loadCollector(sourceId: string) {
-  if (!selectedWorkflow.value) return
-  if (selectedWorkflow.value.sourceIds.includes(sourceId)) {
-    selectedWorkflowSourceId.value = sourceId
-    loadCollectorOpen.value = false
-    ElMessage.info('这个数据源已经在当前工作流中')
-    return
-  }
-  selectedWorkflow.value.sourceIds.push(sourceId)
-  selectedWorkflowSourceId.value = sourceId
-  loadCollectorOpen.value = false
-  ElMessage.success('数据源已加载到当前工作流')
+function getCentralSource(id: string): CentralDataSource | undefined {
+  return centralDataSources.value.find((s) => s.id === id)
 }
 
-async function detachWorkflowSource() {
-  const source = selectedWorkflowSource.value
-  if (!source || !workflowDraft.value) return
-  if (!isSharedInWorkflow(source.id)) {
-    ElMessage.info('这个数据源没有被其他工作流共用，可以直接保存')
+// 辅助方法：获取当前绑定生效的完整配置 (如果是 detached 则取 customConfig，否则取 central)
+function getEffectiveSourceConfig(binding: WorkflowSourceBinding) {
+  if (binding.mode === 'detached' && binding.customConfig) {
+    const central = getCentralSource(binding.sourceId)
+    return {
+      collector: central?.collector || 'logs',
+      ...binding.customConfig,
+    }
+  }
+  return getCentralSource(binding.sourceId)
+}
+
+// ==========================================
+// 4. 阶段 1：数据采集处的交互操作 (加载已有数据源、新增采集器、保存数据源、脱离独立)
+// ==========================================
+const loadSourceModal = ref(false)
+
+function openLoadSourceModal() {
+  loadSourceModal.value = true
+}
+
+function isSourceAlreadyLoaded(sourceId: string): boolean {
+  return activeWorkflow.value.sources.some((s) => s.sourceId === sourceId)
+}
+
+function loadSourceIntoWorkflow(src: CentralDataSource) {
+  if (isSourceAlreadyLoaded(src.id)) {
+    ElMessage.warning(`数据源「${src.name}」已存在于当前工作流中！`)
     return
   }
+  activeWorkflow.value.sources.push({
+    bindingId: `b_${Date.now()}`,
+    sourceId: src.id,
+    mode: 'linked',
+    expandedAdvanced: false,
+  })
+  ElMessage.success(`已加载数据源「${src.name}」！将与全局资源配置中心保持同步。`)
+  loadSourceModal.value = false
+}
+
+const sourceDrawer = ref(false)
+const isNewSourceMode = ref(false)
+const drawerTab = ref<'basic' | 'advanced'>('basic')
+const showRawJsonEditor = ref(false)
+const activeEditingBinding = ref<WorkflowSourceBinding | null>(null)
+const activeEditingCentral = ref<CentralDataSource | null>(null)
+
+// 采集器表单草稿 (包含常规与高级设置)
+const sourceForm = ref({
+  id: '',
+  name: '',
+  collector: 'logs' as CollectorType,
+  description: '',
+  options: { path: '', maxLines: 200, apiKey: '' },
+  rules: {
+    fieldsStr: '',
+    filterLevel: [] as string[],
+    sortBy: '',
+    descending: true,
+    format: 'markdown' as 'markdown' | 'text' | 'jsonl',
+  },
+  advanced: {
+    extractions: [] as FieldExtractionRule[],
+    filterExpr: '',
+    excludeFieldsStr: '',
+    timeout: 60,
+    onError: 'notice' as SourcePolicy,
+    onMissing: 'notice' as SourcePolicy,
+    onEmpty: 'notice' as SourcePolicy,
+    onFilteredEmpty: 'skip' as SourcePolicy,
+    rawOptionsJson: '',
+    rawSettersJson: '',
+  },
+})
+
+// [2. 新增采集器]
+function openCreateSource() {
+  isNewSourceMode.value = true
+  drawerTab.value = 'basic'
+  showRawJsonEditor.value = false
+  activeEditingBinding.value = null
+  activeEditingCentral.value = null
+  sourceForm.value = {
+    id: `src_${Date.now().toString().slice(-4)}`,
+    name: '新建采集源',
+    collector: 'logs',
+    description: '在当前工作流中新建的数据源',
+    options: { path: '/var/log/service.log', maxLines: 200, apiKey: '' },
+    rules: {
+      fieldsStr: 'time, level, message',
+      filterLevel: ['error'],
+      sortBy: 'time',
+      descending: true,
+      format: 'markdown',
+    },
+    advanced: {
+      extractions: [
+        {
+          id: `ex_${Date.now()}`,
+          targetField: 'trace_id',
+          sourceType: 'json_path',
+          expression: '$.meta.trace.id',
+          fallbackValue: 'none',
+          description: '从 JSON 嵌套对象抽取链路追踪 ID',
+        },
+      ],
+      filterExpr: '',
+      excludeFieldsStr: '',
+      timeout: 60,
+      onError: 'notice',
+      onMissing: 'notice',
+      onEmpty: 'notice',
+      onFilteredEmpty: 'skip',
+      rawOptionsJson: '',
+      rawSettersJson: '',
+    },
+  }
+  syncRawJson()
+  sourceDrawer.value = true
+}
+
+// [3. 编辑采集器]
+function openEditBinding(binding: WorkflowSourceBinding) {
+  isNewSourceMode.value = false
+  drawerTab.value = 'basic'
+  showRawJsonEditor.value = false
+  activeEditingBinding.value = binding
+  activeEditingCentral.value = null
+
+  const isDetached = binding.mode === 'detached'
+  const central = getCentralSource(binding.sourceId)
+  const cfg = isDetached && binding.customConfig ? binding.customConfig : central
+  if (!cfg) return
+
+  const adv = cfg.advanced || {
+    extractions: [],
+    filterExpr: '',
+    excludeFields: [],
+    timeout: 60,
+    onError: 'notice',
+    onMissing: 'notice',
+    onEmpty: 'notice',
+    onFilteredEmpty: 'skip',
+  }
+
+  sourceForm.value = {
+    id: binding.sourceId,
+    name: cfg.name,
+    collector: (cfg as CentralDataSource).collector ?? 'logs',
+    description: (cfg as CentralDataSource).description ?? '',
+    options: { ...cfg.options, apiKey: '' },
+    rules: {
+      fieldsStr: cfg.rules.fields.join(', '),
+      filterLevel: cfg.rules.filterLevel ? [...cfg.rules.filterLevel] : [],
+      sortBy: cfg.rules.sortBy,
+      descending: cfg.rules.descending,
+      format: cfg.rules.format,
+    },
+    advanced: {
+      extractions: adv.extractions ? adv.extractions.map((e) => ({ ...e })) : [],
+      filterExpr: adv.filterExpr || '',
+      excludeFieldsStr: adv.excludeFields ? adv.excludeFields.join(', ') : '',
+      timeout: adv.timeout ?? 60,
+      onError: adv.onError ?? 'notice',
+      onMissing: adv.onMissing ?? 'notice',
+      onEmpty: adv.onEmpty ?? 'notice',
+      onFilteredEmpty: adv.onFilteredEmpty ?? 'skip',
+      rawOptionsJson: '',
+      rawSettersJson: '',
+    },
+  }
+  syncRawJson()
+  sourceDrawer.value = true
+}
+
+// 抽取规则快捷预设
+function addExtractionPreset(preset: 'trace_id' | 'client_ip' | 'header') {
+  if (preset === 'trace_id') {
+    sourceForm.value.advanced.extractions.push({
+      id: `ex_${Date.now()}`,
+      targetField: 'trace_id',
+      sourceType: 'json_path',
+      expression: '$.meta.trace.id',
+      fallbackValue: 'none',
+      description: '从 JSON 嵌套对象抽取链路追踪 ID',
+    })
+  } else if (preset === 'client_ip') {
+    sourceForm.value.advanced.extractions.push({
+      id: `ex_${Date.now()}`,
+      targetField: 'client_ip',
+      sourceType: 'regex',
+      expression: 'client=(?P<client_ip>\\d+\\.\\d+\\.\\d+\\.\\d+)',
+      fallbackValue: '127.0.0.1',
+      description: '从非结构化日志抽取 Client IP',
+    })
+  } else if (preset === 'header') {
+    sourceForm.value.advanced.extractions.push({
+      id: `ex_${Date.now()}`,
+      targetField: 'req_id',
+      sourceType: 'json_path',
+      expression: '$.headers["x-request-id"]',
+      fallbackValue: '',
+      description: '从请求头中抽取 x-request-id',
+    })
+  }
+  syncRawJson()
+  ElMessage.success('已添加抽取规则预设')
+}
+
+function addCustomExtraction() {
+  sourceForm.value.advanced.extractions.push({
+    id: `ex_${Date.now()}`,
+    targetField: `field_${sourceForm.value.advanced.extractions.length + 1}`,
+    sourceType: 'json_path',
+    expression: '$.detail.custom_path',
+    fallbackValue: '',
+    description: '自定义不规则字段抽取规则',
+  })
+  syncRawJson()
+}
+
+function removeExtraction(idx: number) {
+  sourceForm.value.advanced.extractions.splice(idx, 1)
+  syncRawJson()
+}
+
+function syncRawJson() {
+  const optionsObj = {
+    path: sourceForm.value.options.path,
+    max_lines: sourceForm.value.options.maxLines,
+    timeout: sourceForm.value.advanced.timeout,
+    on_error: sourceForm.value.advanced.onError,
+    on_missing: sourceForm.value.advanced.onMissing,
+    on_empty: sourceForm.value.advanced.onEmpty,
+    on_filtered_empty: sourceForm.value.advanced.onFilteredEmpty,
+  }
+  const settersObj = {
+    fields: sourceForm.value.rules.fieldsStr.split(',').map((s) => s.trim()).filter(Boolean),
+    filter_level: sourceForm.value.rules.filterLevel,
+    sort_by: sourceForm.value.rules.sortBy,
+    descending: sourceForm.value.rules.descending,
+    format: sourceForm.value.rules.format,
+    extractions: sourceForm.value.advanced.extractions,
+    filter_expr: sourceForm.value.advanced.filterExpr,
+    exclude_fields: sourceForm.value.advanced.excludeFieldsStr.split(',').map((s) => s.trim()).filter(Boolean),
+  }
+  sourceForm.value.advanced.rawOptionsJson = JSON.stringify(optionsObj, null, 2)
+  sourceForm.value.advanced.rawSettersJson = JSON.stringify(settersObj, null, 2)
+}
+
+// [4. 脱离模板 (独立定制)]
+async function detachSource(binding: WorkflowSourceBinding) {
+  const central = getCentralSource(binding.sourceId)
+  if (!central) return
+
   try {
     await ElMessageBox.confirm(
-      `脱离后，${selectedWorkflow.value?.name} 的调整只会保存在这里，不会影响另外 ${selectedSharedUsageCount.value - 1} 个工作流。`,
-      '只修改当前工作流？',
-      { confirmButtonText: '脱离并继续', cancelButtonText: '先不修改', type: 'warning' },
+      `确定将「${central.name}」脱离全局模板吗？脱离后此工作流拥有独立定制参数（包含不规则字段规则），资源配置中心后续更新将不再同步此处。`,
+      '脱离模板提示',
+      { confirmButtonText: '确认脱离', cancelButtonText: '取消', type: 'info' },
     )
   } catch {
     return
   }
-  const workflowId = selectedWorkflowId.value
-  localOverrides.value[workflowId] = {
-    ...(localOverrides.value[workflowId] ?? {}),
-    [source.id]: { detached: true, draft: clone(workflowDraft.value) },
+
+  binding.mode = 'detached'
+  binding.customConfig = {
+    name: `${central.name} (专属独立定制)`,
+    options: { ...central.options },
+    rules: {
+      fields: [...central.rules.fields],
+      filterLevel: central.rules.filterLevel ? [...central.rules.filterLevel] : [],
+      sortBy: central.rules.sortBy,
+      descending: central.rules.descending,
+      format: central.rules.format,
+    },
+    advanced: {
+      extractions: central.advanced.extractions.map((e) => ({ ...e })),
+      filterExpr: central.advanced.filterExpr,
+      excludeFields: [...central.advanced.excludeFields],
+      timeout: central.advanced.timeout,
+      onError: central.advanced.onError,
+      onMissing: central.advanced.onMissing,
+      onEmpty: central.advanced.onEmpty,
+      onFilteredEmpty: central.advanced.onFilteredEmpty,
+    },
   }
-  workflowDetached.value = true
-  ElMessage.success('已脱离共同设置，现在可以只修改当前工作流')
+  ElMessage.success('已脱离全局模板！后续修改仅影响本工作流。')
 }
 
-function restoreSharedSource() {
-  const source = selectedWorkflowSource.value
-  if (!source) return
-  const overrides = { ...(localOverrides.value[selectedWorkflowId.value] ?? {}) }
-  delete overrides[source.id]
-  localOverrides.value = { ...localOverrides.value, [selectedWorkflowId.value]: overrides }
-  loadWorkflowDraft()
-  ElMessage.success('已恢复共同设置，当前工作流会跟随资源配置中心')
-}
+// [5. 保存数据源 (发布/同步至资源配置中心，免弹窗确认)]
+function saveSourceToCentral(binding: WorkflowSourceBinding) {
+  const currentConfig = getEffectiveSourceConfig(binding)
+  if (!currentConfig) return
 
-function saveWorkflowSource() {
-  const source = selectedWorkflowSource.value
-  const draft = workflowDraft.value
-  if (!source || !draft) return
-  if (selectedSharedUsageCount.value > 1 && !workflowDetached.value) {
-    ElMessage.warning('这份数据源正在被多个工作流使用。若只改当前工作流，请先点击“脱离共享设置”。')
-    return
-  }
-  const rules = parseRules(
-    workflowRuleMode.value,
-    workflowRulesJson.value,
-    workflowRuleForm.value,
-    draft.collector,
-  )
-  if (!rules) return
-  draft.rules = rules
-  if (workflowDetached.value) {
-    localOverrides.value[selectedWorkflowId.value] = {
-      ...(localOverrides.value[selectedWorkflowId.value] ?? {}),
-      [source.id]: { detached: true, draft: clone(draft) },
+  const existingCentral = getCentralSource(binding.sourceId)
+  if (existingCentral) {
+    existingCentral.name = currentConfig.name
+    existingCentral.description = currentConfig.description || existingCentral.description
+    existingCentral.options = { ...currentConfig.options }
+    existingCentral.rules = {
+      fields: [...currentConfig.rules.fields],
+      filterLevel: currentConfig.rules.filterLevel ? [...currentConfig.rules.filterLevel] : [],
+      sortBy: currentConfig.rules.sortBy,
+      descending: currentConfig.rules.descending,
+      format: currentConfig.rules.format,
     }
-    ElMessage.success('本次调整已保存，只影响当前工作流')
+    existingCentral.advanced = {
+      extractions: currentConfig.advanced.extractions.map((e) => ({ ...e })),
+      filterExpr: currentConfig.advanced.filterExpr,
+      excludeFields: [...currentConfig.advanced.excludeFields],
+      timeout: currentConfig.advanced.timeout,
+      onError: currentConfig.advanced.onError,
+      onMissing: currentConfig.advanced.onMissing,
+      onEmpty: currentConfig.advanced.onEmpty,
+      onFilteredEmpty: currentConfig.advanced.onFilteredEmpty,
+    }
+    existingCentral.updatedAt = '刚刚'
+  } else {
+    centralDataSources.value.push({
+      id: binding.sourceId,
+      name: currentConfig.name,
+      collector: (currentConfig.collector as CollectorType) || 'logs',
+      status: 'enabled',
+      description: currentConfig.description || '从工作流保存的全局数据源',
+      options: { ...currentConfig.options },
+      rules: {
+        fields: [...currentConfig.rules.fields],
+        filterLevel: currentConfig.rules.filterLevel ? [...currentConfig.rules.filterLevel] : [],
+        sortBy: currentConfig.rules.sortBy,
+        descending: currentConfig.rules.descending,
+        format: currentConfig.rules.format,
+      },
+      advanced: {
+        extractions: currentConfig.advanced.extractions.map((e) => ({ ...e })),
+        filterExpr: currentConfig.advanced.filterExpr,
+        excludeFields: [...currentConfig.advanced.excludeFields],
+        timeout: currentConfig.advanced.timeout,
+        onError: currentConfig.advanced.onError,
+        onMissing: currentConfig.advanced.onMissing,
+        onEmpty: currentConfig.advanced.onEmpty,
+        onFilteredEmpty: currentConfig.advanced.onFilteredEmpty,
+      },
+      updatedAt: '刚刚',
+    })
+  }
+
+  binding.mode = 'linked'
+  delete binding.customConfig
+  ElMessage.success(`已保存为全局数据源「${currentConfig.name}」！后续全局更新将自动同步。`)
+}
+
+// [6. 保存采集器配置 (免弹窗选择，直接保存)]
+function saveSourceConfig() {
+  const fields = sourceForm.value.rules.fieldsStr
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  const excludeFields = sourceForm.value.advanced.excludeFieldsStr
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  const advancedData: SourceAdvancedSettings = {
+    extractions: sourceForm.value.advanced.extractions.map((e) => ({ ...e })),
+    filterExpr: sourceForm.value.advanced.filterExpr,
+    excludeFields,
+    timeout: sourceForm.value.advanced.timeout,
+    onError: sourceForm.value.advanced.onError,
+    onMissing: sourceForm.value.advanced.onMissing,
+    onEmpty: sourceForm.value.advanced.onEmpty,
+    onFilteredEmpty: sourceForm.value.advanced.onFilteredEmpty,
+  }
+
+  if (isNewSourceMode.value) {
+    const newId = `src_${Date.now().toString().slice(-4)}`
+    activeWorkflow.value.sources.push({
+      bindingId: `b_${Date.now()}`,
+      sourceId: newId,
+      mode: 'detached',
+      expandedAdvanced: false,
+      customConfig: {
+        name: sourceForm.value.name,
+        collector: sourceForm.value.collector,
+        description: sourceForm.value.description,
+        options: { ...sourceForm.value.options },
+        rules: {
+          fields,
+          filterLevel: sourceForm.value.rules.filterLevel,
+          sortBy: sourceForm.value.rules.sortBy,
+          descending: sourceForm.value.rules.descending,
+          format: sourceForm.value.rules.format,
+        },
+        advanced: advancedData,
+      },
+    })
+    ElMessage.success(`已添加采集源「${sourceForm.value.name}」`)
+    sourceDrawer.value = false
     return
   }
-  const index = resources.value.findIndex((item) => item.id === source.id)
-  if (index !== -1) {
-    resources.value[index] = { ...resources.value[index], ...clone(draft), updatedAt: '刚刚' }
+
+  // 编辑工作流中的现有数据源
+  if (activeEditingBinding.value) {
+    const binding = activeEditingBinding.value
+
+    if (binding.mode === 'linked') {
+      // 来自全局模板：保存后自动转为本工作流独立配置，无需弹窗确认
+      binding.mode = 'detached'
+      binding.customConfig = {
+        name: sourceForm.value.name,
+        collector: sourceForm.value.collector,
+        description: sourceForm.value.description,
+        options: { ...sourceForm.value.options },
+        rules: {
+          fields,
+          filterLevel: sourceForm.value.rules.filterLevel,
+          sortBy: sourceForm.value.rules.sortBy,
+          descending: sourceForm.value.rules.descending,
+          format: sourceForm.value.rules.format,
+        },
+        advanced: advancedData,
+      }
+      ElMessage.success('配置已保存为本工作流专属配置！若需共享给全局，可在卡片点击「保存数据源」。')
+    } else if (binding.mode === 'detached' && binding.customConfig) {
+      binding.customConfig.name = sourceForm.value.name
+      binding.customConfig.collector = sourceForm.value.collector
+      binding.customConfig.description = sourceForm.value.description
+      binding.customConfig.options = { ...sourceForm.value.options }
+      binding.customConfig.rules = {
+        fields,
+        filterLevel: sourceForm.value.rules.filterLevel,
+        sortBy: sourceForm.value.rules.sortBy,
+        descending: sourceForm.value.rules.descending,
+        format: sourceForm.value.rules.format,
+      }
+      binding.customConfig.advanced = advancedData
+      ElMessage.success('专属配置已更新')
+    }
+
+    sourceDrawer.value = false
   }
-  loadWorkflowDraft()
-  ElMessage.success('数据源已保存')
 }
 
-function openResourceEditor(source: SourceResource) {
-  resourceDraft.value = draftFromResource(source)
-  resourceRuleForm.value = formFromRules(source.rules, source.collector)
-  resourceRulesJson.value = rulesToJson(source.rules)
-  resourceRuleMode.value = supportsBasicRuleEditor(source.rules, source.collector) ? 'form' : 'json'
-  resourceEditorOpen.value = true
-}
-
-function saveResource() {
-  const draft = resourceDraft.value
-  if (!draft) return
-  const rules = parseRules(
-    resourceRuleMode.value,
-    resourceRulesJson.value,
-    resourceRuleForm.value,
-    draft.collector,
+// 移除数据源绑定
+function removeSourceBinding(bindingId: string) {
+  activeWorkflow.value.sources = activeWorkflow.value.sources.filter(
+    (s) => s.bindingId !== bindingId,
   )
-  if (!rules) return
-  if (!draft.name.trim() || !draft.options.location.trim()) {
-    ElMessage.warning('请先填写数据源名称和来源地址')
-    return
-  }
-  const index = resources.value.findIndex((item) => item.id === draft.id)
-  if (index === -1) return
-  resources.value[index] = { ...clone(draft), rules, updatedAt: '刚刚' }
-  selectedResourceId.value = draft.id
-  if (selectedWorkflowSourceId.value === draft.id && !workflowDetached.value) loadWorkflowDraft()
-  resourceEditorOpen.value = false
-  const count = sharedUsageCount(draft.id)
-  ElMessage.success(
-    count > 0 ? `已保存，并同步到 ${count} 个工作流` : '数据源已保存，暂未同步到工作流',
-  )
+  ElMessage.info('已移除数据源')
 }
 
-function switchWorkflowRuleMode(value: string | number | boolean | undefined) {
-  if (value !== 'form' && value !== 'json') return
-  const nextMode = value
-  if (
-    workflowDraft.value &&
-    setRuleMode(
-      nextMode,
-      workflowRuleMode.value,
-      workflowRulesJson.value,
-      workflowRuleForm,
-      workflowDraft.value.collector,
-      (value) => (workflowRulesJson.value = value),
+// ==========================================
+// 5. 阶段 2：并行 AI 分析交互
+// ==========================================
+function addAnalysisTask() {
+  const idx = activeWorkflow.value.analyses.length + 1
+  activeWorkflow.value.analyses.push({
+    id: `task_${idx}`,
+    name: `新增分析维度 ${idx}`,
+    model: 'qwen-2.5-72b',
+    prompt: '根据采集到的数据进行异常行为定位...',
+  })
+  ElMessage.success('已添加新的并行 AI 分析任务')
+}
+
+function removeAnalysisTask(index: number) {
+  activeWorkflow.value.analyses.splice(index, 1)
+  ElMessage.info('已移除分析任务')
+}
+
+// ==========================================
+// 6. 资源配置中心视角操作 (广播同步)
+// ==========================================
+function openEditCentral(src: CentralDataSource) {
+  isNewSourceMode.value = false
+  drawerTab.value = 'basic'
+  showRawJsonEditor.value = false
+  activeEditingBinding.value = null
+  activeEditingCentral.value = src
+
+  const adv = src.advanced || {
+    extractions: [],
+    filterExpr: '',
+    excludeFields: [],
+    timeout: 60,
+    onError: 'notice',
+    onMissing: 'notice',
+    onEmpty: 'notice',
+    onFilteredEmpty: 'skip',
+  }
+
+  sourceForm.value = {
+    id: src.id,
+    name: src.name,
+    collector: src.collector,
+    description: src.description,
+    options: { ...src.options, apiKey: '' },
+    rules: {
+      fieldsStr: src.rules.fields.join(', '),
+      filterLevel: src.rules.filterLevel ? [...src.rules.filterLevel] : [],
+      sortBy: src.rules.sortBy,
+      descending: src.rules.descending,
+      format: src.rules.format,
+    },
+    advanced: {
+      extractions: adv.extractions ? adv.extractions.map((e) => ({ ...e })) : [],
+      filterExpr: adv.filterExpr || '',
+      excludeFieldsStr: adv.excludeFields ? adv.excludeFields.join(', ') : '',
+      timeout: adv.timeout ?? 60,
+      onError: adv.onError ?? 'notice',
+      onMissing: adv.onMissing ?? 'notice',
+      onEmpty: adv.onEmpty ?? 'notice',
+      onFilteredEmpty: adv.onFilteredEmpty ?? 'skip',
+      rawOptionsJson: '',
+      rawSettersJson: '',
+    },
+  }
+  syncRawJson()
+  sourceDrawer.value = true
+}
+
+async function saveCentralConfig() {
+  if (!activeEditingCentral.value) return
+  const src = activeEditingCentral.value
+  const linkedWfs = getLinkedWorkflows(src.id)
+  const fields = sourceForm.value.rules.fieldsStr
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  const excludeFields = sourceForm.value.advanced.excludeFieldsStr
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  const advancedData: SourceAdvancedSettings = {
+    extractions: sourceForm.value.advanced.extractions.map((e) => ({ ...e })),
+    filterExpr: sourceForm.value.advanced.filterExpr,
+    excludeFields,
+    timeout: sourceForm.value.advanced.timeout,
+    onError: sourceForm.value.advanced.onError,
+    onMissing: sourceForm.value.advanced.onMissing,
+    onEmpty: sourceForm.value.advanced.onEmpty,
+    onFilteredEmpty: sourceForm.value.advanced.onFilteredEmpty,
+  }
+
+  if (linkedWfs.length > 0) {
+    try {
+      const names = linkedWfs.map((w) => `• ${w.name}`).join('\n')
+      await ElMessageBox.confirm(
+        `在资源配置中心修改此数据源，将自动同步广播更新以下 ${linkedWfs.length} 个工作流（包含字段规则与高级抽取配置）：\n\n${names}\n\n是否确认保存并全量广播同步？`,
+        '广播同步确认',
+        { confirmButtonText: '确认并全量同步', cancelButtonText: '取消', type: 'warning' },
+      )
+    } catch {
+      return
+    }
+  }
+
+  src.name = sourceForm.value.name
+  src.description = sourceForm.value.description
+  src.options = { ...sourceForm.value.options }
+  src.rules = {
+    fields,
+    filterLevel: sourceForm.value.rules.filterLevel,
+    sortBy: sourceForm.value.rules.sortBy,
+    descending: sourceForm.value.rules.descending,
+    format: sourceForm.value.rules.format,
+  }
+  src.advanced = advancedData
+  src.updatedAt = '刚刚'
+  sourceDrawer.value = false
+  ElMessage.success(`全局数据源「${src.name}」已更新，并已同步广播给 ${linkedWfs.length} 个工作流！`)
+}
+
+// ==========================================
+// 7. 模拟运行工作流弹窗
+// ==========================================
+const runModalVisible = ref(false)
+const runExecuting = ref(false)
+const runLogs = ref<string[]>([])
+
+function simulateRunWorkflow() {
+  runModalVisible.value = true
+  runExecuting.value = true
+  runLogs.value = [
+    `[00:01] 触发工作流「${activeWorkflow.value.name}」执行流水线...`,
+    `[00:02] [阶段 1: 数据采集] 启动 ${activeWorkflow.value.collectionConcurrency} 路并发采集，共挂载 ${activeWorkflow.value.sources.length} 个数据源...`,
+  ]
+
+  activeWorkflow.value.sources.forEach((s) => {
+    const cfg = getEffectiveSourceConfig(s)
+    if (cfg?.advanced?.extractions?.length) {
+      const extList = cfg.advanced.extractions
+        .map((e) => `${e.targetField}(${e.sourceType === 'json_path' ? 'JSONPath' : e.sourceType === 'regex' ? '正则' : '缺省'})`)
+        .join(', ')
+      runLogs.value.push(`       ↳ [${cfg.name}] 正在执行不规则字段抽取: ${extList}`)
+    }
+    if (cfg?.advanced?.filterExpr) {
+      runLogs.value.push(`       ↳ [${cfg.name}] 应用过滤表达式: ${cfg.advanced.filterExpr}`)
+    }
+  })
+
+  setTimeout(() => {
+    runLogs.value.push(
+      `[00:04] [阶段 1: 数据采集] 采集完成，共读取并规整 548 条事件，各非标准字段已对齐，已拼接为共享输入。`,
+      `[00:05] [阶段 2: 并行 AI 分析] 启动 ${activeWorkflow.value.analyses.length} 个并发分析任务...`,
     )
-  ) {
-    workflowRuleMode.value = nextMode
-  }
-}
+    activeWorkflow.value.analyses.forEach((t) => {
+      runLogs.value.push(`       ↳ [${t.name}] 使用模型 ${t.model} 推理中...`)
+    })
+  }, 1000)
 
-function switchNewCollectorRuleMode(value: string | number | boolean | undefined) {
-  if (value !== 'form' && value !== 'json') return
-  const nextMode = value
-  if (
-    setRuleMode(
-      nextMode,
-      newCollectorRuleMode.value,
-      newCollectorRulesJson.value,
-      newCollectorRuleForm,
-      newCollectorDraft.value.collector,
-      (value) => (newCollectorRulesJson.value = value),
+  setTimeout(() => {
+    runLogs.value.push(`[00:07] [阶段 2: 并行 AI 分析] 各路分析均已完成，生成 2 份深度归因诊断。`)
+    if (activeWorkflow.value.fanIn.enabled) {
+      runLogs.value.push(
+        `[00:08] [阶段 3: 汇聚汇总] 使用 ${activeWorkflow.value.fanIn.model} 汇总为高层体检日报...`,
+      )
+    } else {
+      runLogs.value.push(`[00:08] [阶段 3: 汇聚汇总] 未启用汇总，直接传递分析结果。`)
+    }
+  }, 2200)
+
+  setTimeout(() => {
+    runLogs.value.push(
+      `[00:09] [阶段 4: 渠道分发] 成功将报告投递至 ${activeWorkflow.value.channels.join(', ')}。`,
+      `[00:10] 工作流整体执行完毕，运行状态: Success (已归档快照)。`,
     )
-  ) {
-    newCollectorRuleMode.value = nextMode
-  }
+    runExecuting.value = false
+  }, 3200)
 }
 
-function switchResourceRuleMode(value: string | number | boolean | undefined) {
-  if (value !== 'form' && value !== 'json') return
-  const nextMode = value
-  if (
-    resourceDraft.value &&
-    setRuleMode(
-      nextMode,
-      resourceRuleMode.value,
-      resourceRulesJson.value,
-      resourceRuleForm,
-      resourceDraft.value.collector,
-      (value) => (resourceRulesJson.value = value),
-    )
-  ) {
-    resourceRuleMode.value = nextMode
-  }
-}
-
-function summarizeRules(rules: JsonObject, collector: CollectorKey) {
-  const fields = Array.isArray(rules.fields) ? rules.fields.length : 0
-  const filter = rules.filter && typeof rules.filter === 'object' ? '有筛选条件' : '不过滤'
-  const sortField = catalogItem(collector).fieldOptions.find(
-    (field) => field.key === rules.sort_by,
-  )?.label
-  const sort = sortField ? `按${sortField}排序` : '按来源顺序'
-  return `${fields ? `保留 ${fields} 个字段` : '保留来源字段'} · ${filter} · ${sort}`
-}
-
-function resourceImpact(sourceId: string) {
-  const count = sharedUsageCount(sourceId)
-  return count > 0 ? `保存会同步到 ${count} 个工作流` : '这个数据源暂未被工作流使用'
-}
-
-function sourceUsageLabel(sourceId: string) {
-  const count = usageCount(sourceId)
-  if (count > 1) return `${count} 个工作流共用`
-  return count === 1 ? '仅 1 个工作流使用' : '暂未使用'
-}
-
-function copyJson(rules: JsonObject) {
-  void navigator.clipboard?.writeText(rulesToJson(rules))
-  ElMessage.success('JSON 已复制')
-}
-
-function statusLabel(source: SourceResource | SourceDraft) {
-  return source.enabled ? '已启用' : '已停用'
-}
-
-function iconName(source: SourceResource | SourceDraft) {
-  return catalogItem(source.collector).icon
+function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
+  if (c === 'logs') return 'database'
+  if (c === 'history') return 'history'
+  return 'settings'
 }
 </script>
 
 <template>
-  <PageHeader title="数据源配置演示" description="用“从哪里取数据”和“取到后怎么整理”完成一次采集">
-    <el-tag type="info" effect="plain" class="demo-tag">前端演示 · 本地状态</el-tag>
-    <el-radio-group
-      v-model="activeView"
-      size="small"
-      class="view-switcher"
-      aria-label="切换数据源视图"
+  <div class="workflow-demo-root">
+    <!-- 顶部标题与导航栏 -->
+    <PageHeader
+      title="工作流管理与数据源中心设计演示"
+      description="完整 4 阶段工作流管线（采集、AI分析、汇聚、分发），消除冗余模板分拆，支持全局广播同步与一键脱离"
     >
-      <el-radio-button label="collection">数据采集</el-radio-button>
-      <el-radio-button label="resources">资源配置中心</el-radio-button>
-    </el-radio-group>
-  </PageHeader>
-
-  <div class="demo-alert">
-    <span class="alert-mark"><AppIcon name="info" size="sm" /></span>
-    <div>
-      <strong>数据源是一份可以重复使用的采集设置</strong>
-      <p>
-        在“数据采集”里只改当前工作流时，先脱离共享设置；在“资源配置中心”保存，会同步到所有使用它的工作流。
-      </p>
-    </div>
-  </div>
-
-  <template v-if="activeView === 'collection'">
-    <div class="workflow-bar surface-panel">
-      <div class="workflow-picker">
-        <span class="eyebrow">当前工作流</span>
-        <el-select v-model="selectedWorkflowId" aria-label="选择当前工作流" class="workflow-select">
-          <el-option
-            v-for="workflow in workflows"
-            :key="workflow.id"
-            :value="workflow.id"
-            :label="workflow.name"
-          />
-        </el-select>
+      <div class="flex items-center gap-2">
+        <el-button type="primary" plain @click="simulateRunWorkflow">
+          <AppIcon name="play" size="sm" />
+          <span>模拟运行当前工作流</span>
+        </el-button>
       </div>
-      <div class="workflow-stats">
-        <span>{{ selectedWorkflow?.sourceIds.length ?? 0 }} 个数据源</span>
-        <span>修改会在保存时明确提示影响范围</span>
-      </div>
-    </div>
+    </PageHeader>
 
-    <div class="collection-layout">
-      <section class="surface-panel source-list-panel">
-        <div class="panel-heading">
-          <div>
-            <div class="eyebrow">DATA SOURCES</div>
-            <h2>
-              本次要取哪些数据
-              <span>{{ selectedWorkflow?.sourceIds.length ?? 0 }}</span>
-            </h2>
-          </div>
-          <el-button text aria-label="刷新数据源" @click="ElMessage.info('演示数据已是最新')">
-            <AppIcon name="rotate" size="sm" />
-          </el-button>
-        </div>
-        <div class="source-actions">
-          <el-button type="primary" @click="openAddCollector()">
-            <AppIcon name="plus" size="sm" />
-            <span>新增采集器</span>
-          </el-button>
-          <el-button @click="openLoadCollector">
-            <AppIcon name="archive" size="sm" />
-            <span>加载采集器</span>
-          </el-button>
-        </div>
-        <el-input
-          v-model="collectionSearch"
-          clearable
-          placeholder="搜索当前工作流的数据源"
-          class="source-search"
-        >
-          <template #prefix><AppIcon name="search" size="sm" /></template>
-        </el-input>
-        <div class="source-list">
-          <button
-            v-for="source in filteredCollectionSources"
-            :key="source.id"
-            type="button"
-            class="source-row"
-            :class="{ selected: selectedWorkflowSourceId === source.id }"
-            @click="chooseWorkflowSource(source.id)"
-          >
-            <span class="source-icon" :style="{ color: catalogItem(source.collector).tone }">
-              <AppIcon :name="iconName(source)" />
-            </span>
-            <span class="source-row-main">
-              <span class="source-row-title">
-                <strong>{{ source.name }}</strong>
-                <el-tag v-if="!source.enabled" size="small" type="warning">已停用</el-tag>
-              </span>
-              <span class="source-row-meta">
-                {{ catalogItem(source.collector).label }} · {{ sourceUsageLabel(source.id) }}
-              </span>
-              <span v-if="hasLocalOverride(selectedWorkflowId, source.id)" class="local-mark">
-                当前工作流有单独设置
-              </span>
-            </span>
-            <AppIcon name="chevronRight" size="sm" />
-          </button>
-          <el-empty
-            v-if="!filteredCollectionSources.length"
-            description="当前工作流还没有数据源"
-            :image-size="64"
-          />
-        </div>
-        <p class="panel-footnote">
-          <span class="status-dot success"></span>
-          数据源可以在多个工作流中重复使用
-        </p>
-      </section>
-
-      <section
-        v-if="workflowDraft && selectedWorkflowSource"
-        class="surface-panel source-editor-panel"
+    <!-- 界面切换 Tab (工作流管理 VS 资源配置中心) -->
+    <div class="view-tab-nav">
+      <button
+        type="button"
+        class="nav-tab-item"
+        :class="{ active: activeNav === 'workflows' }"
+        @click="selectNav('workflows')"
       >
-        <div class="detail-heading">
-          <div class="detail-identity">
-            <span
-              class="large-source-icon"
-              :style="{ color: catalogItem(workflowDraft.collector).tone }"
-            >
-              <AppIcon :name="iconName(workflowDraft)" size="lg" />
-            </span>
-            <div>
-              <div class="eyebrow">{{ catalogItem(workflowDraft.collector).label }}</div>
-              <h2>{{ workflowDraft.name }}</h2>
-              <p class="muted">{{ catalogItem(workflowDraft.collector).description }}</p>
+        <AppIcon name="workflow" size="sm" />
+        <span>工作流管理 (完整 4 阶段编排)</span>
+      </button>
+
+      <button
+        type="button"
+        class="nav-tab-item"
+        :class="{ active: activeNav === 'resources' }"
+        @click="selectNav('resources')"
+      >
+        <AppIcon name="database" size="sm" />
+        <span>资源配置中心 (全局数据源维护与广播)</span>
+      </button>
+    </div>
+
+    <!-- ======================================================= -->
+    <!-- 视图 A：工作流管理视角 (包含 1.采集 -> 2.分析 -> 3.汇总 -> 4.分发) -->
+    <!-- ======================================================= -->
+    <div v-if="activeNav === 'workflows'" class="workflow-orchestrator-layout">
+      <!-- 左侧工作流列表选择器 -->
+      <aside class="workflow-sidebar">
+        <div class="sidebar-top">
+          <span class="text-xs font-bold text-muted">工作流列表 ({{ workflows.length }})</span>
+        </div>
+        <div class="sidebar-cards">
+          <button
+            v-for="wf in workflows"
+            :key="wf.id"
+            type="button"
+            class="wf-selector-card"
+            :class="{ selected: wf.id === selectedWorkflowId }"
+            @click="selectWorkflow(wf.id)"
+          >
+            <div class="card-head">
+              <strong>{{ wf.name }}</strong>
+              <span class="cron-pill">{{ wf.cron }}</span>
             </div>
+            <p class="card-desc">{{ wf.description }}</p>
+            <div class="card-badges">
+              <span>{{ wf.sources.length }} 个数据源</span>
+              <span>{{ wf.analyses.length }} 个分析任务</span>
+              <span v-if="wf.fanIn.enabled" class="tag-accent">已汇聚</span>
+            </div>
+          </button>
+        </div>
+      </aside>
+
+      <!-- 右侧工作流编排主面板 (1 -> 2 -> 3 -> 4) -->
+      <main class="pipeline-main-column">
+        <!-- 阶段 0：工作流基础元信息 -->
+        <div class="pipeline-header-card">
+          <div>
+            <div class="eyebrow">PIPELINE DESIGNER</div>
+            <h2>{{ activeWorkflow.name }}</h2>
+            <p class="text-muted text-sm">{{ activeWorkflow.description }}</p>
           </div>
-          <div class="detail-actions">
-            <el-tag :type="workflowDraft.enabled ? 'success' : 'warning'" effect="plain">
-              {{ statusLabel(workflowDraft) }}
-            </el-tag>
-            <el-button :disabled="!workflowCanSave" @click="saveWorkflowSource">
-              <AppIcon name="check" size="sm" />
-              <span>保存</span>
+          <div class="flex items-center gap-3">
+            <span class="cron-pill font-mono">定时：{{ activeWorkflow.cron }}</span>
+            <el-button size="small" type="primary" @click="simulateRunWorkflow">
+              <AppIcon name="play" size="sm" />
+              <span>立即运行</span>
             </el-button>
           </div>
         </div>
 
-        <div class="sharing-banner" :class="{ detached: workflowDetached }">
-          <span class="sharing-icon">
-            <AppIcon :name="workflowDetached ? 'sliders' : 'layers'" size="sm" />
-          </span>
-          <div>
-            <strong v-if="workflowDetached">当前工作流正在使用单独设置</strong>
-            <strong v-else-if="selectedSharedUsageCount > 1">
-              这份数据源正在被 {{ selectedSharedUsageCount }} 个工作流共同使用
-            </strong>
-            <strong v-else>这份共享设置只有当前工作流使用</strong>
-            <p v-if="workflowDetached">
-              保存只影响“{{ selectedWorkflow?.name }}”，资源配置中心的修改不会覆盖这里。
-            </p>
-            <p v-else-if="selectedSharedUsageCount > 1">
-              想只改这一次，请先脱离共享设置；资源配置中心的保存会同步到所有仍使用共同设置的位置。
-            </p>
-            <p v-else>当前没有其他工作流跟随这份共享设置，可以直接保存本次修改。</p>
-          </div>
-          <el-button v-if="workflowDetached" text @click="restoreSharedSource">
-            恢复共同设置
-          </el-button>
-          <el-button
-            v-else-if="selectedSharedUsageCount > 1"
-            type="warning"
-            plain
-            @click="detachWorkflowSource"
+        <!-- 4 步骤流程导航栏 (支持分步聚焦与全览模式，由 Vue Router 驱动) -->
+        <div class="pipeline-step-nav">
+          <button
+            type="button"
+            class="step-nav-btn"
+            :class="{ active: activeStage === 'sources' }"
+            @click="selectStage('sources')"
           >
-            脱离共享设置
-          </el-button>
+            <span class="step-num">1</span>
+            <div class="step-text">
+              <strong>数据采集源</strong>
+              <small>{{ activeWorkflow.sources.length }} 个输入源</small>
+            </div>
+          </button>
+
+          <span class="step-arrow">➔</span>
+
+          <button
+            type="button"
+            class="step-nav-btn"
+            :class="{ active: activeStage === 'analyses' }"
+            @click="selectStage('analyses')"
+          >
+            <span class="step-num">2</span>
+            <div class="step-text">
+              <strong>并行 AI 分析</strong>
+              <small>{{ activeWorkflow.analyses.length }} 路任务</small>
+            </div>
+          </button>
+
+          <span class="step-arrow">➔</span>
+
+          <button
+            type="button"
+            class="step-nav-btn"
+            :class="{ active: activeStage === 'fanin' }"
+            @click="selectStage('fanin')"
+          >
+            <span class="step-num">3</span>
+            <div class="step-text">
+              <strong>汇聚汇总</strong>
+              <small>{{ activeWorkflow.fanIn.enabled ? '已启用汇总' : '未启用' }}</small>
+            </div>
+          </button>
+
+          <span class="step-arrow">➔</span>
+
+          <button
+            type="button"
+            class="step-nav-btn"
+            :class="{ active: activeStage === 'channels' }"
+            @click="selectStage('channels')"
+          >
+            <span class="step-num">4</span>
+            <div class="step-text">
+              <strong>渠道分发</strong>
+              <small>{{ activeWorkflow.channels.length }} 个渠道</small>
+            </div>
+          </button>
+
+          <div class="step-nav-extra">
+            <button
+              type="button"
+              class="btn-all-overview"
+              :class="{ active: activeStage === 'all' }"
+              @click="selectStage('all')"
+            >
+              <AppIcon name="workflow" size="sm" />
+              <span>全览模式</span>
+            </button>
+          </div>
         </div>
 
-        <div class="editor-section">
-          <div class="section-title-row">
-            <div>
-              <h3>从哪里取数据</h3>
-              <p>这些是数据源本身的设置，包含地址、密钥和读取数量。</p>
+        <!-- ========================================== -->
+        <!-- 阶段 1：数据采集 (以数据源为中心：新增、加载、保存、脱离模板) -->
+        <!-- ========================================== -->
+        <section v-if="activeStage === 'sources' || activeStage === 'all'" class="stage-card stage-1">
+          <div class="stage-card-head">
+            <div class="stage-title-wrap">
+              <span class="stage-index">1</span>
+              <div>
+                <h3>数据采集源管理</h3>
+                <p>配置采集输入源。支持规整标准日志与任意不规则非结构化数据，自动抽取为共享输入。支持调整上下次序。</p>
+              </div>
             </div>
-          </div>
-          <div class="form-grid">
-            <el-form-item label="数据源名称">
-              <el-input v-model="workflowDraft.name" />
-            </el-form-item>
-            <el-form-item label="采集器类型">
-              <el-select v-model="workflowDraft.collector" disabled>
-                <el-option
-                  v-for="item in collectorCatalog"
-                  :key="item.key"
-                  :value="item.key"
-                  :label="item.label"
-                />
-              </el-select>
-            </el-form-item>
-            <el-form-item
-              :label="catalogItem(workflowDraft.collector).locationLabel"
-              class="span-2"
-            >
-              <el-input
-                v-model="workflowDraft.options.location"
-                :placeholder="catalogItem(workflowDraft.collector).locationPlaceholder"
-              />
-            </el-form-item>
-            <el-form-item label="接口密钥（可选）">
-              <el-input
-                v-model="workflowDraft.options.apiKey"
-                type="password"
-                show-password
-                placeholder="暂时没有也可以留空"
-              />
-            </el-form-item>
-            <el-form-item label="最多读取条数">
-              <el-input-number
-                v-model="workflowDraft.options.limit"
-                :min="1"
-                :max="10000"
-                controls-position="right"
-              />
-            </el-form-item>
-          </div>
-          <div class="inline-setting">
-            <el-switch v-model="workflowDraft.enabled" />
-            <div>
-              <strong>启用这个数据源</strong>
-              <span>停用后，工作流会跳过它，但保留原来的设置。</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="editor-section rules-section">
-          <div class="section-title-row">
-            <div>
-              <h3>取到后怎么整理</h3>
-              <p>
-                {{
-                  catalogItem(workflowDraft.collector).fields
-                }}。这些规则保存在数据源里，也可以按需脱离后只改当前工作流。
-              </p>
-            </div>
-            <el-radio-group
-              :model-value="workflowRuleMode"
-              size="small"
-              @update:model-value="switchWorkflowRuleMode"
-            >
-              <el-radio-button label="form">普通设置</el-radio-button>
-              <el-radio-button label="json">高级 JSON</el-radio-button>
-            </el-radio-group>
-          </div>
-          <div v-if="workflowRuleMode === 'form'" class="rule-form-grid">
-            <el-form-item label="保留哪些内容" class="span-2">
-              <el-checkbox-group v-model="workflowRuleForm.fields" class="field-options">
-                <el-checkbox
-                  v-for="field in catalogItem(workflowDraft.collector).fieldOptions"
-                  :key="field.key"
-                  :label="field.key"
-                >
-                  {{ field.label }}
-                </el-checkbox>
-              </el-checkbox-group>
-            </el-form-item>
-            <el-form-item label="筛选内容">
-              <el-select v-model="workflowRuleForm.filter">
-                <el-option
-                  v-for="filter in catalogItem(workflowDraft.collector).filterOptions"
-                  :key="filter.value"
-                  :value="filter.value"
-                  :label="filter.label"
-                />
-                <el-option
-                  v-if="workflowRuleForm.filter === 'custom'"
-                  value="custom"
-                  label="已有高级筛选"
-                  disabled
-                />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="排序方式">
-              <el-select v-model="workflowRuleForm.sortBy" clearable placeholder="保持来源顺序">
-                <el-option
-                  v-for="field in catalogItem(workflowDraft.collector).fieldOptions"
-                  :key="field.key"
-                  :value="field.key"
-                  :label="field.label"
-                />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="输出格式">
-              <el-select v-model="workflowRuleForm.format">
-                <el-option value="markdown" label="Markdown" />
-                <el-option value="json" label="JSON" />
-                <el-option value="text" label="纯文本" />
-              </el-select>
-            </el-form-item>
-            <el-form-item class="span-2">
-              <el-checkbox v-model="workflowRuleForm.descending">排序从新到旧</el-checkbox>
-            </el-form-item>
-          </div>
-          <div v-else class="advanced-editor">
-            <el-input
-              v-model="workflowRulesJson"
-              type="textarea"
-              :rows="11"
-              class="json-input"
-              spellcheck="false"
-            />
-            <div class="advanced-footer">
-              <span>高级模式编辑的是同一份处理规则 JSON，保存前会检查格式。</span>
-              <el-button text @click="copyJson(workflowDraft.rules)">
-                <AppIcon name="copy" size="sm" />
-                复制示例
+            <div class="stage-head-actions">
+              <el-button size="small" @click="openLoadSourceModal">
+                <AppIcon name="database" size="sm" />
+                <span>加载已有数据源</span>
+              </el-button>
+              <el-button size="small" type="primary" @click="openCreateSource">
+                <AppIcon name="plus" size="sm" />
+                <span>新增采集源</span>
               </el-button>
             </div>
           </div>
-          <div class="rule-summary">
-            <AppIcon name="sliders" size="sm" />
-            {{ workflowRuleSummary }}
-          </div>
-        </div>
 
-        <div class="editor-footer">
-          <span v-if="!workflowCanSave && selectedSharedUsageCount > 1" class="save-hint">
-            这份数据源被多个工作流使用，先脱离共享设置后才能保存单独修改。
-          </span>
-          <span v-else class="save-hint">保存后只会改变当前允许的范围，页面会显示同步结果。</span>
-          <el-button type="primary" :disabled="!workflowCanSave" @click="saveWorkflowSource">
-            <AppIcon name="check" size="sm" />
-            保存本次设置
-          </el-button>
-        </div>
-      </section>
-      <el-empty v-else description="选择一个数据源开始配置" />
-    </div>
-
-    <div class="collection-note surface-panel">
-      <span class="note-icon"><AppIcon name="info" size="sm" /></span>
-      <div>
-        <strong>这次演示先解决“看得懂、改得对”</strong>
-        <p>
-          模板版本、批量迁移和真实采集预览留给后续版本；高级 JSON 入口保留给需要精细控制的用户。
-        </p>
-      </div>
-    </div>
-  </template>
-
-  <template v-else>
-    <div class="resource-toolbar surface-panel">
-      <div>
-        <div class="eyebrow">SHARED RESOURCES</div>
-        <h2>资源配置中心</h2>
-        <p class="muted">
-          从这里修改会同步到所有使用位置；只想改一处，请回到数据采集并先脱离共享设置。
-        </p>
-      </div>
-      <div class="resource-toolbar-actions">
-        <el-input
-          v-model="resourceSearch"
-          clearable
-          placeholder="搜索数据源"
-          class="resource-search"
-        >
-          <template #prefix><AppIcon name="search" size="sm" /></template>
-        </el-input>
-        <el-select v-model="resourceFilter" aria-label="筛选数据源使用范围" class="resource-filter">
-          <el-option value="all" label="全部数据源" />
-          <el-option value="shared" label="多人共用" />
-          <el-option value="single" label="单独使用" />
-        </el-select>
-        <el-button type="primary" @click="openAddCollector(false)">
-          <AppIcon name="plus" size="sm" />
-          新增数据源
-        </el-button>
-      </div>
-    </div>
-
-    <div class="resource-layout">
-      <section class="surface-panel resource-list-panel">
-        <div class="panel-heading compact-heading">
-          <div>
-            <h2>
-              数据源
-              <span>{{ filteredResources.length }}</span>
-            </h2>
-          </div>
-        </div>
-        <div class="resource-list">
-          <button
-            v-for="source in filteredResources"
-            :key="source.id"
-            type="button"
-            class="resource-row"
-            :class="{ selected: selectedResourceId === source.id }"
-            @click="selectedResourceId = source.id"
-          >
-            <span class="source-icon" :style="{ color: catalogItem(source.collector).tone }">
-              <AppIcon :name="iconName(source)" />
-            </span>
-            <span class="resource-row-main">
-              <span class="source-row-title">
-                <strong>{{ source.name }}</strong>
-                <el-tag v-if="!source.enabled" size="small" type="warning">已停用</el-tag>
-              </span>
-              <span class="source-row-meta">
-                {{ catalogItem(source.collector).label }} · {{ sourceUsageLabel(source.id) }}
-              </span>
-            </span>
-            <AppIcon name="chevronRight" size="sm" />
-          </button>
-          <el-empty
-            v-if="!filteredResources.length"
-            description="没有匹配的数据源"
-            :image-size="64"
-          />
-        </div>
-      </section>
-
-      <section v-if="selectedResource" class="surface-panel resource-detail-panel">
-        <div class="detail-heading">
-          <div class="detail-identity">
-            <span
-              class="large-source-icon"
-              :style="{ color: catalogItem(selectedResource.collector).tone }"
+          <!-- 工作流级高级运行参数折叠条 (对齐真实系统 WorkflowDefinition 采集参数) -->
+          <div class="workflow-advanced-params-bar">
+            <div
+              class="params-bar-summary"
+              @click="isWorkflowAdvancedExpanded = !isWorkflowAdvancedExpanded"
             >
-              <AppIcon :name="iconName(selectedResource)" size="lg" />
-            </span>
-            <div>
-              <div class="eyebrow">{{ catalogItem(selectedResource.collector).label }}</div>
-              <h2>{{ selectedResource.name }}</h2>
-              <p class="muted">{{ catalogItem(selectedResource.collector).description }}</p>
+              <div class="flex items-center gap-2">
+                <AppIcon name="sliders" size="sm" />
+                <span class="font-bold text-xs">工作流级高级采集参数</span>
+                <span class="badge-param">并发: {{ activeWorkflow.collectionConcurrency }}</span>
+                <span class="badge-param">全空策略: {{ activeWorkflow.onAllEmpty }}</span>
+                <span class="badge-param">分隔符: {{ activeWorkflow.inputSeparator === '\n\n' ? '双换行 (默认)' : '自定义' }}</span>
+              </div>
+              <button type="button" class="btn-toggle-subtle">
+                {{ isWorkflowAdvancedExpanded ? '收起高级参数 ▴' : '展开参数设置 ▾' }}
+              </button>
+            </div>
+
+            <div v-if="isWorkflowAdvancedExpanded" class="params-bar-content">
+              <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label class="block text-xs font-bold text-muted mb-1">采集并发数 (Concurrency)</label>
+                  <el-input-number
+                    v-model="activeWorkflow.collectionConcurrency"
+                    :min="1"
+                    :max="10"
+                    size="small"
+                    class="w-full"
+                  />
+                  <p class="text-[11px] text-muted mt-1">多数据源并行拉取加速</p>
+                </div>
+
+                <div>
+                  <label class="block text-xs font-bold text-muted mb-1">全部来源为空时策略</label>
+                  <el-select v-model="activeWorkflow.onAllEmpty" size="small" class="w-full">
+                    <el-option value="notice" label="⚠️ 告警提示并继续 (notice)" />
+                    <el-option value="stop" label="⛔ 终止后续分析 (stop)" />
+                    <el-option value="skip" label="🔕 静默跳过 (skip)" />
+                  </el-select>
+                  <p class="text-[11px] text-muted mt-1">无日志产出时的流程行为</p>
+                </div>
+
+                <div>
+                  <label class="block text-xs font-bold text-muted mb-1">跨来源正文输入分隔符</label>
+                  <el-input
+                    v-model="activeWorkflow.inputSeparator"
+                    size="small"
+                    placeholder="如 \n\n 或 \n---\n"
+                  />
+                  <p class="text-[11px] text-muted mt-1">拼接各源内容时的物理分隔</p>
+                </div>
+
+                <div class="flex flex-col justify-center">
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-muted">输入中包含采集条数统计</span>
+                    <el-switch v-model="activeWorkflow.includeCounts" size="small" />
+                  </div>
+                  <p class="text-[11px] text-muted mt-1">在 AI 输入前注入数据量统计头</p>
+                </div>
+              </div>
             </div>
           </div>
-          <div class="detail-actions">
-            <el-tag :type="selectedResource.enabled ? 'success' : 'warning'" effect="plain">
-              {{ statusLabel(selectedResource) }}
-            </el-tag>
-            <el-button type="primary" @click="openResourceEditor(selectedResource)">
+
+          <!-- 采集源挂载列表 -->
+          <div class="sources-list">
+            <div
+              v-for="(binding, idx) in activeWorkflow.sources"
+              :key="binding.bindingId"
+              class="source-row-card"
+            >
+              <div class="source-main-info">
+                <div class="source-top-meta">
+                  <span class="index-badge">#{{ idx + 1 }}</span>
+                  <span class="collector-icon">
+                    <AppIcon
+                      :name="
+                        collectorIcon(
+                          (getEffectiveSourceConfig(binding)?.collector as CollectorType) ||
+                            'logs',
+                        )
+                      "
+                      size="sm"
+                    />
+                  </span>
+                  <strong class="source-title">
+                    {{ getEffectiveSourceConfig(binding)?.name }}
+                  </strong>
+
+                  <!-- 同步模式标签 (纯净素雅设计) -->
+                  <span
+                    v-if="binding.mode === 'linked'"
+                    class="tag-status linked"
+                    title="跟随资源配置中心，中心修改时自动同步"
+                  >
+                    <span class="dot" />
+                    <span>全局同步 ({{ getLinkedCount(binding.sourceId) }})</span>
+                  </span>
+                  <span
+                    v-else
+                    class="tag-status detached"
+                    title="已脱离全局模板，为本流独立专属配置"
+                  >
+                    <span>专属配置</span>
+                  </span>
+
+                  <!-- 高级特性指示徽标 (素雅中性标签) -->
+                  <span
+                    v-if="getEffectiveSourceConfig(binding)?.advanced?.extractions?.length"
+                    class="tag-status neutral"
+                  >
+                    <span>{{ getEffectiveSourceConfig(binding)?.advanced.extractions.length }} 项抽取</span>
+                  </span>
+                </div>
+
+                <!-- 基础属性摘要 (小白友好清晰呈现) -->
+                <div class="source-details-summary">
+                  <span>
+                    目标路径:
+                    <code>{{ getEffectiveSourceConfig(binding)?.options.path }}</code>
+                  </span>
+                  <span>
+                    读取上限:
+                    <strong>{{ getEffectiveSourceConfig(binding)?.options.maxLines }}</strong>
+                    行
+                  </span>
+                  <span>
+                    基础字段:
+                    <span class="fields-list">
+                      {{ getEffectiveSourceConfig(binding)?.rules.fields.join(', ') }}
+                    </span>
+                  </span>
+                  <span>
+                    格式:
+                    <span class="uppercase text-xs font-mono font-bold">
+                      {{ getEffectiveSourceConfig(binding)?.rules.format }}
+                    </span>
+                  </span>
+                </div>
+
+                <!-- 高级规则快捷预览开关与展开面板 (不整齐字段与高级设置) -->
+                <div class="source-advanced-preview-wrap">
+                  <button
+                    type="button"
+                    class="toggle-inline-adv-btn"
+                    @click="binding.expandedAdvanced = !binding.expandedAdvanced"
+                  >
+                    <AppIcon :name="binding.expandedAdvanced ? 'chevronDown' : 'chevronRight'" size="sm" />
+                    <span>
+                      {{
+                        binding.expandedAdvanced
+                          ? '收起高级抽取规则与参数 ▴'
+                          : '查看高级设置 (不规则字段抽取、复杂过滤与异常策略) ▾'
+                      }}
+                    </span>
+                  </button>
+
+                  <div v-if="binding.expandedAdvanced" class="inline-adv-panel">
+                    <!-- 不规则字段动态抽取规则 -->
+                    <div class="inline-adv-section">
+                      <div class="adv-sec-label">
+                        <AppIcon name="sparkles" size="sm" />
+                        <span>不规则字段动态提取 (JSONPath / 正则表达式):</span>
+                      </div>
+                      <div
+                        v-if="getEffectiveSourceConfig(binding)?.advanced?.extractions?.length"
+                        class="extractions-pill-grid"
+                      >
+                        <div
+                          v-for="ex in getEffectiveSourceConfig(binding)?.advanced.extractions"
+                          :key="ex.id"
+                          class="extraction-pill-item"
+                        >
+                          <span class="target-field font-mono font-bold">{{ ex.targetField }}</span>
+                          <span class="sep">←</span>
+                          <span class="source-expr font-mono">{{ ex.expression }}</span>
+                          <span class="type-tag">{{ ex.sourceType === 'json_path' ? 'JSONPath' : ex.sourceType === 'regex' ? '正则' : '缺省值' }}</span>
+                          <span v-if="ex.fallbackValue" class="fallback-tag">缺省: {{ ex.fallbackValue }}</span>
+                        </div>
+                      </div>
+                      <div v-else class="text-xs text-muted">
+                        暂无自定义不规则字段抽取，直接使用基础日志字段。
+                      </div>
+                    </div>
+
+                    <!-- 高级过滤表达式与脱敏 -->
+                    <div class="inline-adv-section mt-2">
+                      <div class="adv-sec-label">
+                        <AppIcon name="sliders" size="sm" />
+                        <span>复杂过滤条件与脱敏排除:</span>
+                      </div>
+                      <div class="flex flex-wrap items-center gap-3 text-xs">
+                        <div>
+                          <span class="text-muted">原始过滤表达式: </span>
+                          <code v-if="getEffectiveSourceConfig(binding)?.advanced?.filterExpr">
+                            {{ getEffectiveSourceConfig(binding)?.advanced.filterExpr }}
+                          </code>
+                          <span v-else class="text-muted">无 (全量采集)</span>
+                        </div>
+                        <div v-if="getEffectiveSourceConfig(binding)?.advanced?.excludeFields?.length">
+                          <span class="text-muted">排除字段: </span>
+                          <span class="text-rose-600 dark:text-rose-400 font-mono">
+                            {{ getEffectiveSourceConfig(binding)?.advanced.excludeFields.join(', ') }}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 运行时异常策略与超时 -->
+                    <div class="inline-adv-section mt-2">
+                      <div class="adv-sec-label">
+                        <AppIcon name="settings" size="sm" />
+                        <span>运行时异常策略 (SourcePolicy) 与超时:</span>
+                      </div>
+                      <div class="policy-badges-row">
+                        <span class="badge-policy">
+                          报错策略: <strong>{{ getEffectiveSourceConfig(binding)?.advanced?.onError }}</strong>
+                        </span>
+                        <span class="badge-policy">
+                          目标缺失: <strong>{{ getEffectiveSourceConfig(binding)?.advanced?.onMissing }}</strong>
+                        </span>
+                        <span class="badge-policy">
+                          结果为空: <strong>{{ getEffectiveSourceConfig(binding)?.advanced?.onEmpty }}</strong>
+                        </span>
+                        <span class="badge-policy">
+                          过滤后为空: <strong>{{ getEffectiveSourceConfig(binding)?.advanced?.onFilteredEmpty }}</strong>
+                        </span>
+                        <span class="badge-policy">
+                          超时上限: <strong>{{ getEffectiveSourceConfig(binding)?.advanced?.timeout }} 秒</strong>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="source-hint-row">
+                  <span
+                    v-if="binding.mode === 'linked'"
+                    class="text-xs text-muted"
+                  >
+                    全局同步：与资源中心保持一致。若在当前工作流中修改，将自动脱离为专属独立配置。
+                  </span>
+                  <span v-else class="text-xs text-muted">
+                    专属独立配置：仅对本工作流生效。点击「保存数据源」可直接同步发布到资源配置中心。
+                  </span>
+                </div>
+              </div>
+
+              <!-- 操作按钮栏 -->
+              <div class="source-actions">
+                <div class="order-btn-group" title="调整采集优先级与执行顺序">
+                  <button
+                    type="button"
+                    class="order-btn"
+                    :disabled="idx === 0"
+                    title="上移（优先采集）"
+                    @click="moveSourceUp(idx)"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    class="order-btn"
+                    :disabled="idx === activeWorkflow.sources.length - 1"
+                    title="下移"
+                    @click="moveSourceDown(idx)"
+                  >
+                    ↓
+                  </button>
+                </div>
+
+                <el-button
+                  v-if="binding.mode === 'detached'"
+                  size="small"
+                  text
+                  type="primary"
+                  @click="saveSourceToCentral(binding)"
+                >
+                  <AppIcon name="database" size="sm" />
+                  <span>保存数据源</span>
+                </el-button>
+
+                <el-button
+                  v-if="binding.mode === 'linked'"
+                  size="small"
+                  text
+                  @click="detachSource(binding)"
+                >
+                  <AppIcon name="fork" size="sm" />
+                  <span>脱离独立</span>
+                </el-button>
+
+                <el-button size="small" @click="openEditBinding(binding)">
+                  <AppIcon name="settings" size="sm" />
+                  <span>编辑配置</span>
+                </el-button>
+
+                <el-button
+                  size="small"
+                  text
+                  type="danger"
+                  @click="removeSourceBinding(binding.bindingId)"
+                >
+                  移除
+                </el-button>
+              </div>
+            </div>
+
+            <el-empty
+              v-if="!activeWorkflow.sources.length"
+              description="暂无采集源，请点击下方按钮加载已有数据源或新建"
+              :image-size="64"
+            >
+              <div class="flex gap-2 justify-center mt-2">
+                <el-button size="small" @click="openLoadSourceModal">
+                  <AppIcon name="database" size="sm" />
+                  <span>加载已有数据源</span>
+                </el-button>
+                <el-button size="small" type="primary" @click="openCreateSource">
+                  <AppIcon name="plus" size="sm" />
+                  <span>新增采集源</span>
+                </el-button>
+              </div>
+            </el-empty>
+          </div>
+
+          <div v-if="activeStage !== 'all'" class="step-footer-actions">
+            <span class="text-xs text-muted">采集源顺序决定数据读取与规整的先后流向</span>
+            <el-button type="primary" @click="selectStage('analyses')">
+              <span>下一步：配置并行 AI 分析 ➔</span>
+            </el-button>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- 阶段 2：并行 AI 分析 (Fan-Out 任务组) -->
+        <!-- ========================================== -->
+        <section v-if="activeStage === 'analyses' || activeStage === 'all'" class="stage-card stage-2">
+          <div class="stage-card-head">
+            <div class="stage-title-wrap">
+              <span class="stage-index">2</span>
+              <div>
+                <h3>并行 AI 分析 (Fan-Out)</h3>
+                <p>各分析任务接收统一的采集输入，使用不同 AI 模型与提示词并发处理。可通过上下箭头调整分析执行顺序。</p>
+              </div>
+            </div>
+            <el-button size="small" @click="addAnalysisTask">
+              <AppIcon name="plus" size="sm" />
+              <span>添加分析维度</span>
+            </el-button>
+          </div>
+
+          <div class="analysis-tasks-grid">
+            <div
+              v-for="(task, tIndex) in activeWorkflow.analyses"
+              :key="task.id"
+              class="analysis-task-card"
+            >
+              <div class="task-card-head">
+                <div class="task-id-badge">
+                  <span class="index-badge">#{{ tIndex + 1 }}</span>
+                  <el-input v-model="task.name" size="small" class="task-name-input" />
+                </div>
+                <div class="flex items-center gap-2">
+                  <div class="order-btn-group" title="调整分析执行顺序">
+                    <button
+                      type="button"
+                      class="order-btn"
+                      :disabled="tIndex === 0"
+                      title="上移（优先分析）"
+                      @click="moveAnalysisUp(tIndex)"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      class="order-btn"
+                      :disabled="tIndex === activeWorkflow.analyses.length - 1"
+                      title="下移"
+                      @click="moveAnalysisDown(tIndex)"
+                    >
+                      ↓
+                    </button>
+                  </div>
+                  <el-button size="small" text type="danger" @click="removeAnalysisTask(tIndex)">
+                    删除
+                  </el-button>
+                </div>
+              </div>
+
+              <div class="task-card-body">
+                <div class="form-row">
+                  <span class="field-label">AI 模型选择:</span>
+                  <el-select v-model="task.model" size="small" class="w-full">
+                    <el-option
+                      v-for="m in availableModels"
+                      :key="m.id"
+                      :value="m.id"
+                      :label="m.name"
+                    />
+                  </el-select>
+                </div>
+
+                <div class="form-row mt-2">
+                  <span class="field-label">提示词模板 (Prompt):</span>
+                  <el-input
+                    v-model="task.prompt"
+                    type="textarea"
+                    :rows="3"
+                    placeholder="输入分析指令，可引用 {input}..."
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="activeStage !== 'all'" class="step-footer-actions">
+            <el-button @click="selectStage('sources')">
+              <span>⬅ 上一步：数据采集源</span>
+            </el-button>
+            <el-button type="primary" @click="selectStage('fanin')">
+              <span>下一步：配置汇聚汇总 ➔</span>
+            </el-button>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- 阶段 3：汇聚汇总 (Fan-In 聚合阶段) -->
+        <!-- ========================================== -->
+        <section v-if="activeStage === 'fanin' || activeStage === 'all'" class="stage-card stage-3">
+          <div class="stage-card-head">
+            <div class="stage-title-wrap">
+              <span class="stage-index">3</span>
+              <div>
+                <h3>汇聚汇总 (Fan-In)</h3>
+                <p>按指定顺序汇总各分析维度的结论，可选由高级大模型撰写综合日报。</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-muted">启用汇总</span>
+              <el-switch v-model="activeWorkflow.fanIn.enabled" />
+            </div>
+          </div>
+
+          <div v-if="activeWorkflow.fanIn.enabled" class="fanin-config-body">
+            <div class="form-grid-2">
+              <div>
+                <label class="block text-xs font-bold text-muted mb-2">汇总参与项与顺序:</label>
+                <el-select v-model="activeWorkflow.fanIn.order" multiple class="w-full">
+                  <el-option value="$input" label="原始共享输入 ($input)" />
+                  <el-option
+                    v-for="t in activeWorkflow.analyses"
+                    :key="t.id"
+                    :value="t.id"
+                    :label="t.name"
+                  />
+                </el-select>
+              </div>
+
+              <div>
+                <label class="block text-xs font-bold text-muted mb-2">汇总大模型 (AI):</label>
+                <el-select v-model="activeWorkflow.fanIn.model" class="w-full">
+                  <el-option
+                    v-for="m in availableModels"
+                    :key="m.id"
+                    :value="m.id"
+                    :label="m.name"
+                  />
+                </el-select>
+              </div>
+            </div>
+
+            <div class="mt-3">
+              <label class="block text-xs font-bold text-muted mb-2">综合提炼提示词模板:</label>
+              <el-input
+                v-model="activeWorkflow.fanIn.prompt"
+                type="textarea"
+                :rows="3"
+                placeholder="例如：提炼为简报、标注严重级别..."
+              />
+            </div>
+          </div>
+          <div v-else class="text-xs text-muted p-3 bg-slate-50 dark:bg-slate-900 rounded-lg">
+            当前未启用汇聚汇总，各分析任务的结论将原样保留并直接进入渠道分发。
+          </div>
+
+          <div v-if="activeStage !== 'all'" class="step-footer-actions">
+            <el-button @click="selectStage('analyses')">
+              <span>⬅ 上一步：并行 AI 分析</span>
+            </el-button>
+            <el-button type="primary" @click="selectStage('channels')">
+              <span>下一步：配置渠道分发 ➔</span>
+            </el-button>
+          </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- 阶段 4：渠道分发 (Notification & Delivery) -->
+        <!-- ========================================== -->
+        <section v-if="activeStage === 'channels' || activeStage === 'all'" class="stage-card stage-4">
+          <div class="stage-card-head">
+            <div class="stage-title-wrap">
+              <span class="stage-index">4</span>
+              <div>
+                <h3>渠道分发</h3>
+                <p>将最终的分析报告或告警摘要安全投递至指定通知渠道。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="channel-selection-grid">
+            <div
+              v-for="chan in centralChannels"
+              :key="chan.id"
+              class="channel-option-card"
+              :class="{ selected: activeWorkflow.channels.includes(chan.id) }"
+              @click="
+                activeWorkflow.channels.includes(chan.id)
+                  ? (activeWorkflow.channels = activeWorkflow.channels.filter(
+                      (c) => c !== chan.id,
+                    ))
+                  : activeWorkflow.channels.push(chan.id)
+              "
+            >
+              <div class="chan-icon">
+                <AppIcon :name="chan.type === 'email' ? 'mail' : 'settings'" size="sm" />
+              </div>
+              <div class="chan-info">
+                <strong>{{ chan.name }}</strong>
+                <span class="chan-target-mono">{{ chan.target }}</span>
+              </div>
+              <el-checkbox
+                :model-value="activeWorkflow.channels.includes(chan.id)"
+                @click.stop
+              />
+            </div>
+          </div>
+
+          <div v-if="activeStage !== 'all'" class="step-footer-actions">
+            <el-button @click="selectStage('fanin')">
+              <span>⬅ 上一步：汇聚汇总</span>
+            </el-button>
+            <el-button type="primary" @click="simulateRunWorkflow">
+              <AppIcon name="play" size="sm" />
+              <span>立即运行当前流水线</span>
+            </el-button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- ======================================================= -->
+    <!-- 视图 B：资源配置中心视角 (Axonhub 风格全局维护界面) -->
+    <!-- ======================================================= -->
+    <div v-else class="resource-center-layout">
+      <div class="resource-intro-bar">
+        <div>
+          <h3>🏢 全局数据源配置中心</h3>
+          <p class="text-xs text-muted">
+            在此处集中维护标准数据源。当修改全局数据源时，系统将自动广播同步到所有处于【全局同步】状态的工作流。
+          </p>
+        </div>
+        <el-button
+          type="primary"
+          @click="
+            openCreateSource();
+            isNewSourceMode = true
+          "
+        >
+          <AppIcon name="plus" size="sm" />
+          <span>新建全局数据源</span>
+        </el-button>
+      </div>
+
+      <!-- 全局数据源卡片列表 (Axonhub 风格) -->
+      <div class="central-source-cards">
+        <div v-for="src in centralDataSources" :key="src.id" class="axon-source-card">
+          <div class="axon-card-top">
+            <div class="axon-source-id">
+              <span class="axon-avatar">
+                <AppIcon :name="collectorIcon(src.collector)" size="sm" />
+              </span>
+              <div>
+                <strong>{{ src.name }}</strong>
+                <span class="source-key-tag">{{ src.id }}</span>
+              </div>
+            </div>
+            <el-switch
+              v-model="src.status"
+              active-value="enabled"
+              inactive-value="paused"
+              @change="ElMessage.success(`状态已设为 ${src.status}`)"
+            />
+          </div>
+
+          <p class="axon-desc">{{ src.description }}</p>
+
+          <div class="axon-props-box">
+            <div>
+              <span class="k">采集目标</span>
+              <span class="v mono">{{ src.options.path }}</span>
+            </div>
+            <div>
+              <span class="k">读取上限</span>
+              <span class="v">{{ src.options.maxLines }} 行</span>
+            </div>
+            <div>
+              <span class="k">输出格式</span>
+              <span class="v uppercase">{{ src.rules.format }}</span>
+            </div>
+          </div>
+
+          <!-- 高级不规则规则指示徽标 -->
+          <div class="axon-adv-badges">
+            <span class="adv-pill">
+              <AppIcon name="sparkles" size="sm" />
+              <span>{{ src.advanced.extractions.length }} 项不规则字段抽取</span>
+            </span>
+            <span class="adv-pill subtle">
+              <span>超时: {{ src.advanced.timeout }}s · 报错: {{ src.advanced.onError }}</span>
+            </span>
+            <span v-if="src.advanced.filterExpr" class="adv-pill filter">
+              <span>含复杂过滤表达式</span>
+            </span>
+          </div>
+
+          <!-- 广播影响面 (显示有几个工作流在同步) -->
+          <div class="sync-impact-box">
+            <span class="impact-title">
+              <AppIcon name="workflow" size="sm" />
+              <span>当前正在同步此源的工作流 ({{ getLinkedCount(src.id) }} 个):</span>
+            </span>
+            <div class="impact-wf-tags">
+              <span
+                v-for="wf in getLinkedWorkflows(src.id)"
+                :key="wf.id"
+                class="impact-tag"
+                @click="
+                  selectedWorkflowId = wf.id;
+                  activeNav = 'workflows'
+                "
+              >
+                {{ wf.name }}
+              </span>
+              <span v-if="!getLinkedCount(src.id)" class="text-xs text-muted">
+                暂无工作流关联（修改不会产生外部影响）
+              </span>
+            </div>
+          </div>
+
+          <div class="axon-card-bottom">
+            <span class="text-xs text-muted">更新于 {{ src.updatedAt }}</span>
+            <el-button size="small" type="primary" plain @click="openEditCentral(src)">
               <AppIcon name="settings" size="sm" />
-              编辑数据源
+              <span>配置并全量广播同步</span>
             </el-button>
           </div>
         </div>
+      </div>
+    </div>
 
-        <div class="sync-callout">
-          <span class="sharing-icon"><AppIcon name="layers" size="sm" /></span>
+    <!-- ========================================== -->
+    <!-- 抽屉：编辑/新增采集器 (常规与高级不规则设置双层设计) -->
+    <!-- ========================================== -->
+    <el-drawer
+      v-model="sourceDrawer"
+      :title="
+        isNewSourceMode
+          ? '新增数据源'
+          : activeEditingCentral
+            ? `修改全局数据源：${sourceForm.name}`
+            : `编辑工作流数据源：${sourceForm.name}`
+      "
+      size="min(94vw, 760px)"
+      append-to-body
+      destroy-on-close
+    >
+      <div class="drawer-form-content">
+        <!-- 业务提示 -->
+        <div v-if="activeEditingCentral" class="banner-alert info">
+          <AppIcon name="sparkles" size="md" />
           <div>
-            <strong>{{ resourceImpact(selectedResource.id) }}</strong>
+            <strong>📢 正在编辑资源配置中心全局数据源</strong>
             <p>
-              这是共享数据源的统一配置。需要只改一处时，请到“数据采集”选择对应工作流，再脱离共享设置。
+              保存后将为所有处于全局同步中的
+              {{ getLinkedCount(activeEditingCentral.id) }} 个工作流进行广播同步（包含基础设置与不规则抽取配置）！
             </p>
           </div>
         </div>
 
-        <div class="metric-strip">
-          <div>
-            <span>来源地址</span>
-            <strong class="mono">{{ selectedResource.options.location }}</strong>
-          </div>
-          <div>
-            <span>最多读取</span>
-            <strong>{{ selectedResource.options.limit }} 条</strong>
-          </div>
-          <div>
-            <span>最近保存</span>
-            <strong>{{ selectedResource.updatedAt }}</strong>
-          </div>
-        </div>
-
-        <div class="detail-section">
-          <div class="section-title-row">
-            <div>
-              <h3>从哪里取数据</h3>
-              <p>数据源级设置会被所有使用位置继承。</p>
-            </div>
-          </div>
-          <div class="resource-facts">
-            <div>
-              <span>采集器</span>
-              <strong>{{ catalogItem(selectedResource.collector).label }}</strong>
-            </div>
-            <div>
-              <span>密钥</span>
-              <strong>{{ selectedResource.options.apiKey ? '已配置' : '未配置' }}</strong>
-            </div>
-            <div>
-              <span>使用位置</span>
-              <strong>{{ selectedResourceUsage.length }} 个工作流</strong>
-            </div>
-          </div>
-          <div class="usage-list">
-            <span v-for="workflow in selectedResourceUsage" :key="workflow.id" class="usage-chip">
-              <AppIcon name="workflow" size="sm" />
-              {{ workflow.name }}
-            </span>
-            <span v-if="!selectedResourceUsage.length" class="muted">暂未被工作流使用</span>
-          </div>
-        </div>
-
-        <div class="detail-section">
-          <div class="section-title-row">
-            <div>
-              <h3>取到后怎么整理</h3>
-              <p>规则仍然是这份数据源里的 JSON，不再单独拆成另一类资源。</p>
-            </div>
-            <el-button text @click="copyJson(selectedResource.rules)">
-              <AppIcon name="copy" size="sm" />
-              复制 JSON
-            </el-button>
-          </div>
-          <pre class="json-preview">{{ rulesToJson(selectedResource.rules) }}</pre>
-          <div class="rule-summary">
-            <AppIcon name="sliders" size="sm" />
-            {{ resourceRuleSummary }}
-          </div>
-        </div>
-      </section>
-      <el-empty v-else description="选择一个数据源查看配置" />
-    </div>
-  </template>
-
-  <el-dialog
-    v-model="addCollectorOpen"
-    :title="attachNewCollectorToWorkflow ? '新增采集器' : '新增数据源'"
-    width="720px"
-    destroy-on-close
-  >
-    <div class="dialog-intro">
-      <span class="note-icon"><AppIcon name="plus" size="sm" /></span>
-      <p>
-        先告诉我从哪里取数据，处理规则可以稍后再细调。{{
-          attachNewCollectorToWorkflow
-            ? '保存后会加载到当前工作流，也会出现在资源配置中心。'
-            : '保存后会出现在资源配置中心。'
-        }}
-      </p>
-    </div>
-    <div class="form-grid dialog-form">
-      <el-form-item label="数据源名称">
-        <el-input v-model="newCollectorDraft.name" placeholder="例如：客户反馈订阅" />
-      </el-form-item>
-      <el-form-item label="采集器类型">
-        <el-select
-          :model-value="newCollectorDraft.collector"
-          @update:model-value="setNewCollectorType"
+        <div
+          v-else-if="activeEditingBinding && activeEditingBinding.mode === 'linked'"
+          class="banner-alert warning"
         >
-          <el-option
-            v-for="item in collectorCatalog"
-            :key="item.key"
-            :value="item.key"
-            :label="item.label"
-          />
-        </el-select>
-      </el-form-item>
-      <el-form-item :label="catalogItem(newCollectorDraft.collector).locationLabel" class="span-2">
-        <el-input
-          v-model="newCollectorDraft.options.location"
-          :placeholder="catalogItem(newCollectorDraft.collector).locationPlaceholder"
-        />
-      </el-form-item>
-      <el-form-item label="接口密钥（可选）">
-        <el-input v-model="newCollectorDraft.options.apiKey" type="password" show-password />
-      </el-form-item>
-      <el-form-item label="最多读取条数">
-        <el-input-number
-          v-model="newCollectorDraft.options.limit"
-          :min="1"
-          :max="10000"
-          controls-position="right"
-        />
-      </el-form-item>
-    </div>
-    <div class="dialog-rule-header">
-      <div>
-        <h3>取到后怎么整理</h3>
-        <p class="muted">可以先使用默认设置，之后在数据采集处继续调整。</p>
-      </div>
-      <el-radio-group
-        :model-value="newCollectorRuleMode"
-        size="small"
-        @update:model-value="switchNewCollectorRuleMode"
-      >
-        <el-radio-button label="form">普通设置</el-radio-button>
-        <el-radio-button label="json">高级 JSON</el-radio-button>
-      </el-radio-group>
-    </div>
-    <div v-if="newCollectorRuleMode === 'form'" class="rule-form-grid dialog-rules">
-      <el-form-item label="保留哪些内容" class="span-2">
-        <el-checkbox-group v-model="newCollectorRuleForm.fields" class="field-options">
-          <el-checkbox
-            v-for="field in catalogItem(newCollectorDraft.collector).fieldOptions"
-            :key="field.key"
-            :label="field.key"
+          <AppIcon name="fork" size="md" />
+          <div>
+            <strong>⚠️ 正在工作流中编辑共享数据源</strong>
+            <p>
+              {{
+                getLinkedCount(activeEditingBinding.sourceId) > 1
+                  ? '该源正被多个工作流共同引用。为保障安全，保存时将自动为您【脱离模板】，转为专属独立配置！'
+                  : '当前工作流是该数据源的唯一使用方，您可以选择同步到全局，或脱离为独立配置。'
+              }}
+            </p>
+          </div>
+        </div>
+
+        <!-- 顶部分段切换：常规基础配置 VS 高级不规则设置 -->
+        <div class="drawer-segmented-nav">
+          <button
+            type="button"
+            class="seg-btn"
+            :class="{ active: drawerTab === 'basic' }"
+            @click="drawerTab = 'basic'"
           >
-            {{ field.label }}
-          </el-checkbox>
-        </el-checkbox-group>
-      </el-form-item>
-      <el-form-item label="筛选内容">
-        <el-select v-model="newCollectorRuleForm.filter">
-          <el-option
-            v-for="filter in catalogItem(newCollectorDraft.collector).filterOptions"
-            :key="filter.value"
-            :value="filter.value"
-            :label="filter.label"
-          />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="排序方式">
-        <el-select v-model="newCollectorRuleForm.sortBy" clearable placeholder="保持来源顺序">
-          <el-option
-            v-for="field in catalogItem(newCollectorDraft.collector).fieldOptions"
-            :key="field.key"
-            :value="field.key"
-            :label="field.label"
-          />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="输出格式">
-        <el-select v-model="newCollectorRuleForm.format">
-          <el-option value="markdown" label="Markdown" />
-          <el-option value="json" label="JSON" />
-          <el-option value="text" label="纯文本" />
-        </el-select>
-      </el-form-item>
-      <el-form-item class="span-2">
-        <el-checkbox v-model="newCollectorRuleForm.descending">由新到旧排列</el-checkbox>
-      </el-form-item>
-    </div>
-    <el-input
-      v-else
-      v-model="newCollectorRulesJson"
-      type="textarea"
-      :rows="10"
-      class="json-input"
-      spellcheck="false"
-    />
-    <template #footer>
-      <el-button @click="addCollectorOpen = false">取消</el-button>
-      <el-button type="primary" @click="saveNewCollector">
-        <AppIcon name="check" size="sm" />
-        {{ attachNewCollectorToWorkflow ? '保存并加载' : '保存数据源' }}
-      </el-button>
-    </template>
-  </el-dialog>
-
-  <el-dialog v-model="loadCollectorOpen" title="加载已有采集器" width="640px" destroy-on-close>
-    <p class="muted dialog-description">
-      选择一个已经配置好的数据源，加载到“{{
-        selectedWorkflow?.name
-      }}”。它仍然会和其他工作流共享同一份设置。
-    </p>
-    <el-input v-model="loadSearch" clearable placeholder="搜索数据源" class="dialog-search">
-      <template #prefix><AppIcon name="search" size="sm" /></template>
-    </el-input>
-    <div class="load-list">
-      <button
-        v-for="source in filteredLoadResources"
-        :key="source.id"
-        type="button"
-        class="load-row"
-        @click="loadCollector(source.id)"
-      >
-        <span class="source-icon" :style="{ color: catalogItem(source.collector).tone }">
-          <AppIcon :name="iconName(source)" />
-        </span>
-        <span class="source-row-main">
-          <span class="source-row-title">
-            <strong>{{ source.name }}</strong>
-            <el-tag v-if="selectedWorkflow?.sourceIds.includes(source.id)" size="small" type="info">
-              已加载
-            </el-tag>
-          </span>
-          <span class="source-row-meta">
-            {{ catalogItem(source.collector).label }} · {{ sourceUsageLabel(source.id) }}
-          </span>
-        </span>
-        <AppIcon name="chevronRight" size="sm" />
-      </button>
-      <el-empty
-        v-if="!filteredLoadResources.length"
-        description="没有匹配的数据源"
-        :image-size="64"
-      />
-    </div>
-  </el-dialog>
-
-  <el-dialog
-    v-model="resourceEditorOpen"
-    :title="`编辑数据源：${resourceDraft?.name ?? ''}`"
-    width="720px"
-    destroy-on-close
-  >
-    <template v-if="resourceDraft">
-      <div class="sync-callout compact-callout">
-        <span class="sharing-icon"><AppIcon name="layers" size="sm" /></span>
-        <div>
-          <strong>{{ resourceImpact(resourceDraft.id) }}</strong>
-          <p>只改一个工作流，请关闭窗口回到“数据采集”操作。</p>
-        </div>
-      </div>
-      <div class="form-grid dialog-form">
-        <el-form-item label="数据源名称"><el-input v-model="resourceDraft.name" /></el-form-item>
-        <el-form-item label="采集器类型">
-          <el-select v-model="resourceDraft.collector" disabled>
-            <el-option
-              v-for="item in collectorCatalog"
-              :key="item.key"
-              :value="item.key"
-              :label="item.label"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="catalogItem(resourceDraft.collector).locationLabel" class="span-2">
-          <el-input v-model="resourceDraft.options.location" />
-        </el-form-item>
-        <el-form-item label="接口密钥（可选）">
-          <el-input v-model="resourceDraft.options.apiKey" type="password" show-password />
-        </el-form-item>
-        <el-form-item label="最多读取条数">
-          <el-input-number
-            v-model="resourceDraft.options.limit"
-            :min="1"
-            :max="10000"
-            controls-position="right"
-          />
-        </el-form-item>
-      </div>
-      <div class="inline-setting">
-        <el-switch v-model="resourceDraft.enabled" />
-        <div>
-          <strong>启用这个数据源</strong>
-          <span>停用只影响后续运行，不会删除使用位置。</span>
-        </div>
-      </div>
-      <div class="dialog-rule-header">
-        <div>
-          <h3>取到后怎么整理</h3>
-          <p class="muted">处理规则随数据源一起保存。</p>
-        </div>
-        <el-radio-group
-          :model-value="resourceRuleMode"
-          size="small"
-          @update:model-value="switchResourceRuleMode"
-        >
-          <el-radio-button label="form">普通设置</el-radio-button>
-          <el-radio-button label="json">高级 JSON</el-radio-button>
-        </el-radio-group>
-      </div>
-      <div v-if="resourceRuleMode === 'form'" class="rule-form-grid dialog-rules">
-        <el-form-item label="保留哪些内容" class="span-2">
-          <el-checkbox-group v-model="resourceRuleForm.fields" class="field-options">
-            <el-checkbox
-              v-for="field in catalogItem(resourceDraft.collector).fieldOptions"
-              :key="field.key"
-              :label="field.key"
+            <AppIcon name="file" size="sm" />
+            <span>常规基础配置 (小白友好)</span>
+          </button>
+          <button
+            type="button"
+            class="seg-btn"
+            :class="{ active: drawerTab === 'advanced' }"
+            @click="drawerTab = 'advanced'"
+          >
+            <AppIcon name="sliders" size="sm" />
+            <span>高级扩展与不规则字段 (专业)</span>
+            <span
+              v-if="sourceForm.advanced.extractions.length"
+              class="seg-badge"
             >
-              {{ field.label }}
-            </el-checkbox>
-          </el-checkbox-group>
-        </el-form-item>
-        <el-form-item label="筛选内容">
-          <el-select v-model="resourceRuleForm.filter">
-            <el-option
-              v-for="filter in catalogItem(resourceDraft.collector).filterOptions"
-              :key="filter.value"
-              :value="filter.value"
-              :label="filter.label"
-            />
-            <el-option
-              v-if="resourceRuleForm.filter === 'custom'"
-              value="custom"
-              label="已有高级筛选"
-              disabled
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="排序方式">
-          <el-select v-model="resourceRuleForm.sortBy" clearable placeholder="保持来源顺序">
-            <el-option
-              v-for="field in catalogItem(resourceDraft.collector).fieldOptions"
-              :key="field.key"
-              :value="field.key"
-              :label="field.label"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="输出格式">
-          <el-select v-model="resourceRuleForm.format">
-            <el-option value="markdown" label="Markdown" />
-            <el-option value="json" label="JSON" />
-            <el-option value="text" label="纯文本" />
-          </el-select>
-        </el-form-item>
-        <el-form-item class="span-2">
-          <el-checkbox v-model="resourceRuleForm.descending">由新到旧排列</el-checkbox>
-        </el-form-item>
+              {{ sourceForm.advanced.extractions.length }}
+            </span>
+          </button>
+        </div>
+
+        <el-form label-position="top">
+          <!-- ============================================== -->
+          <!-- 标签页 1：常规基础配置 -->
+          <!-- ============================================== -->
+          <div v-if="drawerTab === 'basic'" class="drawer-tab-pane">
+            <div class="form-section">
+              <div class="sec-title">01 · 基础信息</div>
+              <div class="form-grid-2">
+                <el-form-item label="数据源名称">
+                  <el-input v-model="sourceForm.name" />
+                </el-form-item>
+                <el-form-item label="采集器类型">
+                  <el-select
+                    v-model="sourceForm.collector"
+                    class="w-full"
+                    :disabled="!isNewSourceMode"
+                  >
+                    <el-option value="logs" label="应用运行日志 (logs)" />
+                    <el-option value="history" label="工作流历史运行 (history)" />
+                    <el-option value="mock" label="离线桩数据 (mock)" />
+                  </el-select>
+                </el-form-item>
+              </div>
+              <el-form-item label="用途说明">
+                <el-input v-model="sourceForm.description" />
+              </el-form-item>
+            </div>
+
+            <div class="form-section">
+              <div class="sec-title">02 · 采集连接参数 (从哪里采集)</div>
+              <el-form-item label="目标路径 / 文件路径">
+                <el-input v-model="sourceForm.options.path" />
+              </el-form-item>
+              <div class="form-grid-2">
+                <el-form-item label="最大读取行数">
+                  <el-input-number
+                    v-model="sourceForm.options.maxLines"
+                    :min="10"
+                    :max="10000"
+                    class="w-full"
+                  />
+                </el-form-item>
+                <el-form-item label="访问 Token (可选)">
+                  <el-input
+                    v-model="sourceForm.options.apiKey"
+                    type="password"
+                    placeholder="可选认证鉴权"
+                  />
+                </el-form-item>
+              </div>
+            </div>
+
+            <div class="form-section">
+              <div class="sec-title">03 · 处理规则 (采集后保留与排序)</div>
+              <el-form-item label="基础保留字段 (逗号分隔)">
+                <el-input v-model="sourceForm.rules.fieldsStr" />
+                <p class="text-[11px] text-muted mt-1">
+                  标准常规字段，如 <code>time, level, module, message</code>。
+                </p>
+              </el-form-item>
+              <div class="form-grid-2">
+                <el-form-item label="级别过滤 (Level)">
+                  <el-select
+                    v-model="sourceForm.rules.filterLevel"
+                    multiple
+                    placeholder="不过滤"
+                    class="w-full"
+                  >
+                    <el-option value="error" label="ERROR" />
+                    <el-option value="warning" label="WARNING" />
+                    <el-option value="info" label="INFO" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="排序基准字段">
+                  <el-input v-model="sourceForm.rules.sortBy" />
+                </el-form-item>
+              </div>
+              <div class="form-grid-2">
+                <el-form-item label="输出格式">
+                  <el-select v-model="sourceForm.rules.format" class="w-full">
+                    <el-option value="markdown" label="Markdown" />
+                    <el-option value="text" label="纯文本" />
+                    <el-option value="jsonl" label="JSONL" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="倒序排列">
+                  <el-switch v-model="sourceForm.rules.descending" />
+                </el-form-item>
+              </div>
+            </div>
+
+            <!-- 引导切换到高级设置的提示条 -->
+            <div class="subtle-guide-box" @click="drawerTab = 'advanced'">
+              <div class="flex items-center gap-2">
+                <AppIcon name="sparkles" size="sm" />
+                <span class="font-bold text-xs">日志字段不规则？需要抽取深层 JSON 或复杂正则？</span>
+              </div>
+              <span class="text-xs text-primary underline">前往「高级扩展与不规则字段」配置 ➔</span>
+            </div>
+          </div>
+
+          <!-- ============================================== -->
+          <!-- 标签页 2：高级设置 (不规则字段抽取、异常策略与底层JSON) -->
+          <!-- ============================================== -->
+          <div v-else class="drawer-tab-pane">
+            <!-- 模块 A：不规则字段动态提取 -->
+            <div class="form-section">
+              <div class="flex justify-between items-center mb-2">
+                <div>
+                  <div class="sec-title mb-0">01 · 不规则字段动态提取 (JSONPath / 正则表达式)</div>
+                  <p class="text-[11px] text-muted">
+                    真实日志常存在深层嵌套 JSON 或半结构化字符串，在此添加动态抽取规则，将其规整为标准字段。
+                  </p>
+                </div>
+                <el-button size="small" type="primary" plain @click="addCustomExtraction">
+                  <AppIcon name="plus" size="sm" />
+                  <span>添加规则</span>
+                </el-button>
+              </div>
+
+              <!-- 快捷预设按钮组 -->
+              <div class="preset-buttons-bar">
+                <span class="text-[11px] text-muted">常用预设模板:</span>
+                <button type="button" class="preset-btn" @click="addExtractionPreset('trace_id')">
+                  + TraceID (JSONPath)
+                </button>
+                <button type="button" class="preset-btn" @click="addExtractionPreset('client_ip')">
+                  + Client IP (正则)
+                </button>
+                <button type="button" class="preset-btn" @click="addExtractionPreset('header')">
+                  + 请求头 Header (JSONPath)
+                </button>
+              </div>
+
+              <!-- 抽取规则列表卡片 -->
+              <div class="extractions-editor-list">
+                <div
+                  v-for="(rule, rIdx) in sourceForm.advanced.extractions"
+                  :key="rule.id"
+                  class="extraction-edit-card"
+                >
+                  <div class="card-line-top">
+                    <span class="badge-idx">规则 #{{ rIdx + 1 }}</span>
+                    <el-input
+                      v-model="rule.targetField"
+                      size="small"
+                      placeholder="目标字段名 (如 trace_id)"
+                      class="target-name-input"
+                      @input="syncRawJson"
+                    />
+                    <el-select
+                      v-model="rule.sourceType"
+                      size="small"
+                      class="type-select"
+                      @change="syncRawJson"
+                    >
+                      <el-option value="json_path" label="JSON 嵌套路径 (JSONPath)" />
+                      <el-option value="regex" label="正则表达式捕获 (Regex)" />
+                      <el-option value="default_value" label="缺省默认填充值" />
+                    </el-select>
+                    <el-button
+                      size="small"
+                      text
+                      type="danger"
+                      @click="removeExtraction(rIdx)"
+                    >
+                      删除
+                    </el-button>
+                  </div>
+
+                  <div class="card-line-bottom">
+                    <div class="flex-1">
+                      <label class="block text-[10px] text-muted mb-1">
+                        {{
+                          rule.sourceType === 'json_path'
+                            ? 'JSONPath 表达式 (如 $.meta.trace.id 或 $.headers["x-req-id"])'
+                            : rule.sourceType === 'regex'
+                              ? '命名捕获正则 (如 client=(?P<ip>\\S+))'
+                              : '静态默认值'
+                        }}
+                      </label>
+                      <el-input
+                        v-model="rule.expression"
+                        size="small"
+                        placeholder="输入抽取表达式..."
+                        @input="syncRawJson"
+                      />
+                    </div>
+                    <div class="w-40">
+                      <label class="block text-[10px] text-muted mb-1">缺失兜底值 (可选)</label>
+                      <el-input
+                        v-model="rule.fallbackValue"
+                        size="small"
+                        placeholder="如 none 或 127.0.0.1"
+                        @input="syncRawJson"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  v-if="!sourceForm.advanced.extractions.length"
+                  class="empty-extraction-hint"
+                >
+                  暂无不规则字段抽取规则。点击上方「添加规则」或选择预设模板开始配置。
+                </div>
+              </div>
+            </div>
+
+            <!-- 模块 B：高级过滤条件与敏感字段脱敏 -->
+            <div class="form-section">
+              <div class="sec-title">02 · 高级过滤条件与敏感字段脱敏</div>
+              <el-form-item label="原始布尔过滤表达式 (Filter Expression)">
+                <el-input
+                  v-model="sourceForm.advanced.filterExpr"
+                  placeholder="例如: latency_ms > 1500 or (status >= 500 and uri.startswith('/api/v1'))"
+                  @input="syncRawJson"
+                />
+                <p class="text-[11px] text-muted mt-1">
+                  支持多条件组合过滤，仅符合表达式的日志事件才会被送往 AI 分析。
+                </p>
+              </el-form-item>
+
+              <el-form-item label="敏感字段脱敏/排除清单 (逗号分隔)">
+                <el-input
+                  v-model="sourceForm.advanced.excludeFieldsStr"
+                  placeholder="例如: password, authorization, token, cookie"
+                  @input="syncRawJson"
+                />
+                <p class="text-[11px] text-muted mt-1">
+                  被列出的敏感属性将在采集后自动剥离，保障数据安全隐私。
+                </p>
+              </el-form-item>
+            </div>
+
+            <!-- 模块 C：运行时异常策略与超时 -->
+            <div class="form-section">
+              <div class="sec-title">03 · 运行时异常策略 (SourcePolicy) 与超时控制</div>
+              <div class="form-grid-2">
+                <el-form-item label="采集报错时策略 (on_error)">
+                  <el-select
+                    v-model="sourceForm.advanced.onError"
+                    class="w-full"
+                    @change="syncRawJson"
+                  >
+                    <el-option value="notice" label="⚠️ 告警提示并继续 (notice - 推荐)" />
+                    <el-option value="stop" label="⛔ 终止整个工作流 (stop)" />
+                    <el-option value="skip" label="🔕 静默跳过该源 (skip)" />
+                  </el-select>
+                </el-form-item>
+
+                <el-form-item label="目标缺失时策略 (on_missing)">
+                  <el-select
+                    v-model="sourceForm.advanced.onMissing"
+                    class="w-full"
+                    @change="syncRawJson"
+                  >
+                    <el-option value="notice" label="⚠️ 告警提示并继续 (notice)" />
+                    <el-option value="stop" label="⛔ 终止整个工作流 (stop)" />
+                    <el-option value="skip" label="🔕 静默跳过该源 (skip - 推荐)" />
+                  </el-select>
+                </el-form-item>
+              </div>
+
+              <div class="form-grid-2">
+                <el-form-item label="采集内容为空时 (on_empty)">
+                  <el-select
+                    v-model="sourceForm.advanced.onEmpty"
+                    class="w-full"
+                    @change="syncRawJson"
+                  >
+                    <el-option value="notice" label="⚠️ 告警提示并继续 (notice - 推荐)" />
+                    <el-option value="stop" label="⛔ 终止整个工作流 (stop)" />
+                    <el-option value="skip" label="🔕 静默跳过该源 (skip)" />
+                  </el-select>
+                </el-form-item>
+
+                <el-form-item label="过滤后为空时 (on_filtered_empty)">
+                  <el-select
+                    v-model="sourceForm.advanced.onFilteredEmpty"
+                    class="w-full"
+                    @change="syncRawJson"
+                  >
+                    <el-option value="skip" label="🔕 静默跳过该源 (skip - 推荐)" />
+                    <el-option value="notice" label="⚠️ 告警提示并继续 (notice)" />
+                    <el-option value="stop" label="⛔ 终止整个工作流 (stop)" />
+                  </el-select>
+                </el-form-item>
+              </div>
+
+              <div class="w-1/2 pr-2">
+                <el-form-item label="采集超时时间 (秒)">
+                  <el-input-number
+                    v-model="sourceForm.advanced.timeout"
+                    :min="5"
+                    :max="600"
+                    class="w-full"
+                    @change="syncRawJson"
+                  />
+                </el-form-item>
+              </div>
+            </div>
+
+            <!-- 模块 D：底层原始 JSON 查看与编辑模式 (高保真) -->
+            <div class="form-section">
+              <div class="flex justify-between items-center mb-2">
+                <div class="sec-title mb-0">04 · 底层原始 JSON 配置 (开发者模式)</div>
+                <el-button
+                  size="small"
+                  text
+                  @click="showRawJsonEditor = !showRawJsonEditor"
+                >
+                  {{ showRawJsonEditor ? '收起底层 JSON' : '查看/编辑底层 JSON' }}
+                </el-button>
+              </div>
+
+              <div v-if="showRawJsonEditor" class="raw-json-editor-wrap">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <span class="block text-[11px] font-mono text-muted mb-1">Options JSON (采集参数)</span>
+                    <el-input
+                      v-model="sourceForm.advanced.rawOptionsJson"
+                      type="textarea"
+                      :rows="6"
+                      class="font-mono text-xs"
+                    />
+                  </div>
+                  <div>
+                    <span class="block text-[11px] font-mono text-muted mb-1">Setters JSON (处理规则与抽取)</span>
+                    <el-input
+                      v-model="sourceForm.advanced.rawSettersJson"
+                      type="textarea"
+                      :rows="6"
+                      class="font-mono text-xs"
+                    />
+                  </div>
+                </div>
+                <div class="flex justify-end mt-2">
+                  <el-button size="small" @click="syncRawJson">刷新/格式化 JSON</el-button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-form>
+
+        <div class="drawer-footer-bar">
+          <el-button @click="sourceDrawer = false">取消</el-button>
+          <el-button
+            type="primary"
+            @click="activeEditingCentral ? saveCentralConfig() : saveSourceConfig()"
+          >
+            {{
+              activeEditingCentral
+                ? '保存并全量广播同步'
+                : '保存配置'
+            }}
+          </el-button>
+        </div>
       </div>
-      <el-input
-        v-else
-        v-model="resourceRulesJson"
-        type="textarea"
-        :rows="10"
-        class="json-input"
-        spellcheck="false"
-      />
-    </template>
-    <template #footer>
-      <el-button @click="resourceEditorOpen = false">取消</el-button>
-      <el-button type="primary" @click="saveResource">
-        <AppIcon name="check" size="sm" />
-        保存并同步
-      </el-button>
-    </template>
-  </el-dialog>
+    </el-drawer>
+
+    <!-- ========================================== -->
+    <!-- 从资源配置中心加载已有数据源弹窗 -->
+    <!-- ========================================== -->
+    <el-dialog
+      v-model="loadSourceModal"
+      title="从资源配置中心加载已有数据源"
+      width="740px"
+      append-to-body
+      destroy-on-close
+    >
+      <div class="load-source-dialog-body">
+        <p class="dialog-subtitle">
+          选择全局维护的标准数据源挂载至当前工作流。挂载后为跟随全局模式，在资源配置中心修改时将自动同步。
+        </p>
+
+        <div class="load-source-cards-list">
+          <div
+            v-for="src in centralDataSources"
+            :key="src.id"
+            class="load-source-card"
+            :class="{ 'is-added': isSourceAlreadyLoaded(src.id) }"
+          >
+            <div class="load-source-main">
+              <div class="load-source-top">
+                <span class="collector-icon">
+                  <AppIcon :name="collectorIcon(src.collector)" size="sm" />
+                </span>
+                <strong class="text-sm font-bold">{{ src.name }}</strong>
+                <span class="badge-collector uppercase">{{ src.collector }}</span>
+                <span v-if="src.advanced?.extractions?.length" class="badge-ext">
+                  {{ src.advanced.extractions.length }} 项抽取
+                </span>
+                <span v-if="src.advanced?.filterExpr" class="badge-filter">
+                  已配过滤
+                </span>
+              </div>
+              <p class="load-source-desc">{{ src.description || '暂无描述' }}</p>
+              <div class="load-source-meta">
+                <span>路径: <code>{{ src.options.path }}</code></span>
+                <span>上限: {{ src.options.maxLines }} 行</span>
+                <span>保留字段: {{ src.rules.fields.slice(0, 4).join(', ') }}{{ src.rules.fields.length > 4 ? '...' : '' }}</span>
+              </div>
+            </div>
+
+            <div class="load-source-action">
+              <el-tag v-if="isSourceAlreadyLoaded(src.id)" type="info" size="small">
+                已在工作流中
+              </el-tag>
+              <el-button
+                v-else
+                size="small"
+                type="primary"
+                @click="loadSourceIntoWorkflow(src)"
+              >
+                加载到本工作流
+              </el-button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="flex justify-between items-center">
+          <button
+            type="button"
+            class="text-xs text-primary hover:underline cursor-pointer bg-transparent border-0"
+            @click="loadSourceModal = false; openCreateSource()"
+          >
+            没有合适的数据源？直接新建采集源 ➔
+          </button>
+          <el-button @click="loadSourceModal = false">关闭</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- ========================================== -->
+    <!-- 模拟运行流水线弹窗 -->
+    <!-- ========================================== -->
+    <el-dialog v-model="runModalVisible" title="模拟运行工作流流水线" width="680px" append-to-body>
+      <div class="run-dialog-body">
+        <div class="pipeline-progress-steps">
+          <div class="mini-step done">
+            <AppIcon name="check" size="sm" />
+            <span>1. 数据采集</span>
+          </div>
+          <div class="mini-line" />
+          <div class="mini-step" :class="{ done: !runExecuting }">
+            <AppIcon :name="!runExecuting ? 'check' : 'rotate'" size="sm" />
+            <span>2. 并行分析</span>
+          </div>
+          <div class="mini-line" />
+          <div class="mini-step" :class="{ done: !runExecuting }">
+            <AppIcon :name="!runExecuting ? 'check' : 'sparkles'" size="sm" />
+            <span>3. 汇聚汇总</span>
+          </div>
+          <div class="mini-line" />
+          <div class="mini-step" :class="{ done: !runExecuting }">
+            <AppIcon :name="!runExecuting ? 'check' : 'mail'" size="sm" />
+            <span>4. 渠道分发</span>
+          </div>
+        </div>
+
+        <div class="run-logs-terminal">
+          <div v-for="(l, i) in runLogs" :key="i" class="log-line">{{ l }}</div>
+          <div v-if="runExecuting" class="log-line blink">▌</div>
+        </div>
+      </div>
+    </el-dialog>
+  </div>
 </template>
 
 <style scoped>
-.demo-tag {
-  margin-right: 4px;
-}
-.view-switcher {
-  flex-shrink: 0;
-}
-.demo-alert,
-.collection-note,
-.sync-callout,
-.sharing-banner {
+.workflow-demo-root {
   display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  border: 1px solid #bfdbfe;
-  border-radius: 8px;
-  background: #f8fbff;
-  color: #1e3a8a;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 1360px;
+  margin: 0 auto;
+  padding-bottom: 40px;
 }
-.demo-alert {
-  padding: 14px 16px;
-  margin-bottom: 18px;
-}
-.demo-alert strong,
-.collection-note strong,
-.sync-callout strong,
-.sharing-banner strong {
-  display: block;
-  font-size: 13px;
-}
-.demo-alert p,
-.collection-note p,
-.sync-callout p,
-.sharing-banner p {
-  margin: 4px 0 0;
-  color: #475569;
-  font-size: 12px;
-  line-height: 1.55;
-}
-.alert-mark,
-.note-icon,
-.sharing-icon {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  flex: 0 0 auto;
-  border-radius: 6px;
-  background: #dbeafe;
-  color: #2563eb;
-}
-.surface-panel {
+
+/* 顶部导航切换 */
+.view-tab-nav {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--el-fill-color-dark);
   border: 1px solid var(--border);
+  border-radius: 10px;
+  width: fit-content;
+}
+
+.nav-tab-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
   border-radius: 8px;
-  background: var(--surface);
-}
-.workflow-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 18px;
-  margin-bottom: 18px;
-}
-.workflow-picker {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 260px;
-}
-.workflow-select {
-  width: 220px;
-}
-.workflow-stats {
-  display: flex;
-  gap: 16px;
-  color: var(--muted);
-  font-size: 12px;
-}
-.collection-layout,
-.resource-layout {
-  display: grid;
-  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
-  gap: 18px;
-  align-items: start;
-}
-.source-list-panel,
-.resource-list-panel {
-  min-height: 680px;
-  overflow: hidden;
-}
-.panel-heading,
-.detail-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 20px;
-  border-bottom: 1px solid var(--border);
-}
-.panel-heading h2,
-.resource-toolbar h2 {
-  margin: 4px 0 0;
-  font-size: 18px;
-}
-.panel-heading h2 span,
-.compact-heading h2 span {
+  border: none;
+  background: transparent;
   color: var(--muted);
   font-size: 13px;
   font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
-.eyebrow {
-  color: var(--muted);
-  font-size: 10px;
+
+.nav-tab-item.active {
+  background: var(--surface);
+  color: var(--el-color-primary);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
-.source-actions {
+
+/* 视图 A：工作流布局 */
+.workflow-orchestrator-layout {
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.workflow-sidebar {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.sidebar-top {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-cards {
+  padding: 8px;
   display: flex;
-  gap: 8px;
-  padding: 16px 20px 4px;
+  flex-direction: column;
+  gap: 6px;
 }
-.source-search,
-.resource-search,
-.dialog-search {
-  margin: 12px 20px;
-  width: calc(100% - 40px);
-}
-.source-list,
-.resource-list {
-  padding: 4px 10px 10px;
-}
-.source-row,
-.resource-row,
-.load-row {
+
+.wf-selector-card {
   display: flex;
-  width: 100%;
-  gap: 10px;
-  align-items: center;
-  padding: 12px 10px;
+  flex-direction: column;
+  padding: 12px;
+  border-radius: 8px;
   border: 1px solid transparent;
-  border-radius: 7px;
   background: transparent;
-  color: inherit;
   text-align: left;
   cursor: pointer;
+  color: inherit;
+  transition: all 0.12s ease;
+  width: 100%;
 }
-.source-row:hover,
-.resource-row:hover,
-.load-row:hover {
-  background: #f8fafc;
+
+.wf-selector-card:hover {
+  background: var(--el-fill-color-light);
   border-color: var(--border);
 }
-.source-row.selected,
-.resource-row.selected {
-  background: #eff6ff;
-  border-color: #93c5fd;
+
+.wf-selector-card.selected {
+  background: color-mix(in srgb, var(--el-color-primary) 6%, var(--surface));
+  border-color: color-mix(in srgb, var(--el-color-primary) 35%, transparent);
 }
-.source-icon,
-.large-source-icon {
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  border-radius: 7px;
-  background: #f1f5f9;
+
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
-.source-icon {
-  width: 30px;
-  height: 30px;
+
+.card-head strong {
+  font-size: 13px;
 }
-.large-source-icon {
-  width: 42px;
-  height: 42px;
-  background: #eff6ff;
+
+.cron-pill {
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--el-fill-color);
+  color: var(--muted);
 }
-.source-row-main,
-.resource-row-main {
-  display: grid;
-  min-width: 0;
-  flex: 1;
-  gap: 3px;
+
+.card-desc {
+  margin: 4px 0 8px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
-.source-row-title {
+
+.card-badges {
   display: flex;
   gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.tag-accent {
+  background: #dbeafe;
+  color: #1d4ed8;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 10px;
+}
+
+/* 主编排流主干 */
+.pipeline-main-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.pipeline-header-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 18px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.pipeline-header-card h2 {
+  margin: 2px 0 0;
+  font-size: 20px;
+}
+
+/* 4 阶段通用卡片 */
+.stage-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 24px;
+}
+
+.stage-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.stage-title-wrap {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.stage-index {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: var(--el-fill-color);
+  color: var(--el-text-color-primary);
+  font-weight: 700;
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+}
+
+.stage-title-wrap h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.stage-title-wrap p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.stage-head-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* 4 步骤流程导航栏 (Progressive Step Nav with Vue Router) */
+.pipeline-step-nav {
+  display: flex;
   align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow-x: auto;
+}
+
+.step-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.step-nav-btn:hover {
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-primary);
+}
+
+.step-nav-btn.active {
+  background: color-mix(in srgb, var(--el-color-primary) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--el-color-primary) 30%, transparent);
+  color: var(--el-color-primary);
+}
+
+.step-num {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--el-fill-color);
+  color: var(--muted);
+}
+
+.step-nav-btn.active .step-num {
+  background: var(--el-color-primary);
+  color: #fff;
+}
+
+.step-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.step-text strong {
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.step-text small {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.step-arrow {
+  color: var(--border);
+  font-size: 12px;
+  user-select: none;
+}
+
+.step-nav-extra {
+  margin-left: auto;
+}
+
+.btn-all-overview {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--el-fill-color-light);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-all-overview:hover,
+.btn-all-overview.active {
+  border-color: var(--el-color-primary);
+  color: var(--el-color-primary);
+}
+
+.step-footer-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* 阶段 1：数据源卡片样式 (素雅中性无彩光) */
+.sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.source-row-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  transition: all 0.15s ease;
+}
+
+.source-row-card:hover {
+  border-color: var(--el-border-color);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.source-main-info {
+  flex: 1;
   min-width: 0;
 }
-.source-row-title strong,
-.source-row-meta,
-.local-mark {
+
+.source-top-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.index-badge {
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--el-fill-color);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.collector-icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: var(--el-fill-color);
+  color: var(--muted);
+}
+
+.source-title {
+  font-size: 13px;
+}
+
+/* 纯净素雅的中性标签体系 (彻底告别五颜六色视觉疲劳) */
+.tag-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--el-fill-color-light);
+  color: var(--muted);
+}
+
+.tag-status.linked {
+  color: var(--el-text-color-regular);
+}
+
+.tag-status.linked .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--el-color-primary);
+}
+
+.tag-status.detached {
+  color: var(--muted);
+}
+
+.tag-status.neutral {
+  color: var(--muted);
+}
+
+.source-details-summary {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.source-details-summary code {
+  font-family: ui-monospace, monospace;
+  color: var(--el-text-color-primary);
+}
+
+.source-hint-row {
+  margin-top: 6px;
+}
+
+.source-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* 排序移动按钮组 */
+.order-btn-group {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.order-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  transition: all 0.12s ease;
+}
+
+.order-btn:hover:not(:disabled) {
+  background: var(--el-fill-color);
+  color: var(--el-color-primary);
+}
+
+.order-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.order-btn:first-child {
+  border-right: 1px solid var(--border);
+}
+
+/* 阶段 2：并行 AI 分析网格 */
+.analysis-tasks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 12px;
+}
+
+.analysis-task-card {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--el-fill-color-light);
+}
+
+.task-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.task-id-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.task-tag-mono {
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  color: var(--muted);
+}
+
+.task-name-input {
+  max-width: 160px;
+}
+
+.form-row .field-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+/* 阶段 3：汇聚汇总 */
+.fanin-config-body {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--el-fill-color-light);
+}
+
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+/* 阶段 4：渠道分发卡片 */
+.channel-selection-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.channel-option-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.channel-option-card:hover {
+  border-color: var(--el-color-primary);
+}
+
+.channel-option-card.selected {
+  border-color: var(--el-color-primary);
+  background: color-mix(in srgb, var(--el-color-primary) 5%, var(--surface));
+}
+
+.chan-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: var(--el-fill-color);
+  color: var(--el-color-primary);
+}
+
+.chan-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.chan-info strong {
+  display: block;
+  font-size: 13px;
+}
+
+.chan-target-mono {
+  display: block;
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+  color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.source-row-title strong {
-  font-size: 13px;
+
+/* 视图 B：资源配置中心 (Axonhub 风格) */
+.resource-center-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
-.source-row-meta,
-.local-mark {
+
+.resource-intro-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.resource-intro-bar h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.central-source-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 16px;
+}
+
+.axon-source-card {
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.axon-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.axon-source-id {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.axon-avatar {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--el-color-primary) 10%, transparent);
+  color: var(--el-color-primary);
+}
+
+.axon-source-id strong {
+  display: block;
+  font-size: 14px;
+}
+
+.source-key-tag {
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+  color: var(--muted);
+}
+
+.axon-desc {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 12px;
+  height: 36px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.axon-props-box {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--el-fill-color-light);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.axon-props-box .k {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.axon-props-box .v {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-impact-box {
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+  margin-bottom: 12px;
+}
+
+.impact-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.impact-wf-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.impact-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--el-color-primary) 8%, var(--surface));
+  color: var(--el-color-primary);
+  border: 1px solid color-mix(in srgb, var(--el-color-primary) 20%, transparent);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.impact-tag:hover {
+  background: var(--el-color-primary);
+  color: #fff;
+}
+
+.axon-card-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+/* 抽屉与弹窗组件 */
+.picker-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+
+.picker-item:hover {
+  border-color: var(--el-color-primary);
+}
+
+.drawer-form-content {
+  padding-bottom: 70px;
+}
+
+.banner-alert {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+}
+
+.banner-alert.info {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+}
+
+.banner-alert.warning {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #92400e;
+}
+
+.banner-alert p {
+  margin: 3px 0 0;
+  font-size: 12px;
+}
+
+.form-section {
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sec-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+  margin-bottom: 10px;
+}
+
+.drawer-footer-bar {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  width: min(94vw, 760px);
+  padding: 14px 24px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  z-index: 10;
+}
+
+/* 工作流采集高级参数折叠栏 */
+.workflow-advanced-params-bar {
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+
+.params-bar-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+}
+
+.params-bar-summary:hover {
+  background: var(--el-fill-color);
+}
+
+.badge-param {
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.btn-toggle-subtle {
+  border: none;
+  background: transparent;
+  font-size: 11px;
+  color: var(--el-color-primary);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.params-bar-content {
+  padding: 12px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* 采集源行卡片：高级特性指示徽标与展开面板 */
+.adv-feature-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: color-mix(in srgb, #8b5cf6 10%, transparent);
+  color: #7c3aed;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.source-advanced-preview-wrap {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+
+.toggle-inline-adv-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--el-color-primary);
+  cursor: pointer;
+  padding: 0;
+}
+
+.toggle-inline-adv-btn:hover {
+  text-decoration: underline;
+}
+
+.inline-adv-panel {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.adv-sec-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.extractions-pill-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.extraction-pill-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.extraction-pill-item .target-field {
+  color: var(--el-color-primary);
+}
+
+.extraction-pill-item .sep {
+  color: var(--muted);
+}
+
+.extraction-pill-item .source-expr {
+  color: var(--el-text-color-primary);
+  background: var(--el-fill-color);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.extraction-pill-item .type-tag {
+  font-size: 10px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.extraction-pill-item .fallback-tag {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.policy-badges-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.badge-policy {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.badge-policy strong {
+  color: var(--el-text-color-primary);
+}
+
+/* Axonhub 全局数据源卡片高级特性 */
+.axon-adv-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.adv-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 4px;
+  background: var(--el-fill-color);
+  border: 1px solid var(--border);
   color: var(--muted);
   font-size: 11px;
 }
-.local-mark {
-  color: #b45309;
+
+.adv-pill.subtle {
+  background: var(--el-fill-color);
+  color: var(--muted);
 }
-.panel-footnote {
-  padding: 12px 20px;
-  margin: 0;
-  border-top: 1px solid var(--border);
+
+.adv-pill.filter {
+  background: var(--el-fill-color);
+  color: var(--muted);
+}
+
+/* 抽屉分段导航控制 */
+.drawer-segmented-nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 4px;
+  background: var(--el-fill-color-dark);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.seg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
   color: var(--muted);
   font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
-.status-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  margin-right: 5px;
-  border-radius: 50%;
-  background: #22c55e;
+
+.seg-btn.active {
+  background: var(--surface);
+  color: var(--el-color-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
-.detail-heading {
-  padding: 24px;
+
+.seg-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: #7c3aed;
+  color: #fff;
+  font-weight: 700;
 }
-.detail-identity {
+
+.subtle-guide-box {
   display: flex;
-  gap: 12px;
-  min-width: 0;
-  align-items: center;
-}
-.detail-identity h2 {
-  margin: 3px 0 0;
-  font-size: 20px;
-  overflow-wrap: anywhere;
-}
-.detail-identity p {
-  margin: 4px 0 0;
-  font-size: 12px;
-}
-.detail-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  justify-content: flex-end;
-}
-.sharing-banner,
-.sync-callout {
-  padding: 13px 16px;
-  margin: 18px 22px 0;
-}
-.sharing-banner.detached {
-  border-color: #f6c453;
-  background: #fffbeb;
-  color: #92400e;
-}
-.sharing-banner.detached .sharing-icon {
-  background: #fef3c7;
-  color: #b45309;
-}
-.sharing-banner .el-button {
-  margin-left: auto;
-  flex-shrink: 0;
-}
-.editor-section,
-.detail-section {
-  padding: 22px;
-  border-bottom: 1px solid var(--border);
-}
-.section-title-row,
-.dialog-rule-header {
-  display: flex;
-  align-items: flex-start;
   justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--el-color-primary) 6%, var(--surface));
+  border: 1px dashed color-mix(in srgb, var(--el-color-primary) 30%, transparent);
+  border-radius: 8px;
+  cursor: pointer;
+  margin-top: 14px;
+  transition: all 0.15s ease;
+}
+
+.subtle-guide-box:hover {
+  background: color-mix(in srgb, var(--el-color-primary) 10%, var(--surface));
+}
+
+/* 抽屉高级设置：预设与抽取规则编辑器 */
+.preset-buttons-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.preset-btn {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--el-text-color-primary);
+  transition: all 0.12s ease;
+}
+
+.preset-btn:hover {
+  border-color: var(--el-color-primary);
+  color: var(--el-color-primary);
+}
+
+.extractions-editor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.extraction-edit-card {
+  padding: 10px 12px;
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.card-line-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.badge-idx {
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.target-name-input {
+  max-width: 180px;
+}
+
+.type-select {
+  flex: 1;
+}
+
+.card-line-bottom {
+  display: flex;
+  gap: 10px;
+}
+
+.empty-extraction-hint {
+  padding: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+.raw-json-editor-wrap {
+  margin-top: 8px;
+  padding: 12px;
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+/* 运行模拟器 */
+.run-dialog-body {
+  display: flex;
+  flex-direction: column;
   gap: 16px;
 }
-.section-title-row h3,
-.dialog-rule-header h3 {
-  margin: 0;
-  font-size: 15px;
-}
-.section-title-row p,
-.dialog-rule-header p {
-  margin: 4px 0 0;
-  font-size: 12px;
-  line-height: 1.55;
-}
-.form-grid,
-.rule-form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 16px;
-  margin-top: 16px;
-}
-.field-options {
+
+.pipeline-progress-steps {
   display: flex;
-  flex-wrap: wrap;
-  gap: 2px 16px;
-}
-.span-2 {
-  grid-column: 1 / -1;
-}
-.el-form-item {
-  margin-bottom: 16px;
-}
-.inline-setting {
-  display: flex;
-  gap: 10px;
   align-items: center;
+  justify-content: space-between;
   padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
+  background: var(--el-fill-color-light);
+  border-radius: 8px;
 }
-.inline-setting > div {
-  display: grid;
-  gap: 3px;
-}
-.inline-setting span {
-  color: var(--muted);
-  font-size: 12px;
-}
-.rules-section {
-  border-bottom: 0;
-}
-.advanced-editor {
-  margin-top: 16px;
-}
-.json-input :deep(textarea),
-.json-preview {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.55;
-}
-.advanced-footer {
+
+.mini-step {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 6px;
-  color: var(--muted);
-  font-size: 12px;
-}
-.rule-summary {
-  display: flex;
-  gap: 7px;
-  align-items: center;
-  padding: 10px 12px;
-  margin-top: 14px;
-  border-radius: 6px;
-  background: #f8fafc;
-  color: var(--muted);
-  font-size: 12px;
-}
-.editor-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 16px 22px;
-  border-top: 1px solid var(--border);
-}
-.save-hint {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.45;
-}
-.collection-note {
-  padding: 14px 16px;
-  margin-top: 18px;
-  border-color: var(--border);
-  background: var(--surface);
-  color: inherit;
-}
-.collection-note p {
-  color: var(--muted);
-}
-.resource-toolbar {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 18px 20px;
-  margin-bottom: 18px;
-}
-.resource-toolbar p {
-  max-width: 640px;
-  margin: 5px 0 0;
-  font-size: 12px;
-}
-.resource-toolbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-.resource-toolbar-actions .resource-search {
-  width: 190px;
-  margin: 0;
-}
-.resource-filter {
-  width: 130px;
-}
-.resource-list-panel {
-  min-height: 620px;
-}
-.compact-heading {
-  padding: 18px 20px;
-}
-.resource-detail-panel {
-  overflow: hidden;
-}
-.sync-callout {
-  margin-top: 20px;
-}
-.compact-callout {
-  margin: 0 0 18px;
-}
-.metric-strip {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 20px;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-}
-.metric-strip > div {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-  padding: 14px 22px;
-  border-right: 1px solid var(--border);
-}
-.metric-strip > div:last-child {
-  border-right: 0;
-}
-.metric-strip span,
-.resource-facts span {
-  color: var(--muted);
-  font-size: 12px;
-}
-.metric-strip strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13px;
-}
-.resource-facts {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 16px;
-}
-.resource-facts > div {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-}
-.resource-facts strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.usage-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 16px;
-}
-.usage-chip {
-  display: inline-flex;
   gap: 6px;
-  align-items: center;
-  padding: 6px 9px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: #334155;
-  font-size: 12px;
-}
-.json-preview {
-  max-height: 230px;
-  margin: 16px 0 0;
-  padding: 14px;
-  overflow: auto;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: #f8fafc;
-  color: #334155;
-}
-.dialog-intro {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: 12px;
-  margin-bottom: 16px;
-  border-radius: 6px;
-  background: #f8fafc;
-}
-.dialog-intro p,
-.dialog-description {
-  margin: 2px 0;
+  font-size: 11px;
   color: var(--muted);
-  font-size: 12px;
-  line-height: 1.55;
 }
-.dialog-form {
-  margin-top: 0;
+
+.mini-step.done {
+  color: #10b981;
+  font-weight: 600;
 }
-.dialog-rule-header {
-  align-items: center;
-  padding-top: 12px;
-  margin: 2px 0 8px;
-  border-top: 1px solid var(--border);
+
+.mini-line {
+  flex: 1;
+  height: 2px;
+  background: var(--border);
+  margin: 0 8px;
 }
-.dialog-rules {
-  margin-top: 8px;
-}
-.load-list {
-  max-height: 390px;
-  padding: 4px 8px;
-  overflow: auto;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-}
-.load-row {
-  border-bottom: 1px solid var(--border);
-  border-radius: 0;
-}
-.load-row:last-child {
-  border-bottom: 0;
-}
-@media (max-width: 1100px) {
-  .collection-layout,
-  .resource-layout {
-    grid-template-columns: 1fr;
-  }
-  .source-list-panel,
-  .resource-list-panel {
-    min-height: 0;
-  }
-  .source-list,
-  .resource-list {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .panel-footnote {
-    grid-column: 1 / -1;
-  }
-}
-@media (max-width: 720px) {
-  .view-switcher {
-    width: 100%;
-  }
-  .view-switcher :deep(.el-radio-button) {
-    flex: 1;
-  }
-  .workflow-bar,
-  .resource-toolbar {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .workflow-picker {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 7px;
-  }
-  .workflow-select {
-    width: 100%;
-  }
-  .workflow-stats {
-    flex-wrap: wrap;
-    gap: 8px 14px;
-  }
-  .source-list,
-  .resource-list {
-    grid-template-columns: 1fr;
-  }
-  .panel-heading,
-  .detail-heading {
-    padding: 16px;
-    flex-direction: column;
-  }
-  .detail-actions {
-    width: 100%;
-    justify-content: flex-start;
-  }
-  .sharing-banner,
-  .sync-callout {
-    margin-right: 16px;
-    margin-left: 16px;
-  }
-  .sharing-banner {
-    flex-wrap: wrap;
-  }
-  .sharing-banner .el-button {
-    margin-left: 40px;
-  }
-  .editor-section,
-  .detail-section {
-    padding: 16px;
-  }
-  .section-title-row,
-  .dialog-rule-header {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .form-grid,
-  .rule-form-grid {
-    grid-template-columns: 1fr;
-    gap: 0;
-  }
-  .span-2 {
-    grid-column: auto;
-  }
-  .metric-strip,
-  .resource-facts {
-    grid-template-columns: 1fr;
-  }
-  .metric-strip > div {
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .metric-strip > div:last-child {
-    border-bottom: 0;
-  }
-  .resource-toolbar-actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .resource-toolbar-actions .resource-search,
-  .resource-filter {
-    width: 100%;
-  }
-  .editor-footer {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .advanced-footer {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-}
-:global(.dark) .demo-alert,
-:global(.dark) .sync-callout,
-:global(.dark) .sharing-banner {
-  border-color: #1d4ed8;
-  background: #172554;
-  color: #dbeafe;
-}
-:global(.dark) .demo-alert p,
-:global(.dark) .sync-callout p,
-:global(.dark) .sharing-banner p {
-  color: #cbd5e1;
-}
-:global(.dark) .sharing-banner.detached {
-  border-color: #92400e;
-  background: #422006;
-  color: #fde68a;
-}
-:global(.dark) .source-row:hover,
-:global(.dark) .resource-row:hover,
-:global(.dark) .load-row:hover,
-:global(.dark) .source-row.selected,
-:global(.dark) .resource-row.selected {
-  background: #172554;
-}
-:global(.dark) .source-icon,
-:global(.dark) .large-source-icon,
-:global(.dark) .dialog-intro,
-:global(.dark) .rule-summary,
-:global(.dark) .json-preview {
+
+.run-logs-terminal {
   background: #0f172a;
+  color: #38bdf8;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  padding: 14px;
+  border-radius: 8px;
+  height: 240px;
+  overflow-y: auto;
 }
-:global(.dark) .json-preview {
-  color: #cbd5e1;
+
+.log-line {
+  line-height: 1.6;
+}
+
+.blink {
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+:global(.dark) .tag-status {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+:global(.dark) .banner-alert.info {
+  background: #1e293b;
+  border-color: #334155;
+  color: #93c5fd;
+}
+
+:global(.dark) .banner-alert.warning {
+  background: #1e293b;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
+:global(.dark) .extraction-pill-item {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+:global(.dark) .extraction-pill-item .type-tag {
+  background: var(--el-fill-color);
+  color: var(--muted);
+}
+
+:global(.dark) .extraction-edit-card,
+:global(.dark) .inline-adv-panel,
+:global(.dark) .raw-json-editor-wrap {
+  background: var(--surface);
+}
+
+:global(.dark) .adv-pill {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--muted);
+}
+
+/* 加载已有数据源弹窗样式 */
+.load-source-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.dialog-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.load-source-cards-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.load-source-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  transition: all 0.15s ease;
+}
+
+.load-source-card:hover {
+  border-color: var(--el-color-primary);
+  background: color-mix(in srgb, var(--el-color-primary) 3%, var(--surface));
+}
+
+.load-source-card.is-added {
+  opacity: 0.75;
+  background: var(--el-fill-color-light);
+}
+
+.load-source-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.load-source-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.badge-collector {
+  font-size: 10px;
+  font-weight: 700;
+  font-family: ui-monospace, monospace;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--el-fill-color);
+  color: var(--muted);
+}
+
+.badge-ext {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, #8b5cf6 15%, transparent);
+  color: #7c3aed;
+  font-weight: 600;
+}
+
+.badge-filter {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, #f59e0b 15%, transparent);
+  color: #b45309;
+  font-weight: 600;
+}
+
+.load-source-desc {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.load-source-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.load-source-meta code {
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+  background: var(--el-fill-color);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.load-source-action {
+  flex-shrink: 0;
+}
+
+:global(.dark) .load-source-card.is-added {
+  background: var(--surface);
+  opacity: 0.6;
 }
 </style>

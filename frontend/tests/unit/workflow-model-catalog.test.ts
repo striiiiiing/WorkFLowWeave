@@ -72,13 +72,17 @@ it('updates both model selectors on return without replacing the workflow draft,
     'ai',
     'sources',
     'channels',
+    'workflows',
     'ai',
+    'sources',
+    'channels',
+    'workflows',
   ])
   expect(wrapper.text()).not.toContain('刷新模型列表')
   wrapper.unmount()
   wrappers.length = 0
   window.dispatchEvent(new Event('focus'))
-  expect(resourcesApi.list).toHaveBeenCalledTimes(4)
+  expect(resourcesApi.list).toHaveBeenCalledTimes(8)
 })
 
 it('shows catalog update failures and retries without losing edits', async () => {

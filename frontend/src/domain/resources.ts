@@ -1,15 +1,13 @@
-import type { AIConfig, ChannelConfig, JsonObject, SetterTemplate, SourceConfig } from '@/types'
-export type EditableKind = 'sources' | 'setters' | 'ai' | 'channels'
-export type EditableResource = SourceConfig | SetterTemplate | AIConfig | ChannelConfig
+import type { AIConfig, ChannelConfig, JsonObject, SourceConfig, WorkflowDefinition } from '@/types'
+export type EditableKind = 'sources' | 'ai' | 'channels'
+export type EditableResource = SourceConfig | AIConfig | ChannelConfig
 export const resourceNames: Record<EditableKind, string> = {
   sources: '数据源',
-  setters: '处理模板',
   ai: '供应商渠道',
   channels: '通知渠道',
 }
 export const resourceKinds = [
   { key: 'sources', label: '数据源', icon: 'database' },
-  { key: 'setters', label: '处理模板', icon: 'settings' },
   { key: 'ai', label: '供应商渠道', icon: 'bot' },
   { key: 'channels', label: '通知渠道', icon: 'mail' },
 ] as const
@@ -32,6 +30,8 @@ export function createResource(kind: EditableKind): EditableResource {
     sources: (): SourceConfig => ({
       id: crypto.randomUUID(),
       collector: '',
+      display_name: '',
+      description: '',
       enabled: true,
       options: {},
       setters: {},
@@ -42,7 +42,6 @@ export function createResource(kind: EditableKind): EditableResource {
       on_empty: 'notice',
       on_filtered_empty: 'notice',
     }),
-    setters: (): SetterTemplate => ({ id: crypto.randomUUID(), collector: '', setters: {} }),
     ai: (): AIConfig => ({
       id: crypto.randomUUID(),
       provider: 'openai_compatible_api',
@@ -59,7 +58,22 @@ export function createResource(kind: EditableKind): EditableResource {
       options: {},
       timeout: 30,
       enabled: true,
+      agent_enabled: false,
     }),
   }
   return factories[kind]()
+}
+
+export function sourceName(source: SourceConfig): string {
+  return source.display_name || source.id
+}
+
+export function sourceUsage(sourceId: string, workflows: WorkflowDefinition[]) {
+  return workflows
+    .filter((workflow) => workflow.sources.includes(sourceId))
+    .map((workflow) => ({
+      id: workflow.id,
+      name: workflow.name || workflow.id,
+      detached: !!workflow.source_overrides[sourceId]?.source,
+    }))
 }

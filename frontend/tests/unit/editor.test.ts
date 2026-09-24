@@ -26,11 +26,9 @@ describe('editor task regressions', () => {
   })
 
   it('generates distinct UUID resource IDs and includes counts for new workflows', () => {
-    const values = ['sources', 'setters', 'ai', 'channels'].map((kind) =>
-      createResource(kind as 'sources'),
-    )
+    const values = ['sources', 'ai', 'channels'].map((kind) => createResource(kind as 'sources'))
     values.push(createResource('sources'))
-    expect(new Set(values.map((item) => item.id)).size).toBe(5)
+    expect(new Set(values.map((item) => item.id)).size).toBe(4)
     for (const item of values) expect(item.id).toMatch(/^[0-9a-f-]{36}$/)
     expect(createWorkflow().include_counts).toBe(true)
   })
@@ -146,7 +144,11 @@ describe('editor task regressions', () => {
     await wrapper.find('[aria-label="上移 second"]').trigger('click')
     expect(workflow.value.sources).toEqual(['second', 'first'])
     expect(workflow.value.source_overrides.first.options).toEqual({ limit: 3 })
-    wrapper.findComponent(ElSelect).vm.$emit('update:modelValue', ['second'])
+    await wrapper
+      .get('article[aria-label="数据源 first"]')
+      .findAll('button')
+      .find((button) => button.text() === '移除')!
+      .trigger('click')
     await flushPromises()
     expect(workflow.value.source_overrides).toEqual({})
     wrapper.unmount()
