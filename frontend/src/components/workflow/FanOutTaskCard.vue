@@ -2,7 +2,7 @@
 import { reactive } from 'vue'
 import type { WorkflowDefinition, AIConfig, AnalysisTask } from '@/types'
 import { idRule } from '@/domain/forms'
-import SectionCard from '@/components/common/SectionCard.vue'
+import SectionCard from '@/shared/ui/SectionCard.vue'
 import AIModelSelect from './AIModelSelect.vue'
 const model = defineModel<WorkflowDefinition>({ required: true })
 defineProps<{

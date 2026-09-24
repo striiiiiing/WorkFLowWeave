@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { workflowsApi } from '@/api/workflows'
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -12,10 +13,10 @@ import {
   type EditableResource,
 } from '@/domain/resources'
 import type { SourceConfig } from '@/types'
-import { useQuery } from '@/composables/useQuery'
-import { useAsyncTask } from '@/composables/useAsyncTask'
-import PageHeader from '@/components/common/PageHeader.vue'
-import AppIcon from '@/components/icons/AppIcon.vue'
+import { useQuery } from '@/shared/async/useQuery'
+import { useAsyncTask } from '@/shared/async/useAsyncTask'
+import PageHeader from '@/shared/ui/PageHeader.vue'
+import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 import ResourceEditor from '@/components/resources/ResourceEditor.vue'
 import SourceEditorDrawer from '@/components/resources/SourceEditorDrawer.vue'
 import SourceSummary from '@/components/resources/SourceSummary.vue'
@@ -38,7 +39,7 @@ const {
   refresh: refreshWorkflows,
 } = useQuery(
   (signal) =>
-    kind.value === 'sources' ? resourcesApi.list('workflows', signal) : Promise.resolve([]),
+    kind.value === 'sources' ? workflowsApi.list(signal) : Promise.resolve([]),
   [kind],
 )
 const action = useAsyncTask()

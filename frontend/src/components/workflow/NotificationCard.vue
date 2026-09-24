@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { WorkflowDefinition, ChannelConfig } from '@/types'
-import { optionSchema } from '@/domain/capabilities'
+import { optionSchema } from '@/shared/schema/capabilities'
 import { systemApi } from '@/api/system'
-import { useQuery } from '@/composables/useQuery'
-import ParameterField from '@/components/common/ParameterField.vue'
-import SectionCard from '@/components/common/SectionCard.vue'
+import { useQuery } from '@/shared/async/useQuery'
+import ParameterField from '@/shared/schema/ParameterField.vue'
+import SectionCard from '@/shared/ui/SectionCard.vue'
 const model = defineModel<WorkflowDefinition>({ required: true })
 const props = defineProps<{ channels: ChannelConfig[]; advanced?: boolean }>()
 const {

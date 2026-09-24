@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { systemApi } from '@/api/system'
-import { useQuery } from '@/composables/useQuery'
-import { useAsyncTask } from '@/composables/useAsyncTask'
+import { useQuery } from '@/shared/async/useQuery'
+import { useAsyncTask } from '@/shared/async/useAsyncTask'
 import type { CapabilityDescription } from '@/types'
-import PageHeader from '@/components/common/PageHeader.vue'
+import PageHeader from '@/shared/ui/PageHeader.vue'
 const { data, pending, error, refresh } = useQuery((signal) => systemApi.plugins(signal))
 const action = useAsyncTask()
 const filter = ref('all')

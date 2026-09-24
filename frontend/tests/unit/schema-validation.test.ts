@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { createFieldRule } from '@/adapters/schemaValidation'
-import { ParameterInput } from '@/domain/parameters'
+import { createFieldRule } from '@/shared/schema/schemaValidation'
+import { ParameterInput } from '@/shared/schema/parameters'
 import type { JsonObject } from '@/types'
 
 describe('JSON Schema validation used by parameter controls', () => {

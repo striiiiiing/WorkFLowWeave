@@ -7,12 +7,12 @@ import { createFanIn, createWorkflow } from '@/domain/workflow'
 import SourceStepCard from '@/components/workflow/SourceStepCard.vue'
 import FanInCard from '@/components/workflow/FanInCard.vue'
 import DashboardView from '@/views/DashboardView.vue'
-import { resourcesApi } from '@/api/resources'
+import { workflowsApi } from '@/api/workflows'
 import { runsApi } from '@/api/runs'
 import type { CapabilityDescription, HealthReport } from '@/types'
 const { health, plugins } = vi.hoisted(() => ({ health: vi.fn(), plugins: vi.fn() }))
 vi.mock('@/api/system', () => ({ systemApi: { health, plugins } }))
-vi.mock('@/api/resources', () => ({ resourcesApi: { list: vi.fn().mockResolvedValue([]) } }))
+vi.mock('@/api/workflows', () => ({ workflowsApi: { list: vi.fn().mockResolvedValue([]) } }))
 vi.mock('@/api/runs', () => ({ runsApi: { list: vi.fn().mockResolvedValue([]) } }))
 const capability = (kind: 'collector' | 'channel', name: string): CapabilityDescription => ({
   kind,
@@ -74,7 +74,7 @@ it('groups plugin capabilities and reports failed discovery without claiming con
   ).toBe('待确认')
 })
 it('shows internal monitoring only in dashboard advanced mode', async () => {
-  vi.mocked(resourcesApi.list).mockResolvedValue([])
+  vi.mocked(workflowsApi.list).mockResolvedValue([])
   vi.mocked(runsApi.list).mockResolvedValue([])
   health.mockResolvedValue(report())
   plugins.mockResolvedValue([capability('collector', 'one')])

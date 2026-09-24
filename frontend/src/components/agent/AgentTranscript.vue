@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import type { AgentEvent, AgentTool } from '@/api/agents'
-import ReportText from '@/components/report/ReportText.vue'
+import ReportText from '@/shared/ui/ReportText.vue'
 import AgentToolCall from './AgentToolCall.vue'
 import { transcriptRows, type TranscriptRow } from './transcript'
-import AppIcon from '@/components/icons/AppIcon.vue'
+import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 import { ElMessage } from 'element-plus'
 
 const props = defineProps<{

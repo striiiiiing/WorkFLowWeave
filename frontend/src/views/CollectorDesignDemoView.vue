@@ -2,8 +2,8 @@
 import { computed, ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import AppIcon from '@/components/icons/AppIcon.vue'
-import PageHeader from '@/components/common/PageHeader.vue'
+import AppIcon from '@/shared/ui/icons/AppIcon.vue'
+import PageHeader from '@/shared/ui/PageHeader.vue'
 
 // ==========================================
 // 1. 类型定义

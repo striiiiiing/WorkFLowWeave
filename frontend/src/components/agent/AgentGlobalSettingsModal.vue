@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { agentsApi, type AgentConfig } from '@/api/agents'
-import { useQuery } from '@/composables/useQuery'
-import { useAsyncTask } from '@/composables/useAsyncTask'
-import AppIcon from '@/components/icons/AppIcon.vue'
+import { useQuery } from '@/shared/async/useQuery'
+import { useAsyncTask } from '@/shared/async/useAsyncTask'
+import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 import { ElMessage } from 'element-plus'
 import AgentModelSelect from './AgentModelSelect.vue'
 import {
@@ -251,7 +251,7 @@ async function toggleTool(plugin: string, enabled: boolean) {
               <el-switch
                 :model-value="tool.enabled"
                 :disabled="toolsAction.pending.value"
-                @change="(val) => toggleTool(tool.plugin, Boolean(val))"
+                @change="(val: string | number | boolean) => toggleTool(tool.plugin, Boolean(val))"
               />
             </div>
           </div>

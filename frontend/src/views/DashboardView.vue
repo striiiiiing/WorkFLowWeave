@@ -1,12 +1,12 @@
 <script setup lang="ts">
+import { workflowsApi } from '@/api/workflows'
 import { computed, ref } from 'vue'
 import { pluginHealthRows } from '@/domain/pluginHealth'
-import { resourcesApi } from '@/api/resources'
 import { runsApi } from '@/api/runs'
 import { systemApi } from '@/api/system'
-import { useQuery } from '@/composables/useQuery'
-import PageHeader from '@/components/common/PageHeader.vue'
-import SectionCard from '@/components/common/SectionCard.vue'
+import { useQuery } from '@/shared/async/useQuery'
+import PageHeader from '@/shared/ui/PageHeader.vue'
+import SectionCard from '@/shared/ui/SectionCard.vue'
 import SessionTable from '@/components/common/SessionTable.vue'
 
 const advanced = ref(false)
@@ -21,7 +21,7 @@ function tracked<T>(key: string, fetcher: (signal: AbortSignal) => Promise<T>) {
 }
 
 const workflowsQuery = useQuery(
-  tracked('workflows', (signal) => resourcesApi.list('workflows', signal)),
+  tracked('workflows', (signal) => workflowsApi.list(signal)),
 )
 const sessionsQuery = useQuery(tracked('sessions', (signal) => runsApi.list({ limit: 5 }, signal)))
 const pluginsQuery = useQuery(tracked('plugins', (signal) => systemApi.plugins(signal)))

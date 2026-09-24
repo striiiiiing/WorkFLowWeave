@@ -2,7 +2,7 @@
 import { computed, ref, toRaw, watch } from 'vue'
 import { ElMessage, type FormInstance } from 'element-plus'
 import { resourcesApi } from '@/api/resources'
-import { useAsyncTask } from '@/composables/useAsyncTask'
+import { useAsyncTask } from '@/shared/async/useAsyncTask'
 import { createResource, generatedResourceId } from '@/domain/resources'
 import { idRule } from '@/domain/forms'
 import type { AIConfig } from '@/types'

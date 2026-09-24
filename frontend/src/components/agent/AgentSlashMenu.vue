@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import AppIcon from '@/components/icons/AppIcon.vue'
-import type { IconName } from '@/components/icons/registry'
+import AppIcon from '@/shared/ui/icons/AppIcon.vue'
+import type { IconName } from '@/shared/ui/icons/registry'
 
 export interface SlashCommand {
   key: string

@@ -1,20 +1,11 @@
 /**
- * API 客户端单元测试：用受控 fetch 响应验证请求、响应解析和结构化错误传播；不启动真实后端。
+ * API 客户端单元测试：用受控 Axios adapter 响应验证请求、响应解析和结构化错误传播；不启动真实后端。
  */
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { ApiError, errorMessage } from '@/api/client'
-import { resourcesApi } from '@/api/resources'
-import { runsApi } from '@/api/runs'
-import { systemApi } from '@/api/system'
+import { createHttpHarness } from '../helpers/httpHarness'
+const { resourcesApi, workflowsApi, runsApi, systemApi, respond, respondText } = createHttpHarness()
 
-afterEach(() => vi.unstubAllGlobals())
-function respond(body: unknown, status = 200) {
-  const fetcher = vi
-    .fn()
-    .mockResolvedValue(new Response(status === 204 ? null : JSON.stringify(body), { status }))
-  vi.stubGlobal('fetch', fetcher)
-  return fetcher
-}
 describe('HTTP contract', () => {
   it('explains nested fields and numbered tasks in user language', () => {
     const error = new ApiError(422, {
@@ -33,16 +24,14 @@ describe('HTTP contract', () => {
     const fetcher = respond(null, 204)
     await expect(resourcesApi.delete('sources', 'source a')).resolves.toBeUndefined()
     expect(fetcher).toHaveBeenCalledWith(
-      '/api/sources/source%20a',
-      expect.objectContaining({ method: 'DELETE' }),
+      expect.objectContaining({ url: '/sources/source%20a', method: 'delete' }),
     )
   })
   it('requests stage content at an explicit immutable version', async () => {
     const fetcher = respond({ version: 7 })
     await runsApi.phase('run_1', 'aggregate', 7)
     expect(fetcher).toHaveBeenCalledWith(
-      '/api/sessions/run_1/phases/aggregate?version=7',
-      expect.any(Object),
+      expect.objectContaining({ url: '/sessions/run_1/phases/aggregate', params: { version: 7 } }),
     )
   })
   it('preserves declined cancellation responses', async () => {
@@ -73,7 +62,7 @@ describe('HTTP contract', () => {
       },
       422,
     )
-    const error = await resourcesApi.list('workflows').catch((cause) => cause)
+    const error = await workflowsApi.list().catch((cause) => cause)
     expect(error).toBeInstanceOf(ApiError)
     expect(errorMessage(error)).toBe('无效配置；分析任务：内容太少，请补充完整')
   })
@@ -137,7 +126,15 @@ describe('HTTP contract', () => {
     )
   })
   it('reads an unavailable health report from HTTP 503', async () => {
-    respond({ status: 'unavailable', accepting_runs: false, components: [] }, 503)
+    respond(
+      {
+        status: 'unavailable',
+        accepting_runs: false,
+        checked_at: '2026-09-24T00:00:00Z',
+        components: [],
+      },
+      503,
+    )
     expect((await systemApi.health()).status).toBe('unavailable')
   })
   it('does not accept 503 on ordinary data endpoints', async () => {
@@ -149,7 +146,7 @@ describe('HTTP contract', () => {
     ['<html>Bad Gateway</html>', 502],
     ['', 503],
   ])('preserves non-JSON HTTP errors (%s, %i)', async (body, status) => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, { status })))
+    respondText(body, status)
     const error = await systemApi.health().catch((cause) => cause)
     expect(error).toBeInstanceOf(ApiError)
     expect(error.status).toBe(status)
@@ -161,7 +158,7 @@ describe('HTTP contract', () => {
     await expect(systemApi.health()).rejects.toThrow('服务未就绪')
   })
   it('reports invalid successful JSON explicitly', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<html></html>')))
+    respondText('<html></html>')
     await expect(resourcesApi.list('sources')).rejects.toThrow('服务返回了无效 JSON（HTTP 200）')
   })
   it.each([null, { error: 'unexpected error format' }])(

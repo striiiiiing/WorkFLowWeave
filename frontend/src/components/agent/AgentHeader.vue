@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { AgentModel, AgentSession, ContextBudget } from '@/api/agents'
-import AppIcon from '@/components/icons/AppIcon.vue'
+import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 import { groupAgentModels } from '@/domain/agentModels'
 
 const props = defineProps<{

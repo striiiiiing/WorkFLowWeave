@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { agentsApi, type AgentConfig } from '@/api/agents'
-import { useQuery } from '@/composables/useQuery'
-import { useAsyncTask } from '@/composables/useAsyncTask'
+import { useQuery } from '@/shared/async/useQuery'
+import { useAsyncTask } from '@/shared/async/useAsyncTask'
 const emit = defineEmits<{ changed: [] }>()
 const query = useQuery((signal) => agentsApi.config(signal))
 const action = useAsyncTask()
@@ -122,7 +122,7 @@ function toggle(plugin: string, enabled: boolean) {
           :model-value="tool.enabled"
           :disabled="toolsAction.pending.value"
           :aria-label="`切换 ${tool.name}`"
-          @change="(value) => toggle(tool.plugin, Boolean(value))"
+          @change="(value: string | number | boolean) => toggle(tool.plugin, Boolean(value))"
         />
         <p>{{ tool.description }}</p>
         <pre>{{

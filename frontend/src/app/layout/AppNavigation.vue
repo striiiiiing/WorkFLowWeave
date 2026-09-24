@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { navigation } from '@/router/navigation'
-import AppIcon from '@/components/icons/AppIcon.vue'
+import { navigation } from '@/app/navigation'
+import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 defineProps<{ collapsed?: boolean }>()
 defineEmits<{ navigate: [] }>()
 const route = useRoute()

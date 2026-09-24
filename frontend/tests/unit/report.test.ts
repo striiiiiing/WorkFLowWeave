@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { runsApi } from '@/api/runs'
 import { parsePhase, unavailableText } from '@/domain/report'
 import PhaseReport from '@/components/report/PhaseReport.vue'
-import ReportText from '@/components/report/ReportText.vue'
+import ReportText from '@/shared/ui/ReportText.vue'
 import type { PhaseContent } from '@/types'
 
 vi.mock('@/api/runs', () => ({ runsApi: { phase: vi.fn() } }))

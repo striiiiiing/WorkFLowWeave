@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { runsApi, type SessionQuery } from '@/api/runs'
-import { useQuery } from '@/composables/useQuery'
+import { useQuery } from '@/shared/async/useQuery'
 import { sessionStates } from '@/domain/session'
-import PageHeader from '@/components/common/PageHeader.vue'
+import PageHeader from '@/shared/ui/PageHeader.vue'
 import SessionTable from '@/components/common/SessionTable.vue'
 import type { SessionStatus } from '@/types'
 const PAGE_SIZE = 20

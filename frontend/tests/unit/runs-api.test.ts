@@ -1,11 +1,9 @@
-import { afterEach, expect, it, vi } from 'vitest'
-import { runsApi } from '@/api/runs'
-
-afterEach(() => vi.unstubAllGlobals())
+import { expect, it } from 'vitest'
+import { createHttpHarness } from '../helpers/httpHarness'
 
 it('encodes field filters without emitting empty or undefined values', async () => {
-  const fetcher = vi.fn().mockResolvedValue(new Response('[]'))
-  vi.stubGlobal('fetch', fetcher)
+  const { runsApi, respond, lastUrl } = createHttpHarness()
+  respond([])
   await runsApi.list({
     workflow_name: '日报 & Weekly',
     workflow_id: '',
@@ -14,7 +12,7 @@ it('encodes field filters without emitting empty or undefined values', async () 
     limit: 20,
     offset: 0,
   })
-  const url = new URL(fetcher.mock.calls[0][0], 'http://localhost')
+  const url = new URL(lastUrl(), 'http://localhost')
   expect(Object.fromEntries(url.searchParams)).toEqual({
     workflow_name: '日报 & Weekly',
     status: 'failed',

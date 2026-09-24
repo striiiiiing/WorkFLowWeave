@@ -5,7 +5,7 @@ import { defineComponent, ref } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import ElementPlus, { type FormInstance } from 'element-plus'
-import JsonField from '@/components/common/JsonField.vue'
+import JsonField from '@/shared/schema/JsonField.vue'
 
 describe('JSON field form integration', () => {
   it('blocks save on invalid draft JSON without losing the previous object', async () => {

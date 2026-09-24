@@ -1,20 +1,21 @@
 <script setup lang="ts">
+import { workflowsApi } from '@/api/workflows'
 import { computed, onMounted, onScopeDispose, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance } from 'element-plus'
 import { resourcesApi } from '@/api/resources'
 import { createWorkflow } from '@/domain/workflow'
 import { idRule } from '@/domain/forms'
-import { useQuery } from '@/composables/useQuery'
-import { useAsyncTask } from '@/composables/useAsyncTask'
-import PageHeader from '@/components/common/PageHeader.vue'
-import SectionCard from '@/components/common/SectionCard.vue'
+import { useQuery } from '@/shared/async/useQuery'
+import { useAsyncTask } from '@/shared/async/useAsyncTask'
+import PageHeader from '@/shared/ui/PageHeader.vue'
+import SectionCard from '@/shared/ui/SectionCard.vue'
 import SourceStepCard from '@/components/workflow/SourceStepCard.vue'
 import FanOutTaskCard from '@/components/workflow/FanOutTaskCard.vue'
 import FanInCard from '@/components/workflow/FanInCard.vue'
 import NotificationCard from '@/components/workflow/NotificationCard.vue'
 import BackupMatrix from '@/components/workflow/BackupMatrix.vue'
-import AppIcon from '@/components/icons/AppIcon.vue'
+import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 import type { SourceConfig } from '@/types'
 const route = useRoute()
 const router = useRouter()
@@ -41,13 +42,13 @@ const {
   const [sources, channels, workflows] = await Promise.all([
     resourcesApi.list('sources', signal),
     resourcesApi.list('channels', signal),
-    resourcesApi.list('workflows', signal),
+    workflowsApi.list(signal),
   ])
   return { sources, channels, workflows }
 })
 const { data, pending, error, refresh } = useQuery(
   (signal) =>
-    id.value ? resourcesApi.get('workflows', id.value, signal) : Promise.resolve(createWorkflow()),
+    id.value ? workflowsApi.get(id.value, signal) : Promise.resolve(createWorkflow()),
   [id],
 )
 watch(data, (value) => {
@@ -103,8 +104,8 @@ function submit() {
       return
     }
     if (!workflow.value.id) workflow.value.id = crypto.randomUUID()
-    if (id.value) await resourcesApi.replace('workflows', id.value, workflow.value)
-    else await resourcesApi.create('workflows', workflow.value)
+    if (id.value) await workflowsApi.replace(id.value, workflow.value)
+    else await workflowsApi.create(workflow.value)
     ElMessage.success('工作流已保存')
     await router.push('/workflows')
   })

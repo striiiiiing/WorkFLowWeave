@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { JsonObject, JsonValue } from '@/types'
-import { ParameterInput, type ValueDraft } from '@/domain/parameters'
-import { createFieldRule } from '@/adapters/schemaValidation'
+import type { JsonObject, JsonValue } from '@/shared/types'
+import { ParameterInput, type ValueDraft } from '@/shared/schema/parameters'
+import { createFieldRule } from '@/shared/schema/schemaValidation'
 import JsonField from './JsonField.vue'
 import ParameterValue from './ParameterValue.vue'
 const props = defineProps<{

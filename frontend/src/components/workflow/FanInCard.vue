@@ -2,7 +2,7 @@
 import { ref, toRaw, watch } from 'vue'
 import type { WorkflowDefinition, AIConfig, FanInConfig } from '@/types'
 import { createFanIn } from '@/domain/workflow'
-import SectionCard from '@/components/common/SectionCard.vue'
+import SectionCard from '@/shared/ui/SectionCard.vue'
 import AIModelSelect from './AIModelSelect.vue'
 const model = defineModel<WorkflowDefinition>({ required: true })
 defineProps<{ configs: AIConfig[]; advanced?: boolean }>()

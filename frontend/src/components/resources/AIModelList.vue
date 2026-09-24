@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { JsonObject } from '@/types'
-import ParameterField from '@/components/common/ParameterField.vue'
+import ParameterField from '@/shared/schema/ParameterField.vue'
 
 const models = defineModel<Record<string, JsonObject>>({ required: true })
 const props = defineProps<{ candidates: string[] }>()

@@ -8,10 +8,10 @@ import {
   type ContextBudget,
   type TurnAccepted,
 } from '@/api/agents'
-import { useQuery } from '@/composables/useQuery'
-import { useAsyncTask } from '@/composables/useAsyncTask'
+import { useQuery } from '@/shared/async/useQuery'
+import { useAsyncTask } from '@/shared/async/useAsyncTask'
 import { useAgentStream } from '@/composables/useAgentStream'
-import PageHeader from '@/components/common/PageHeader.vue'
+import PageHeader from '@/shared/ui/PageHeader.vue'
 import AgentHeader from '@/components/agent/AgentHeader.vue'
 import AgentTranscript from '@/components/agent/AgentTranscript.vue'
 import AgentComposer from '@/components/agent/AgentComposer.vue'
@@ -20,7 +20,7 @@ import AgentGlobalSettingsModal from '@/components/agent/AgentGlobalSettingsModa
 import AgentFileDrawer from '@/components/agent/AgentFileDrawer.vue'
 import AgentContinueButton from '@/components/agent/AgentContinueButton.vue'
 import AgentModelSelect from '@/components/agent/AgentModelSelect.vue'
-import AppIcon from '@/components/icons/AppIcon.vue'
+import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 import type { SlashCommand } from '@/components/agent/AgentSlashMenu.vue'
 import type { SessionRecord } from '@/types'
 import { ApiError } from '@/api/client'

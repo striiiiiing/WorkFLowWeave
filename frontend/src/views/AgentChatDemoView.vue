@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import AppIcon from '@/components/icons/AppIcon.vue'
-import PageHeader from '@/components/common/PageHeader.vue'
+import AppIcon from '@/shared/ui/icons/AppIcon.vue'
+import PageHeader from '@/shared/ui/PageHeader.vue'
 import AgentHeader from '@/components/agent/AgentHeader.vue'
 import AgentComposer from '@/components/agent/AgentComposer.vue'
 import AgentTranscript from '@/components/agent/AgentTranscript.vue'

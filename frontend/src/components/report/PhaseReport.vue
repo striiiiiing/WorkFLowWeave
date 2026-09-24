@@ -2,11 +2,11 @@
 import { computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { runsApi } from '@/api/runs'
-import { useQuery } from '@/composables/useQuery'
-import { useAsyncTask } from '@/composables/useAsyncTask'
+import { useQuery } from '@/shared/async/useQuery'
+import { useAsyncTask } from '@/shared/async/useAsyncTask'
 import { parsePhase, resultStatus, unavailableText } from '@/domain/report'
 import type { WorkflowStage } from '@/types'
-import ReportText from './ReportText.vue'
+import ReportText from '@/shared/ui/ReportText.vue'
 import PluginReport from './PluginReport.vue'
 const props = defineProps<{
   id: string

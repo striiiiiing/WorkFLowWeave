@@ -2,8 +2,8 @@
 import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import AppNavigation from './AppNavigation.vue'
-import AppIcon from '@/components/icons/AppIcon.vue'
-import { navigation } from '@/router/navigation'
+import AppIcon from '@/shared/ui/icons/AppIcon.vue'
+import { navigation } from '@/app/navigation'
 const route = useRoute()
 const collapsed = ref(false)
 const drawer = ref(false)
