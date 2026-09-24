@@ -98,10 +98,37 @@ export interface TurnAccepted {
   status?: string
 }
 const sessionPath = (id: string) => `/agents/sessions/${segment(id)}`
+type AgentAction =
+  'message' | 'new' | 'resume' | 'stop' | 'append' | 'compact' | 'fork' | 'workflow'
+interface AgentCommandResult<T = unknown> {
+  kind: 'session' | 'turn' | 'workflows'
+  priority: string
+  result: T
+}
+const commandRequest = <T>(payload: {
+  action: AgentAction
+  session?: string | null
+  text?: string
+  request_id?: string
+  model?: string
+  workflow_session_id?: string
+  workflow_id?: string
+  turn_id?: string
+  message_id?: string
+}) =>
+  request<AgentCommandResult<T>>('/channels/web/commands', {
+    method: 'POST',
+    body: JSON.stringify({ channel: 'web', request_id: crypto.randomUUID(), text: '', ...payload }),
+  })
 export const agentsApi = {
   list: (signal?: AbortSignal) => request<AgentSession[]>('/agents/sessions', { signal }),
-  create: (payload: { model?: string; workflow_session_id?: string; workflow_id?: string }) =>
-    request<AgentSession>('/agents/sessions', { method: 'POST', body: JSON.stringify(payload) }),
+  create: async (payload: { model?: string; workflow_session_id?: string; workflow_id?: string }) =>
+    (
+      await commandRequest<AgentSession>({
+        action: payload.workflow_session_id || payload.workflow_id ? 'workflow' : 'new',
+        ...payload,
+      })
+    ).result,
   get: (id: string, signal?: AbortSignal) => request<AgentSession>(sessionPath(id), { signal }),
   history: (id: string, signal?: AbortSignal) =>
     request<AgentEvent[]>(`${sessionPath(id)}/history`, { signal }),
@@ -118,37 +145,43 @@ export const agentsApi = {
       body: JSON.stringify({ model }),
     }),
   send: (id: string, requestId: string, text: string) =>
-    request<TurnAccepted>(`${sessionPath(id)}/messages`, {
-      method: 'POST',
-      body: JSON.stringify({ request_id: requestId, text }),
-    }),
+    commandRequest<TurnAccepted>({
+      action: 'message',
+      session: id,
+      request_id: requestId,
+      text,
+    }).then((response) => response.result),
   command: (id: string | null, text: string, requestId: string, model?: string) =>
     request<{
       kind: 'session' | 'turn' | 'workflows'
       priority: string
       result: AgentSession | TurnAccepted | unknown[]
-    }>('/agents/commands', {
+    }>('/channels/web/commands', {
       method: 'POST',
       body: JSON.stringify({
         channel: 'web',
         session: id,
         text,
         request_id: requestId,
+        ...(!text.trim().startsWith('/') ? { action: 'message' as const } : {}),
         ...(model ? { model } : {}),
       }),
     }),
   append: (id: string, requestId: string, text: string) =>
-    request<TurnAccepted>(`${sessionPath(id)}/append`, {
-      method: 'POST',
-      body: JSON.stringify({ request_id: requestId, text }),
-    }),
-  fork: (id: string, payload: { turn_id?: string; model?: string; message_id?: string } = {}) =>
-    request<AgentSession>(`${sessionPath(id)}/fork`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
-  cancel: (id: string) => request<AgentSession>(`${sessionPath(id)}/cancel`, { method: 'POST' }),
-  compact: (id: string) => request<TurnAccepted>(`${sessionPath(id)}/compact`, { method: 'POST' }),
+    commandRequest<TurnAccepted>({
+      action: 'append',
+      session: id,
+      request_id: requestId,
+      text,
+    }).then((response) => response.result),
+  fork: async (
+    id: string,
+    payload: { turn_id?: string; model?: string; message_id?: string } = {},
+  ) => (await commandRequest<AgentSession>({ action: 'fork', session: id, ...payload })).result,
+  cancel: async (id: string) =>
+    (await commandRequest<AgentSession>({ action: 'stop', session: id })).result,
+  compact: async (id: string) =>
+    (await commandRequest<TurnAccepted>({ action: 'compact', session: id })).result,
   tools: (signal?: AbortSignal) => request<AgentTool[]>('/agents/tools', { signal }),
   updateTool: (pluginId: string, enabled: boolean) =>
     request(`/agents/tools/${segment(pluginId)}`, {

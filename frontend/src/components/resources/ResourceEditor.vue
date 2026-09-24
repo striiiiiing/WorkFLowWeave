@@ -10,16 +10,15 @@ import {
   type EditableKind,
   type EditableResource,
 } from '@/domain/resources'
-import { optionSchema, partialSchema } from '@/domain/capabilities'
+import { optionSchema } from '@/domain/capabilities'
 import { idRule, sourcePolicies } from '@/domain/forms'
 import ParameterField from '@/components/common/ParameterField.vue'
 import AIProviderEditor from './AIProviderEditor.vue'
 import CredentialEditor from './CredentialEditor.vue'
-import SetterTemplateManager from './SetterTemplateManager.vue'
 import type { Credential, JsonObject } from '@/types'
 import { systemApi } from '@/api/system'
 import { useQuery } from '@/composables/useQuery'
-const props = defineProps<{ kind: EditableKind; initial?: EditableResource }>()
+const props = defineProps<{ kind: EditableKind; initial?: EditableResource; local?: boolean }>()
 const emit = defineEmits<{ saved: [value?: EditableResource]; cancel: [] }>()
 const initialDraft = props.initial
   ? structuredClone(toRaw(props.initial))
@@ -89,6 +88,7 @@ function updateId(value: string) {
 }
 watch(capabilityName, (next, previous) => {
   if (next === previous) return
+  if ('channel' in draft.value) draft.value.agent_enabled = false
   if (!props.initial && generatedId.value) {
     draft.value.id = generatedResourceId(capability.value?.id_prefix)
   }
@@ -120,10 +120,15 @@ function submit() {
     if (!(await editorForm.validate(() => {}))) return
     const value = structuredClone(toRaw(draft.value))
     value.id ||= generatedResourceId(capability.value?.id_prefix)
-    if (props.initial) await resourcesApi.replace(props.kind, props.initial.id, value)
-    else await resourcesApi.create(props.kind, value)
+    if (props.local) {
+      emit('saved', value)
+      return
+    }
+    const saved = props.initial
+      ? await resourcesApi.replace(props.kind, props.initial.id, value)
+      : await resourcesApi.create(props.kind, value)
     ElMessage.success('资源已保存')
-    emit('saved')
+    emit('saved', saved)
   })
 }
 </script>
@@ -148,8 +153,17 @@ function submit() {
       :model="draft"
       :disabled="save.pending.value"
       label-position="top"
-      @submit.prevent="submit"
+      @submit.prevent.stop="submit"
     >
+      <template v-if="'collector' in draft">
+        <h3 class="font-semibold mb-4">基础信息</h3>
+        <el-form-item label="数据源名称">
+          <el-input v-model="draft.display_name" placeholder="便于识别的名称，如应用运行日志" />
+        </el-form-item>
+        <el-form-item label="用途说明">
+          <el-input v-model="draft.description" placeholder="说明此数据源采集什么、用于哪些分析" />
+        </el-form-item>
+      </template>
       <el-form-item label="资源编号" prop="id" :rules="{ ...idRule, required: false }">
         <el-input
           :model-value="draft.id"
@@ -158,7 +172,6 @@ function submit() {
           @update:model-value="updateId"
         />
       </el-form-item>
-      <el-form-item label="高级模式"><el-switch v-model="advanced" /></el-form-item>
       <el-alert v-if="pluginError" :title="pluginError" type="error" :closable="false" />
       <el-button v-if="pluginError" @click="refreshPlugins">重新加载插件选项</el-button>
       <p v-if="capability" class="muted mb-4">{{ capability.description }}</p>
@@ -178,6 +191,7 @@ function submit() {
             filterable
             placeholder="选择采集器"
             :loading="pluginsPending"
+            :disabled="local"
           >
             <el-option
               v-for="item in capabilities"
@@ -193,17 +207,6 @@ function submit() {
             />
           </el-select>
         </el-form-item>
-        <ParameterField
-          v-model="draft.setters"
-          prop="setters"
-          label="处理规则 (setters)"
-          :key="`setters-${capabilityName}`"
-          :schema="
-            kind === 'setters'
-              ? partialSchema(capability?.setters_schema)
-              : (capability?.setters_schema ?? undefined)
-          "
-        />
       </template>
       <template v-if="'channel' in draft">
         <el-form-item label="渠道能力名称" prop="channel" :rules="idRule">
@@ -228,13 +231,25 @@ function submit() {
           </el-select>
         </el-form-item>
         <el-form-item label="启用渠道"><el-switch v-model="draft.enabled" /></el-form-item>
+        <el-form-item
+          v-if="capability?.capabilities.includes('conversation')"
+          label="接入 Agent 对话"
+        >
+          <el-switch v-model="draft.agent_enabled" />
+        </el-form-item>
       </template>
       <ParameterField
         v-if="'options' in draft"
         v-model="draft.options"
         :excluded-properties="credentialNames"
         prop="options"
-        :label="'on_error' in draft ? '数据源共用配置 (options)' : '插件参数 (options)'"
+        :label="
+          'on_error' in draft
+            ? local
+              ? '独立采集配置 (options)'
+              : '数据源共用配置 (options)'
+            : '插件参数 (options)'
+        "
         :key="`options-${capabilityName}`"
         :schema="optionParameterSchema"
       />
@@ -246,15 +261,19 @@ function submit() {
         :label="fieldLabel(capability?.options_schema, name)"
         @update:model-value="updateCredential(name, $event)"
       />
+      <ParameterField
+        v-if="'setters' in draft"
+        v-model="draft.setters"
+        prop="setters"
+        label="处理规则 (setters)"
+        :key="`setters-${capabilityName}`"
+        :schema="capability?.setters_schema ?? undefined"
+      />
+      <el-form-item label="高级模式"><el-switch v-model="advanced" /></el-form-item>
       <el-form-item v-if="advanced && 'timeout' in draft" label="超时 / 秒">
         <el-input-number v-model="draft.timeout" :min="0.001" />
       </el-form-item>
-      <template v-if="'on_error' in draft">
-        <SetterTemplateManager
-          :collector="draft.collector"
-          v-model="draft.template"
-          :schema="capability?.setters_schema"
-        />
+      <template v-if="advanced && 'on_error' in draft">
         <div class="form-grid">
           <el-form-item v-for="field in policyFields" :key="field.key" :label="field.label">
             <el-select v-model="draft[field.key]">
@@ -271,7 +290,7 @@ function submit() {
       <div class="flex justify-end gap-3">
         <el-button @click="emit('cancel')">取消</el-button>
         <el-button type="primary" native-type="submit" :loading="save.pending.value">
-          保存资源
+          {{ local ? '应用到当前工作流' : '保存资源' }}
         </el-button>
       </div>
     </el-form>

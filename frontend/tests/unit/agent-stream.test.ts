@@ -51,6 +51,7 @@ it('reconnects repeatedly from the durable cursor, deduplicates and closes at th
   const { stream, callback } = setup()
   await stream.select('s')
   const first = FakeEventSource.instances[0]
+  expect(first.url).toContain('/api/channels/web/sessions/s/events')
   first.emit(event(1))
   first.onerror?.()
   expect(stream.state.value).toBe('reconnecting')

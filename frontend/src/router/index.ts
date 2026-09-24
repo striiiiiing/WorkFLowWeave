@@ -9,7 +9,7 @@ export const router = createRouter({
     { path: '/runs', component: () => import('@/views/RunsView.vue') },
     { path: '/runs/:id', component: () => import('@/views/RunDetailView.vue') },
     { path: '/resources', component: () => import('@/views/ResourcesView.vue') },
-    { path: '/collector-demo', component: () => import('@/views/CollectorDesignDemoView.vue') },
+    { path: '/collector-demo', redirect: '/workflows' },
     { path: '/plugins', component: () => import('@/views/PluginsView.vue') },
     { path: '/agents', component: () => import('@/views/AgentsView.vue') },
     { path: '/agents/:sessionId', component: () => import('@/views/AgentsView.vue') },

@@ -1,7 +1,13 @@
 import { request, segment } from './client'
-import type { Credential, ResourceKind, ResourceMap } from '@/types'
+import type { Credential, ResourceKind, ResourceMap, SourceConfig, SourceOverride } from '@/types'
 
 export const resourcesApi = {
+  resolveSource: (id: string, override?: SourceOverride, signal?: AbortSignal) =>
+    request<SourceConfig>(`/sources/${segment(id)}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify(override ?? {}),
+      signal,
+    }),
   checkAIConnection: (id: string) =>
     request<string[]>(`/ai/${segment(id)}/check-connection`, { method: 'POST' }),
   protectCredential: (plaintext: string) =>

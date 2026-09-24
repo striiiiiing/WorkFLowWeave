@@ -220,7 +220,7 @@ test('resource JSON validation, create and edit use the real API', async ({ page
   await page.getByLabel('采集器', { exact: true }).click()
   await page.getByRole('option', { name: 'mock', exact: true }).click()
   await page
-    .getByRole('region', { name: '插件参数 (options)', exact: true })
+    .getByRole('region', { name: '数据源共用配置 (options)', exact: true })
     .getByRole('button', { name: '编辑 JSON', exact: true })
     .click()
   const setters = page.getByRole('region', { name: '处理规则 (setters)', exact: true })
@@ -228,7 +228,7 @@ test('resource JSON validation, create and edit use the real API', async ({ page
   await setters.getByRole('textbox', { name: 'sort_by', exact: true }).fill('message')
   await setters.getByRole('switch', { name: '设置 descending', exact: true }).locator('..').click()
   await setters.getByRole('switch', { name: 'descending', exact: true }).locator('..').click()
-  const options = page.getByRole('textbox', { name: '插件参数 (options)', exact: true })
+  const options = page.getByRole('textbox', { name: '数据源共用配置 (options)', exact: true })
   await options.fill('{invalid')
   await page.getByRole('button', { name: '保存资源' }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
@@ -290,10 +290,15 @@ test('workflow create, reload, run, and versioned phase reading', async ({ page,
   await expect(page.getByText('包含采集数量', { exact: true })).toBeVisible()
   await page.getByLabel('工作流 ID（留空自动生成）', { exact: true }).fill('browser_workflow')
   await page.getByLabel('显示名称', { exact: true }).fill('浏览器验证工作流')
+  await page.getByRole('button', { name: '加载已有数据源', exact: true }).click()
   await page.getByText('选择数据源', { exact: true }).click()
   await page.getByRole('option', { name: 'offline_source', exact: true }).click()
   await page.getByRole('option', { name: 'second_source', exact: true }).click()
-  await page.getByRole('heading', { name: '1. 数据采集' }).click()
+  await page
+    .getByRole('dialog')
+    .getByRole('heading', { name: '加载已有数据源', exact: true })
+    .click()
+  await page.getByRole('button', { name: '加入当前工作流', exact: true }).click()
   await page.getByRole('button', { name: '上移 second_source', exact: true }).click()
   await page.getByRole('button', { name: '添加任务' }).click()
   await page.getByText('选择供应商渠道', { exact: true }).click()
@@ -314,7 +319,7 @@ test('workflow create, reload, run, and versioned phase reading', async ({ page,
   expect(saved.description).toBeUndefined()
   // The built-in offline collector exits before AI, so this smoke test never calls a model service.
   saved.source_overrides = {
-    offline_source: { options: { mode: 'empty' }, setters: {}, template: null },
+    offline_source: { source: null, options: { mode: 'empty' }, setters: {}, template: null },
   }
   expect((await request.put('/api/workflows/browser_workflow', { data: saved })).ok()).toBe(true)
   await page.getByRole('button', { name: '编辑', exact: true }).click()
@@ -464,9 +469,14 @@ test('provider models are configured in the channel and selected by workflows', 
   expect(source.ok(), await source.text()).toBe(true)
   await page.goto('/workflows/new')
   await page.getByLabel('显示名称', { exact: true }).fill('模型配置流程')
+  await page.getByRole('button', { name: '加载已有数据源', exact: true }).click()
   await page.getByText('选择数据源', { exact: true }).click()
   await page.getByRole('option', { name: 'model_flow_source', exact: true }).click()
-  await page.getByRole('heading', { name: '1. 数据采集' }).click()
+  await page
+    .getByRole('dialog')
+    .getByRole('heading', { name: '加载已有数据源', exact: true })
+    .click()
+  await page.getByRole('button', { name: '加入当前工作流', exact: true }).click()
   await page.getByRole('button', { name: '添加任务', exact: true }).click()
   await expect(page.getByRole('button', { name: '刷新模型列表', exact: true })).toHaveCount(0)
   const providerPage = await page.context().newPage()
@@ -656,4 +666,123 @@ test('readable report, plugin sections, advanced data and mobile layout', async 
   await page.getByText('原始 JSON', { exact: false }).first().click()
   await expect(page.locator('pre').first()).toContainText('outputs')
   expect(errors).toEqual([])
+})
+
+test('workflow designer persists independent sources and the resource center only updates shared bindings', async ({
+  page,
+  request,
+}) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  const sourceId = 'designer_source'
+  const aiId = 'designer_ai'
+  const workflowIds = ['designer_first', 'designer_second']
+  try {
+    for (const [kind, data] of Object.entries({
+      sources: {
+        id: sourceId,
+        display_name: '共享巡检数据',
+        description: '用于设计器验收',
+        collector: 'mock',
+        timeout: 60,
+      },
+      ai: {
+        id: aiId,
+        provider: 'openai_compatible_api',
+        base_url: 'http://127.0.0.1:1/v1',
+        models: { offline: {} },
+        retries: 0,
+      },
+    })) {
+      const response = await request.post(`/api/${kind}`, { data })
+      expect(response.ok(), await response.text()).toBe(true)
+    }
+    for (const id of workflowIds) {
+      const response = await request.post('/api/workflows', {
+        data: {
+          id,
+          name: id === workflowIds[0] ? '独立巡检工作流' : '共享巡检工作流',
+          sources: [sourceId],
+          analyses: [{ id: 'analysis', ai: aiId, model: 'offline', prompt: '{input}' }],
+        },
+      })
+      expect(response.ok(), await response.text()).toBe(true)
+    }
+    await page.goto(`/workflows/${workflowIds[0]}/edit`)
+    await expect(page.getByRole('link', { name: '数据源配置演示', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('complementary', { name: '工作流列表' })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: '＋ 新建工作流', exact: true })).toHaveCount(0)
+    const card = page.getByRole('article', { name: `数据源 ${sourceId}` })
+    await expect(card).toContainText('全局同步 (2)')
+    await expect(card.getByRole('button', { name: '编辑配置', exact: true })).toBeDisabled()
+    await card.getByRole('button', { name: '脱离共用配置', exact: true }).click()
+    await expect(card).toContainText('独立配置')
+    await card.getByRole('button', { name: '编辑配置', exact: true }).click()
+    const drawer = page.getByRole('dialog', { name: '编辑独立配置' })
+    await drawer.getByLabel('数据源名称', { exact: true }).fill('本流专用巡检数据')
+    await drawer.getByRole('switch', { name: '高级模式', exact: true }).locator('..').click()
+    await drawer.getByRole('spinbutton', { name: '超时 / 秒' }).fill('25')
+    await drawer.getByRole('button', { name: '应用到当前工作流', exact: true }).click()
+    await expect(drawer).toBeHidden()
+    await expect(card).toContainText('本流专用巡检数据')
+    await page.getByRole('button', { name: /2 并行 AI 分析/ }).click()
+    await expect(page).toHaveURL(/stage=analyses/)
+    await expect(card).toBeHidden()
+    await page.getByLabel('提示词', { exact: true }).fill('保留这个未保存草稿 {input}')
+    await page.getByRole('button', { name: /1 数据采集源/ }).click()
+    await expect(card).toBeVisible()
+    await page.getByRole('button', { name: /2 并行 AI 分析/ }).click()
+    await expect(page.getByLabel('提示词', { exact: true })).toHaveValue(
+      '保留这个未保存草稿 {input}',
+    )
+    await page.getByRole('button', { name: '保存工作流', exact: true }).click()
+    await expect(page).toHaveURL(/\/workflows$/)
+    const saved = await (await request.get(`/api/workflows/${workflowIds[0]}`)).json()
+    expect(saved.source_overrides[sourceId].source).toMatchObject({
+      display_name: '本流专用巡检数据',
+      timeout: 25,
+      template: null,
+    })
+    expect(saved.analyses[0].prompt).toBe('保留这个未保存草稿 {input}')
+
+    await page.goto('/resources?kind=sources')
+    await expect(page.getByRole('tab', { name: '处理模板', exact: true })).toHaveCount(0)
+    const centralCard = page
+      .locator('.el-card .el-card')
+      .filter({ has: page.getByRole('heading', { name: '共享巡检数据', exact: true }) })
+    await expect(centralCard).toContainText('同步到 1 个工作流')
+    await centralCard.getByRole('button', { name: '编辑', exact: true }).click()
+    const sharedDrawer = page.getByRole('dialog', { name: '编辑共用数据源' })
+    await sharedDrawer.getByLabel('数据源名称', { exact: true }).fill('共用配置已更新')
+    await sharedDrawer.getByRole('switch', { name: '高级模式', exact: true }).locator('..').click()
+    await sharedDrawer.getByRole('spinbutton', { name: '超时 / 秒' }).fill('90')
+    await sharedDrawer.getByRole('button', { name: '保存资源', exact: true }).click()
+    await expect(sharedDrawer).toBeHidden()
+    const shared = await request.post(`/api/sources/${sourceId}/resolve`, { data: {} })
+    expect(shared.ok(), await shared.text()).toBe(true)
+    expect(await shared.json()).toMatchObject({ display_name: '共用配置已更新', timeout: 90 })
+    await page.goto(`/workflows/${workflowIds[0]}/edit?stage=sources`)
+    await expect(card).toContainText('本流专用巡检数据')
+    await expect(card).toContainText('25 秒')
+    await page.setViewportSize({ width: 390, height: 844 })
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true)
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    await page.screenshot({ path: 'test-results/workflow-designer-production.png', fullPage: true })
+    await card.getByRole('button', { name: '恢复共用配置', exact: true }).click()
+    await page.getByRole('button', { name: '确定', exact: true }).click()
+    await expect(card).toContainText('共用配置已更新')
+    await expect(card).toContainText('90 秒')
+    await page.getByRole('button', { name: '保存工作流', exact: true }).click()
+    await expect(page).toHaveURL(/\/workflows$/)
+    expect(
+      (await (await request.get(`/api/workflows/${workflowIds[0]}`)).json()).source_overrides,
+    ).toEqual({})
+    expect(errors).toEqual([])
+  } finally {
+    for (const id of workflowIds) await request.delete(`/api/workflows/${id}`)
+    await request.delete(`/api/sources/${sourceId}`)
+    await request.delete(`/api/ai/${aiId}`)
+  }
 })

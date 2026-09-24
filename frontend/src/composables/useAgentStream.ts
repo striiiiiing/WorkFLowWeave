@@ -38,7 +38,7 @@ export function useAgentStream(onEvent: (event: AgentEvent) => void) {
     if (!sessionId || source) return
     const version = generation
     const connection = new EventSource(
-      `/api/agents/sessions/${encodeURIComponent(sessionId)}/events?after=${cursor}`,
+      `/api/channels/web/sessions/${encodeURIComponent(sessionId)}/events?after=${cursor}`,
     )
     source = connection
     connection.onopen = () => {
