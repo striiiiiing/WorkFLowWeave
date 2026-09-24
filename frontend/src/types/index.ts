@@ -12,6 +12,8 @@ export type SourcePolicy = 'stop' | 'notice' | 'skip'
 export type ContinuePolicy = 'stop' | 'continue'
 export interface SourceConfig {
   id: string
+  display_name?: string | null
+  description?: string
   collector: string
   enabled: boolean
   options: JsonObject
@@ -47,6 +49,7 @@ export interface ChannelConfig {
   options: JsonObject
   timeout: number
   enabled: boolean
+  agent_enabled?: boolean
 }
 export interface AnalysisTask {
   id: string
@@ -72,6 +75,7 @@ export interface BackupPolicy {
   retention_days: number | null
 }
 export interface SourceOverride {
+  source?: SourceConfig | null
   options: JsonObject
   setters: JsonObject
   template: string | null

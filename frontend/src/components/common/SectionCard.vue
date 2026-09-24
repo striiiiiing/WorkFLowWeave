@@ -4,7 +4,7 @@ defineProps<{ title: string; description?: string }>()
 <template>
   <el-card shadow="never">
     <template #header>
-      <div class="flex items-center justify-between gap-3">
+      <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 class="font-semibold">{{ title }}</h2>
           <p v-if="description" class="muted text-xs mt-1">{{ description }}</p>

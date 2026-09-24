@@ -24,9 +24,8 @@ test('existing frontend receives real API data and saves a resource', async ({ p
   const id = `live_smoke_${Date.now()}`
   try {
     await page.goto('/resources')
-    await page.getByRole('button', { name: '新建资源' }).click()
-    await page.getByRole('switch', { name: '高级模式', exact: true }).locator('..').click()
-    await page.getByLabel('资源 ID（留空自动生成）', { exact: true }).fill(id)
+    await page.getByRole('button', { name: '添加数据源' }).click()
+    await page.getByLabel('资源编号', { exact: true }).fill(id)
     await page.getByLabel('采集器', { exact: true }).click()
     await page.getByRole('option', { name: 'mock', exact: true }).click()
     await page.getByRole('button', { name: '保存资源' }).click()
