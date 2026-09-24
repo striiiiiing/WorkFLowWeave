@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { agentsApi, type AgentModel } from '@/api/agents'
 import { runsApi } from '@/api/runs'
 import type { SessionRecord } from '@/types'
-import { useAsyncTask } from '@/shared/async/useAsyncTask'
+import { isTaskSuccess, useAsyncTask } from '@/shared/async/useAsyncTask'
 import AgentModelSelect from './AgentModelSelect.vue'
 import { readDefaultAgentModel } from '@/domain/agentModels'
 const props = defineProps<{ workflowId?: string; workflowSessionId?: string }>()
@@ -41,9 +41,9 @@ async function create() {
       ...(model.value ? { model: model.value } : {}),
     }),
   )
-  if (session) {
+  if (isTaskSuccess(session)) {
     visible.value = false
-    await router.push(`/agents/${encodeURIComponent(session.session_id)}`)
+    await router.push(`/agents/${encodeURIComponent(session.value.session_id)}`)
   }
 }
 </script>

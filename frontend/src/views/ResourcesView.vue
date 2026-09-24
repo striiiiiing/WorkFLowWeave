@@ -8,10 +8,10 @@ import {
   resourceKinds,
   resourceNames,
   sourceName,
-  sourceUsage,
   type EditableKind,
   type EditableResource,
 } from '@/domain/resources'
+import { sourceUsage } from '@/modules/workflows/public'
 import type { SourceConfig } from '@/types'
 import { useQuery } from '@/shared/async/useQuery'
 import { useAsyncTask } from '@/shared/async/useAsyncTask'
@@ -38,8 +38,7 @@ const {
   error: workflowsError,
   refresh: refreshWorkflows,
 } = useQuery(
-  (signal) =>
-    kind.value === 'sources' ? workflowsApi.list(signal) : Promise.resolve([]),
+  (signal) => (kind.value === 'sources' ? workflowsApi.list(signal) : Promise.resolve([])),
   [kind],
 )
 const action = useAsyncTask()

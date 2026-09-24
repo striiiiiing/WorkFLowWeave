@@ -1,4 +1,4 @@
-import type { HttpClient } from '@/shared/api'
+import { isErrorInfo, type HttpClient } from '@/shared/api'
 import type { CapabilityDescription, DiscoveryReport, HealthReport } from '../model/types'
 
 function isHealthReport(value: unknown): value is HealthReport {
@@ -17,8 +17,7 @@ function isHealthReport(value: unknown): value is HealthReport {
         ['available', 'degraded', 'unavailable', 'unknown'].includes(item.status) &&
         typeof item.required === 'boolean' &&
         (item.checked_at === null || typeof item.checked_at === 'string') &&
-        (item.error === null ||
-          (typeof item.error === 'object' && typeof item.error.message === 'string')),
+        (item.error === null || isErrorInfo(item.error)),
     )
   )
 }

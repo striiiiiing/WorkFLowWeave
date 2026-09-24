@@ -13,10 +13,25 @@ import type { AgentEvent, AgentModel, AgentSession } from '@/api/agents'
 
 // 1. 模拟模型列表
 const availableModels: AgentModel[] = [
-  { reference: 'deepseek-r1', provider: 'deepseek', ai: 'deepseek-api', model: 'DeepSeek-R1 (推理增强)' },
-  { reference: 'qwen-2.5-72b', provider: 'alibaba', ai: 'dashscope', model: 'Qwen 2.5 72B (日志专精)' },
+  {
+    reference: 'deepseek-r1',
+    provider: 'deepseek',
+    ai: 'deepseek-api',
+    model: 'DeepSeek-R1 (推理增强)',
+  },
+  {
+    reference: 'qwen-2.5-72b',
+    provider: 'alibaba',
+    ai: 'dashscope',
+    model: 'Qwen 2.5 72B (日志专精)',
+  },
   { reference: 'gpt-4o', provider: 'openai', ai: 'openai-compatible', model: 'GPT-4o (通用分析)' },
-  { reference: 'claude-3-5-sonnet', provider: 'anthropic', ai: 'bedrock', model: 'Claude 3.5 Sonnet' },
+  {
+    reference: 'claude-3-5-sonnet',
+    provider: 'anthropic',
+    ai: 'bedrock',
+    model: 'Claude 3.5 Sonnet',
+  },
 ]
 
 // 2. 模拟分支会话树
@@ -103,7 +118,9 @@ const mockSessions = ref<AgentSession[]>([
 
 const currentSessionId = ref('session-demo-001')
 const currentSession = computed(() => {
-  return mockSessions.value.find((s) => s.session_id === currentSessionId.value) ?? mockSessions.value[0]
+  return (
+    mockSessions.value.find((s) => s.session_id === currentSessionId.value) ?? mockSessions.value[0]
+  )
 })
 
 // 3. 模拟对话事件流数据 (包含用户、助手、并行只读工具、独占写工具和智能压缩)
@@ -223,8 +240,17 @@ const sessionEventsMap = ref<Record<string, AgentEvent[]>>({
         tool_call_id: 'tc-write-pool',
         name: 'config_writer',
         execution: 'exclusive',
-        arguments: { target: 'application-prod.yml', key: 'datasource.hikari.maximum-pool-size', value: 60 },
-        result: { status: 'success', backup_hash: '9a8f3b', duration_ms: 65, artifact_path: 'diffs/hikari-patch.diff' },
+        arguments: {
+          target: 'application-prod.yml',
+          key: 'datasource.hikari.maximum-pool-size',
+          value: 60,
+        },
+        result: {
+          status: 'success',
+          backup_hash: '9a8f3b',
+          duration_ms: 65,
+          artifact_path: 'diffs/hikari-patch.diff',
+        },
       },
     },
     {
@@ -585,12 +611,7 @@ function handleMessageEdit(event: AgentEvent) {
         </div>
 
         <div class="sidebar-search">
-          <el-input
-            v-model="sessionSearch"
-            placeholder="搜索历史会话..."
-            size="small"
-            clearable
-          >
+          <el-input v-model="sessionSearch" placeholder="搜索历史会话..." size="small" clearable>
             <template #prefix>
               <AppIcon name="search" size="sm" />
             </template>
@@ -668,10 +689,7 @@ function handleMessageEdit(event: AgentEvent) {
     </div>
 
     <!-- 3. 全局设置抽屉 -->
-    <AgentGlobalSettingsModal
-      v-model="showSettings"
-      @changed="ElMessage.success('设置已同步')"
-    />
+    <AgentGlobalSettingsModal v-model="showSettings" @changed="ElMessage.success('设置已同步')" />
 
     <!-- 4. 分支拓扑抽屉 -->
     <AgentBranchDrawer
@@ -713,7 +731,12 @@ function handleMessageEdit(event: AgentEvent) {
           <strong>每日日志定时巡检 / wf-run-8821</strong>
           <span class="status-tag success">Completed</span>
           <p class="text-xs text-muted mt-1">触发于 2 小时前 · 发现 48 条告警日志</p>
-          <el-button size="small" type="primary" class="mt-2" @click="ElMessage.success('已导入工作流基线')">
+          <el-button
+            size="small"
+            type="primary"
+            class="mt-2"
+            @click="ElMessage.success('已导入工作流基线')"
+          >
             以此结果创建会话
           </el-button>
         </div>

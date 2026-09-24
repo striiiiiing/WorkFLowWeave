@@ -10,9 +10,7 @@ import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 import AgentContinueButton from '@/components/agent/AgentContinueButton.vue'
 const router = useRouter()
 const search = ref('')
-const { data, pending, error, refresh } = useQuery((signal) =>
-  workflowsApi.list(signal),
-)
+const { data, pending, error, refresh } = useQuery((signal) => workflowsApi.list(signal))
 const action = useAsyncTask()
 const filtered = computed(
   () =>

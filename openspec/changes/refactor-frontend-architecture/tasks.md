@@ -1,6 +1,6 @@
 # 前端架构实施任务 DAG
 
-状态：**用户已明确审核 tasks 并授权继续实施，可启动 P1。** 用户随后指定所有任务只在 `/mnt/d/code/LogAgent` 内执行，不再使用或新建其他文件夹/worktree。P0 已有单测、类型与构建证据；浏览器环境等缺口继续补齐，不将其写成已通过。
+状态：**用户已明确审核 tasks；P1 基础包已完成集成验收，随本阶段提交后可启动 P2/P4/P5。** 用户随后指定所有任务只在 `/mnt/d/code/LogAgent` 内执行，不再使用或新建其他文件夹/worktree。P0 已有单测、类型与构建证据；浏览器环境等缺口继续补齐，不将其写成已通过。
 
 本文件是唯一执行清单；work-packages 仅写依据、交接和证据，不再维护复选框。架构真源为 [原设计](../design-frontend-architecture/design.md) §1–§12；本 change 的 [design.md](design.md) 是引用索引。原 proposal/design 均不修改。本轮审核事实和执行路径变更记录在本 tasks，覆盖旧 proposal/design 中与当前执行位置不一致的阶段说明；不修改原文，不改变架构决策。
 
@@ -8,10 +8,10 @@
 
 - **当前唯一工作目录为 `/mnt/d/code/LogAgent`**，branch `refactor/frontend-architecture`；主代理已将该 branch/规划提交 `643e1b5` 接回本目录，原有后端未提交修改保留；接回时主代理已逐字节核对原前端未提交内容与已接纳基线一致。所有 worker 就地工作，不创建其他工作目录/worktree，旧 `/mnt/d/code/LogAgent-frontend-architecture` 已通过 `git worktree remove` 正常移除，不再使用。这是用户审核计划后的明确约束，取代原隔离工作区安排。
 - 历史前端/设计快照为 `4e3c524f799edd079356f8c3975632b7968fccbd`，源 HEAD `cb01cd6` 加当时未提交的前端源码。P0 在旧独立工作区取得的结果保留原日期、路径和测试环境语义，不能据此声称当前目录或变化中的后端仍完全相同。旧清单 `/tmp/logagent-frontend-architecture-original-manifest.json` 仅作历史证据，不作为要求共享工作区保持全局不变的检查门槛。
-- 后端正由另一任务重构双向 channel，本前端任务不修改、还原、复制、暂存或提交该任务的后端文件，也不要求后端总 hash/dirty 状态不变。主代理对本任务每一个 commit 审查暂存路径与 diff，明确排除后端和其他任务文件；不得用“工作区全局无变化”替代本任务提交边界检查。
+- 后端正由另一任务重构双向 channel，本前端任务不修改、还原、复制、暂存或提交该任务的后端文件，也不要求后端总 hash/dirty 状态不变。专职集成 worker 对本任务每一个 commit 审查暂存路径与 diff，明确排除后端和其他任务文件；不得用“工作区全局无变化”替代本任务提交边界检查。
 - 真实契约/E2E 按测试当时的后端 HEAD、dirty 路径与相关协议状态记录，使用 `/mnt/d/code/LogAgent/src`、临时数据与受控模型/外网依赖。channel 接口若与已授权前端契约不兼容，明确报告端点/信封/事件差异及受影响用例，不干预后端任务，不添加静默 fallback；可继续的前端针对性测试照常推进，不能把协议不兼容写成已通过。
-- 业务代码实施/复核委派 **GPT-6 Astra / xhigh**；GPT-5.5 / xhigh 可承担只读调查、测试与验证。所有 shell 命令前缀 `rtk`。共享目录按文件所有权并发：派工前锁定可写路径，公共文件交给唯一集成 worker 串行修改，不同 worker 不同时编辑同一文件；所有 worker **禁止切 branch、stash、reset、创建 worktree 或 commit**，遇到非本人修改保持原样并报告协调者。
-- 每包完成针对性检查后由主代理审查、精确暂存并分批 commit；沿用仓库现有 post-commit 自动推送钩子，**不得通过覆盖 hooksPath 跳过**。worker 提交的是可审核 diff 和证据，不自行操作提交；`.venv`、运行数据及其他任务文件不得混入本任务提交。
+- 用户最新执行要求（2026-09-25）：新 worker 统一使用 **GPT-6 Astra / medium**；已在途的 xhigh 工作作为历史执行记录保留。主代理仅编排、传递任务信息和汇总，不读取 diff 或执行审查/测试；专职集成 worker 负责最终审查、验证及精确提交。所有 shell 命令前缀 `rtk`。共享目录按文件所有权并发：派工前锁定可写路径，公共文件交给唯一集成 worker 串行修改，不同 worker 不同时编辑同一文件；所有 worker **禁止切 branch、stash、reset、创建 worktree**；普通实施 worker 禁止 commit，唯一获授权的集成 worker 可提交本任务精确文件，遇到非本人修改保持原样并报告协调者。
+- 每包完成针对性检查后由专职集成 worker 审查、精确暂存并分批 commit；沿用仓库现有 post-commit 自动推送钩子，**不得设置 SKIP_WORKFLOW_PUSH 或覆盖 hooksPath 跳过**。普通实施 worker 交付可审核 diff 和证据，由唯一集成 worker 操作提交；`.venv`、运行数据及其他任务文件不得混入本任务提交。
 
 ## 根因、方案和规模
 
@@ -51,11 +51,11 @@ P1 完成后最多同时运行 P2/P4/P5 三名实施 worker，在同一 `/mnt/d/
 ## 并发与公共接口交接
 
 1. P1 一次建立 DTO 所有者：resources 拥有来源/供应商/渠道/凭据与资源侧 override 输入；workflows 拥有 WorkflowDefinition/编辑草稿/使用位置投影；runs 拥有 Session/Phase/Report；agents 拥有会话/命令/事件/文件；system 拥有能力/健康。shared/types 仅 JSON/错误等无业务类型。按 `workflows → resources/public.ts` 表达唯一允许的模块关系；移除把 workflows 混进资源 CRUD 的 ResourceMap。不得将同一 DTO 同时留在新旧目录。
-2. P1 提供注入 HTTP 的 `createResourcesApi/createWorkflowsApi/createRunsApi/createAgentsApi/createSystemApi`、各模块 injection key/require hook、共享 Query 状态，并实现、测试和冻结 runs 的最小 `trigger/cancel` 页面动作控制器（触发输入为 Workflow ID/运行选项，取消输入为 session ID，输出为显式成功/失败/未知结果；具体 sessions 轮询、恢复和报告仍由 P4 实现）。名称可按实际统一，但交付时写明导出签名和调用样例。公开入口不得创建请求/可变单例；模块内部不反向 import 自己的 barrel。
+2. P1 提供注入 HTTP 的 `createResourcesApi/createWorkflowsApi/createRunsApi/createAgentsApi/createSystemApi`、各模块 injection key/require hook、共享 Query 状态，并实现、测试和冻结 runs 的最小 `trigger/cancel` 页面动作控制器（触发输入为已保存 Workflow ID 与可选 AbortSignal；后端该端点无业务运行选项，取消输入为 session ID，输出为显式成功/失败/未知结果；具体 sessions 轮询、恢复和报告仍由 P4 实现）。名称可按实际统一，但交付时写明导出签名和调用样例。公开入口不得创建请求/可变单例；模块内部不反向 import 自己的 barrel。
 3. P1 同时交付后续并行包需要的最小稳定接口：system 的能力查询控制器；workflows 的列表查询和来源使用位置纯投影；resources 自定义 `SourceUsageView` 与 API 无关编辑 gateway 类型。P2/P4 从这些公开出口消费，不私自从旧 domain 取跨模块事实。查询内部的进一步整理由其后续所有者负责，避免临时页面直调具体 API。
 4. P1 选择显式 `useAsyncTask` 结果约定并迁移所有当时调用方，结果须区分成功（含 void）、失败与忙碌拒绝。Query 在最新响应被接纳时记录读取时间，身份变化清旧值，同身份失败保留旧值及错误。只演进既有原语，不另写同义 hook。旧路径只允许 re-export 或唯一已装配实例的临时别名，记录逐条删除责任；P7 必须清零。
 5. P2 冻结 `SourceConfigEditor` 的只读值/命名动作、`shared-resource | workflow-draft` 区分联合及最小 gateway。P3 通过该契约组合，资源 UI 不能决定保存到哪里。P5 冻结 session/turn/event/request/file 类型及 transport/reducer/useAgentSession 接口后，P6 才实现命令/文件/UI 控制器；历史/快照/SSE 顺序与 generation 仅由 P5 提取的 useAgentSession 拥有，P6 直接复用。
-6. `package.json`/锁文件、vite/tsconfig、全局样式、components.d.ts、app/router/bootstrap、统一架构规则由集成协调者持有；P1 首次创建，P2–P6 仅提交所需变更片段和依据。app/router/bootstrap、共享配置/规则和其他公共文件由 GPT-6 Astra xhigh 集成 worker 按锁定范围修改；主代理只负责协调、汇总各 worker 的就地 diff、审查和最终提交，不能直接代写公共文件。路由切换时协调者接入已完成 Page 并删除对应旧 View，未完成路由继续旧实现；不得维护 /v2 或两份运行状态。
+6. `package.json`/锁文件、vite/tsconfig、全局样式、components.d.ts、app/router/bootstrap、统一架构规则由集成协调者持有；P1 首次创建，P2–P6 仅提交所需变更片段和依据。app/router/bootstrap、共享配置/规则和其他公共文件由 GPT-6 Astra medium 集成 worker 按锁定范围修改；主代理只负责协调及交接摘要，不能直接代写、检查公共文件或执行验证；唯一集成 worker 审查、验证并提交。路由切换时协调者接入已完成 Page 并删除对应旧 View，未完成路由继续旧实现；不得维护 /v2 或两份运行状态。
 7. 旧平铺测试随 P1 迁移传输/类型后交给所属包，P2–P6 仅修改自己列明的测试；共享 test helper、Playwright config 和最终 E2E 由 P7/协调者修改。每包交接记录导出、删除/保留的旧路径、测试命令、commit 与下游需要注意的限制。公共 API 调整必须先通知消费者，不能由并行 worker 各建兼容实现；共享目录中不得互相覆盖修改。
 
 ## 默认值与历史规范差异
@@ -87,12 +87,12 @@ P1 完成后最多同时运行 P2/P4/P5 三名实施 worker，在同一 `/mnt/d/
 
 依据和交接：[P1-foundation.md](work-packages/P1-foundation.md)；对应原设计 P1/P2。退出后允许 P2/P4/P5 并行。
 
-- [ ] 2.1 建立 app/shared 及模块类型/API 所有权，迁移公共 UI/Schema/异步原语，保持旧路由可用；以类型检查和现有 Schema/Query 单测验证无重复 DTO 或第二实现。
-- [ ] 2.2 安装 Axios 并实现单一 HTTP 工厂、注入式模块 API、严格 JSON/204/503/error/header/params/signal 契约；迁移所有 fetch mock 测试并用受控 Axios adapter 验证真实请求适配、一次序列化、取消和无自动重试。
-- [ ] 2.3 一次迁移 async action 结果契约与调用方，完善 Query 身份/读取时间语义，拆分业务错误字段映射；用 void 成功、失败、忙碌、A 慢于 B/卸载/刷新失败用例验证。
-- [ ] 2.4 提供能力查询、工作流列表/使用位置、runs 最小 trigger/cancel 页面动作控制器（含可运行实现）、资源 gateway 等并行前置公开接口和应用装配；输出签名/调用样例，以消费者类型检查及缺失注入明确报错验证。
-- [ ] 2.5 建立覆盖 TS/Vue SFC、相对路径、type-only、动态 import 的单一架构规则；对新增结构执行边界检查，用故意违规样例验证 checker 能发现违反依赖方向与 model 纯度。
-- [ ] 2.6 按单测→type/static→build→真实最小浏览器顺序验证，记录过渡出口/删除包号并提交基础批次；提交后旧入口仍可运行，才交接 P2/P4/P5。
+- [x] 2.1 建立 app/shared 及模块类型/API 所有权，迁移公共 UI/Schema/异步原语，保持旧路由可用；以类型检查和现有 Schema/Query 单测验证无重复 DTO 或第二实现。
+- [x] 2.2 安装 Axios 并实现单一 HTTP 工厂、注入式模块 API、严格 JSON/204/503/error/header/params/signal 契约；迁移所有 fetch mock 测试并用受控 Axios adapter 验证真实请求适配、一次序列化、取消和无自动重试。
+- [x] 2.3 一次迁移 async action 结果契约与调用方，完善 Query 身份/读取时间语义，拆分业务错误字段映射；用 void 成功、失败、忙碌、A 慢于 B/卸载/刷新失败用例验证。
+- [x] 2.4 提供能力查询、工作流列表/使用位置、runs 最小 trigger/cancel 页面动作控制器（含可运行实现）、资源 gateway 等并行前置公开接口和应用装配；输出签名/调用样例，以消费者类型检查及缺失注入明确报错验证。
+- [x] 2.5 建立覆盖 TS/Vue SFC、相对路径、type-only、动态 import 的单一架构规则；对新增结构执行边界检查，用故意违规样例验证 checker 能发现违反依赖方向与 model 纯度。
+- [x] 2.6 按单测→type/static→build→真实最小浏览器顺序验证，记录过渡出口/删除包号并提交基础批次；提交后旧入口仍可运行，才交接 P2/P4/P5。
 
 ## 3. P2 — 资源闭环
 
@@ -147,10 +147,13 @@ P1 完成后最多同时运行 P2/P4/P5 三名实施 worker，在同一 `/mnt/d/
 - [ ] 8.2 清零过渡 re-export/旧实现/总 DTO 桶/废弃目录与无引用 Demo，补前端 README；通过引用图、全量类型检查和架构规则验证无循环/深层 import、SFC 无具体 HTTP/SSE、model 无 Vue/UI/网络依赖。
 - [ ] 8.3 顺序执行完整前端单测、typecheck/format/架构检查、build、Playwright 回归，核对应用普通 HTTP 无直接 fetch；只保留明确标注的 SSE 测试探针和框架 route.fetch 例外，记录退出码及基线差异。
 - [ ] 8.4 用真实浏览器验证资源→工作流→运行→版本报告→Agent 续接、Agent 真路由切换、375px/触控/长会话；对照 P0 比较入口 chunk、首屏请求与交互，不凭目录变化宣称性能改善。
-- [ ] 8.5 审查 diff 的重复事实/隐式 fallback/吞错/未声明行为变化，并逐个核验本任务 commit 的路径与 diff，排除后端及其他任务文件；不要求并行后端任务的 hash/dirty 不变。记录提交链、包级回退依赖、契约差异及剩余限制，运行 OpenSpec 严格校验后由主代理完成最终前端提交。其他 change 未整体验收时不得顺带归档。
+- [ ] 8.5 审查 diff 的重复事实/隐式 fallback/吞错/未声明行为变化，并逐个核验本任务 commit 的路径与 diff，排除后端及其他任务文件；不要求并行后端任务的 hash/dirty 不变。记录提交链、包级回退依赖、契约差异及剩余限制，运行 OpenSpec 严格校验后由专职集成 worker 完成最终前端提交。其他 change 未整体验收时不得顺带归档。
 
 ## 规划验证记录
 
 2026-09-24：`rtk proxy openspec validate refactor-frontend-architecture --strict --no-interactive` 通过；本 change 13 个 Markdown 文件的相对链接/行尾空白检查通过；`rtk git diff --check` 通过；原设计 proposal.md/design.md 与基线 4e3c524 内容逐字一致。历史原设计中的既有缺链不在本 change 修复范围。该记录为规划阶段验证，不能替代后续代码验收。用户随后已明确审核通过；当前执行目录、共享文件所有权和后端并行任务隔离按本 tasks 的最新执行边界实施。
 
 2026-09-24 执行约束更新验证：在 `/mnt/d/code/LogAgent` 执行 OpenSpec strict 通过；本次指定文档的 `git diff --check` 通过。仅修改根 tasks、8 份工作包和原设计 tasks 的移交段，proposal/design 未修改；未操作 branch、stash、reset 或 commit。
+
+
+2026-09-25 P1 集成验收：阶段 A `a2a5510` 已正常自动推送；阶段 B 的接口、真实规则 fixtures、32 文件/160 项单测、typecheck/format/architecture、最终 build 和真实 Chromium 两项 smoke 证据见 [P1-foundation.md](work-packages/P1-foundation.md)。本清单与代码随阶段 B 一并精确提交，普通作者不提交，专职集成 worker 执行正常 hook。P0 历史基线缺口继续保留 1.2/1.3 未完成，新增 [P0-browser-validation.md](work-packages/P0-browser-validation.md) 只登记并发/环境证据，不替代稳定 P0 性能基线。

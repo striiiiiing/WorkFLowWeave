@@ -4,11 +4,11 @@
 
 ## 当前执行约束（用户审核后更新）
 
-本包只在 `/mnt/d/code/LogAgent` 内就地执行，按根 tasks 的文件所有权与其他 worker 并发；不新建或使用其他工作目录/worktree。worker 禁止切 branch、stash、reset 或 commit，只改获分配文件，公共文件请求唯一集成 worker 串行处理。主代理审查并提交本任务 diff，逐个 commit 排除后端及其他任务文件，沿用现有 post-commit 钩子。后端双向 channel 正在另一任务中演进；本包仅记录真实契约测试当时的 HEAD/dirty 与协议差异，不要求其全局不变，不干预或静默兼容不匹配的后端。前端针对性测试可独立继续。
+本包只在 `/mnt/d/code/LogAgent` 内就地执行，按根 tasks 的文件所有权与其他 worker 并发；不新建或使用其他工作目录/worktree。新 worker 统一使用 GPT-6 Astra medium，只改获分配文件，禁止切 branch、stash、reset。普通实施 worker 禁止 commit；唯一获授权的集成 worker 串行处理公共文件、审查验证并精确提交，逐个 commit 排除后端及其他任务文件，沿用现有 post-commit 自动推送钩子，禁止 SKIP_WORKFLOW_PUSH 或覆盖 hooksPath。主代理仅编排和传递交接信息，不执行代码检查或验证。后端双向 channel 正在另一任务中演进；本包仅记录真实契约测试当时的 HEAD/dirty 与协议差异，不要求其全局不变，不干预或静默兼容不匹配的后端。前端针对性测试可独立继续。
 
 ## 文件所有权与集成
 
-写 `modules/agents/composables/` 的 commands/files/其他控制器（复用 P5 已提取的 useAgentSession）、`modules/agents/ui/**`、`pages/agents/**` 和 Agent 控制器/组件测试，迁移旧 AgentsView、components/agent（续接跨模块部分留 P7）与遗留 useAgentStream 适配。不改变 P5 API/model 公共签名而不通知；路由 key/App 装配变更由 GPT-6 Astra xhigh 集成 worker 按协调者安排串行应用。
+写 `modules/agents/composables/` 的 commands/files/其他控制器（复用 P5 已提取的 useAgentSession）、`modules/agents/ui/**`、`pages/agents/**` 和 Agent 控制器/组件测试，迁移旧 AgentsView、components/agent（续接跨模块部分留 P7）与遗留 useAgentStream 适配。不改变 P5 API/model 公共签名而不通知；路由 key/App 装配变更由 GPT-6 Astra medium 集成 worker 按协调者安排串行应用。
 
 session 生命周期直接复用 P5 的注入式 useAgentSession；页面只协调选中会话，不能重写历史/快照/SSE 顺序、generation 或第二 reducer。commands 在稳定 Agent 页面作用域按 session 保留输入/待确认请求，回执仅写对应会话；files 控制器拥有路径/分页/内容/ETag/冲突。send 与 stop 独立状态；未知结果保留原 ID/payload，内容变更新 ID；不自动重放操作。
 

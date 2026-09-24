@@ -311,8 +311,18 @@ const availableModels = [
 
 const centralChannels = ref<ChannelItem[]>([
   { id: 'chan_ops_email', name: '运维专家团队邮件', type: 'email', target: 'ops-team@company.com' },
-  { id: 'chan_dingtalk_webhook', name: '大促值班钉钉群 Webhook', type: 'webhook', target: 'https://oapi.dingtalk.com/robot/send?...' },
-  { id: 'chan_archive_file', name: '本地报告文件归档', type: 'file', target: 'data/notifications/daily-summary.txt' },
+  {
+    id: 'chan_dingtalk_webhook',
+    name: '大促值班钉钉群 Webhook',
+    type: 'webhook',
+    target: 'https://oapi.dingtalk.com/robot/send?...',
+  },
+  {
+    id: 'chan_archive_file',
+    name: '本地报告文件归档',
+    type: 'file',
+    target: 'data/notifications/daily-summary.txt',
+  },
 ])
 
 // ==========================================
@@ -394,7 +404,8 @@ const workflows = ref<WorkflowDefinitionDemo[]>([
       enabled: true,
       order: ['$input', 'task_root_cause', 'task_perf_bottleneck'],
       model: 'claude-3-5-sonnet',
-      prompt: '将输入背景和两个 AI 专家的分析结论综合提炼为一份高层易读的系统健康体检简报，列出紧急程度和行动建议。',
+      prompt:
+        '将输入背景和两个 AI 专家的分析结论综合提炼为一份高层易读的系统健康体检简报，列出紧急程度和行动建议。',
     },
     // 4. 渠道分发
     channels: ['chan_ops_email', 'chan_dingtalk_webhook'],
@@ -519,7 +530,10 @@ onMounted(() => {
   if (typeof q.wf === 'string' && workflows.value.some((w) => w.id === q.wf)) {
     selectedWorkflowId.value = q.wf
   }
-  if (typeof q.stage === 'string' && ['sources', 'analyses', 'fanin', 'channels', 'all'].includes(q.stage)) {
+  if (
+    typeof q.stage === 'string' &&
+    ['sources', 'analyses', 'fanin', 'channels', 'all'].includes(q.stage)
+  ) {
     activeStage.value = q.stage as any
   }
 })
@@ -533,7 +547,10 @@ watch(
     if (typeof q.wf === 'string' && workflows.value.some((w) => w.id === q.wf)) {
       selectedWorkflowId.value = q.wf
     }
-    if (typeof q.stage === 'string' && ['sources', 'analyses', 'fanin', 'channels', 'all'].includes(q.stage)) {
+    if (
+      typeof q.stage === 'string' &&
+      ['sources', 'analyses', 'fanin', 'channels', 'all'].includes(q.stage)
+    ) {
       activeStage.value = q.stage as any
     }
   },
@@ -798,14 +815,20 @@ function syncRawJson() {
     on_filtered_empty: sourceForm.value.advanced.onFilteredEmpty,
   }
   const settersObj = {
-    fields: sourceForm.value.rules.fieldsStr.split(',').map((s) => s.trim()).filter(Boolean),
+    fields: sourceForm.value.rules.fieldsStr
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
     filter_level: sourceForm.value.rules.filterLevel,
     sort_by: sourceForm.value.rules.sortBy,
     descending: sourceForm.value.rules.descending,
     format: sourceForm.value.rules.format,
     extractions: sourceForm.value.advanced.extractions,
     filter_expr: sourceForm.value.advanced.filterExpr,
-    exclude_fields: sourceForm.value.advanced.excludeFieldsStr.split(',').map((s) => s.trim()).filter(Boolean),
+    exclude_fields: sourceForm.value.advanced.excludeFieldsStr
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
   }
   sourceForm.value.advanced.rawOptionsJson = JSON.stringify(optionsObj, null, 2)
   sourceForm.value.advanced.rawSettersJson = JSON.stringify(settersObj, null, 2)
@@ -984,7 +1007,9 @@ function saveSourceConfig() {
         },
         advanced: advancedData,
       }
-      ElMessage.success('配置已保存为本工作流专属配置！若需共享给全局，可在卡片点击「保存数据源」。')
+      ElMessage.success(
+        '配置已保存为本工作流专属配置！若需共享给全局，可在卡片点击「保存数据源」。',
+      )
     } else if (binding.mode === 'detached' && binding.customConfig) {
       binding.customConfig.name = sourceForm.value.name
       binding.customConfig.collector = sourceForm.value.collector
@@ -1134,7 +1159,9 @@ async function saveCentralConfig() {
   src.advanced = advancedData
   src.updatedAt = '刚刚'
   sourceDrawer.value = false
-  ElMessage.success(`全局数据源「${src.name}」已更新，并已同步广播给 ${linkedWfs.length} 个工作流！`)
+  ElMessage.success(
+    `全局数据源「${src.name}」已更新，并已同步广播给 ${linkedWfs.length} 个工作流！`,
+  )
 }
 
 // ==========================================
@@ -1156,7 +1183,10 @@ function simulateRunWorkflow() {
     const cfg = getEffectiveSourceConfig(s)
     if (cfg?.advanced?.extractions?.length) {
       const extList = cfg.advanced.extractions
-        .map((e) => `${e.targetField}(${e.sourceType === 'json_path' ? 'JSONPath' : e.sourceType === 'regex' ? '正则' : '缺省'})`)
+        .map(
+          (e) =>
+            `${e.targetField}(${e.sourceType === 'json_path' ? 'JSONPath' : e.sourceType === 'regex' ? '正则' : '缺省'})`,
+        )
         .join(', ')
       runLogs.value.push(`       ↳ [${cfg.name}] 正在执行不规则字段抽取: ${extList}`)
     }
@@ -1366,13 +1396,18 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
         <!-- ========================================== -->
         <!-- 阶段 1：数据采集 (以数据源为中心：新增、加载、保存、脱离模板) -->
         <!-- ========================================== -->
-        <section v-if="activeStage === 'sources' || activeStage === 'all'" class="stage-card stage-1">
+        <section
+          v-if="activeStage === 'sources' || activeStage === 'all'"
+          class="stage-card stage-1"
+        >
           <div class="stage-card-head">
             <div class="stage-title-wrap">
               <span class="stage-index">1</span>
               <div>
                 <h3>数据采集源管理</h3>
-                <p>配置采集输入源。支持规整标准日志与任意不规则非结构化数据，自动抽取为共享输入。支持调整上下次序。</p>
+                <p>
+                  配置采集输入源。支持规整标准日志与任意不规则非结构化数据，自动抽取为共享输入。支持调整上下次序。
+                </p>
               </div>
             </div>
             <div class="stage-head-actions">
@@ -1398,7 +1433,10 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
                 <span class="font-bold text-xs">工作流级高级采集参数</span>
                 <span class="badge-param">并发: {{ activeWorkflow.collectionConcurrency }}</span>
                 <span class="badge-param">全空策略: {{ activeWorkflow.onAllEmpty }}</span>
-                <span class="badge-param">分隔符: {{ activeWorkflow.inputSeparator === '\n\n' ? '双换行 (默认)' : '自定义' }}</span>
+                <span class="badge-param">
+                  分隔符:
+                  {{ activeWorkflow.inputSeparator === '\n\n' ? '双换行 (默认)' : '自定义' }}
+                </span>
               </div>
               <button type="button" class="btn-toggle-subtle">
                 {{ isWorkflowAdvancedExpanded ? '收起高级参数 ▴' : '展开参数设置 ▾' }}
@@ -1408,7 +1446,9 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
             <div v-if="isWorkflowAdvancedExpanded" class="params-bar-content">
               <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
-                  <label class="block text-xs font-bold text-muted mb-1">采集并发数 (Concurrency)</label>
+                  <label class="block text-xs font-bold text-muted mb-1">
+                    采集并发数 (Concurrency)
+                  </label>
                   <el-input-number
                     v-model="activeWorkflow.collectionConcurrency"
                     :min="1"
@@ -1430,7 +1470,9 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
                 </div>
 
                 <div>
-                  <label class="block text-xs font-bold text-muted mb-1">跨来源正文输入分隔符</label>
+                  <label class="block text-xs font-bold text-muted mb-1">
+                    跨来源正文输入分隔符
+                  </label>
                   <el-input
                     v-model="activeWorkflow.inputSeparator"
                     size="small"
@@ -1464,8 +1506,7 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
                     <AppIcon
                       :name="
                         collectorIcon(
-                          (getEffectiveSourceConfig(binding)?.collector as CollectorType) ||
-                            'logs',
+                          (getEffectiveSourceConfig(binding)?.collector as CollectorType) || 'logs',
                         )
                       "
                       size="sm"
@@ -1497,7 +1538,9 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
                     v-if="getEffectiveSourceConfig(binding)?.advanced?.extractions?.length"
                     class="tag-status neutral"
                   >
-                    <span>{{ getEffectiveSourceConfig(binding)?.advanced.extractions.length }} 项抽取</span>
+                    <span>
+                      {{ getEffectiveSourceConfig(binding)?.advanced.extractions.length }} 项抽取
+                    </span>
                   </span>
                 </div>
 
@@ -1533,7 +1576,10 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
                     class="toggle-inline-adv-btn"
                     @click="binding.expandedAdvanced = !binding.expandedAdvanced"
                   >
-                    <AppIcon :name="binding.expandedAdvanced ? 'chevronDown' : 'chevronRight'" size="sm" />
+                    <AppIcon
+                      :name="binding.expandedAdvanced ? 'chevronDown' : 'chevronRight'"
+                      size="sm"
+                    />
                     <span>
                       {{
                         binding.expandedAdvanced
@@ -1562,8 +1608,18 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
                           <span class="target-field font-mono font-bold">{{ ex.targetField }}</span>
                           <span class="sep">←</span>
                           <span class="source-expr font-mono">{{ ex.expression }}</span>
-                          <span class="type-tag">{{ ex.sourceType === 'json_path' ? 'JSONPath' : ex.sourceType === 'regex' ? '正则' : '缺省值' }}</span>
-                          <span v-if="ex.fallbackValue" class="fallback-tag">缺省: {{ ex.fallbackValue }}</span>
+                          <span class="type-tag">
+                            {{
+                              ex.sourceType === 'json_path'
+                                ? 'JSONPath'
+                                : ex.sourceType === 'regex'
+                                  ? '正则'
+                                  : '缺省值'
+                            }}
+                          </span>
+                          <span v-if="ex.fallbackValue" class="fallback-tag">
+                            缺省: {{ ex.fallbackValue }}
+                          </span>
                         </div>
                       </div>
                       <div v-else class="text-xs text-muted">
@@ -1579,16 +1635,20 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
                       </div>
                       <div class="flex flex-wrap items-center gap-3 text-xs">
                         <div>
-                          <span class="text-muted">原始过滤表达式: </span>
+                          <span class="text-muted">原始过滤表达式:</span>
                           <code v-if="getEffectiveSourceConfig(binding)?.advanced?.filterExpr">
                             {{ getEffectiveSourceConfig(binding)?.advanced.filterExpr }}
                           </code>
                           <span v-else class="text-muted">无 (全量采集)</span>
                         </div>
-                        <div v-if="getEffectiveSourceConfig(binding)?.advanced?.excludeFields?.length">
-                          <span class="text-muted">排除字段: </span>
+                        <div
+                          v-if="getEffectiveSourceConfig(binding)?.advanced?.excludeFields?.length"
+                        >
+                          <span class="text-muted">排除字段:</span>
                           <span class="text-rose-600 dark:text-rose-400 font-mono">
-                            {{ getEffectiveSourceConfig(binding)?.advanced.excludeFields.join(', ') }}
+                            {{
+                              getEffectiveSourceConfig(binding)?.advanced.excludeFields.join(', ')
+                            }}
                           </span>
                         </div>
                       </div>
@@ -1602,19 +1662,34 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
                       </div>
                       <div class="policy-badges-row">
                         <span class="badge-policy">
-                          报错策略: <strong>{{ getEffectiveSourceConfig(binding)?.advanced?.onError }}</strong>
+                          报错策略:
+                          <strong>
+                            {{ getEffectiveSourceConfig(binding)?.advanced?.onError }}
+                          </strong>
                         </span>
                         <span class="badge-policy">
-                          目标缺失: <strong>{{ getEffectiveSourceConfig(binding)?.advanced?.onMissing }}</strong>
+                          目标缺失:
+                          <strong>
+                            {{ getEffectiveSourceConfig(binding)?.advanced?.onMissing }}
+                          </strong>
                         </span>
                         <span class="badge-policy">
-                          结果为空: <strong>{{ getEffectiveSourceConfig(binding)?.advanced?.onEmpty }}</strong>
+                          结果为空:
+                          <strong>
+                            {{ getEffectiveSourceConfig(binding)?.advanced?.onEmpty }}
+                          </strong>
                         </span>
                         <span class="badge-policy">
-                          过滤后为空: <strong>{{ getEffectiveSourceConfig(binding)?.advanced?.onFilteredEmpty }}</strong>
+                          过滤后为空:
+                          <strong>
+                            {{ getEffectiveSourceConfig(binding)?.advanced?.onFilteredEmpty }}
+                          </strong>
                         </span>
                         <span class="badge-policy">
-                          超时上限: <strong>{{ getEffectiveSourceConfig(binding)?.advanced?.timeout }} 秒</strong>
+                          超时上限:
+                          <strong>
+                            {{ getEffectiveSourceConfig(binding)?.advanced?.timeout }} 秒
+                          </strong>
                         </span>
                       </div>
                     </div>
@@ -1622,10 +1697,7 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
                 </div>
 
                 <div class="source-hint-row">
-                  <span
-                    v-if="binding.mode === 'linked'"
-                    class="text-xs text-muted"
-                  >
+                  <span v-if="binding.mode === 'linked'" class="text-xs text-muted">
                     全局同步：与资源中心保持一致。若在当前工作流中修改，将自动脱离为专属独立配置。
                   </span>
                   <span v-else class="text-xs text-muted">
@@ -1723,13 +1795,19 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
         <!-- ========================================== -->
         <!-- 阶段 2：并行 AI 分析 (Fan-Out 任务组) -->
         <!-- ========================================== -->
-        <section v-if="activeStage === 'analyses' || activeStage === 'all'" class="stage-card stage-2">
+        <section
+          v-if="activeStage === 'analyses' || activeStage === 'all'"
+          class="stage-card stage-2"
+        >
           <div class="stage-card-head">
             <div class="stage-title-wrap">
               <span class="stage-index">2</span>
               <div>
                 <h3>并行 AI 分析 (Fan-Out)</h3>
-                <p>各分析任务接收统一的采集输入，使用不同 AI 模型与提示词并发处理。可通过上下箭头调整分析执行顺序。</p>
+                <p>
+                  各分析任务接收统一的采集输入，使用不同 AI
+                  模型与提示词并发处理。可通过上下箭头调整分析执行顺序。
+                </p>
               </div>
             </div>
             <el-button size="small" @click="addAnalysisTask">
@@ -1885,7 +1963,10 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
         <!-- ========================================== -->
         <!-- 阶段 4：渠道分发 (Notification & Delivery) -->
         <!-- ========================================== -->
-        <section v-if="activeStage === 'channels' || activeStage === 'all'" class="stage-card stage-4">
+        <section
+          v-if="activeStage === 'channels' || activeStage === 'all'"
+          class="stage-card stage-4"
+        >
           <div class="stage-card-head">
             <div class="stage-title-wrap">
               <span class="stage-index">4</span>
@@ -1904,9 +1985,7 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
               :class="{ selected: activeWorkflow.channels.includes(chan.id) }"
               @click="
                 activeWorkflow.channels.includes(chan.id)
-                  ? (activeWorkflow.channels = activeWorkflow.channels.filter(
-                      (c) => c !== chan.id,
-                    ))
+                  ? (activeWorkflow.channels = activeWorkflow.channels.filter((c) => c !== chan.id))
                   : activeWorkflow.channels.push(chan.id)
               "
             >
@@ -1917,10 +1996,7 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
                 <strong>{{ chan.name }}</strong>
                 <span class="chan-target-mono">{{ chan.target }}</span>
               </div>
-              <el-checkbox
-                :model-value="activeWorkflow.channels.includes(chan.id)"
-                @click.stop
-              />
+              <el-checkbox :model-value="activeWorkflow.channels.includes(chan.id)" @click.stop />
             </div>
           </div>
 
@@ -1951,8 +2027,10 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
         <el-button
           type="primary"
           @click="
-            openCreateSource();
-            isNewSourceMode = true
+            () => {
+              openCreateSource()
+              isNewSourceMode = true
+            }
           "
         >
           <AppIcon name="plus" size="sm" />
@@ -2024,8 +2102,10 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
                 :key="wf.id"
                 class="impact-tag"
                 @click="
-                  selectedWorkflowId = wf.id;
-                  activeNav = 'workflows'
+                  () => {
+                    selectedWorkflowId = wf.id
+                    activeNav = 'workflows'
+                  }
                 "
               >
                 {{ wf.name }}
@@ -2071,7 +2151,8 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
             <strong>📢 正在编辑资源配置中心全局数据源</strong>
             <p>
               保存后将为所有处于全局同步中的
-              {{ getLinkedCount(activeEditingCentral.id) }} 个工作流进行广播同步（包含基础设置与不规则抽取配置）！
+              {{ getLinkedCount(activeEditingCentral.id) }}
+              个工作流进行广播同步（包含基础设置与不规则抽取配置）！
             </p>
           </div>
         </div>
@@ -2112,10 +2193,7 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
           >
             <AppIcon name="sliders" size="sm" />
             <span>高级扩展与不规则字段 (专业)</span>
-            <span
-              v-if="sourceForm.advanced.extractions.length"
-              class="seg-badge"
-            >
+            <span v-if="sourceForm.advanced.extractions.length" class="seg-badge">
               {{ sourceForm.advanced.extractions.length }}
             </span>
           </button>
@@ -2178,7 +2256,9 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
               <el-form-item label="基础保留字段 (逗号分隔)">
                 <el-input v-model="sourceForm.rules.fieldsStr" />
                 <p class="text-[11px] text-muted mt-1">
-                  标准常规字段，如 <code>time, level, module, message</code>。
+                  标准常规字段，如
+                  <code>time, level, module, message</code>
+                  。
                 </p>
               </el-form-item>
               <div class="form-grid-2">
@@ -2216,7 +2296,9 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
             <div class="subtle-guide-box" @click="drawerTab = 'advanced'">
               <div class="flex items-center gap-2">
                 <AppIcon name="sparkles" size="sm" />
-                <span class="font-bold text-xs">日志字段不规则？需要抽取深层 JSON 或复杂正则？</span>
+                <span class="font-bold text-xs">
+                  日志字段不规则？需要抽取深层 JSON 或复杂正则？
+                </span>
               </div>
               <span class="text-xs text-primary underline">前往「高级扩展与不规则字段」配置 ➔</span>
             </div>
@@ -2232,7 +2314,8 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
                 <div>
                   <div class="sec-title mb-0">01 · 不规则字段动态提取 (JSONPath / 正则表达式)</div>
                   <p class="text-[11px] text-muted">
-                    真实日志常存在深层嵌套 JSON 或半结构化字符串，在此添加动态抽取规则，将其规整为标准字段。
+                    真实日志常存在深层嵌套 JSON
+                    或半结构化字符串，在此添加动态抽取规则，将其规整为标准字段。
                   </p>
                 </div>
                 <el-button size="small" type="primary" plain @click="addCustomExtraction">
@@ -2281,12 +2364,7 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
                       <el-option value="regex" label="正则表达式捕获 (Regex)" />
                       <el-option value="default_value" label="缺省默认填充值" />
                     </el-select>
-                    <el-button
-                      size="small"
-                      text
-                      type="danger"
-                      @click="removeExtraction(rIdx)"
-                    >
+                    <el-button size="small" text type="danger" @click="removeExtraction(rIdx)">
                       删除
                     </el-button>
                   </div>
@@ -2298,7 +2376,7 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
                           rule.sourceType === 'json_path'
                             ? 'JSONPath 表达式 (如 $.meta.trace.id 或 $.headers["x-req-id"])'
                             : rule.sourceType === 'regex'
-                              ? '命名捕获正则 (如 client=(?P<ip>\\S+))'
+                              ? '命名捕获正则 (如 client=(?P\u003cip>\\S+))'
                               : '静态默认值'
                         }}
                       </label>
@@ -2321,10 +2399,7 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
                   </div>
                 </div>
 
-                <div
-                  v-if="!sourceForm.advanced.extractions.length"
-                  class="empty-extraction-hint"
-                >
+                <div v-if="!sourceForm.advanced.extractions.length" class="empty-extraction-hint">
                   暂无不规则字段抽取规则。点击上方「添加规则」或选择预设模板开始配置。
                 </div>
               </div>
@@ -2428,11 +2503,7 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
             <div class="form-section">
               <div class="flex justify-between items-center mb-2">
                 <div class="sec-title mb-0">04 · 底层原始 JSON 配置 (开发者模式)</div>
-                <el-button
-                  size="small"
-                  text
-                  @click="showRawJsonEditor = !showRawJsonEditor"
-                >
+                <el-button size="small" text @click="showRawJsonEditor = !showRawJsonEditor">
                   {{ showRawJsonEditor ? '收起底层 JSON' : '查看/编辑底层 JSON' }}
                 </el-button>
               </div>
@@ -2440,7 +2511,9 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
               <div v-if="showRawJsonEditor" class="raw-json-editor-wrap">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <span class="block text-[11px] font-mono text-muted mb-1">Options JSON (采集参数)</span>
+                    <span class="block text-[11px] font-mono text-muted mb-1">
+                      Options JSON (采集参数)
+                    </span>
                     <el-input
                       v-model="sourceForm.advanced.rawOptionsJson"
                       type="textarea"
@@ -2449,7 +2522,9 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
                     />
                   </div>
                   <div>
-                    <span class="block text-[11px] font-mono text-muted mb-1">Setters JSON (处理规则与抽取)</span>
+                    <span class="block text-[11px] font-mono text-muted mb-1">
+                      Setters JSON (处理规则与抽取)
+                    </span>
                     <el-input
                       v-model="sourceForm.advanced.rawSettersJson"
                       type="textarea"
@@ -2472,11 +2547,7 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
             type="primary"
             @click="activeEditingCentral ? saveCentralConfig() : saveSourceConfig()"
           >
-            {{
-              activeEditingCentral
-                ? '保存并全量广播同步'
-                : '保存配置'
-            }}
+            {{ activeEditingCentral ? '保存并全量广播同步' : '保存配置' }}
           </el-button>
         </div>
       </div>
@@ -2514,15 +2585,19 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
                 <span v-if="src.advanced?.extractions?.length" class="badge-ext">
                   {{ src.advanced.extractions.length }} 项抽取
                 </span>
-                <span v-if="src.advanced?.filterExpr" class="badge-filter">
-                  已配过滤
-                </span>
+                <span v-if="src.advanced?.filterExpr" class="badge-filter">已配过滤</span>
               </div>
               <p class="load-source-desc">{{ src.description || '暂无描述' }}</p>
               <div class="load-source-meta">
-                <span>路径: <code>{{ src.options.path }}</code></span>
+                <span>
+                  路径:
+                  <code>{{ src.options.path }}</code>
+                </span>
                 <span>上限: {{ src.options.maxLines }} 行</span>
-                <span>保留字段: {{ src.rules.fields.slice(0, 4).join(', ') }}{{ src.rules.fields.length > 4 ? '...' : '' }}</span>
+                <span>
+                  保留字段: {{ src.rules.fields.slice(0, 4).join(', ')
+                  }}{{ src.rules.fields.length > 4 ? '...' : '' }}
+                </span>
               </div>
             </div>
 
@@ -2530,12 +2605,7 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
               <el-tag v-if="isSourceAlreadyLoaded(src.id)" type="info" size="small">
                 已在工作流中
               </el-tag>
-              <el-button
-                v-else
-                size="small"
-                type="primary"
-                @click="loadSourceIntoWorkflow(src)"
-              >
+              <el-button v-else size="small" type="primary" @click="loadSourceIntoWorkflow(src)">
                 加载到本工作流
               </el-button>
             </div>
@@ -2548,7 +2618,12 @@ function collectorIcon(c: CollectorType): 'database' | 'history' | 'settings' {
           <button
             type="button"
             class="text-xs text-primary hover:underline cursor-pointer bg-transparent border-0"
-            @click="loadSourceModal = false; openCreateSource()"
+            @click="
+              () => {
+                loadSourceModal = false
+                openCreateSource()
+              }
+            "
           >
             没有合适的数据源？直接新建采集源 ➔
           </button>

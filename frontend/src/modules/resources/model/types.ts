@@ -51,6 +51,22 @@ export interface SourceOverride {
 export interface ChannelOverride {
   options: JsonObject
 }
+
+/** Resource editors never decide where a value is persisted. */
+export type SourceSaveTarget =
+  | { kind: 'shared-resource'; resourceId: string }
+  | { kind: 'workflow-draft'; workflowId: string; sourceId: string }
+
+export interface SourceUsageView {
+  id: string
+  name: string
+  detached: boolean
+}
+
+export interface SourceConfigEditorGateway {
+  resolve(sourceId: string, override?: SourceOverride, signal?: AbortSignal): Promise<SourceConfig>
+  save(target: SourceSaveTarget, value: SourceConfig): Promise<void>
+}
 export interface ResourceMap {
   sources: SourceConfig
   setters: SetterTemplate
