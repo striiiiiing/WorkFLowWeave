@@ -1,6 +1,10 @@
 # P1 基础边界、API 与 DTO
 
-根任务：[tasks.md §2](../tasks.md#2-p1--基础边界统一-api-与-dto)。先取得用户对任务计划的审核结论，并读取 P0 证据。依据：[原设计](../../design-frontend-architecture/design.md) §3.1、§5.2、§8、§10、§12；这是一包串行的公共地基，结束后才开三条业务链。
+根任务：[tasks.md §2](../tasks.md#2-p1--基础边界统一-api-与-dto)。用户已审核并授权继续，读取 P0 已通过的单测/type/build 与浏览器环境限制后即可开始。依据：[原设计](../../design-frontend-architecture/design.md) §3.1、§5.2、§8、§10、§12；这是一包串行的公共地基，结束后才开三条业务链。
+
+## 当前执行约束（用户审核后更新）
+
+本包只在 `/mnt/d/code/LogAgent` 内就地执行，按根 tasks 的文件所有权与其他 worker 并发；不新建或使用其他工作目录/worktree。worker 禁止切 branch、stash、reset 或 commit，只改获分配文件，公共文件请求唯一集成 worker 串行处理。主代理审查并提交本任务 diff，逐个 commit 排除后端及其他任务文件，沿用现有 post-commit 钩子。后端双向 channel 正在另一任务中演进；本包仅记录真实契约测试当时的 HEAD/dirty 与协议差异，不要求其全局不变，不干预或静默兼容不匹配的后端。前端针对性测试可独立继续。
 
 ## 输入、所有权与输出
 
@@ -24,7 +28,7 @@ DTO 归属锁定后要特别拆开 `ResourceMap.workflows`：workflow CRUD 由 w
 
 Axios 受控 adapter 验证 URL、0/false/空值参数、JSON 一次序列化、条件请求头、signal、204、无效成功 JSON、非 JSON HTTP 错误/405、仅 health 合法 503、错误信封、网络与取消区分、不自动重试。Async action 的忙碌/失败/void 成功必须可区分；改契约时一次迁移所有调用方并运行针对性用例。Query 覆盖实体改变/同身份刷新失败/A 慢于 B/卸载。
 
-架构检查只维护一套规则，必须解析 TS 与 Vue SFC，覆盖相对、类型和动态 import。P1 可声明逐包到期的旧路径迁移名单，但不能长期豁免新结构。共享规则使用违规 fixture 验证，而不是只 grep alias。P1 编写共享 AST 边界工具并不增加另一套业务验证。app/router/bootstrap 等公共文件由 GPT-6 Astra xhigh 集成 worker 修改；主代理只协调、审查、合并和提交。
+架构检查只维护一套规则，必须解析 TS 与 Vue SFC，覆盖相对、类型和动态 import。P1 可声明逐包到期的旧路径迁移名单，但不能长期豁免新结构。共享规则使用违规 fixture 验证，而不是只 grep alias。P1 编写共享 AST 边界工具并不增加另一套业务验证。app/router/bootstrap 等公共文件由 GPT-6 Astra xhigh 集成 worker 修改；主代理只协调、审查、汇总就地 diff 和提交；worker 不自行提交或改变 branch。
 
 建议先提交可编译的类型/API/基础移动，再提交 Axios/异步语义与测试，每次是可回退单元；最终交接需普通 HTTP 单入口、旧路由可运行且下游接口稳定。记录每条旧出口→新唯一实现→到期包号。后续包不得在共享文件各自修改同一工厂。
 
