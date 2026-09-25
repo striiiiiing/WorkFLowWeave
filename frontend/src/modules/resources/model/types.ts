@@ -74,3 +74,14 @@ export interface ResourceMap {
   channels: ChannelConfig
 }
 export type ResourceKind = keyof ResourceMap
+
+export type CredentialProtector = (
+  plaintext: string,
+) => Promise<Extract<Credential, { kind: 'encrypted' }>>
+
+export type SourceBasicChanges = Partial<
+  Pick<SourceConfig, 'display_name' | 'description' | 'enabled'>
+>
+export type SourceAdvancedChanges = Partial<
+  Pick<SourceConfig, 'timeout' | 'on_error' | 'on_missing' | 'on_empty' | 'on_filtered_empty'>
+>

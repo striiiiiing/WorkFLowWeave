@@ -1,10 +1,15 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { resourcesApi } from '@/api/resources'
+import { systemApi } from '@/api/system'
 import { useQuery } from '@/shared/async/useQuery'
-import ResourceEditor from './ResourceEditor.vue'
-import type { SourceConfig, SourceOverride } from '@/types'
-import type { EditableResource } from '@/domain/resources'
-
+import {
+  SourceEditorSession,
+  type SourceConfig,
+  type SourceOverride,
+  type SourceConfigEditorGateway,
+  type SourceSaveTarget,
+} from '@/modules/resources/public'
 const props = defineProps<{
   initial?: SourceConfig
   override?: SourceOverride
@@ -12,47 +17,38 @@ const props = defineProps<{
   linkedCount?: number
 }>()
 const emit = defineEmits<{ saved: [value: SourceConfig]; cancel: [] }>()
-const { data, pending, error, refresh } = useQuery(async (signal) =>
-  props.initial ? resourcesApi.resolveSource(props.initial.id, props.override, signal) : null,
+// Removed with the old SourceStepCard in P3. New callers provide the page-owned catalog.
+const catalog = useQuery((signal) => systemApi.plugins(signal))
+const capabilities = computed(
+  () => catalog.data.value?.filter((item) => item.kind === 'collector') ?? [],
 )
-function saved(value?: EditableResource) {
-  if (value && 'collector' in value) emit('saved', value)
-}
+const target = computed<SourceSaveTarget>(() =>
+  props.local
+    ? { kind: 'workflow-draft', workflowId: '', sourceId: props.initial!.id }
+    : { kind: 'shared-resource', resourceId: props.initial?.id ?? '' },
+)
+const gateway = computed<SourceConfigEditorGateway>(() => {
+  const existing = !!props.initial
+  return {
+    resolve: resourcesApi.resolveSource,
+    async save(target, value) {
+      if (target.kind === 'workflow-draft') return
+      if (existing) await resourcesApi.replace('sources', target.resourceId, value)
+      else await resourcesApi.create('sources', value)
+    },
+  }
+})
 </script>
-
 <template>
-  <el-drawer
-    :model-value="true"
-    :title="!initial ? '新增数据源' : local ? '编辑独立配置' : '编辑共用数据源'"
-    size="min(94vw, 760px)"
-    append-to-body
-    destroy-on-close
-    @close="emit('cancel')"
-  >
-    <el-alert v-if="error" :title="error" type="error" :closable="false" />
-    <el-button v-if="error" @click="refresh">重新加载数据源</el-button>
-    <el-skeleton v-if="pending" :rows="8" animated />
-    <template v-else-if="data !== undefined && !error">
-      <el-alert
-        class="mb-5"
-        :title="
-          local
-            ? '仅修改当前工作流的独立配置，保存工作流后生效。'
-            : initial
-              ? `保存后同步到 ${linkedCount ?? 0} 个使用共用配置的工作流，已脱离的工作流不受影响。`
-              : '保存后加入资源配置中心，可在多个工作流中使用。'
-        "
-        type="info"
-        :closable="false"
-        show-icon
-      />
-      <ResourceEditor
-        kind="sources"
-        :initial="data ?? undefined"
-        :local="local"
-        @saved="saved"
-        @cancel="emit('cancel')"
-      />
-    </template>
-  </el-drawer>
+  <SourceEditorSession
+    :key="`${target.kind}:${initial?.id ?? 'new'}`"
+    :initial="initial"
+    :override="override"
+    :target="target"
+    :gateway="gateway"
+    :capabilities="capabilities"
+    :protect="resourcesApi.protectCredential"
+    @saved="emit('saved', $event)"
+    @cancel="emit('cancel')"
+  />
 </template>

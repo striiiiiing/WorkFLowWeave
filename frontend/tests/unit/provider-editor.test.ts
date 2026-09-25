@@ -1,7 +1,8 @@
+import { resourcesApiKey } from '@/modules/resources/api/dependencies'
 import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus, { ElSelect } from 'element-plus'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import AIProviderEditor from '@/components/resources/AIProviderEditor.vue'
+import AIProviderEditor from '@/modules/resources/ui/AIProviderEditor.vue'
 import { resourcesApi } from '@/api/resources'
 import { createResource } from '@/domain/resources'
 import type { AIConfig } from '@/types'
@@ -16,7 +17,7 @@ vi.mock('@/api/resources', () => ({
   },
 }))
 
-const global = { plugins: [ElementPlus] }
+const global = { plugins: [ElementPlus], provide: { [resourcesApiKey as symbol]: resourcesApi } }
 
 function config(overrides: Partial<AIConfig> = {}): AIConfig {
   return {

@@ -1,7 +1,8 @@
+import { resourcesApiKey } from '@/modules/resources/api/dependencies'
 import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import AIProviderEditor from '@/components/resources/AIProviderEditor.vue'
+import AIProviderEditor from '@/modules/resources/ui/AIProviderEditor.vue'
 import ParameterField from '@/shared/schema/ParameterField.vue'
 import { resourcesApi } from '@/api/resources'
 import { createResource } from '@/domain/resources'
@@ -28,7 +29,7 @@ describe('saving reactive model edits', () => {
     )
     const wrapper = mount(AIProviderEditor, {
       props: { initial: source },
-      global: { plugins: [ElementPlus] },
+      global: { plugins: [ElementPlus], provide: { [resourcesApiKey as symbol]: resourcesApi } },
     })
     await wrapper.get('input[aria-label="模型名称"]').setValue('vendor/model.v2')
     await wrapper
@@ -59,7 +60,7 @@ describe('saving reactive model edits', () => {
     )
     const wrapper = mount(AIProviderEditor, {
       props: { initial: source },
-      global: { plugins: [ElementPlus] },
+      global: { plugins: [ElementPlus], provide: { [resourcesApiKey as symbol]: resourcesApi } },
     })
     wrapper.findAllComponents(ParameterField)[0].vm.$emit('update:modelValue', {
       enable_thinking: true,

@@ -1,14 +1,19 @@
-vi.mock('@/api/workflows', () => ({ workflowsApi: { list: vi.fn().mockResolvedValue([]) } }))
 import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import ResourcesView from '@/views/ResourcesView.vue'
+import ResourcesView from '@/pages/resources/ResourcesPage.vue'
+import { resourcesApiKey, createResource, type SourceConfig } from '@/modules/resources/public'
+import { workflowsApiKey } from '@/modules/workflows/public'
+import { systemApiKey } from '@/modules/system/public'
+import SourceList from '@/modules/resources/ui/SourceList.vue'
+import SourceConfigEditor from '@/modules/resources/ui/SourceConfigEditor.vue'
 import { resourcesApi } from '@/api/resources'
 
 vi.mock('@/api/resources', () => ({
   resourcesApi: {
     list: vi.fn(),
+    resolveSource: vi.fn(),
     delete: vi.fn(),
     create: vi.fn(),
     replace: vi.fn(),
@@ -36,7 +41,14 @@ async function mountView(path = '/resources?kind=ai') {
   await router.push(path)
   await router.isReady()
   const wrapper = mount(ResourcesView, {
-    global: { plugins: [ElementPlus, router] },
+    global: {
+      plugins: [ElementPlus, router],
+      provide: {
+        [resourcesApiKey as symbol]: resourcesApi,
+        [workflowsApiKey as symbol]: { list: vi.fn().mockResolvedValue([]) },
+        [systemApiKey as symbol]: { plugins: vi.fn().mockResolvedValue([]) },
+      },
+    },
   })
   await flushPromises()
   return { wrapper, router }
@@ -76,4 +88,39 @@ describe('resource category actions', () => {
 
     wrapper.unmount()
   })
+})
+
+it('replaces the resource editor session identity and rejects the previous delayed resolve', async () => {
+  const first = { ...createResource('sources'), id: 'first', collector: 'mock' } as SourceConfig
+  const second = { ...first, id: 'second', display_name: '第二个来源' }
+  vi.mocked(resourcesApi.list).mockResolvedValue([first, second])
+  let finishFirst!: (value: SourceConfig) => void
+  vi.mocked(resourcesApi.resolveSource).mockImplementation((id) =>
+    id === 'first'
+      ? new Promise((resolve) => {
+          finishFirst = resolve
+        })
+      : Promise.resolve(second),
+  )
+  const { wrapper } = await mountView('/resources')
+  wrapper.getComponent(SourceList).vm.$emit('edit', first)
+  await vi.dynamicImportSettled()
+  await flushPromises()
+  const oldSignal = vi.mocked(resourcesApi.resolveSource).mock.calls[0][2]!
+  wrapper.getComponent(SourceList).vm.$emit('edit', second)
+  await vi.dynamicImportSettled()
+  await flushPromises()
+  expect(oldSignal.aborted).toBe(true)
+  finishFirst(first)
+  await flushPromises()
+  const editor = wrapper.getComponent(SourceConfigEditor).props('editor')
+  expect(editor.value.value?.id).toBe('second')
+  editor.updateBasic({ display_name: '第二个来源草稿' })
+  await editor.submit(async () => true)
+  expect(resourcesApi.replace).toHaveBeenCalledWith(
+    'sources',
+    'second',
+    expect.objectContaining({ id: 'second', display_name: '第二个来源草稿' }),
+  )
+  wrapper.unmount()
 })
