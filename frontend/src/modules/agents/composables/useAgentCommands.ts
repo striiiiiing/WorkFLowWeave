@@ -28,7 +28,7 @@ const unsafeRetry = /^\/(?:workflow\s+\S|(?:new|fork|compact)(?:\s|$))/
 
 export function useAgentCommands(api: Pick<AgentsApi, 'command' | 'cancel'>) {
   const formatError = useErrorFormatter()
-  const states = reactive<Record<string, InputState>>({})
+  const states = reactive<Record<string, InputState>>(commandStateStore)
   const selectedId = ref<string | null>(null)
 
   function stateFor(id: string | null): InputState {
@@ -62,16 +62,26 @@ export function useAgentCommands(api: Pick<AgentsApi, 'command' | 'cancel'>) {
     selectedId.value = id
   }
 
+  function clear() {
+    for (const key of Object.keys(states)) delete states[key]
+    selectedId.value = null
+  }
+
   async function send(running: boolean, model?: string): Promise<CommandResult | undefined> {
     const id = selectedId.value
     const state = stateFor(id)
     const originalDraft = state.draft
     if (!originalDraft.trim() || state.pending || (state.uncertain && !state.retrySafe)) return
-    const text = running && !originalDraft.trim().startsWith('/')
-      ? `/append ${originalDraft}`
-      : originalDraft
+    const text =
+      running && !originalDraft.trim().startsWith('/') ? `/append ${originalDraft}` : originalDraft
     if (!state.pendingInput || state.pendingInput.draft !== originalDraft) {
-      state.pendingInput = { session: id, draft: originalDraft, text, requestId: crypto.randomUUID(), model }
+      state.pendingInput = {
+        session: id,
+        draft: originalDraft,
+        text,
+        requestId: crypto.randomUUID(),
+        model,
+      }
       state.retrySafe = !unsafeRetry.test(text.trim())
       state.uncertain = false
     }
@@ -113,5 +123,7 @@ export function useAgentCommands(api: Pick<AgentsApi, 'command' | 'cancel'>) {
     }
   }
 
-  return { current, draft, select, send, stop, stateFor }
+  return { current, draft, select, send, stop, stateFor, clear }
 }
+
+const commandStateStore: Record<string, InputState> = {}

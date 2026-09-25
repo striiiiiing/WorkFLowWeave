@@ -6,7 +6,10 @@ import AppLayout from '@/app/layout/AppLayout.vue'
   <el-config-provider :locale="zhCn">
     <AppLayout>
       <router-view v-slot="{ Component, route }">
-        <component :is="Component" :key="route.path" />
+        <component
+          :is="Component"
+          :key="route.path.startsWith('/agents') ? 'agents-page' : route.path"
+        />
       </router-view>
     </AppLayout>
   </el-config-provider>
