@@ -50,5 +50,5 @@ transport 接收 EventSource/时钟工厂，负责 URL/游标/close/单一重连
 ### 提交与 P6 交接
 
 - `7012a20 refactor(frontend): centralize Agent event session protocol`：P5 模型、transport、`useAgentSession`、旧页面适配、协议测试。
-- 后续测试支撑修正待提交：真实 `ApplicationLifecycle` smoke 夹具、当前“工作区文件”按钮、条件写入头和稳定 stop 选择器；该提交只包含 `frontend/tests/**`。
+- `f745ab0 test(frontend): verify Agent protocol with real lifecycle smoke`：真实 `ApplicationLifecycle` smoke 夹具、当前“工作区文件”按钮、条件写入头和稳定 stop 选择器；该提交只包含前端测试与本工作包/任务记录。
 - P6 复用 `useAgentSession` 的状态与签名，继续使用 `modules/agents/model/transcript.ts` 和 `projectAgentSession`；待删除 `frontend/src/composables/useAgentStream.ts` 与 `frontend/src/components/agent/transcript.ts` 过渡 re-export。P6 不应重新实现历史/SSE/reducer，也不应在页面中直接读取或转换事件 payload。
