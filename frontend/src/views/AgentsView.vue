@@ -1,13 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import {
-  agentsApi,
-  type AgentEvent,
-  type AgentSession,
-  type ContextBudget,
-  type TurnAccepted,
-} from '@/api/agents'
+import { agentsApi, type AgentEvent, type AgentSession, type TurnAccepted } from '@/api/agents'
 import { useQuery } from '@/shared/async/useQuery'
 import { isTaskSuccess, useAsyncTask } from '@/shared/async/useAsyncTask'
 import { useAgentStream } from '@/composables/useAgentStream'
@@ -105,31 +99,19 @@ const filteredSessions = computed(() => {
 })
 
 const stream = useAgentStream((event) => {
-  if (!selected.value || selected.value.session_id !== event.session_id) return
-  if (event.type === 'turn.started')
-    selected.value = { ...selected.value, status: 'running', turn_id: event.turn_id }
-  if (event.type === 'context.budget')
-    selected.value = { ...selected.value, context_budget: event.data as unknown as ContextBudget }
-  if (event.type === 'turn.resources')
-    selected.value = {
-      ...selected.value,
-      active_resources: event.data as AgentSession['active_resources'],
-    }
   if (
-    ['turn.completed', 'turn.failed', 'turn.cancelled', 'turn.interrupted'].includes(event.type)
-  ) {
-    const error = event.data.error as AgentSession['continuation_error']
-    selected.value = {
-      ...selected.value,
-      status: event.type.slice(5),
-      ...(event.data.checkpoint_id ? { last_checkpoint_at: event.at } : {}),
-      ...(error && ['checkpoint_missing', 'checkpoint_corrupt'].includes(error.code)
-        ? { continuable: false, continuation_error: error }
-        : {}),
-    }
+    ['turn.completed', 'turn.failed', 'turn.cancelled', 'turn.interrupted'].includes(event.type) &&
+    stream.session.value?.turn_id === event.turn_id
+  )
     void sessions.refresh()
-  }
 })
+watch(
+  stream.session,
+  (session) => {
+    if (session && route.params.sessionId === session.session_id) selected.value = session
+  },
+  { flush: 'sync' },
+)
 
 watch(sessionQuery.data, async (session) => {
   selected.value = session

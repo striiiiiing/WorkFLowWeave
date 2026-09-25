@@ -50,3 +50,20 @@ it('routes every conversation action through the Web channel and unwraps its res
     request_id: 'stop-id',
   })
 })
+
+it('keeps queries on Agent routes and sends conditional file writes through Axios', async () => {
+  const { agentsApi, respond, lastRequest, lastUrl } = createHttpHarness()
+  respond([])
+  await agentsApi.history('session / branch')
+  expect(lastUrl()).toContain('/agents/sessions/session%20%2F%20branch/history')
+  await agentsApi.get('session')
+  expect(lastUrl()).toContain('/agents/sessions/session')
+  await agentsApi.readFile('session', 'notes.txt', 4, 20)
+  expect(lastUrl()).toContain('/agents/file?session_id=session&path=notes.txt&offset=4&limit=20')
+
+  await agentsApi.writeFile('session', 'notes.txt', 'revised', 'hash-value')
+  expect(lastRequest().headers.get('If-Match')).toBe('"hash-value"')
+  expect(lastRequest().headers.get('If-None-Match')).toBeUndefined()
+  await agentsApi.writeFile('session', 'new.txt', 'new', '*')
+  expect(lastRequest().headers.get('If-None-Match')).toBe('*')
+})
