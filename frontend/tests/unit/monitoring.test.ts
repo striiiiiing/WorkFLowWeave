@@ -1,10 +1,14 @@
+import { systemApiKey } from '@/modules/system/public'
+import { workflowsApiKey } from '@/modules/workflows/public'
+import { routerKey } from 'vue-router'
+import { runsApiKey } from '@/modules/runs/public'
 import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import DashboardView from '@/views/DashboardView.vue'
-import RunsView from '@/views/RunsView.vue'
-import SessionTable from '@/components/common/SessionTable.vue'
-import { pluginHealthRows } from '@/domain/pluginHealth'
+import DashboardView from '@/pages/dashboard/DashboardPage.vue'
+import RunsView from '@/pages/runs/RunListPage.vue'
+import { SessionTable } from '@/modules/runs/public'
+import { pluginHealthRows } from '@/modules/system/public'
 import { workflowsApi } from '@/api/workflows'
 import { runsApi } from '@/api/runs'
 import type { CapabilityDescription, HealthReport, SessionRecord } from '@/types'
@@ -91,7 +95,16 @@ describe('monitoring diagnostics', () => {
     health.mockResolvedValue({ ...healthReport, status: 'ready', components: [] })
     plugins.mockRejectedValue(new Error('插件目录读取失败'))
     const wrapper = mount(DashboardView, {
-      global: { plugins: [ElementPlus], stubs: { RouterLink: true } },
+      global: {
+        provide: {
+          [runsApiKey as symbol]: runsApi,
+          [workflowsApiKey as symbol]: workflowsApi,
+          [systemApiKey as symbol]: { health, plugins },
+          [routerKey as symbol]: { push: vi.fn() },
+        },
+        plugins: [ElementPlus],
+        stubs: { RouterLink: true },
+      },
     })
     wrappers.push(wrapper)
     await flushPromises()
@@ -119,7 +132,16 @@ describe('monitoring diagnostics', () => {
   it('submits after and before as timezone-bearing instants with field filters', async () => {
     vi.mocked(runsApi.list).mockResolvedValue([session])
     const wrapper = mount(RunsView, {
-      global: { plugins: [ElementPlus], stubs: { RouterLink: true } },
+      global: {
+        provide: {
+          [runsApiKey as symbol]: runsApi,
+          [workflowsApiKey as symbol]: workflowsApi,
+          [systemApiKey as symbol]: { health, plugins },
+          [routerKey as symbol]: { push: vi.fn() },
+        },
+        plugins: [ElementPlus],
+        stubs: { RouterLink: true },
+      },
     })
     wrappers.push(wrapper)
     await flushPromises()
@@ -137,4 +159,41 @@ describe('monitoring diagnostics', () => {
       offset: 0,
     })
   })
+})
+
+it('reads one health result for all dashboard consumers and retains timestamps and prior counts on refresh failure', async () => {
+  vi.mocked(workflowsApi.list).mockResolvedValue([])
+  vi.mocked(runsApi.list).mockResolvedValue([session])
+  health.mockResolvedValue(healthReport)
+  plugins.mockResolvedValue([capability])
+  const wrapper = mount(DashboardView, {
+    global: {
+      plugins: [ElementPlus],
+      provide: {
+        [runsApiKey as symbol]: runsApi,
+        [workflowsApiKey as symbol]: workflowsApi,
+        [systemApiKey as symbol]: { health, plugins },
+        [routerKey as symbol]: { push: vi.fn() },
+      },
+    },
+  })
+  wrappers.push(wrapper)
+  await flushPromises()
+  expect(health).toHaveBeenCalledTimes(1)
+  expect(plugins).toHaveBeenCalledTimes(1)
+  expect(runsApi.list).toHaveBeenCalledWith({ limit: 5 }, expect.any(AbortSignal))
+  await wrapper.get('[role="switch"]').trigger('click')
+  expect(health).toHaveBeenCalledTimes(1)
+  expect(wrapper.text()).toContain('plugins')
+  plugins.mockRejectedValue(new Error('刷新插件失败'))
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text() === '刷新')!
+    .trigger('click')
+  await flushPromises()
+  expect(health).toHaveBeenCalledTimes(2)
+  const card = wrapper.findAll('.el-card').find((card) => card.text().includes('已注册插件能力'))!
+  expect(card.get('.text-3xl').text()).toBe('1')
+  expect(card.text()).toContain('以下内容来自上次成功读取')
+  expect(wrapper.text()).toContain('每日汇总')
 })
