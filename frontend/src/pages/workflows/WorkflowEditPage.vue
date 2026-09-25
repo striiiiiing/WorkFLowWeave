@@ -64,7 +64,7 @@ const gateway: SourceConfigEditorGateway = {
     if (exists) await resourcesApi.replace('sources', target.resourceId, value)
     else await resourcesApi.create('sources', value)
     await catalog.refresh()
-    await usage.refresh()
+    await workflowList.refresh()
   },
 }
 function selectStage(stage: string) {
@@ -90,7 +90,6 @@ async function submit() {
 function refreshCatalog() {
   void catalog.refresh()
   void workflowList.refresh()
-  void usage.refresh()
 }
 onMounted(() => window.addEventListener('focus', refreshCatalog))
 onScopeDispose(() => window.removeEventListener('focus', refreshCatalog))
