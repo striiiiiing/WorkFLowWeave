@@ -116,7 +116,7 @@ test('run history displays frozen workflow names and searches selected fields', 
     fullPage: true,
     animations: 'disabled',
   })
-  await dailyRow.getByRole('link', { name: sessions.search_daily }).click()
+  await dailyRow.getByRole('button', { name: sessions.search_daily }).click()
   await expect(
     page.getByRole('heading', { name: '运行记录 Daily 日报', exact: true }),
   ).toBeVisible()
@@ -500,6 +500,7 @@ test('provider models are configured in the channel and selected by workflows', 
     (response) => response.url().endsWith('/api/ai') && response.request().method() === 'GET',
   )
   await page.bringToFront()
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
   expect((await modelsResponse).ok()).toBe(true)
   await providerPage.close()
   await expect(page.getByLabel('显示名称', { exact: true })).toHaveValue('模型配置流程')
