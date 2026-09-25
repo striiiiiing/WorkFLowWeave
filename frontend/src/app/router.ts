@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+const agentPage = () => import('@/pages/agents/AgentPage.vue')
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
@@ -27,8 +28,8 @@ export const router = createRouter({
       name: 'plugins',
       component: () => import('@/pages/plugins/PluginsPage.vue'),
     },
-    { path: '/agents', component: () => import('@/views/AgentsView.vue') },
-    { path: '/agents/:sessionId', component: () => import('@/views/AgentsView.vue') },
+    { path: '/agents', name: 'agents', component: agentPage },
+    { path: '/agents/:sessionId', name: 'agent-session', component: agentPage },
     { path: '/:pathMatch(.*)*', component: () => import('@/views/NotFoundView.vue') },
   ],
 })

@@ -22,4 +22,11 @@ session 生命周期直接复用 P5 的注入式 useAgentSession；页面只协�
 
 ## 实施证据
 
-待填控制器职责与导出、状态竞争测试、真实路由/窄屏记录、commit 与删除清单。
+2026-09-26 P6 实施记录：
+
+- 控制器职责：`modules/agents/composables/useAgentCommands.ts` 按 session ID 保存输入、原始 payload/request ID、未知回执与可重试状态；`send` 与 `stop` 使用独立 pending/error。`useAgentFiles.ts` 拥有路径、分页、全文读取、草稿、hash/If-Match、If-None-Match 与 409 冲突保留。`useAgentBranches.ts` 保留 fork 后重试发送的 request ID；`useAgentSettings.ts` 由页面创建单一 config query，设置弹窗只编辑草稿，保存/工具切换刷新同一查询。
+- UI 所有权：`pages/agents/AgentPage.vue` 只组合路由、选择会话和视图；侧栏、Header、Transcript、消息工具项、Composer/SlashMenu、分支/文件/设置/创建/编辑表单位于 `modules/agents/ui/**`。旧 `components/agent` 仅保留迁移兼容壳，页面不再导入 `views/AgentsView.vue` 或 `useAgentStream`。
+- 路由语义：`app/router.ts` 的 `/agents` 与 `/agents/:sessionId` 共用同一异步页面工厂；`app/App.vue` 对 Agent 使用稳定 key。`tests/unit/agent-app-route.test.ts` 通过真实 App/router records 验证 A→B→A 选择与离开 Agent 后输入清理，配置查询仅一次。控制器单测覆盖 A→B→A 迟到回执、同 ID 明确重试、内容变更新 ID、独立 stop、未知 workflow 不重试和文件 ETag 冲突。
+- 验证：`npm test -- --run tests/unit/agent-controllers.test.ts tests/unit/agent-composer.test.ts tests/unit/agent-components.test.ts tests/unit/agent-settings-modal.test.ts tests/unit/agent-view.test.ts tests/unit/agent-app-route.test.ts`，6 文件/31 项通过；`npm run typecheck`、`npm run architecture:check`、`npm run build` 通过。`npm run format:check` 在格式化前曾失败，随后对本包文件执行 Prettier；最终格式检查需由 P7 全量复跑。Build 输出 AgentPage 独立约 82 KB chunk，未再静态导入编辑器/报告页面。
+- 浏览器交接：尚未在本代理运行浏览器。后续 Luna 必须用真实 App 路由检查 A→B→A 草稿隔离、离开清理、停止独立于 send、分支与文件 409 冲突、设置单次配置读取，以及桌面/375px 长消息输入器可见性。
+- 提交链：中途控制器提交为 `refactor(frontend): isolate agent command and file state`；P6 最终提交将精确包含本包前端/UI/测试、必要 `app/App.vue`/`app/router.ts` 和本记录，不包含后端及其他并发任务脏文件。

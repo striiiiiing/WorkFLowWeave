@@ -2,8 +2,10 @@ import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import { afterEach, expect, it, vi } from 'vitest'
 import { agentsApi, type AgentSettings } from '@/api/agents'
-import AgentGlobalSettingsModal from '@/components/agent/AgentGlobalSettingsModal.vue'
-import AgentModelSelect from '@/components/agent/AgentModelSelect.vue'
+import AgentGlobalSettingsModal from '@/modules/agents/ui/AgentGlobalSettingsModal.vue'
+import AgentModelSelect from '@/modules/agents/ui/AgentModelSelect.vue'
+import { useAgentSettings } from '@/modules/agents/composables/useAgentSettings'
+import { effectScope } from 'vue'
 import { readDefaultAgentModel } from '@/domain/agentModels'
 
 const settings: AgentSettings = {
@@ -46,8 +48,10 @@ const settings: AgentSettings = {
   readonly_paths: [],
 }
 const wrappers: ReturnType<typeof mount>[] = []
+const scopes: ReturnType<typeof effectScope>[] = []
 afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount())
+  scopes.splice(0).forEach((scope) => scope.stop())
   localStorage.clear()
   document.body.innerHTML = ''
 })
@@ -55,8 +59,12 @@ const button = (text: string) =>
   [...document.querySelectorAll('button')].find((item) => item.textContent?.trim() === text)!
 async function setup() {
   vi.spyOn(agentsApi, 'config').mockResolvedValue(settings)
+  const scope = effectScope()
+  scopes.push(scope)
+  const controller = scope.run(() => useAgentSettings(agentsApi))!
+  await flushPromises()
   const wrapper = mount(AgentGlobalSettingsModal, {
-    props: { modelValue: true },
+    props: { modelValue: true, controller },
     attachTo: document.body,
     global: { plugins: [ElementPlus] },
   })

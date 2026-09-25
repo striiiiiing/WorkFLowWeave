@@ -19,7 +19,9 @@ export function useAgentFiles(api: FileApi) {
   const notice = ref('')
   const error = ref('')
   const pending = ref(false)
-  const editable = computed(() => page.value?.kind === 'file' && !page.value.readonly && complete.value)
+  const editable = computed(
+    () => page.value?.kind === 'file' && !page.value.readonly && complete.value,
+  )
   let generation = 0
 
   function reset(id: string, initialPath: string) {
@@ -159,7 +161,25 @@ export function useAgentFiles(api: FileApi) {
   }
 
   return {
-    path, page, draft, version, complete, conflict, remote, notice, error, pending, editable,
-    reset, read, loadFull, save, readRemote, mergeRemote, createFile, openPath, openEntry,
+    path,
+    page,
+    draft,
+    version,
+    complete,
+    conflict,
+    remote,
+    notice,
+    error,
+    pending,
+    editable,
+    reset,
+    read,
+    loadFull,
+    save,
+    readRemote,
+    mergeRemote,
+    createFile,
+    openPath,
+    openEntry,
   }
 }

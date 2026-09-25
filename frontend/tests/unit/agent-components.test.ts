@@ -9,8 +9,9 @@ import {
   type AgentSettings,
 } from '@/api/agents'
 import { ApiError } from '@/api/client'
-import AgentFileDrawer from '@/components/agent/AgentFileDrawer.vue'
-import AgentTranscript from '@/components/agent/AgentTranscript.vue'
+import AgentFileDrawer from '@/modules/agents/ui/AgentFileDrawer.vue'
+import AgentTranscript from '@/modules/agents/ui/AgentTranscript.vue'
+import { useAgentFiles } from '@/modules/agents/composables/useAgentFiles'
 import AgentBranchTree from '@/components/agent/AgentBranchTree.vue'
 import AgentSettingsPanel from '@/components/agent/AgentSettings.vue'
 import { transcriptRows } from '@/components/agent/transcript'
@@ -47,8 +48,11 @@ it('preserves the draft on conflict and explicitly adopts a refreshed version be
       new ApiError(409, { code: 'file_conflict', message: '文件版本冲突', details: {} }),
     )
     .mockResolvedValueOnce({ hash: 'v3' })
+  const files = useAgentFiles(agentsApi)
+  files.reset('s', 'Memory/note.md')
+  await files.read()
   const wrapper = mount(AgentFileDrawer, {
-    props: { sessionId: 's', initialPath: 'Memory/note.md' },
+    props: { files },
     global,
   })
   wrappers.push(wrapper)
@@ -75,8 +79,11 @@ it('never saves a partial page and reads a consistent full file before editing',
     .mockResolvedValueOnce(first)
     .mockResolvedValueOnce({ ...file('last'), offset: 200, total_lines: 201 })
   const write = vi.spyOn(agentsApi, 'writeFile').mockResolvedValue({ hash: 'saved' })
+  const files = useAgentFiles(agentsApi)
+  files.reset('s', 'Memory/note.md')
+  await files.read()
   const wrapper = mount(AgentFileDrawer, {
-    props: { sessionId: 's', initialPath: 'Memory/note.md' },
+    props: { files },
     global,
   })
   wrappers.push(wrapper)
@@ -93,8 +100,11 @@ it('never saves a partial page and reads a consistent full file before editing',
 })
 it('shows Runtime as read only using the backend flag', async () => {
   vi.spyOn(agentsApi, 'readFile').mockResolvedValue({ ...file('runtime'), readonly: true })
+  const files = useAgentFiles(agentsApi)
+  files.reset('s', 'Runtime/self.json')
+  await files.read()
   const wrapper = mount(AgentFileDrawer, {
-    props: { sessionId: 's', initialPath: 'Runtime/self.json' },
+    props: { files },
     global,
   })
   wrappers.push(wrapper)

@@ -6,7 +6,7 @@ import { runsApi } from '@/api/runs'
 import type { SessionRecord } from '@/types'
 import { isTaskSuccess, useAsyncTask } from '@/shared/async/useAsyncTask'
 import AgentModelSelect from './AgentModelSelect.vue'
-import { readDefaultAgentModel } from '@/domain/agentModels'
+import { readDefaultAgentModel } from '@/modules/agents/composables/agentModels'
 const props = defineProps<{ workflowId?: string; workflowSessionId?: string }>()
 const router = useRouter()
 const action = useAsyncTask()

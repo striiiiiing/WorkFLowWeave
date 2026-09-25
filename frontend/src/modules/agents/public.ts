@@ -4,3 +4,22 @@ export * from './api/dependencies'
 export { useAgentSession } from './composables/useAgentSession'
 export { transcriptRows } from './model/transcript'
 export { projectAgentSession } from './model/sessionProjection'
+export { useAgentCommands } from './composables/useAgentCommands'
+export { useAgentFiles } from './composables/useAgentFiles'
+export { useAgentBranches } from './composables/useAgentBranches'
+export { useAgentSettings } from './composables/useAgentSettings'
+export {
+  readDefaultAgentModel,
+  saveDefaultAgentModel,
+  groupAgentModels,
+} from './composables/agentModels'
+export { default as AgentSidebar } from './ui/AgentSidebar.vue'
+export { default as AgentHeader } from './ui/AgentHeader.vue'
+export { default as AgentTranscript } from './ui/AgentTranscript.vue'
+export { default as AgentComposer } from './ui/AgentComposer.vue'
+export { default as AgentBranchDrawer } from './ui/AgentBranchDrawer.vue'
+export { default as AgentFileDrawer } from './ui/AgentFileDrawer.vue'
+export { default as AgentGlobalSettingsModal } from './ui/AgentGlobalSettingsModal.vue'
+export { default as AgentCreateDialog } from './ui/AgentCreateDialog.vue'
+export { default as AgentEditBranchDialog } from './ui/AgentEditBranchDialog.vue'
+export type { SlashCommand } from './ui/AgentSlashMenu.vue'
