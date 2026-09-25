@@ -44,3 +44,7 @@ system 拥有 plugins/health 独立查询、诊断投影与 reload。Dashboard �
 集成浏览器验收：`npm run test:e2e` 已启动临时后端和 preview，但 Chromium 在进程启动前因宿主缺少 `libnspr4.so` 退出，10 个用例均未执行到应用断言；Tabbit 也成功加载 preview 响应（HTTP 200）后因本地浏览器运行时关闭页面，未形成可归因于应用的断言结果。因此本次提交保留自动化浏览器阻断证据，不把它描述为通过；安装该系统库后应重跑 `npm run test:e2e`，重点覆盖首页局部失败、运行筛选/详情、插件诊断和 375px 布局。
 
 提交范围：本提交只包含前端 P4 页面、runs/system 模块、相关测试、路由/Playwright 配置和本任务记录；工作区中后端双向 channel 及其他 OpenSpec change 的修改未暂存、未提交。
+
+### 宿主依赖安装后复验（2026-09-26）
+
+用户安装 Chromium 所需 Ubuntu 库后，`ldd` 不再报告缺失依赖，Playwright 可以启动真实 Chromium。首次完整 E2E 为 7/10：运行记录测试仍按迁移前的 `router-link` 查找链接并超时；该超时留下的测试数据使后续工作流用例出现两个“编辑”按钮；跨窗口模型目录用例依赖 headless `bringToFront()` 自动派发 `focus`，导致等待 `/api/ai` GET 超时。前端 E2E 随现有 UI 合同改为点击 SessionTable 的按钮，并在返回编辑页后显式派发 `focus` 事件。两个失败用例独立复验 2/2 通过；完整 `npm run test:e2e` 最终 10/10 通过（约 1.1 分钟），覆盖临时真实后端、运行/工作流/资源/报告/监控和 375px 布局。测试修改未改变产品代码或后端。
