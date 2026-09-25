@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { sessionStates } from '@/domain/session'
-import type { SessionStatus } from '@/types'
+import { sessionStates } from '../model/session'
+import type { SessionStatus } from '../model/types'
 defineProps<{ status: SessionStatus }>()
 </script>
 <template>

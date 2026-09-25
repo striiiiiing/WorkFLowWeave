@@ -1,10 +1,5 @@
-import type {
-  ArtifactAvailability,
-  JsonObject,
-  JsonValue,
-  ReportSection,
-  WorkflowStage,
-} from '@/types'
+import type { ArtifactAvailability, ReportSection, WorkflowStage } from './types'
+import type { JsonObject, JsonValue } from '@/shared/types'
 
 export interface ReportItem {
   id: string

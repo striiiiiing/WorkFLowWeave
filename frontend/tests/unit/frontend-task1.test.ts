@@ -1,12 +1,16 @@
+import { runsApiKey } from '@/modules/runs/public'
+import { systemApiKey } from '@/modules/system/public'
+import { workflowsApiKey } from '@/modules/workflows/public'
+import { routerKey } from 'vue-router'
 import { defineComponent, ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import { expect, it, vi } from 'vitest'
-import { pluginHealthRows } from '@/domain/pluginHealth'
+import { pluginHealthRows } from '@/modules/system/public'
 import { createFanIn, createWorkflow } from '@/domain/workflow'
 import SourceStepCard from '@/components/workflow/SourceStepCard.vue'
 import FanInCard from '@/components/workflow/FanInCard.vue'
-import DashboardView from '@/views/DashboardView.vue'
+import DashboardView from '@/pages/dashboard/DashboardPage.vue'
 import { workflowsApi } from '@/api/workflows'
 import { runsApi } from '@/api/runs'
 import type { CapabilityDescription, HealthReport } from '@/types'
@@ -79,7 +83,16 @@ it('shows internal monitoring only in dashboard advanced mode', async () => {
   health.mockResolvedValue(report())
   plugins.mockResolvedValue([capability('collector', 'one')])
   const wrapper = mount(DashboardView, {
-    global: { plugins: [ElementPlus], stubs: { RouterLink: true } },
+    global: {
+      provide: {
+        [runsApiKey as symbol]: runsApi,
+        [workflowsApiKey as symbol]: workflowsApi,
+        [systemApiKey as symbol]: { health, plugins },
+        [routerKey as symbol]: { push: vi.fn() },
+      },
+      plugins: [ElementPlus],
+      stubs: { RouterLink: true },
+    },
   })
   await flushPromises()
   expect(wrapper.text()).toContain('插件健康状态')

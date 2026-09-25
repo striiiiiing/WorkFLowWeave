@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ReportSection } from '@/types'
+import type { ReportSection } from '../model/types'
 import ReportText from '@/shared/ui/ReportText.vue'
 defineProps<{ sections: ReportSection[] }>()
 </script>

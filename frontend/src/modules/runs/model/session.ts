@@ -1,4 +1,4 @@
-import type { SessionStatus, WorkflowStage, ArtifactAvailability } from '@/types'
+import type { SessionStatus, WorkflowStage, ArtifactAvailability } from './types'
 
 export const sessionStates = {
   created: { label: '等待执行', type: 'info', active: true },
