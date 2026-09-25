@@ -88,3 +88,9 @@ const gateway: SourceConfigEditorGateway = {
 集成职责审查整改：对照原设计 §3.1/§3.2，AI/Channel 控制器最初仍带 FormInstance、ElMessage 与子凭据组件 ref，不能以脚本迁出代替职责分离。已将 form/ref、prepare→validate 的 UI 协调、提示与 saved emit、advanced 显隐全部留在各自 SFC；控制器 API 改为实际方法的 Pick，`submit(validate)` 返回统一显式 action 结果，主体草稿以只读 computed 输出并提供命名更新动作。Channel 与 Source 一样使用浅草稿和不可变替换，避免凭据准备/JSON 合并时带入嵌套响应式代理。整改后 `resource-config/provider-editor/provider-proxy/editor` 4 文件/24 项通过（39.64 秒），涵盖保护失败/保存失败留稿、非法模型 JSON、隐藏凭据条件验证与保存。
 
 公共入口体积检查由集成 worker 发现静态 public UI 将 Ajv/Markdown 拉入 bootstrap；已授权其仅在 resources/public 与 ui/entries.ts 增加 defineAsyncComponent 懒入口，四个重编辑器底层仍为原同名 SFC 唯一实现，公开 props/emits 不变。页面级测试必须等待动态模块 settled 后再检查请求生命周期，不能把懒模块尚未挂载误判为查询丢失。P2 作者未并发修改这两个集成文件。
+
+#### 最终阶段验收记录（2026-09-25）
+
+- P2 实现提交为 `73a55c7`，资源路由与旧资源 View/组件清理提交为 `f6422d4`。两个提交均未包含后端或 P4 文件；提交前后的 staged diff check 均通过，post-commit hook 正常执行。
+- 资源单测复验为 9 个文件、57 项通过；typecheck、format:check、架构检查（165 文件及 27 fixtures）和 production build 通过。构建产物将编辑器拆成异步 chunk，ResourcesPage chunk 约 14.63 kB，重编辑器按需加载。
+- 配置的真实 FastAPI 临时后端与 Playwright 375px 资源烟测通过（1 passed，20.4s）。测试覆盖一次目录查询、刷新保留草稿、保存回读、停用状态、三类列表和窄屏无横向溢出。Tabbit 运行期间浏览器实例关闭，未形成额外页面证据；Playwright 已提供真实浏览器验收证据。
