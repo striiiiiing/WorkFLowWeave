@@ -125,10 +125,10 @@ P1 完成后最多同时运行 P2/P4/P5 三名实施 worker，在同一 `/mnt/d/
 
 依据和交接：[P5-agent-protocol.md](work-packages/P5-agent-protocol.md)。
 
-- [ ] 6.1 从旧 useAgentStream/API 提取注入式 EventSource transport、信封解析、纯 session/transcript 投影；用同一事件样本对比迁移前后输出，验证事件去重和未知事件诊断。
-- [ ] 6.2 提取 agents/composables/useAgentSession.ts 作为唯一会话生命周期实现，落实历史→当前快照→SSE 顺序、generation 隔离与单一重连，旧 turn 终态不结束当前轮；以断线回放、迟到回调、非法已知事件和游标接纳用例验证。
-- [ ] 6.3 核对 Web 命令 envelope、request ID/payload、停止、分支和文件 ETag 真实契约，保持 API DTO 单一定义；使用受控模型/临时数据及 60s 后端测试超时验证所需契约。
-- [ ] 6.4 记录 P6 所需的 transport/reducer/API 签名与状态语义，按验证顺序完成可运行旧 Agent 页烟测和提交；交接后才允许 P6 修改相同模块。
+- [x] 6.1 从旧 useAgentStream/API 提取注入式 EventSource transport、信封解析、纯 session/transcript 投影；用同一事件样本对比迁移前后输出，验证事件去重和未知事件诊断。
+- [x] 6.2 提取 agents/composables/useAgentSession.ts 作为唯一会话生命周期实现，落实历史→当前快照→SSE 顺序、generation 隔离与单一重连，旧 turn 终态不结束当前轮；以断线回放、迟到回调、非法已知事件和游标接纳用例验证。
+- [x] 6.3 核对 Web 命令 envelope、request ID/payload、停止、分支和文件 ETag 真实契约，保持 API DTO 单一定义；使用受控模型/临时数据及 60s 后端测试超时验证所需契约。
+- [x] 6.4 记录 P6 所需的 transport/reducer/API 签名与状态语义，按验证顺序完成可运行旧 Agent 页烟测和提交；交接后才允许 P6 修改相同模块。
 
 ## 7. P6 — Agent 控制器、UI 与稳定会话作用域
 
