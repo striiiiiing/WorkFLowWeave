@@ -59,7 +59,7 @@ watch(
   { immediate: true, deep: true },
 )
 watch(
-  () => props.schema,
+  [() => props.schema, () => props.excludedProperties],
   () => {
     const previous = new Map(rows.value.map((row) => [row.key, row]))
     rebuild(props.modelValue)
@@ -144,6 +144,7 @@ function toggleMode() {
       :label="label"
       :prop="prop"
       :field="field"
+      :excluded-properties="excludedProperties"
       @update:model-value="emit('update:modelValue', $event)"
     />
     <el-form-item v-else :prop="prop" :rules="{ validator: validate }" :error="error">

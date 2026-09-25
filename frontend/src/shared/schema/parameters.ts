@@ -173,9 +173,14 @@ export class ParameterInput {
     }
     return this.validate(value, draft.type)
   }
-  readObject(text: string): InputResult {
-    const result = this.parse(text, 'object')
-    return result.ok ? this.validate(result.value, 'object') : result
+  readObject(text: string, restore?: (value: JsonObject) => InputResult): InputResult {
+    const parsed = this.parse(text, 'object')
+    if (!parsed.ok) return parsed
+    const value = parsed.value
+    if (!restore || value === null || Array.isArray(value) || typeof value !== 'object')
+      return this.validate(value, 'object')
+    const restored = restore(value)
+    return restored.ok ? this.validate(restored.value, 'object') : restored
   }
   error(draft: ValueDraft): string {
     const result = this.read(draft)

@@ -7,6 +7,7 @@ const props = defineProps<{
   modelValue: JsonObject
   label: string
   prop: string | string[]
+  excludedProperties?: string[]
   field?: ParameterInput
 }>()
 const emit = defineEmits<{ 'update:modelValue': [value: JsonObject] }>()
@@ -14,8 +15,24 @@ const field = computed(() => props.field ?? new ParameterInput(createFieldRule()
 const text = ref('')
 const error = ref('')
 let signature = ''
+function project(value: JsonObject) {
+  return Object.fromEntries(
+    Object.entries(value).filter(([key]) => !props.excludedProperties?.includes(key)),
+  )
+}
+function read(text: string) {
+  return field.value.readObject(text, (value) => {
+    const forbidden = Object.keys(value).filter((key) => props.excludedProperties?.includes(key))
+    if (forbidden.length)
+      return { ok: false, error: `请使用专用输入框填写字段：${forbidden.join('、')}` }
+    const preserved = Object.fromEntries(
+      Object.entries(props.modelValue).filter(([key]) => props.excludedProperties?.includes(key)),
+    )
+    return { ok: true, value: { ...value, ...preserved } }
+  })
+}
 watch(
-  () => props.modelValue,
+  () => project(props.modelValue),
   (value) => {
     const next = JSON.stringify(value)
     if (next === signature) return
@@ -26,18 +43,18 @@ watch(
   { immediate: true },
 )
 function validate(_rule: unknown, _value: unknown, callback: (error?: Error) => void) {
-  const result = field.value.readObject(text.value)
+  const result = read(text.value)
   callback(result.ok ? undefined : new Error(result.error))
 }
 function update(value: string) {
   text.value = value
-  const result = field.value.readObject(value)
+  const result = read(value)
   error.value = result.ok ? '' : result.error
   if (!result.ok) return
-  signature = JSON.stringify(result.value)
+  signature = JSON.stringify(project(result.value as JsonObject))
   emit('update:modelValue', result.value as JsonObject)
 }
-defineExpose({ isValid: () => field.value.readObject(text.value).ok })
+defineExpose({ isValid: () => read(text.value).ok })
 </script>
 <template>
   <el-form-item :label="label" :error="error" :prop="prop" :rules="{ validator: validate }">

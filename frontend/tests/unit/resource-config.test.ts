@@ -1,8 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus, { ElSelect } from 'element-plus'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import CredentialEditor from '@/components/resources/CredentialEditor.vue'
-import ResourceEditor from '@/components/resources/ResourceEditor.vue'
+import CredentialEditor from '@/modules/resources/ui/CredentialEditor.vue'
+import ResourceEditor from './resources/ResourceEditorHarness.vue'
 import { generatedResourceId } from '@/domain/resources'
 import { resourcesApi } from '@/api/resources'
 import { systemApi } from '@/api/system'
@@ -161,6 +161,7 @@ describe('resource IDs and capability changes', () => {
       on_filtered_empty: 'notice' as const,
     }
     const wrapper = mount(ResourceEditor, { props: { kind: 'sources', initial }, global })
+    await flushPromises()
     expect(
       (wrapper.get('input[placeholder="可自行填写；留空则自动生成"]').element as HTMLInputElement)
         .value,
@@ -219,4 +220,45 @@ describe('generic credential editor', () => {
     expect(wrapper.find('textarea[aria-label="插件参数 (options)"]').exists()).toBe(false)
     wrapper.unmount()
   })
+})
+
+it('hides encrypted channel values in JSON while preserving their root-schema validation and save value', async () => {
+  vi.mocked(systemApi.plugins).mockResolvedValue([emailCapability])
+  const initial: ChannelConfig = {
+    id: 'protected_channel',
+    channel: 'email',
+    timeout: 30,
+    enabled: false,
+    options: {
+      host: 'smtp.example.test',
+      port: 587,
+      sender: 'from@example.test',
+      username: 'smtp-user',
+      password: encrypted,
+    },
+  }
+  vi.mocked(resourcesApi.replace).mockResolvedValue(initial)
+  const wrapper = mount(ResourceEditor, { props: { kind: 'channels', initial }, global })
+  await flushPromises()
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text() === '编辑 JSON')!
+    .trigger('click')
+  const raw = wrapper.get('textarea[aria-label="插件参数 (options)"]')
+  expect((raw.element as HTMLTextAreaElement).value).not.toContain('ciphertext')
+  expect((raw.element as HTMLTextAreaElement).value).not.toContain('password')
+  await raw.setValue(
+    '{"host":"new.example.test","port":587,"sender":"from@example.test","username":"smtp-user"}',
+  )
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  expect(resourcesApi.replace).toHaveBeenCalledWith(
+    'channels',
+    'protected_channel',
+    expect.objectContaining({
+      options: expect.objectContaining({ host: 'new.example.test', password: encrypted }),
+    }),
+  )
+  expect(resourcesApi.protectCredential).not.toHaveBeenCalled()
+  wrapper.unmount()
 })

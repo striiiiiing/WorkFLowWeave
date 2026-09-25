@@ -5,15 +5,15 @@ import { describe, expect, it, vi } from 'vitest'
 import ParameterField from '@/shared/schema/ParameterField.vue'
 import type { JsonObject } from '@/types'
 
-function editor(initial: JsonObject, schema?: JsonObject) {
+function editor(initial: JsonObject, schema?: JsonObject, excludedProperties?: string[]) {
   const value = ref(initial)
   const form = ref<FormInstance>()
   const wrapper = mount(
     defineComponent({
       components: { ParameterField },
-      setup: () => ({ value, schema, form }),
+      setup: () => ({ value, schema, form, excludedProperties }),
       template:
-        '<el-form ref="form" :model="{ options: value }"><ParameterField v-model="value" label="参数" prop="options" :schema="schema" /></el-form>',
+        '<el-form ref="form" :model="{ options: value }"><ParameterField v-model="value" label="参数" prop="options" :schema="schema" :excluded-properties="excludedProperties" /></el-form>',
     }),
     { global: { plugins: [ElementPlus] } },
   )
@@ -379,4 +379,46 @@ describe('top-level parameter forms', () => {
     expect(value.value).toEqual({ records: [{ a: 1, b: 2 }], limit: 5 })
     wrapper.unmount()
   })
+})
+
+it('projects hidden fields out of raw JSON but validates the restored object with the same conditional schema', async () => {
+  const { wrapper, value, valid, mode } = editor(
+    { secret: 'ciphertext', optional: null, enabled: false },
+    {
+      type: 'object',
+      required: ['secret'],
+      properties: {
+        secret: { type: 'string' },
+        optional: { type: ['string', 'null'] },
+        enabled: { type: 'boolean' },
+      },
+      if: { properties: { secret: { const: 'ciphertext' } }, required: ['secret'] },
+      then: { required: ['enabled'] },
+    },
+    ['secret'],
+  )
+  await mode().trigger('click')
+  const textarea = wrapper.get('textarea')
+  expect(textarea.element.value).not.toContain('ciphertext')
+  expect(textarea.element.value).not.toContain('secret')
+  expect(await valid()).toBe(true)
+  await textarea.setValue('{"optional":null}')
+  expect(await valid()).toBe(false)
+  expect(value.value.enabled).toBe(false)
+  await textarea.setValue('{"optional":null,"enabled":true,"secret":"replacement"}')
+  expect(await valid()).toBe(false)
+  await vi.waitFor(() => expect(wrapper.text()).toContain('专用输入框'))
+  expect(value.value.secret).toBe('ciphertext')
+  await textarea.setValue('{invalid')
+  value.value = { ...value.value, secret: 'new-ciphertext' }
+  await flushPromises()
+  expect(textarea.element.value).toBe('{invalid')
+  expect(await valid()).toBe(false)
+  await textarea.setValue('{"optional":null,"enabled":true}')
+  expect(await valid()).toBe(true)
+  expect(value.value).toEqual({ optional: null, enabled: true, secret: 'new-ciphertext' })
+  await mode().trigger('click')
+  await mode().trigger('click')
+  expect(wrapper.get('textarea').element.value).not.toContain('new-ciphertext')
+  wrapper.unmount()
 })
