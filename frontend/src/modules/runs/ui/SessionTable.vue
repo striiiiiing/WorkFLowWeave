@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import StatusBadge from './StatusBadge.vue'
-import { formatTime, formatWorkflowName, stages } from '@/domain/session'
-import type { SessionRecord } from '@/types'
+import { formatTime, formatWorkflowName, stages } from '../model/session'
+import type { SessionRecord } from '../model/types'
 withDefaults(defineProps<{ sessions: SessionRecord[]; loading?: boolean }>(), { loading: false })
+const emit = defineEmits<{ open: [id: string] }>()
 function formatStage(stage: SessionRecord['stage']) {
   return stages.find((item) => item.key === stage)?.label ?? '尚未开始'
 }
@@ -12,9 +13,13 @@ function formatStage(stage: SessionRecord['stage']) {
     <el-table v-loading="loading" :data="sessions" row-key="session_id" empty-text="暂无运行记录">
       <el-table-column label="Session ID" min-width="190">
         <template #default="{ row }">
-          <router-link :to="`/runs/${row.session_id}`" class="mono">
+          <button
+            type="button"
+            class="mono min-h-11 text-left"
+            @click="emit('open', row.session_id)"
+          >
             {{ row.session_id }}
-          </router-link>
+          </button>
         </template>
       </el-table-column>
       <el-table-column label="工作流名称" min-width="160">
@@ -46,7 +51,13 @@ function formatStage(stage: SessionRecord['stage']) {
         <StatusBadge :status="row.status" />
       </div>
       <p class="muted text-sm mt-2">{{ formatStage(row.stage) }}</p>
-      <router-link :to="`/runs/${row.session_id}`" class="inline-block mt-3">查看详情</router-link>
+      <button
+        type="button"
+        class="inline-block mt-3 min-h-11"
+        @click="emit('open', row.session_id)"
+      >
+        查看详情
+      </button>
     </article>
   </div>
 </template>

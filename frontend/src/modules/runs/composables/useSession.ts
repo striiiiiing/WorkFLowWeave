@@ -1,11 +1,12 @@
 import { onScopeDispose, watch, type Ref } from 'vue'
-import { runsApi } from '@/api/runs'
-import { sessionStates } from '@/domain/session'
-import { useQuery } from './useQuery'
+import { useRunsApi } from '../api/dependencies'
+import type { RunsApi } from '../api/runsApi'
+import { sessionStates } from '../model/session'
+import { useQuery } from '@/shared/async/useQuery'
 
 export const POLL_INTERVAL_MS = 2000
-export function useSession(id: Ref<string>) {
-  const query = useQuery((signal) => runsApi.get(id.value, signal), [id])
+export function useSession(id: Ref<string>, api: Pick<RunsApi, 'get'> = useRunsApi()) {
+  const query = useQuery((signal) => api.get(id.value, signal), [id])
   let timer: ReturnType<typeof setTimeout> | undefined
   // Schedule after completion so slow requests cannot overlap polling ticks.
   watch([query.pending, query.data, query.error], () => {

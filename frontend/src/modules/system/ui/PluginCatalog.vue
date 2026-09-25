@@ -1,45 +1,19 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { systemApi } from '@/api/system'
-import { useQuery } from '@/shared/async/useQuery'
-import { useAsyncTask } from '@/shared/async/useAsyncTask'
-import type { CapabilityDescription } from '@/types'
-import PageHeader from '@/shared/ui/PageHeader.vue'
-const { data, pending, error, refresh } = useQuery((signal) => systemApi.plugins(signal))
-const action = useAsyncTask()
+import type { CapabilityDescription } from '../model/types'
+const props = defineProps<{ data?: CapabilityDescription[]; pending: boolean; error: string }>()
 const filter = ref('all')
 const selected = ref<CapabilityDescription>()
 const dialog = ref(false)
 const filtered = computed(
-  () => data.value?.filter((item) => filter.value === 'all' || item.kind === filter.value) ?? [],
+  () => props.data?.filter((item) => filter.value === 'all' || item.kind === filter.value) ?? [],
 )
-function reload() {
-  void action.run(async () => {
-    const result = await systemApi.reload('plugins')
-    await refresh()
-    if (result.report?.errors.length)
-      throw new Error(
-        result.report.errors.map((item) => `${item.code}: ${item.message}`).join('；'),
-      )
-  })
-}
 function inspect(plugin: CapabilityDescription) {
   selected.value = plugin
   dialog.value = true
 }
 </script>
 <template>
-  <PageHeader title="插件与能力" description="查看已注册的采集、通知和 Agent 工具及参数结构">
-    <el-button :loading="pending" @click="refresh">刷新</el-button>
-    <el-button :loading="action.pending.value" @click="reload">重新加载插件</el-button>
-  </PageHeader>
-  <el-alert
-    v-if="error || action.error.value"
-    :title="error || action.error.value"
-    type="error"
-    :closable="false"
-    show-icon
-  />
   <el-radio-group v-model="filter" class="mb-6">
     <el-radio-button value="all">全部</el-radio-button>
     <el-radio-button value="collector">采集器</el-radio-button>

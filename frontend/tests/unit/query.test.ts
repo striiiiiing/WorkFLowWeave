@@ -5,7 +5,7 @@ import { effectScope, nextTick, ref } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { useQuery } from '@/shared/async/useQuery'
-import { useSession, POLL_INTERVAL_MS } from '@/composables/useSession'
+import { useSession, POLL_INTERVAL_MS } from '@/modules/runs/composables/useSession'
 import { runsApi } from '@/api/runs'
 import type { SessionRecord } from '@/types'
 
@@ -90,7 +90,7 @@ describe('session polling', () => {
       .mockReturnValueOnce(initial.promise)
       .mockResolvedValue({ status: 'interrupted' } as SessionRecord)
     const scope = effectScope()
-    scope.run(() => useSession(ref('run_1')))
+    scope.run(() => useSession(ref('run_1'), runsApi))
     await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 4)
     expect(get).toHaveBeenCalledTimes(1)
     initial.resolve({ status: 'running' } as SessionRecord)
@@ -107,7 +107,7 @@ describe('session polling', () => {
       .mockRejectedValueOnce(new Error('network unavailable'))
       .mockResolvedValue({ status: 'completed' } as SessionRecord)
     const scope = effectScope()
-    const query = scope.run(() => useSession(ref('run_1')))!
+    const query = scope.run(() => useSession(ref('run_1'), runsApi))!
     await flushPromises()
     expect(query.error.value).toBe('network unavailable')
     await query.refresh()

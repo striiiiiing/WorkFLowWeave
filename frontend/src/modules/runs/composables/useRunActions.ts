@@ -24,10 +24,28 @@ function classify<T>(result: AsyncTaskResult<T>): RunActionResult<T> {
   return { ...result, status: rejected ? 'failure' : 'unknown' }
 }
 
+export function useCancelAction(api: Pick<RunsApi, 'cancel'> = useRunsApi()) {
+  const task = useAsyncTask()
+  return {
+    pending: task.pending,
+    error: task.error,
+    async cancel(sessionId: string) {
+      return classify(
+        await task.run(async () => {
+          const result = await api.cancel(sessionId)
+          if (result.cancelled === false) throw new CancellationDeclinedError()
+          if (result.cancelled !== true)
+            throw new Error('取消响应缺少有效的 cancelled 字段，结果未知')
+          return result
+        }),
+      )
+    },
+  }
+}
 /** Trigger and cancel have separate pending states so cancellation remains available. */
 export function useRunActions(api: Pick<RunsApi, 'trigger' | 'cancel'> = useRunsApi()) {
   const triggering = useAsyncTask()
-  const cancelling = useAsyncTask()
+  const cancelling = useCancelAction(api)
   return {
     triggering: triggering.pending,
     cancelling: cancelling.pending,
@@ -36,16 +54,17 @@ export function useRunActions(api: Pick<RunsApi, 'trigger' | 'cancel'> = useRuns
     async trigger(workflowId: string, signal?: AbortSignal) {
       return classify(await triggering.run(() => api.trigger(workflowId, signal)))
     },
-    async cancel(sessionId: string) {
-      return classify(
-        await cancelling.run(async () => {
-          const result = await api.cancel(sessionId)
-          if (result.cancelled === false) throw new CancellationDeclinedError()
-          if (result.cancelled !== true)
-            throw new Error('取消响应缺少有效的 cancelled 字段，结果未知')
-          return result
-        }),
-      )
+    cancel: cancelling.cancel,
+  }
+}
+
+export function useRecoveryAction(api: Pick<RunsApi, 'recover'> = useRunsApi()) {
+  const task = useAsyncTask()
+  return {
+    pending: task.pending,
+    error: task.error,
+    async recover(id: string) {
+      return classify(await task.run(() => api.recover(id)))
     },
   }
 }

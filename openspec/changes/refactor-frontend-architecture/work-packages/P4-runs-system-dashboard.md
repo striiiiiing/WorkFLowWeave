@@ -24,4 +24,23 @@ system 拥有 plugins/health 独立查询、诊断投影与 reload。Dashboard �
 
 ## 实施证据
 
-待填实际公开出口、运行/首页测试与请求计数、浏览器结果、commit 及旧文件删除。
+### 实施决策与公开合同（2026-09-25）
+
+结构性提取依据原设计 §3.3/§3.4/§5：查询和写动作归唯一控制器，纯模型迁移后删除旧实现；页面仅处理路由与组件装配。本包按一个运行/系统/首页闭环验收提交，避免 runs 的 SessionTable 迁移后保留旧首页导航实现。
+
+- `runs/public` 新增 `useRunList(api?: Pick<RunsApi, 'list'>)`、`useRecentRuns(api?)`、`useSession(id, api?: Pick<RunsApi, 'get'>)`、`usePhaseReport(identity, api?: Pick<RunsApi, 'phase'>)`、`useRunDetail(id, api?: Pick<RunsApi, 'get' | 'phase' | 'recovery' | 'recover' | 'cancel'>)`。默认 API 均来自 P1 的注入 key；不存在业务层具体 transport 导入。
+- 列表每页 20、首页 5、轮询 2000ms 延续被替代 `RunsView`/`DashboardView`/`useSession` 的既有默认值，原设计 §5 要求保留行为；筛选草稿只在提交时成为查询身份，datetime-local 在提交边界转 ISO instant。轮询在响应完成后计时，终态、失败、销毁停止。
+- 报告身份固定为 session/version/stage；`useQuery` 承担取消、代次、销毁和清旧数据，`usePhaseReport` 使用唯一 `parsePhase`，解析失败显式成为该阶段错误。版本更新自动触发一次每阶段/恢复资格读取；同版本手动刷新才主动刷新这些子查询，避免重复读。
+- `useRunActions.trigger/cancel` 冻结签名不变；抽出唯一 `useCancelAction` 供详情依赖最小 API，并新增 `useRecoveryAction` 复用既有 failure/unknown 分类，无写入重试。详情用明确“取消/恢复结果未知”展示不确定写入，不用恢复或取消 HTTP 成功冒充最终会话状态。
+- `useRunDetail.loadedContext` 为已加载 session 与阶段状态的只读投影，无额外 get/list；`RunActions` 发继续意图，`RunDetailPage` 转发上下文。**P7 过渡**：`views/RunDetailView.vue` 仅保留约十行 route composition，把现有 AgentContinueButton 放进 continuation slot；不再有运行查询/草稿/动作实现。P7 需接管完整续接并删除此壳；本包不声称完整续接已验收。
+- `system/public` 提供 `useSystemHealth`、`useSystemDiagnostics`、`usePluginReload` 和纯 `pluginHealthRows`；合法 health503/信封继续使用 P1 的唯一 transport 校验。plugins 与 health 分别失败/刷新；诊断格式错误只影响诊断投影，不使其他首页区域渲染失败。reload 的传输失败与成功响应中的 discovery errors 分别展示，保留完整错误报告。
+- `useDashboard` 仅组合 workflows/runs/system 公开控制器。真实组件树包含 DashboardMetrics/MetricCard、RecentRunsPanel/SessionTable、SystemHealthAlert、PluginHealthPanel、ComponentHealthPanel；health 查询一份传给各消费者。数量在尚未成功读取时显示“—”，同身份刷新失败保留上次成功值和 readAt。
+- 删除旧 RunsView/DashboardView/PluginsView，旧 report UI/SessionTable/StatusBadge/useSession，以及 domain/session/report/pluginHealth 和无消费者的 capabilities 过渡出口；保留的唯一实现归 modules。
+
+### 验证进度
+
+已完成：runs 原相关 5 文件 24 测试；新增详情 3 测试；system/详情/动作/首页/shared JSON 回归 5 文件 31 测试；全量前端单测 40 个文件、193 项通过；`npm run typecheck`、`npm run format:check`、架构检查（实际源码及 27 个正反例）和 `npm run build` 通过。构建产物中首页入口约 432 KB，运行详情、报告、工作流编辑器和资源编辑器保持为独立路由 chunk，未再把编辑器/报告静态带入首页入口。全量单测曾发现 P2 遗留 provider-view 测试缺少新注入，已由对应改动补齐，未掩盖失败。
+
+集成浏览器验收：`npm run test:e2e` 已启动临时后端和 preview，但 Chromium 在进程启动前因宿主缺少 `libnspr4.so` 退出，10 个用例均未执行到应用断言；Tabbit 也成功加载 preview 响应（HTTP 200）后因本地浏览器运行时关闭页面，未形成可归因于应用的断言结果。因此本次提交保留自动化浏览器阻断证据，不把它描述为通过；安装该系统库后应重跑 `npm run test:e2e`，重点覆盖首页局部失败、运行筛选/详情、插件诊断和 375px 布局。
+
+提交范围：本提交只包含前端 P4 页面、runs/system 模块、相关测试、路由/Playwright 配置和本任务记录；工作区中后端双向 channel 及其他 OpenSpec change 的修改未暂存、未提交。

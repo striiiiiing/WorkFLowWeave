@@ -1,8 +1,10 @@
+import { routerKey } from 'vue-router'
+import { runsApiKey } from '@/modules/runs/public'
 import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus, { ElSelect } from 'element-plus'
 import { afterEach, expect, it, vi } from 'vitest'
 import { runsApi } from '@/api/runs'
-import RunsView from '@/views/RunsView.vue'
+import RunsView from '@/pages/runs/RunListPage.vue'
 import type { SessionRecord } from '@/types'
 
 vi.mock('@/api/runs', () => ({ runsApi: { list: vi.fn() } }))
@@ -30,7 +32,11 @@ afterEach(() => {
 async function setup(rows = [record]) {
   vi.mocked(runsApi.list).mockResolvedValue(rows)
   const wrapper = mount(RunsView, {
-    global: { plugins: [ElementPlus], stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    global: {
+      provide: { [runsApiKey as symbol]: runsApi, [routerKey as symbol]: { push: vi.fn() } },
+      plugins: [ElementPlus],
+      stubs: { RouterLink: { template: '<a><slot /></a>' } },
+    },
   })
   wrappers.push(wrapper)
   await flushPromises()
