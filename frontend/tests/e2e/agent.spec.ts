@@ -59,7 +59,7 @@ test('Agent uses the real SSE and file API on desktop and narrow screens', async
   await page.goto('/agents')
   await expect(page.getByRole('heading', { name: 'Agent 会话', exact: true })).toBeVisible()
   await page.getByRole('button', { name: '新会话', exact: true }).first().click()
-  await expect(page.getByText(/发送第一条消息开始/)).toBeVisible()
+  await expect(page.getByText('开启 Agent 智能分析', { exact: true })).toBeVisible()
 
   const input = page.getByRole('textbox', { name: 'Agent 消息', exact: true })
   await input.fill('hello smoke')
@@ -78,13 +78,14 @@ test('Agent uses the real SSE and file API on desktop and narrow screens', async
   expect(replayIds.length).toBeGreaterThan(0)
   expect(replayIds.every((id) => id > split)).toBe(true)
 
-  await page.getByRole('button', { name: '文件', exact: true }).click()
+  await page.getByRole('button', { name: '工作区文件', exact: true }).click()
   const filePath = page.locator('.agent-file-toolbar input')
   await filePath.fill('Memory/smoke.md')
   const initial = await request.put(
     `/api/agents/file?session_id=${encodeURIComponent(sessionId!)}` + '&path=Memory%2Fsmoke.md',
     {
       data: { mode: 'overwrite', content: 'one' },
+      headers: { 'If-None-Match': '*' },
     },
   )
   expect(initial.status(), await initial.text()).toBe(200)
@@ -97,6 +98,7 @@ test('Agent uses the real SSE and file API on desktop and narrow screens', async
     `/api/agents/file?session_id=${encodeURIComponent(sessionId!)}` + '&path=Memory%2Fsmoke.md',
     {
       data: { mode: 'overwrite', content: 'two' },
+      headers: { 'If-Match': etag },
     },
   )
   expect(external.status(), await external.text()).toBe(200)
@@ -121,7 +123,7 @@ test('Agent stop cancels a slow local model turn and releases the browser stream
   const input = page.getByRole('textbox', { name: 'Agent 消息', exact: true })
   await input.fill('slow response')
   await page.getByRole('button', { name: /发送/ }).click()
-  const stop = page.getByRole('button', { name: /停止/ })
+  const stop = page.locator('button.capsule-stop-btn')
   await expect(stop).toBeEnabled()
   await stop.click()
   await expect(page.getByText(/会话已暂停 \/ 停止/)).toBeVisible()

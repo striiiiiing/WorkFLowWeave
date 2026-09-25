@@ -24,4 +24,31 @@ transport 接收 EventSource/时钟工厂，负责 URL/游标/close/单一重连
 
 ## 实施证据
 
-待填协议签名、契约结果与测试时后端 HEAD/dirty、明确协议差异、事件样本、浏览器结果和集成 worker commit。
+### 实际实现与交接签名
+
+- `createAgentEventSource(sourceFactory?, clock?)` 返回 `open(sessionId, after, handlers)`, `accept(cursor)` 和 `close()`；它只负责 EventSource URL、游标、主动关闭和 500/1000/2000/4000/5000ms 手动退避。网络错误先 close 当前源，再重建；解析失败通过 `error` 结束当前连接。
+- `parseAgentEvent(value)` 验证事件信封及已知事件消费字段；未知类型保留原始 `AgentEvent` 供诊断。`mergeAgentEvents` 以 `(session_id,id)` 去重并保持首次出现顺序。
+- `projectAgentSession(session,event)` 是唯一会话投影：只更新当前 `turn_id` 的 budget、resources 与终态；`turn.started` 仅允许从非 running 状态建立下一轮，旧轮终态不能结束新轮。
+- `useAgentSession(api, transport?, onEvent?)` 持有 `events/session/state/error/cursor`，公开 `select/resume/clear`。`select` 严格执行 history → current session → SSE；每次选择/清理递增 generation 并 abort 旧查询，接纳事件后推进 cursor。旧 `useAgentStream` 只保留此控制器的过渡适配，P6 删除适配后不需要迁移第二套 reducer。
+- `agentsApi` 继续由 P1 单一 HTTP 工厂提供；命令使用 `/channels/web/commands`，普通查询和文件使用 `/agents/...`，文件写入保持 `If-Match`/`If-None-Match`。
+
+### 后端契约核对
+
+2026-09-26 只读核对时 HEAD 为 `7012a20`；工作区同时存在其他任务的后端 dirty 修改（`src/logagent/**`、`tests/**`、`pyproject.toml`、`uv.lock` 等），未暂存、覆盖或提交。本包没有改变后端。
+
+- `tests/interaction/test_agent_api.py::test_agent_session_message_and_replay_endpoints`：`timeout 60s`，通过。
+- `tests/interaction/test_agent_api.py::test_real_sse_disconnect_keeps_turn_running_and_replays_its_completion`：`timeout 60s`，通过。
+- 实际路由同时暴露 `/api/agents/sessions/{id}/events` 与 `/api/channels/web/sessions/{id}/events`；前端命令入口使用后者，SSE 信封包含 `id/session_id/turn_id/type/at/data`，后端历史文件还保留扁平字段。前端只依赖 `data`，没有增加兼容 fallback。
+
+### 测试证据
+
+- 针对性 Agent 测试：35 项通过；新增协议模型/投影/游标/旧终态/迟到回调/非法已知事件/未知事件/文件条件写入覆盖。
+- 全量前端单测：41 个测试文件、198 项通过。
+- `npm run typecheck`、`npm run format:check`、`npm run architecture:check`、`npm run build` 均通过；`git diff --check` 通过。
+- GPT-6 Luna 真实 Chromium 验收：`rtk npx playwright test --config=playwright.agent.config.ts --reporter=line`，2 项通过、0 项失败、25.181s。覆盖真实消息发送、终态、SSE 全量与游标回放、文件 ETag 冲突、375px 无横向溢出和慢模型 stop 取消；Vite、临时 FastAPI 与 Chromium 均实际启动，测试结束后 13001/14301 无残留监听。
+
+### 提交与 P6 交接
+
+- `7012a20 refactor(frontend): centralize Agent event session protocol`：P5 模型、transport、`useAgentSession`、旧页面适配、协议测试。
+- 后续测试支撑修正待提交：真实 `ApplicationLifecycle` smoke 夹具、当前“工作区文件”按钮、条件写入头和稳定 stop 选择器；该提交只包含 `frontend/tests/**`。
+- P6 复用 `useAgentSession` 的状态与签名，继续使用 `modules/agents/model/transcript.ts` 和 `projectAgentSession`；待删除 `frontend/src/composables/useAgentStream.ts` 与 `frontend/src/components/agent/transcript.ts` 过渡 re-export。P6 不应重新实现历史/SSE/reducer，也不应在页面中直接读取或转换事件 payload。
