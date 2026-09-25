@@ -24,7 +24,7 @@ const event = (id: number, type = 'message.delta', session = 's', turn = 't'): A
   turn_id: turn,
   type,
   at: '2026-09-23',
-  data: { content: 'chunk' },
+  data: type === 'message.user' ? { text: 'hello' } : { content: 'chunk' },
 })
 const scopes: EffectScope[] = []
 function setup() {
