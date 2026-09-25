@@ -10,6 +10,7 @@ import type {
 export type WorkflowChanges = Partial<
   Pick<
     WorkflowDefinition,
+    | 'id'
     | 'name'
     | 'enabled'
     | 'interval_seconds'
