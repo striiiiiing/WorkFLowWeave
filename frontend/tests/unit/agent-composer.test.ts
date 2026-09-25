@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { afterEach, expect, it, vi } from 'vitest'
-import AgentComposer from '@/components/agent/AgentComposer.vue'
+import AgentComposer from '@/modules/agents/ui/AgentComposer.vue'
 
 const wrappers: ReturnType<typeof mount>[] = []
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()))

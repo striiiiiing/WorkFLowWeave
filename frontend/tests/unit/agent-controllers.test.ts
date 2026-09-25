@@ -7,7 +7,9 @@ import { useAgentFiles } from '@/modules/agents/composables/useAgentFiles'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>((done) => { resolve = done })
+  const promise = new Promise<T>((done) => {
+    resolve = done
+  })
   return { promise, resolve }
 }
 
@@ -38,7 +40,10 @@ describe('Agent commands', () => {
   })
 
   it('retains an unknown request ID for explicit retry and creates a new ID after editing', async () => {
-    const command = vi.fn().mockRejectedValueOnce(new TypeError('lost')).mockResolvedValue(turn('A'))
+    const command = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('lost'))
+      .mockResolvedValue(turn('A'))
     const commands = useAgentCommands({ command, cancel: vi.fn() } as unknown as AgentsApi)
     commands.select('A')
     commands.draft.value = 'first'
@@ -54,7 +59,10 @@ describe('Agent commands', () => {
   it('leaves stop available while send awaits its receipt', async () => {
     const pending = deferred<ReturnType<typeof turn>>()
     const cancel = vi.fn().mockResolvedValue({ session_id: 'A', status: 'running' })
-    const commands = useAgentCommands({ command: vi.fn(() => pending.promise), cancel } as unknown as AgentsApi)
+    const commands = useAgentCommands({
+      command: vi.fn(() => pending.promise),
+      cancel,
+    } as unknown as AgentsApi)
     commands.select('A')
     commands.draft.value = 'message'
     const sending = commands.send(false)
@@ -79,8 +87,21 @@ describe('Agent commands', () => {
 
 describe('Agent files', () => {
   it('preserves the local draft on ETag conflict and resumes with the remote hash', async () => {
-    const readFile = vi.fn().mockResolvedValue({ path: 'Memory/a.md', kind: 'file', content: 'remote', hash: 'v1', readonly: false, offset: 0, next_offset: null })
-    const writeFile = vi.fn().mockRejectedValueOnce(new ApiError(409, { code: 'conflict', message: 'changed', details: {} })).mockResolvedValue({ hash: 'v3' })
+    const readFile = vi.fn().mockResolvedValue({
+      path: 'Memory/a.md',
+      kind: 'file',
+      content: 'remote',
+      hash: 'v1',
+      readonly: false,
+      offset: 0,
+      next_offset: null,
+    })
+    const writeFile = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new ApiError(409, { code: 'conflict', message: 'changed', details: {} }),
+      )
+      .mockResolvedValue({ hash: 'v3' })
     const scope = effectScope()
     const files = scope.run(() => useAgentFiles({ readFile, writeFile } as unknown as AgentsApi))!
     files.reset('A', 'Memory/a.md')
@@ -90,7 +111,15 @@ describe('Agent files', () => {
     expect(files.conflict.value).toBe(true)
     expect(files.draft.value).toBe('local edit')
     await files.readRemote()
-    readFile.mockResolvedValue({ path: 'Memory/a.md', kind: 'file', content: 'new remote', hash: 'v2', readonly: false, offset: 0, next_offset: null })
+    readFile.mockResolvedValue({
+      path: 'Memory/a.md',
+      kind: 'file',
+      content: 'new remote',
+      hash: 'v2',
+      readonly: false,
+      offset: 0,
+      next_offset: null,
+    })
     await files.readRemote()
     files.mergeRemote()
     await files.save()
