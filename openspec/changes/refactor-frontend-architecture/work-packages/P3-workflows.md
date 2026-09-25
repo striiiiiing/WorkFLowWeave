@@ -30,4 +30,4 @@ useWorkflowEditor 唯一拥有 sources/analyses/fan_in/channels/overrides 草稿
 
 新增页面与区块位于 `modules/workflows/ui/**`、`pages/workflows/**`；列表通过 P1 `useRunActions.trigger` 发起运行并导航 `/runs/<session_id>`，不导入 P4 内部实现。`app/router.ts` 未修改，旧路由仍指向遗留 View，实际路由切换、旧 View/组件删除留给 P7 集成 worker；本批次没有声明浏览器路由烟测完成。
 
-提交链：`4153a08`（草稿模型、动作、编辑器控制器及 5 项控制器测试）；`db1880b`（工作流页面、来源/分析/汇聚/通知/备份 UI）；后续文档/测试批次将在同一 P3 所有权范围内提交。已验证：完整前端 Vitest 37 文件/186 项通过；P3 定向 2 文件/8 项通过；`vue-tsc --noEmit`、Prettier、架构检查（177 文件及 27 fixtures）和 `git diff --check` 通过。未执行真实浏览器流程，因 router 集成按 P7 冻结。
+提交链：`4153a08`（草稿模型、动作、编辑器控制器及 5 项控制器测试）；`db1880b`（工作流页面、来源/分析/汇聚/通知/备份 UI）；`a9933e2`（UI 回归测试、旧 domain 过渡别名和本证据）；`8500b51`（新增来源目标选择修复）。已验证：完整前端 Vitest 37 文件/186 项通过；P3 定向 2 文件/8 项通过；`vue-tsc --noEmit`、Prettier、架构检查（177 文件及 27 fixtures）、production build 和 `git diff --check` 通过。未执行真实浏览器流程，因 router 集成按 P7 冻结。
