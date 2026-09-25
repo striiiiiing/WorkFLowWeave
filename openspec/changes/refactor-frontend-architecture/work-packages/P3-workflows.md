@@ -22,4 +22,12 @@ useWorkflowEditor 唯一拥有 sources/analyses/fan_in/channels/overrides 草稿
 
 ## 实施证据
 
-待填实际草稿动作/公开出口、测试结果、浏览器流程、commit 和删除清单。
+### 2026-09-25 实施批次
+
+依据原设计 §5.3 与 §6，工作流草稿的唯一拥有者为 `useWorkflowEditor`；`model/actions.ts` 以不可变返回值实现来源顺序、来源覆盖、分析任务改名/引用同步、汇聚 disabledDraft、通知覆盖和备份字段更新。工作流默认值沿用 `src/logagent/models.py` 对应 DTO（并与原 `domain/workflow.ts` 一致）：采集/分析并发均为 4、来源输入分隔符为两个换行、备份默认启用且四类快照均启用；这些值是后端模型和历史行为依据，不新增前端隐式默认层。
+
+`useWorkflowEditor` 在路由身份变化时清空旧实体并只接受相同 ID 的服务器快照；同身份刷新、目录刷新和迟到响应保留未保存草稿。来源脱离/发布通过 P2 `SourceConfigEditorGateway`，`workflow-draft` 只调用 `applySource`，`shared-resource` 才写资源 API；resolve 响应会校验工作流代际，切换工作流后拒绝旧响应。来源使用位置继续由 `sourceUsage`/`useSourceUsage` 投影，当前草稿按 ID 替换服务端快照。
+
+新增页面与区块位于 `modules/workflows/ui/**`、`pages/workflows/**`；列表通过 P1 `useRunActions.trigger` 发起运行并导航 `/runs/<session_id>`，不导入 P4 内部实现。`app/router.ts` 未修改，旧路由仍指向遗留 View，实际路由切换、旧 View/组件删除留给 P7 集成 worker；本批次没有声明浏览器路由烟测完成。
+
+提交链：`4153a08`（草稿模型、动作、编辑器控制器及 5 项控制器测试）；`db1880b`（工作流页面、来源/分析/汇聚/通知/备份 UI）；后续文档/测试批次将在同一 P3 所有权范围内提交。已验证：完整前端 Vitest 37 文件/186 项通过；P3 定向 2 文件/8 项通过；`vue-tsc --noEmit`、Prettier、架构检查（177 文件及 27 fixtures）和 `git diff --check` 通过。未执行真实浏览器流程，因 router 集成按 P7 冻结。
