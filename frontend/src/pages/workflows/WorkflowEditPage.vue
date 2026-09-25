@@ -60,7 +60,8 @@ const gateway: SourceConfigEditorGateway = {
       editor.applySource(target.sourceId, value)
       return
     }
-    if (target.resourceId) await resourcesApi.replace('sources', target.resourceId, value)
+    const exists = catalog.data.value?.sources.some((source) => source.id === target.resourceId)
+    if (exists) await resourcesApi.replace('sources', target.resourceId, value)
     else await resourcesApi.create('sources', value)
     await catalog.refresh()
     await usage.refresh()
