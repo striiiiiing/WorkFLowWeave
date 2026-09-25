@@ -3,8 +3,6 @@ import { computed, onMounted, onScopeDispose, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance } from 'element-plus'
 import PageHeader from '@/shared/ui/PageHeader.vue'
-import SectionCard from '@/shared/ui/SectionCard.vue'
-import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 import { useAsyncTask } from '@/shared/async/useAsyncTask'
 import { useQuery } from '@/shared/async/useQuery'
 import { useCapabilities, useSystemApi } from '@/modules/system/public'
@@ -20,6 +18,8 @@ import {
   FanInCard,
   NotificationCard,
   BackupMatrix,
+  WorkflowBasicInfo,
+  WorkflowStageNav,
 } from '@/modules/workflows/public'
 const route = useRoute()
 const router = useRouter()
@@ -44,6 +44,7 @@ const capabilities = useCapabilities(systemApi)
 const editor = useWorkflowEditor({ identity: id, data: workflowQuery.data })
 const usage = useSourceUsage({ query: workflowList, currentDraft: () => editor.draft.value })
 const save = useAsyncTask()
+const resourceSavePending = ref(false)
 const form = ref<FormInstance>()
 const advanced = ref(false)
 const draft = computed(() => editor.draft.value!)
@@ -61,10 +62,12 @@ const gateway: SourceConfigEditorGateway = {
       return
     }
     const exists = catalog.data.value?.sources.some((source) => source.id === target.resourceId)
+    const hadDetachedOverride = !!editor.draft.value?.source_overrides[target.resourceId]?.source
     if (exists) await resourcesApi.replace('sources', target.resourceId, value)
     else await resourcesApi.create('sources', value)
     await catalog.refresh()
     await workflowList.refresh()
+    if (hadDetachedOverride) resourceSavePending.value = true
   },
 }
 function selectStage(stage: string) {
@@ -80,12 +83,13 @@ async function submit() {
   }
   const valid = (await form.value?.validate().catch(() => false)) ?? false
   if (!valid) return
-  await save.run(async () => {
+  const result = await save.run(async () => {
     if (id.value) await workflowsApi.replace(id.value, draft)
     else await workflowsApi.create(draft)
     ElMessage.success('工作流已保存')
     await router.push('/workflows')
   })
+  if (result.status === 'success') resourceSavePending.value = false
 }
 function refreshCatalog() {
   void catalog.refresh()
@@ -141,6 +145,20 @@ const stages = computed(
       </el-button>
     </PageHeader>
     <el-alert
+      v-if="resourceSavePending"
+      title="资源已保存，工作流仍待保存"
+      type="warning"
+      :closable="false"
+      show-icon
+    />
+    <el-alert
+      v-else-if="editor.dirty.value"
+      title="工作流有未保存更改"
+      type="warning"
+      :closable="false"
+      show-icon
+    />
+    <el-alert
       v-if="
         workflowQuery.error.value ||
         catalog.error.value ||
@@ -160,65 +178,11 @@ const stages = computed(
     <el-button v-if="catalog.error.value" @click="catalog.refresh">重新加载资源目录</el-button>
     <el-skeleton v-if="!editor.ready.value || !catalog.data.value" :rows="10" animated />
     <div v-else class="pipeline-main-column">
-      <nav class="pipeline-step-nav" aria-label="工作流阶段">
-        <button
-          v-for="(stage, index) in stages"
-          :key="stage.id"
-          type="button"
-          class="step-nav-btn"
-          :class="{ active: activeStage === stage.id }"
-          :aria-pressed="activeStage === stage.id"
-          @click="selectStage(stage.id)"
-        >
-          <span class="step-num">{{ index + 1 }}</span>
-          <span class="step-text">
-            <strong>{{ stage.title }}</strong>
-            <small>{{ stage.detail }}</small>
-          </span>
-        </button>
-        <button
-          type="button"
-          class="step-nav-btn overview-btn"
-          :class="{ active: activeStage === 'all' }"
-          @click="selectStage('all')"
-        >
-          <AppIcon name="workflow" size="sm" />
-          <span>全览模式</span>
-        </button>
-      </nav>
+      <WorkflowStageNav :active-stage="activeStage" :stages="stages" @select="selectStage" />
       <el-form ref="form" novalidate :model="draft" label-position="top" @submit.prevent="submit">
         <el-form-item label="高级模式"><el-switch v-model="advanced" /></el-form-item>
         <div class="flow-stack">
-          <SectionCard title="基本信息与运行策略">
-            <div class="form-grid">
-              <el-form-item label="工作流 ID">
-                <el-input
-                  :model-value="draft.id"
-                  :disabled="!!id"
-                  @update:model-value="editor.update({ id: $event })"
-                />
-              </el-form-item>
-              <el-form-item label="显示名称">
-                <el-input
-                  :model-value="draft.name"
-                  @update:model-value="editor.update({ name: $event })"
-                />
-              </el-form-item>
-              <el-form-item label="启用工作流">
-                <el-switch
-                  :model-value="draft.enabled"
-                  @update:model-value="editor.update({ enabled: Boolean($event) })"
-                />
-              </el-form-item>
-              <el-form-item label="定时间隔 / 秒（留空只手动运行）">
-                <el-input-number
-                  :model-value="draft.interval_seconds ?? undefined"
-                  :min="0.001"
-                  @update:model-value="editor.update({ interval_seconds: $event ?? null })"
-                />
-              </el-form-item>
-            </div>
-          </SectionCard>
+          <WorkflowBasicInfo :draft="draft" :editing="!!id" @update="editor.update" />
           <SourceStepCard
             v-show="activeStage === 'all' || activeStage === 'sources'"
             :editor="editor"
@@ -260,63 +224,5 @@ const stages = computed(
 <style scoped>
 .pipeline-main-column {
   min-width: 0;
-}
-.pipeline-step-nav {
-  display: flex;
-  flex-wrap: wrap;
-  padding: 12px;
-  gap: 8px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 12px;
-  background: var(--el-bg-color);
-  margin-bottom: 20px;
-}
-.step-nav-btn {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1;
-  padding: 12px;
-  border-radius: 8px;
-  min-height: 48px;
-  text-align: left;
-  color: var(--el-text-color-secondary);
-  white-space: nowrap;
-}
-.step-nav-btn.active {
-  background: var(--el-color-primary-light-9);
-  color: var(--el-color-primary);
-}
-.step-num {
-  display: grid;
-  place-items: center;
-  border: 1px solid currentColor;
-  border-radius: 50%;
-  width: 24px;
-  height: 24px;
-  font-size: 12px;
-}
-.step-text {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 13px;
-}
-.step-text small {
-  font-size: 11px;
-}
-.overview-btn {
-  justify-content: center;
-  flex: 0 1 auto;
-  font-size: 12px;
-}
-@media (max-width: 640px) {
-  .step-nav-btn {
-    flex-basis: 40%;
-    padding: 8px;
-  }
-  .overview-btn {
-    flex-basis: 100%;
-  }
 }
 </style>

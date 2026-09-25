@@ -10,6 +10,7 @@ import { createResource } from '@/modules/resources/model/resources'
 import type { ResourcesApi } from '@/modules/resources/api/resourcesApi'
 import type { SystemApi } from '@/modules/system/api/systemApi'
 import type { WorkflowsApi } from '@/modules/workflows/api/workflowsApi'
+import type { WorkflowEditorController } from '@/modules/workflows/public'
 
 const router = { push: vi.fn(), replace: vi.fn() }
 vi.mock('vue-router', () => ({
@@ -19,24 +20,28 @@ vi.mock('vue-router', () => ({
 
 const source = { ...createResource('sources'), id: 'logs', collector: 'mock', enabled: true }
 const SourceStepStub = defineComponent({
-  props: { gateway: { type: Object, required: true } },
+  props: { gateway: { type: Object, required: true }, editor: { type: Object, required: true } },
   setup(props) {
     async function publish() {
+      const editor = props.editor as WorkflowEditorController
+      editor.addSourceId('logs')
+      editor.applySource('logs', source)
       await (
         props.gateway as { save: (target: unknown, value: typeof source) => Promise<void> }
       ).save({ kind: 'shared-resource', resourceId: 'logs' }, source)
+      editor.restoreSharedSource('logs')
     }
     return { publish }
   },
   template: '<button data-test="publish" @click="publish">publish</button>',
 })
 
-function setup() {
+function setup(options: { replace?: () => Promise<unknown> } = {}) {
   const workflowsApi = {
     list: vi.fn().mockResolvedValue([]),
     get: vi.fn(),
     create: vi.fn(),
-    replace: vi.fn(),
+    replace: vi.fn(options.replace ?? (() => Promise.resolve())),
     delete: vi.fn(),
   } as unknown as WorkflowsApi
   const resourcesApi = {
@@ -94,6 +99,7 @@ describe('workflow page query ownership', () => {
 
     expect(resourcesApi.replace).toHaveBeenCalledTimes(1)
     expect(workflowsApi.list).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('资源已保存，工作流仍待保存')
     wrapper.unmount()
   })
 })
