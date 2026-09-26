@@ -21,6 +21,7 @@ const selected = computed(() => props.configs.find((item) => item.id === props.a
 const models = computed(() => Object.keys(selected.value?.models ?? {}))
 const invalidAI = computed(() => Boolean(props.ai && !selected.value))
 const invalidModel = computed(() => Boolean(props.model && !models.value.includes(props.model)))
+const noModels = computed(() => !props.configs.some((item) => Object.keys(item.models).length))
 const aiRules = computed<FormItemRule[]>(() => [
   {
     validator: (_rule, value, callback) => {
@@ -68,6 +69,11 @@ function changeAI(value: string | null) {
         />
         <el-option v-if="invalidAI" :value="ai!" :label="`失效供应商渠道：${ai}`" disabled />
       </el-select>
+      <span v-if="invalidAI" class="field-hint">供应商渠道不存在：{{ ai }}</span>
+      <a v-if="noModels" href="/resources?kind=ai" target="_blank" rel="noopener">
+        前往配置供应商渠道
+      </a>
+      <span v-if="noModels" class="field-hint">现有供应商渠道均未配置模型</span>
     </el-form-item>
     <el-form-item
       label="模型"

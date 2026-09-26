@@ -3,18 +3,18 @@ import { mount, flushPromises } from '@vue/test-utils'
 import ElementPlus, { ElInput, ElRadioGroup, ElSelect } from 'element-plus'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ResourceEditor from './resources/ResourceEditorHarness.vue'
-import SourceStepCard from '@/components/workflow/SourceStepCard.vue'
-import FanOutTaskCard from '@/components/workflow/FanOutTaskCard.vue'
-import NotificationCard from '@/components/workflow/NotificationCard.vue'
-import { createResource } from '@/domain/resources'
-import { createWorkflow } from '@/domain/workflow'
-import { resourcesApi } from '@/api/resources'
-import { systemApi } from '@/api/system'
+import SourceStepCard from '@/modules/workflows/ui/SourceStepCard.vue'
+import FanOutTaskCard from '@/modules/workflows/ui/FanOutTaskCard.vue'
+import NotificationCard from '@/modules/workflows/ui/NotificationCard.vue'
+import { createResource } from '@/modules/resources/public'
+import { createWorkflow, useWorkflowEditor } from '@/modules/workflows/public'
+import { resourcesApi } from '@/app/services'
+import { systemApi } from '@/app/services'
 
-vi.mock('@/api/resources', () => ({
+vi.mock('@/app/services', () => ({
   resourcesApi: { create: vi.fn(), replace: vi.fn(), protectCredential: vi.fn() },
+  systemApi: { plugins: vi.fn().mockResolvedValue([]) },
 }))
-vi.mock('@/api/system', () => ({ systemApi: { plugins: vi.fn().mockResolvedValue([]) } }))
 const global = { plugins: [ElementPlus] }
 afterEach(() => vi.clearAllMocks())
 
@@ -120,11 +120,11 @@ describe('editor task regressions', () => {
   })
 
   it('reorders shared input sources without losing their overrides and removes only deselected overrides', async () => {
-    const workflow = ref({
+    const initial = {
       ...createWorkflow(),
       sources: ['first', 'second'],
       source_overrides: { first: { options: { limit: 3 }, setters: {}, template: null } },
-    })
+    }
     const sources = ['first', 'second'].map((id) => ({
       ...createResource('sources'),
       id,
@@ -133,19 +133,24 @@ describe('editor task regressions', () => {
     const wrapper = mount(
       defineComponent({
         components: { SourceStepCard },
-        setup: () => ({ workflow, sources }),
+        setup: () => {
+          const editor = useWorkflowEditor({ identity: undefined })
+          editor.replace(initial)
+          return { editor, sources, gateway: { resolve: vi.fn(), save: vi.fn() }, protect: vi.fn() }
+        },
         template:
-          '<el-form :model="workflow"><SourceStepCard v-model="workflow" :sources="sources" /></el-form>',
+          '<el-form :model="editor.draft"><SourceStepCard :editor="editor" :sources="sources" :gateway="gateway" :capabilities="[]" :protect="protect" /></el-form>',
       }),
       { global },
     )
+    const workflow = wrapper.findComponent(SourceStepCard).props('editor').draft
     await flushPromises()
     expect(wrapper.text()).not.toContain('采集并发数')
-    await wrapper.find('[aria-label="上移 second"]').trigger('click')
+    await wrapper.get('article:nth-of-type(2)').findAll('button')[0].trigger('click')
     expect(workflow.value.sources).toEqual(['second', 'first'])
     expect(workflow.value.source_overrides.first.options).toEqual({ limit: 3 })
     await wrapper
-      .get('article[aria-label="数据源 first"]')
+      .findAll('article.source-card')[1]
       .findAll('button')
       .find((button) => button.text() === '移除')!
       .trigger('click')
@@ -155,14 +160,19 @@ describe('editor task regressions', () => {
   })
 
   it('advanced visibility does not reset existing workflow policies', async () => {
-    const workflow = ref({ ...createWorkflow(), analysis_concurrency: 7, send_partial: false })
+    const initial = { ...createWorkflow(), analysis_concurrency: 7, send_partial: false }
     const advanced = ref(false)
+    let editor!: ReturnType<typeof useWorkflowEditor>
     const wrapper = mount(
       defineComponent({
         components: { FanOutTaskCard, NotificationCard },
-        setup: () => ({ workflow, advanced }),
+        setup: () => {
+          editor = useWorkflowEditor({ identity: undefined })
+          editor.replace(initial)
+          return { editor, advanced }
+        },
         template:
-          '<el-form :model="workflow"><FanOutTaskCard v-model="workflow" :configs="[]" :advanced="advanced" /><NotificationCard v-model="workflow" :channels="[]" :advanced="advanced" /></el-form>',
+          '<el-form :model="editor.draft"><FanOutTaskCard :editor="editor" :configs="[]" :advanced="advanced" /><NotificationCard :editor="editor" :channels="[]" :capabilities="[]" :advanced="advanced" /></el-form>',
       }),
       { global },
     )
@@ -173,8 +183,8 @@ describe('editor task regressions', () => {
     expect(wrapper.text()).toContain('分析失败时')
     advanced.value = false
     await flushPromises()
-    expect(workflow.value.analysis_concurrency).toBe(7)
-    expect(workflow.value.send_partial).toBe(false)
+    expect(editor.draft.value?.analysis_concurrency).toBe(7)
+    expect(editor.draft.value?.send_partial).toBe(false)
     wrapper.unmount()
   })
 })
