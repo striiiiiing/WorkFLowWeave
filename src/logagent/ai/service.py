@@ -214,6 +214,7 @@ class AIService:
         self, config: AIConfig, prompt: str, input_text: str, *, model: str,
         task_id: str = "task", context: ExecutionContext | None = None,
         on_cancel: Callable[[CancellationNotice], None] | None = None,
+        system_prompt: str | None = None, user_prompt: str = "",
     ) -> AnalysisResult:
         """执行一次显式模型分析，返回成功、失败、超时或取消结果。
 
@@ -235,7 +236,10 @@ class AIService:
             _check_cancelled()
             config = copy_model(config)
             self.validate(config, model)
-            messages = build_messages(config.system_prompt, prompt, input_text)
+            messages = build_messages(
+                config.system_prompt if system_prompt is None else system_prompt,
+                prompt, input_text, user_prompt=user_prompt,
+            )
             result = await asyncio.create_task(self._execute(config, model, messages, task_id, context))
             _check_cancelled()
             return result.model_copy(update={"elapsed_ms": (time.perf_counter() - started) * 1000})
