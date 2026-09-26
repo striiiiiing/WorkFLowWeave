@@ -19,6 +19,7 @@ from logagent.config.calls import (
     normalize_call_options,
     resolve_channel_call,
     resolve_source_call,
+    select_source_call,
 )
 from logagent.config.normalize import normalize_options, validate_effective_source
 from logagent.config.reader import read_json
@@ -30,6 +31,7 @@ from logagent.models import (
     SaveMode,
     SetterTemplate,
     SourceConfig,
+    SourceOverride,
     StrictModel,
     WorkflowDefinition,
     WorkflowSnapshot,
@@ -169,10 +171,13 @@ class ResourceStore:
                 key: resolve_channel_call(candidate.channels[key], workflow.channel_overrides.get(key))
                 for key in workflow.channels
             }
-            enabled_sources = [
-                key for key in workflow.sources
-                if not for_execution or candidate.sources[key].enabled
-            ]
+            enabled_sources = []
+            for key in workflow.sources:
+                source = select_source_call(
+                    candidate.sources.get(key), workflow.source_overrides.get(key),
+                )
+                if not for_execution or source.enabled:
+                    enabled_sources.append(key)
             if not enabled_sources:
                 raise LogAgentError(
                     "workflow_no_enabled_sources",
@@ -187,9 +192,14 @@ class ResourceStore:
             }
             return WorkflowSnapshot(
                 workflow=snapshot_workflow,
-                sources={key: resolve_source_call(candidate.sources[key], candidate.setters,
-                                          workflow.source_overrides.get(key))
-                         for key in enabled_sources},
+                sources={
+                    key: resolve_source_call(
+                        candidate.sources.get(key),
+                        candidate.setters,
+                        workflow.source_overrides.get(key),
+                    )
+                    for key in enabled_sources
+                },
                 ai={key: copy_model(candidate.ai[key]) for key in ai_ids},
                 channels=channels,
                 created_at=datetime.now(UTC),
@@ -199,7 +209,45 @@ class ResourceStore:
         except ValidationError as exc:
             raise validation_error(exc) from None
 
+    @staticmethod
+    def _prepare_effective_source(
+        source: SourceConfig,
+        capability,
+        *,
+        data_dir: Path,
+        apply_defaults: bool,
+    ) -> bool:
+        """Normalize and schema-check a source without consulting stored workflows."""
+        normalized = normalize_options(
+            source.options, capability.options_schema,
+            data_dir=data_dir, apply_defaults=apply_defaults,
+        )
+        validate_instance(
+            normalized, resource_options_schema(capability.options_schema), path=["options"],
+        )
+        validate_instance(source.setters, capability.setters_schema, path=["setters"])
+        source.options = normalized
+        if options_complete(normalized, capability.options_schema):
+            validate_effective_source(source, capability)
+            return True
+        return False
+
     def _validate_workflow(self, workflow, candidate, *, changed):
+        for ident, override in workflow.source_overrides.items():
+            detached = override.source
+            if detached is None:
+                continue
+            if detached.id != ident:
+                raise LogAgentError("invalid_reference", "脱离的数据源快照与工作流绑定不匹配")
+            capability = self._collectors.get(detached.collector) if self._collectors else None
+            if capability is None:
+                if changed:
+                    raise LogAgentError("capability_missing", "脱离的数据源采集器能力不可用")
+                continue
+            self._prepare_effective_source(
+                detached, capability, data_dir=self._data_dir, apply_defaults=False,
+            )
+
         # Validate all saved bindings, including disabled ones; only execution filters them.
         snapshot = self._snapshot(workflow, candidate, for_execution=False)
         for kind, resources, overrides, registry in (
@@ -242,18 +290,11 @@ class ResourceStore:
                     if kind == "setters":
                         validate_instance(value.setters, capability.setters_schema, partial=True)
                     elif kind == "sources":
-                        normalized = normalize_options(
-                            value.options, capability.options_schema,
-                            data_dir=self._data_dir, apply_defaults=normalize and is_changed,
+                        self._prepare_effective_source(
+                            effective, capability, data_dir=self._data_dir,
+                            apply_defaults=normalize and is_changed,
                         )
-                        effective.options = normalized
-                        validate_instance(normalized, resource_options_schema(capability.options_schema),
-                                          path=["options"])
-                        validate_instance(effective.setters, capability.setters_schema,
-                                          path=["setters"])
-                        if options_complete(normalized, capability.options_schema):
-                            validate_effective_source(effective, capability)
-                        value.options = normalized
+                        value.options = effective.options
                     else:
                         normalized = normalize_options(
                             value.options, capability.options_schema,
@@ -362,6 +403,47 @@ class ResourceStore:
             if kind == "sources":
                 return resolve_source_call(candidate.sources[resource.id], candidate.setters)
             return self._snapshot(candidate.workflows[resource.id], candidate)
+
+    def resolve_source(
+        self, ident: str, override: SourceOverride | None = None,
+    ) -> SourceConfig:
+        """Return a validated, editable source with all referenced setters expanded."""
+        with self._lock:
+            if override is None:
+                override = SourceOverride()
+            elif isinstance(override, SourceOverride):
+                override = copy_model(override)
+            else:
+                try:
+                    override = SourceOverride.model_validate(override)
+                except ValidationError as exc:
+                    raise validation_error(exc) from None
+            source = override.source
+            if source is None:
+                source = self._view.sources.get(ident)
+                if source is None:
+                    raise LogAgentError(
+                        "not_found", "资源不存在", {"kind": "sources", "id": ident},
+                    )
+            if source.id != ident:
+                raise LogAgentError("invalid_reference", "数据源快照与资源绑定不匹配")
+            capability = self._collectors.get(source.collector) if self._collectors else None
+            if capability is None:
+                raise LogAgentError(
+                    "capability_missing", "数据源引用的插件能力不可用",
+                    {"name": source.collector},
+                )
+            override.options = normalize_call_options(
+                override.options, capability.options_schema, data_dir=self._data_dir,
+            )
+            effective = resolve_source_call(source, self._view.setters, override)
+            complete = self._prepare_effective_source(
+                effective, capability, data_dir=self._data_dir, apply_defaults=True,
+            )
+            validator = self._validators.get("sources")
+            if complete and validator is not None:
+                _call_validator(validator, effective)
+            return effective
 
     def snapshot(self, workflow_id: str) -> WorkflowSnapshot:
         with self._lock:

@@ -129,6 +129,8 @@ class SystemConfig(StrictModel):
 
 class SourceConfig(StrictModel):
     id: ID
+    display_name: str | None = None
+    description: str = ""
     collector: ID
     enabled: bool = True
     options: JSONObject = Field(default_factory=dict)
@@ -181,6 +183,7 @@ class ChannelConfig(StrictModel):
     options: JSONObject = Field(default_factory=dict)
     timeout: Seconds = 30.0
     enabled: bool = True
+    agent_enabled: bool = False
 
 
 class AnalysisTask(StrictModel):
@@ -218,9 +221,18 @@ class BackupPolicy(StrictModel):
 
 
 class SourceOverride(StrictModel):
+    source: SourceConfig | None = None
     options: JSONObject = Field(default_factory=dict)
     setters: JSONObject = Field(default_factory=dict)
     template: ID | None = None
+
+    @model_validator(mode="after")
+    def detached_source_has_no_template(self) -> Self:
+        if self.source is not None and (
+            self.source.template is not None or self.template is not None
+        ):
+            raise ValueError("Detached source snapshots cannot reference setter templates")
+        return self
 
 
 class ChannelOverride(StrictModel):
@@ -251,6 +263,11 @@ class WorkflowDefinition(StrictModel):
     def valid_references(self) -> Self:
         if not self.source_overrides.keys() <= set(self.sources):
             raise ValueError("Source overrides must reference selected sources")
+        if any(
+            override.source is not None and override.source.id != ident
+            for ident, override in self.source_overrides.items()
+        ):
+            raise ValueError("Detached source IDs must match their workflow binding")
         if not self.channel_overrides.keys() <= set(self.channels):
             raise ValueError("Channel overrides must reference selected channels")
         tasks = [task.id for task in self.analyses]

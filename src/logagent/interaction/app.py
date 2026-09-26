@@ -14,6 +14,7 @@ from logagent.lifecycle import ApplicationLifecycle
 from logagent.models import SystemConfig
 
 from .agent_routers import agent_router
+from .channel_routers import router as channel_router
 from .dependencies import Lifecycle
 from .errors import (
     logagent_error_handler,
@@ -22,6 +23,7 @@ from .errors import (
     unhandled_error_handler,
 )
 from .routers import router
+from .test_channel_routers import router as test_channel_router
 
 
 def create_app(lifecycle: Lifecycle | None = None) -> FastAPI:
@@ -47,6 +49,8 @@ def create_app(lifecycle: Lifecycle | None = None) -> FastAPI:
     application.add_exception_handler(ValidationError, pydantic_error_handler)
     application.add_exception_handler(Exception, unhandled_error_handler)
     application.include_router(agent_router, prefix="/api")
+    application.include_router(channel_router, prefix="/api")
+    application.include_router(test_channel_router, prefix="/api")
     application.include_router(router, prefix="/api")
     return application
 

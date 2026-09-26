@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import math
@@ -8,8 +9,13 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
+from logagent.agent.commands import AgentCommand
+from logagent.channel.base import BaseConversationChannel
+from logagent.channel.bindings import ChannelBindings
 from logagent.channel.context import delivery_deadline
+from logagent.channel.conversation import ChannelAddress, InboundHandler, InboundMessage
 from logagent.channel.errors import ChannelDeliveryError
+from logagent.channel.unified_queue import QueueOutcome, UnifiedQueue
 from logagent.errors import LogAgentError, exception_error
 from logagent.models import (
     CapabilityDescription,
@@ -73,16 +79,481 @@ class ChannelManager:
         self._active_sends: dict[asyncio.Task[Any], _ActiveSend] = {}
         self._stop_task: asyncio.Task[None] | None = None
         self._stop_timeout = stop_timeout
+        self._input_queue = UnifiedQueue()
+        self._agent_processor: Any = None
+        self._conversation_processor: Any = None
+        self._conversation_base: BaseConversationChannel | None = None
+        self.bindings: ChannelBindings | None = None
+        self.configs: dict[str, ChannelConfig] = {}
+        self.errors: dict[str, dict] = {}
+        self._sync_lock = asyncio.Lock()
+        self._sync_task: asyncio.Task[None] | None = None
+        self._accepting = True
+        self._suspended = False
+        self._stop_generations: dict[tuple[str, str], int] = {}
+        self._receiver_generations: dict[str, int] = {}
+        self._pending_requests: dict[tuple[str, str, str], tuple[str, asyncio.Future]] = {}
+        self._admission_lock = asyncio.Lock()
+        self._web_channel = None
 
     def describe(self) -> list[CapabilityDescription]:
         return [x.model_copy(deep=True) for x in self._register.describe()]
 
+    @property
+    def active_operations(self) -> int:
+        return self._input_queue.busy_count() + len(self._active_sends)
+
+    @property
+    def agent_channel(self):
+        """Compatibility view of the injected Agent processing port."""
+        return self._agent_processor
+
+    @property
+    def web_channel(self):
+        if self._web_channel is None:
+            from logagent.channel.web import WebChannel
+
+            self._web_channel = WebChannel(self)
+        return self._web_channel
+
+    async def configure_agent(self, processor: Any, bindings_path) -> None:
+        """Attach the Agent processing port and durable channel binding store."""
+        from logagent.agent.channel import AgentChannelProcessor
+        from logagent.channel.web import WebChannel
+
+        self._agent_processor = processor
+        self._conversation_base = BaseConversationChannel(processor)
+        self._web_channel = WebChannel(self)
+        self.bindings = ChannelBindings(bindings_path)
+        self._conversation_processor = AgentChannelProcessor(processor, self.bindings)
+
+    async def start_agent(self, configs) -> None:
+        if self.bindings is None:
+            raise LogAgentError("not_ready", "Agent 渠道处理端口尚未装配")
+        await self.bindings.start()
+        await self._reconcile_agent_operations()
+        await self.configure(configs)
+
+    async def _reconcile_agent_operations(self) -> None:
+        for peer, request, operation_id, channel_id, operation in await self.bindings.recovery_candidates():
+            if channel_id != "web" and operation in {"message", "append"}:
+                created_session = await self._agent_processor.recover_initial_session(operation_id)
+                if created_session is not None:
+                    await self.bindings.bind(peer, created_session)
+            evidence = await self._agent_processor.recover_request(
+                operation_id, channel=channel_id, operation=operation,
+            )
+            if evidence is None:
+                continue
+            response, status = evidence
+            if response["kind"] == "session" and channel_id != "web":
+                await self.bindings.bind(peer, response["result"]["session_id"])
+            await self.bindings.complete(
+                peer, request, response,
+                status="interrupted" if status == "cancelled" else status,
+                delivery={"status": "outcome_unknown", "error": {
+                    "code": "delivery_interrupted",
+                    "message": "重启前的渠道投递没有确认结果，不自动重发",
+                }},
+            )
+
+    def request_sync(self, configs) -> None:
+        previous = self._sync_task
+
+        async def sync():
+            if previous is not None:
+                await asyncio.gather(previous, return_exceptions=True)
+            await self.configure(configs)
+
+        self._sync_task = asyncio.create_task(sync(), name="channel:configure")
+        self._sync_task.add_done_callback(self._configuration_done)
+
+    def _configuration_done(self, task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        error = task.exception()
+        if error is not None:
+            self.errors["configuration"] = {
+                "code": getattr(error, "code", "channel_configuration_failed"),
+                "exception_type": type(error).__name__,
+            }
+            _LOGGER.error("channel_configuration_failed", exc_info=error)
+
+    async def configure(self, configs) -> None:
+        desired = {config.id: config.model_copy(deep=True) for config in configs
+                   if config.enabled and config.agent_enabled}
+        async with self._sync_lock:
+            if not self._accepting or self._suspended:
+                return
+            for ident, old in list(self.configs.items()):
+                if desired.get(ident) != old:
+                    self._receiver_generations[ident] = self._receiver_generations.get(ident, 0) + 1
+                    await self.stop_receiving(old)
+                    del self.configs[ident]
+            for ident, config in desired.items():
+                if ident in self.configs:
+                    continue
+                generation = self._receiver_generations.get(ident, 0) + 1
+                self._receiver_generations[ident] = generation
+                self.configs[ident] = config
+                try:
+                    await self.start_receiving(
+                        config, lambda message, bound=config, version=generation: self.enqueue(
+                            bound.id, message, expected=bound, generation=version,
+                        ),
+                    )
+                except BaseException:
+                    self._receiver_generations[ident] += 1
+                    del self.configs[ident]
+                    raise
+            self.errors.pop("configuration", None)
+
+    @staticmethod
+    def _digest(value: Any) -> str:
+        encoded = json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)
+        return hashlib.sha256(encoded.encode()).hexdigest()
+
+    @classmethod
+    def _peer(cls, config: ChannelConfig, message: InboundMessage) -> str:
+        account = config.options.get("app_id") if config.channel == "qq" else None
+        return cls._digest([config.id, account, message.address.peer])
+
+    async def _migrate_legacy_peer(self, config, message):
+        peer = self._peer(config, message)
+        legacy_peer = self._digest([
+            config.id, config.channel, config.options, message.address.peer,
+        ])
+        await self.bindings.migrate_peer(legacy_peer, peer)
+        return peer
+
+    @classmethod
+    def _agent_request_id(cls, channel: str, peer: str, request: str) -> str:
+        return f"channel:{cls._digest([channel, peer, request])}"
+
+    async def _interrupt_request(self, payload, *, peer=None):
+        error = LogAgentError("message_interrupted", "渠道输入在处理前已中断")
+        if "command" in payload:
+            command = payload["command"]
+            peer = peer or (f"web:session:{command.session}" if command.session else
+                            f"web:create:{command.request_id}")
+            await self.bindings.complete(peer, command.request_id, {
+                "kind": "error", "error": error.info.model_dump(),
+            })
+            await self.bindings.delivered(peer, command.request_id, {"status": "not_started"})
+            return error
+        message = payload["message"]
+        config = payload["config"]
+        peer = peer or payload["peer"]
+        response = {"channel": config.id, "kind": "error", "error": error.info.model_dump()}
+        await self.bindings.complete(peer, message.request_id, response)
+        await self.bindings.delivered(peer, message.request_id, {"status": "not_started"})
+        return response
+
+    async def _admit_request(self, key, identity, digest, payload, handler, *, switch=False,
+                             stop=False):
+        if self.bindings is None:
+            raise LogAgentError("not_ready", "Agent 渠道处理端口尚未装配")
+        peer, request = identity
+        pending_key = (key[0], peer, request)
+        async with self._admission_lock:
+            pending = self._pending_requests.get(pending_key)
+            if pending is not None:
+                if pending[0] != digest:
+                    raise LogAgentError("request_conflict", "渠道消息 ID 对应了不同内容")
+                future = pending[1]
+                duplicate = True
+            else:
+                previous = await self.bindings.lookup(peer, request, digest)
+                if previous is not None:
+                    return {**previous, "deduplicated": True}
+                duplicate = False
+                generation_key = key[:2]
+
+                async def reserve():
+                    await self.bindings.claim(
+                        peer, request, digest,
+                        operation_id=self._agent_request_id(
+                            payload["config"].id if "config" in payload else "web", peer, request,
+                        ),
+                        channel_id=payload["config"].id if "config" in payload else "web",
+                        operation=payload["operation"],
+                    )
+                    if stop:
+                        self._stop_generations[generation_key] = (
+                            self._stop_generations.get(generation_key, 0) + 1
+                        )
+                    payload["generation"] = self._stop_generations.get(generation_key, 0)
+
+                async def interrupt(older):
+                    return await self._interrupt_request(older, peer=peer)
+
+                try:
+                    future = await self._input_queue.admit(
+                        key, payload, handler, switch=switch, on_admit=reserve,
+                        on_interrupt=interrupt if stop else None,
+                    )
+                except RuntimeError as exc:
+                    raise self._queue_error(str(exc)) from exc
+                except BaseException:
+                    if stop:
+                        await self.bindings.complete(peer, request, {
+                            "kind": "error", "error": LogAgentError(
+                                "channel_admission_failed", "停止请求受理失败"
+                            ).info.model_dump(),
+                        })
+                    raise
+                self._pending_requests[pending_key] = (digest, future)
+
+                def done(_):
+                    self._pending_requests.pop(pending_key, None)
+                    if not future.cancelled():
+                        future.exception()
+
+                future.add_done_callback(done)
+        result = await asyncio.shield(future)
+        return {**result, "deduplicated": True} if duplicate else result
+
+    @staticmethod
+    def _queue_error(code: str) -> LogAgentError:
+        messages = {
+            "channel_queue_full": "渠道输入队列已满",
+            "channel_manager_stopping": "渠道网关正在关闭",
+            "channel_manager_suspended": "渠道正在重载，消息未受理",
+        }
+        return LogAgentError(code, messages.get(code, "渠道输入队列不可用"))
+
+    async def enqueue(self, channel_id: str, inbound: InboundMessage, *, expected=None,
+                      generation=None):
+        """Admit transport input and let the keyed consumer call the Agent port."""
+        if self._conversation_processor is None:
+            raise LogAgentError("not_ready", "Agent 渠道处理端口尚未装配")
+        message = InboundMessage.model_validate(inbound).model_copy(deep=True)
+        config = self.configs.get(channel_id)
+        if not self._accepting or self._suspended or config is None or (
+            expected is not None and config != expected
+        ) or (generation is not None and generation != self._receiver_generations.get(channel_id)):
+            raise LogAgentError("channel_disabled", "渠道未启用 Agent 接收")
+        command = AgentCommand(channel=channel_id, request_id=message.request_id, text=message.text)
+        try:
+            operation, _ = command.operation()
+        except LogAgentError:
+            operation = "invalid"
+        priority = "stop" if operation == "stop" else (
+            "normal" if operation in {"message", "invalid"} else "command"
+        )
+        peer = await self._migrate_legacy_peer(config, message)
+        return await self._admit_request(
+            ("channel", peer, priority), (peer, message.request_id),
+            self._digest(message.model_dump(mode="json")),
+            {"config": config, "message": message, "peer": peer, "operation": operation},
+            self._consume_inbound,
+            switch=operation in {"new", "resume", "fork", "workflow"},
+            stop=operation == "stop",
+        )
+
+    async def _consume_inbound(self, value) -> QueueOutcome:
+        config, message, peer, operation = (
+            value[name] for name in ("config", "message", "peer", "operation")
+        )
+        command = AgentCommand(
+            channel=config.id,
+            request_id=self._agent_request_id(config.id, peer, message.request_id),
+            text=message.text,
+        )
+        def valid():
+            return value["generation"] == self._stop_generations.get(("channel", peer), 0)
+        try:
+            if operation != "stop" and not valid():
+                raise LogAgentError("message_interrupted", "消息因更高优先级的停止命令而取消")
+            await self.bindings.processing(peer, message.request_id)
+            response = (await self._conversation_processor.stop(peer, command)
+                        if operation == "stop" else
+                        await self._conversation_processor.process(peer, command, valid=valid))
+        except LogAgentError as exc:
+            response = {"channel": config.id, "kind": "error", "error": exc.info.model_dump()}
+        result = response.get("result", {})
+        has_turn = response["kind"] == "turn" and isinstance(result, dict) and result.get("turn_id")
+        queued_command = response["kind"] == "turn" and result.get("status") == "queued"
+        await self.bindings.complete(
+            peer, message.request_id, response,
+            status="processing" if has_turn or queued_command else None,
+        )
+        if queued_command:
+            settle = self._finish_command(config, message, peer, command, response)
+        elif has_turn and operation in {"message", "append", "compact"}:
+            settle = self._finish_inbound(config, message, peer, response["result"])
+        else:
+            text = (f"{response['error']['code']}: {response['error']['message']}"
+                    if response["kind"] == "error" else self._command_text(response))
+            settle = self._reply_inbound(config, message, peer, "channel_command", text)
+        return QueueOutcome(response, settle)
+
+    @staticmethod
+    def _command_text(response):
+        result = response["result"]
+        if response["kind"] == "session":
+            return f"会话 {result['session_id']}（{result.get('status', 'created')}）"
+        return json.dumps(result, ensure_ascii=False, default=str)
+
+    async def _finish_inbound(self, config, message, peer, accepted):
+        result = await self._conversation_base.finish_turn(accepted["turn_id"])
+        await self.bindings.set_status(peer, message.request_id, result.status)
+        await self._reply_inbound(config, message, peer, accepted["session_id"], result.text)
+
+    async def _finish_command(self, config, message, peer, command, response):
+        result = response["result"]
+        outcome = await self._conversation_base.finish_command(
+            result["session_id"],
+            request_id=command.request_id if response["kind"] == "turn"
+            and result.get("turn_id") else None,
+            event_id=result["event_id"] if not result.get("turn_id") else None,
+        )
+        await self.bindings.set_status(peer, message.request_id, outcome.status)
+        await self._reply_inbound(config, message, peer, result["session_id"], outcome.text)
+
+    async def _reply_inbound(self, config, message, peer, session, text):
+        outcome = await self.bindings.outcome(peer, message.request_id)
+        result = outcome["response"].get("result") if outcome["response"] else None
+        receipt = await self.send(
+            config, Notification(
+                session_id=session, output_id="agent_reply", text=text,
+                metadata={"request_id": message.request_id,
+                          "turn_id": result.get("turn_id") if isinstance(result, dict) else None},
+            ),
+            reply_to=message.address,
+        )
+        await self.bindings.delivered(peer, message.request_id, receipt.model_dump(mode="json"))
+        if receipt.status != "success":
+            raise LogAgentError("channel_reply_failed", "Agent 回复未送达", receipt.model_dump(mode="json"))
+
+    async def dispatch_web(self, command):
+        """Project the existing Web command contract onto the same queue."""
+        if self._agent_processor is None:
+            raise LogAgentError("not_ready", "Agent 渠道处理端口尚未装配")
+        operation, _ = command.operation()
+        if command.channel != "web":
+            raise LogAgentError("invalid_argument", "Web 请求不能指定其他渠道")
+        priority = "stop" if operation == "stop" else (
+            "normal" if operation == "message" else "command"
+        )
+        peer = f"web:session:{command.session}" if command.session else f"web:create:{command.request_id}"
+        key = ("web", peer, priority)
+
+        async def consume(envelope):
+            envelope = envelope["command"]
+            def valid():
+                return payload["generation"] == self._stop_generations.get(key[:2], 0)
+
+            await self.bindings.processing(peer, envelope.request_id)
+            try:
+                if operation != "stop" and not valid():
+                    raise LogAgentError("message_interrupted", "消息因更高优先级的停止命令而取消")
+                agent_command = envelope.model_copy(update={"request_id": self._agent_request_id(
+                    "web", peer, envelope.request_id,
+                )})
+                response = (await self._conversation_processor.stop_web(peer, agent_command)
+                            if operation == "stop" else
+                            await self._conversation_processor.dispatch_web(
+                                peer, agent_command, valid=valid,
+                            ))
+            except LogAgentError as exc:
+                await self.bindings.complete(peer, envelope.request_id, {
+                    "kind": "error", "error": exc.info.model_dump(),
+                }, delivery={"status": "not_started"})
+                raise
+            result = response.get("result", {})
+            has_turn = response["kind"] == "turn" and isinstance(result, dict) and result.get("turn_id")
+            queued_command = response["kind"] == "turn" and result.get("status") == "queued"
+            await self.bindings.complete(
+                peer, envelope.request_id, response,
+                status="processing" if has_turn or queued_command else None,
+                delivery={"status": "not_started"},
+            )
+            settle = None
+            if queued_command:
+                settle = self._finish_web_command(peer, envelope, agent_command, response)
+            elif has_turn and operation in {"message", "append", "compact"}:
+                settle = self._finish_web_turn(peer, envelope.request_id, result["turn_id"])
+            return QueueOutcome(response, settle)
+
+        payload = {"command": command.model_copy(deep=True), "operation": operation}
+        return await self._admit_request(
+            key, (peer, command.request_id), self._digest(command.model_dump(mode="json")),
+            payload, consume, switch=operation in {"new", "resume", "fork", "workflow"},
+            stop=operation == "stop",
+        )
+
+    async def _finish_web_turn(self, peer, request_id, turn_id):
+        outcome = await self._conversation_base.finish_turn(turn_id)
+        await self.bindings.set_status(peer, request_id, outcome.status)
+
+    async def _finish_web_command(self, peer, envelope, agent_command, response):
+        result = response["result"]
+        outcome = await self._conversation_base.finish_command(
+            result["session_id"],
+            request_id=agent_command.request_id if result.get("turn_id") else None,
+            event_id=result["event_id"] if not result.get("turn_id") else None,
+        )
+        await self.bindings.set_status(peer, envelope.request_id, outcome.status)
+
+    async def outcome(self, config, message):
+        if self.bindings is None:
+            raise LogAgentError("not_ready", "Agent 渠道处理端口尚未装配")
+        peer = await self._migrate_legacy_peer(config, message)
+        return await self.bindings.outcome(peer, message.request_id)
+
+    async def web_outcome(self, request_id: str, *, session: str | None = None):
+        if self.bindings is None:
+            raise LogAgentError("not_ready", "Agent 渠道处理端口尚未装配")
+        peer = f"web:session:{session}" if session else f"web:create:{request_id}"
+        return await self.bindings.outcome(peer, request_id)
+
+    async def suspend(self):
+        await self._input_queue.suspend(
+            cancel_pending=True, on_interrupt=self._interrupt_request if self.bindings else None,
+        )
+        self._suspended = True
+        async with self._sync_lock:
+            for config in list(self.configs.values()):
+                self._receiver_generations[config.id] = (
+                    self._receiver_generations.get(config.id, 0) + 1
+                )
+                await self.stop_receiving(config)
+                self.configs.pop(config.id)
+
+    async def resume(self, configs):
+        await self._input_queue.resume()
+        self._suspended = False
+        await self.configure(configs)
+
+    async def close_agent(self):
+        self._accepting = False
+        if self._sync_task is not None:
+            await asyncio.gather(self._sync_task, return_exceptions=True)
+        await self.suspend()
+        unfinished = await self._input_queue.drain(self._stop_timeout)
+        if unfinished:
+            _LOGGER.warning("channel_reply_drain_timeout", extra={
+                "event": "channel_reply_drain_timeout", "active_consumers": unfinished,
+            })
+        await self._input_queue.close()
+        if self.bindings is not None:
+            await self.bindings.close()
+
+    async def close(self):
+        """Close Agent ingress, bindings and queue consumers."""
+        await self.close_agent()
+
     def validate(self, config: ChannelConfig) -> None:
+        if config.id == "web":
+            raise LogAgentError("invalid_config", "web 是内置 Agent 渠道的保留实例 ID")
         channel = self._register.get(config.channel)
         if channel is None:
             raise ValueError("channel_missing")
         if "notification" not in channel.capabilities:
             raise ValueError("channel_not_notification")
+        if config.agent_enabled and "conversation" not in channel.capabilities:
+            raise LogAgentError("invalid_config", "此渠道不支持 Agent 双向交互")
         validate_instance(config.options, channel.options_schema, path=["options"])
 
     def _instance_config(self, config: ChannelConfig) -> ChannelConfig:
@@ -95,7 +566,9 @@ class ChannelManager:
     def _key(self, config: ChannelConfig) -> tuple[str, str]:
         # Invocation-only fields do not change the resident target. In particular,
         # different send budgets must still join the same one-time initialization.
-        effective = self._instance_config(config).model_dump(mode="json", exclude={"enabled", "timeout"})
+        effective = self._instance_config(config).model_dump(
+            mode="json", exclude={"enabled", "timeout", "agent_enabled"},
+        )
         return (
             config.id,
             json.dumps(effective, sort_keys=True, separators=(",", ":")),
@@ -233,7 +706,39 @@ class ChannelManager:
         active = self._active_sends.pop(asyncio.current_task())
         active.finished.set()
 
-    async def send(self, config: ChannelConfig, notification: Notification) -> DeliveryResult:
+    async def start_receiving(self, config: ChannelConfig, handler: InboundHandler) -> None:
+        """Attach an Agent receiver to the same resident instance used by send."""
+        if not config.enabled or not config.agent_enabled:
+            raise LogAgentError("channel_disabled", "渠道未启用 Agent 接收")
+        key = None
+        async with asyncio.timeout(config.timeout):
+            try:
+                key = await self._begin_send(config)
+                self.validate(config)
+                entry = await self._entry(
+                    key, self._register.get(config.channel), config,
+                    deadline=asyncio.get_running_loop().time() + config.timeout,
+                )
+                await entry.instance.start_receiving(handler)
+            finally:
+                if key is not None:
+                    self._end_send()
+
+    async def stop_receiving(self, config: ChannelConfig) -> None:
+        entry = self._entries.get(self._key(config))
+        if entry is not None:
+            async with asyncio.timeout(self._stop_timeout):
+                await entry.instance.stop_receiving()
+
+    def receiver(self, config: ChannelConfig):
+        """Return a running receiver for transport-specific local diagnostics."""
+        entry = self._entries.get(self._key(config))
+        if entry is None:
+            raise LogAgentError("channel_unavailable", "渠道接收实例尚未启动")
+        return entry.instance
+
+    async def send(self, config: ChannelConfig, notification: Notification, *,
+                   reply_to: ChannelAddress | None = None) -> DeliveryResult:
         config, notification = deepcopy(config), deepcopy(notification)
         if not config.enabled:
             return self._receipt(config, notification, status="skipped", attempts=0)
@@ -260,7 +765,8 @@ class ChannelManager:
                 entry = await self._entry(key, channel, config, deadline=deadline)
                 preparing = False
                 async with entry.send_lock:
-                    send = entry.instance.send
+                    if reply_to is not None and "conversation" not in channel.capabilities:
+                        raise LogAgentError("channel_not_conversation", "渠道不支持回复")
                     if asyncio.get_running_loop().time() >= deadline:
                         raise _BudgetExhausted
                     if asyncio.current_task().cancelling():
@@ -269,7 +775,12 @@ class ChannelManager:
                     entered = True
                     budget_token = delivery_deadline.set(deadline)
                     try:
-                        await send(notification, options=options)
+                        if reply_to is None:
+                            await entry.instance.send(notification, options=options)
+                        else:
+                            await entry.instance.reply(
+                                notification, address=reply_to.model_copy(deep=True), options=options,
+                            )
                     finally:
                         delivery_deadline.reset(budget_token)
                     if asyncio.current_task().cancelling():
@@ -384,6 +895,11 @@ class ChannelManager:
         async with self._reload_lock:
             async with self._lock:
                 self._admit()
+                owned_types = {
+                    item.name for item in self._register.describe() if item.plugin == owner
+                }
+                if self._input_queue.busy_count(channel_types=owned_types):
+                    raise LogAgentError("plugin_reload_conflict", "渠道仍有活动对话，不能卸载插件")
                 self._unloaded_owners.add(owner)
                 keys = {
                     entry.key for entry in self._entries.values() if entry.owner == owner
@@ -412,6 +928,8 @@ class ChannelManager:
                         or self._channel_owner(name) in self._unloaded_owners
                     ):
                         changed.add(name)
+                if self._input_queue.busy_count(channel_types=changed):
+                    raise LogAgentError("plugin_reload_conflict", "渠道仍有活动对话，不能替换插件")
                 self._blocked_types.update(changed)
                 keys = {
                     entry.key for entry in self._entries.values() if entry.channel in changed
@@ -433,6 +951,9 @@ class ChannelManager:
         await self.replace_register(channel_register)
 
     async def stop(self) -> None:
+        if self.bindings is not None and self.bindings._db is not None:
+            await self.suspend()
+        await self._input_queue.close()
         async with self._lock:
             if self._stop_task is None or (
                 self._stop_task.done() and (self._entries or self._retired or self._active_sends)

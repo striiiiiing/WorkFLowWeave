@@ -2,22 +2,20 @@
 
 from __future__ import annotations
 
-import asyncio
-import json
 import shutil
-from collections.abc import AsyncIterator
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
-from fastapi.responses import StreamingResponse
 from pydantic import Field
 
 from logagent.agent.config import AgentConfig as AgentRuntimeConfig
 from logagent.agent.workspace import RuntimeIdentity
+from logagent.channel.agent import AgentCommand
 from logagent.errors import LogAgentError
 from logagent.lifecycle import ApplicationServices
 from logagent.models import ID, StrictModel
 
+from .channel_routers import dispatch_web, stream_agent_events
 from .dependencies import Lifecycle as LifecycleProtocol
 from .dependencies import get_lifecycle, get_services
 
@@ -35,13 +33,6 @@ class AgentSessionCreate(StrictModel):
 class AgentMessage(StrictModel):
     request_id: str = Field(min_length=1)
     text: str = Field(min_length=1)
-
-
-class AgentCommand(AgentMessage):
-    channel: ID = "web"
-    session: ID | None = None
-    priority: Literal["stop", "command", "conversation"] | None = None
-    model: str | None = None
 
 
 class AgentForkRequest(StrictModel):
@@ -96,72 +87,18 @@ def build_agent_router():
 
     @router.post("/sessions", status_code=status.HTTP_201_CREATED)
     async def create_agent_session(payload: AgentSessionCreate, services: Services):
-        source_id, result = payload.workflow_session_id, payload.workflow_result
-        if payload.workflow_id is not None:
-            records = await services.session_view.list_sessions(workflow_id=payload.workflow_id, limit=1000)
-            finished = [record for record in records if record.status in {"completed", "partial"}]
-            if not finished:
-                raise LogAgentError("workflow_result_unavailable", "Workflow 没有可继续的结果")
-            source_id = max(finished, key=lambda record: record.finished_at or record.updated_at).session_id
-        if source_id is not None:
-            if payload.workflow_result is not None:
-                raise LogAgentError("invalid_argument", "绑定 Workflow 时由服务读取原始结果，不接受覆盖")
-            record = await services.session_view.get_session(source_id)
-            if record.status not in {"completed", "partial"}:
-                raise LogAgentError("workflow_result_unavailable", "Workflow 运行尚无最终结果")
-            phase = await services.session_view.get_phase_content(source_id, "aggregate", version=record.version)
-            if phase.availability != "available" or phase.content is None:
-                raise LogAgentError("workflow_result_unavailable", "Workflow 最终结果正文不可用")
-            result = {"outputs": phase.content.get("outputs", {}),
-                      "aggregate": phase.content.get("aggregate"),
-                      "workflow_id": record.workflow_id,
-                      "finished_at": (record.finished_at or record.updated_at).isoformat()}
-        return await _agent(services).create_session(model=payload.model,
-                    workflow_session_id=source_id, workflow_result=result)
+        command = AgentCommand(
+            action="workflow" if payload.workflow_session_id or payload.workflow_id else "new",
+            model=payload.model,
+            workflow_session_id=payload.workflow_session_id,
+            workflow_id=payload.workflow_id,
+            workflow_result=payload.workflow_result,
+        )
+        return (await dispatch_web(services, command))["result"]
 
     @router.post("/commands", status_code=status.HTTP_202_ACCEPTED)
     async def agent_command(payload: AgentCommand, services: Services):
-        """Project transport commands onto the same service admission boundary.
-
-        Channel is an origin label, never a tool-selected delivery destination.
-        Stop calls cancellation directly, without waiting on message admission.
-        """
-        service = _agent(services)
-        head, _, argument = payload.text.strip().partition(" ")
-        priority = "stop" if head == "/stop" else "command" if head.startswith("/") else "conversation"
-        if payload.priority is not None and payload.priority != priority:
-            raise LogAgentError("invalid_argument", "priority 与命令类别不一致")
-        if head == "/new":
-            result, kind = await service.create_session(model=payload.model), "session"
-        elif head == "/resume":
-            result, kind = await service.get_session(argument or payload.session), "session"
-        elif head == "/workflow":
-            if argument:
-                result = await create_agent_session(
-                    AgentSessionCreate(workflow_session_id=argument, model=payload.model), services,
-                )
-                kind = "session"
-            else:
-                result = await services.session_view.list_sessions(limit=100)
-                kind = "workflows"
-        else:
-            if payload.session is None:
-                raise LogAgentError("invalid_argument", "此命令需要 session")
-            kind = "turn"
-            if head == "/stop":
-                result, kind = await service.cancel(payload.session), "session"
-            elif head == "/compact":
-                result = await service.compact(payload.session)
-            elif head == "/append":
-                result = await service.append(payload.session, argument, request_id=payload.request_id)
-            elif head == "/fork":
-                result, kind = await service.fork(payload.session, turn_id=argument or None), "session"
-            elif head.startswith("/"):
-                raise LogAgentError("invalid_argument", "未知 Agent 命令")
-            else:
-                result = await service.submit(payload.session, payload.text, request_id=payload.request_id)
-        return {"channel": payload.channel, "session": payload.session,
-                "priority": priority, "kind": kind, "result": result}
+        return await dispatch_web(services, payload)
 
     @router.get("/sessions/{session_id}")
     async def get_agent_session(session_id: ID, services: Services):
@@ -169,25 +106,30 @@ def build_agent_router():
 
     @router.post("/sessions/{session_id}/messages", status_code=status.HTTP_202_ACCEPTED)
     async def send_agent_message(session_id: ID, payload: AgentMessage, services: Services, response: Response):
-        accepted = await _agent(services).submit(session_id, payload.text, request_id=payload.request_id)
+        accepted = (await dispatch_web(services, AgentCommand(
+            channel="web", session=session_id, request_id=payload.request_id,
+            text=payload.text, action="message",
+        )))["result"]
         response.headers["Location"] = f"/api/agents/sessions/{session_id}/events"
         return accepted
 
     @router.post("/sessions/{session_id}/append", status_code=status.HTTP_202_ACCEPTED)
     async def append_agent_message(session_id: ID, payload: AgentMessage,
                                    services: Services, response: Response):
-        accepted = await _agent(services).append(
-            session_id, payload.text, request_id=payload.request_id,
-        )
+        accepted = (await dispatch_web(services, AgentCommand(
+            channel="web", session=session_id, request_id=payload.request_id,
+            text=payload.text, action="append",
+        )))["result"]
         response.headers["Location"] = f"/api/agents/sessions/{session_id}/events"
         return accepted
 
     @router.post("/sessions/{session_id}/fork", status_code=status.HTTP_201_CREATED)
     async def fork_agent_session(session_id: ID, payload: AgentForkRequest,
                                  services: Services):
-        return await _agent(services).fork(
-            session_id, turn_id=payload.turn_id, model=payload.model, message_id=payload.message_id,
-        )
+        return (await dispatch_web(services, AgentCommand(
+            channel="web", session=session_id, action="fork", turn_id=payload.turn_id,
+            model=payload.model, message_id=payload.message_id,
+        )))["result"]
 
     @router.get("/sessions/{session_id}/history")
     async def agent_history(session_id: ID, services: Services):
@@ -195,61 +137,24 @@ def build_agent_router():
 
     @router.post("/sessions/{session_id}/cancel")
     async def cancel_agent_session(session_id: ID, services: Services):
-        return await _agent(services).cancel(session_id)
+        return (await dispatch_web(services, AgentCommand(
+            channel="web", session=session_id, action="stop",
+        )))["result"]
 
     @router.post("/sessions/{session_id}/compact", status_code=status.HTTP_202_ACCEPTED)
     async def compact_agent_session(session_id: ID, services: Services):
-        return await _agent(services).compact(session_id)
+        return (await dispatch_web(services, AgentCommand(
+            channel="web", session=session_id, action="compact",
+        )))["result"]
 
     @router.get("/sessions/{session_id}/events")
     async def agent_events(session_id: ID, request: Request,
                            services: Services, after: int = Query(0, ge=0),
                            last_event_id: str | None = Header(None)):
-        service = _agent(services)
-        cursor = after
-        if last_event_id is not None and last_event_id.isdigit():
-            cursor = max(cursor, int(last_event_id))
-
-        # Validate the session and event file before returning a streaming
-        # response.  Exceptions raised after StreamingResponse has sent its
-        # headers cannot be represented by the application's structured error
-        # handler, which would otherwise turn a missing session into a broken
-        # SSE connection with no actionable error body.
-        await service.get_session(session_id)
-        await service.events(session_id, after=cursor)
-
-        async def stream() -> AsyncIterator[str]:
-            nonlocal cursor
-            while True:
-                log = getattr(service, "sessions", {}).get(session_id)
-                if log is not None and getattr(log, "log", None) is not None:
-                    events = await log.log.wait_for_events(cursor, wait_seconds=0.5)
-                else:
-                    # Keep fake/embedded Agent implementations compatible with
-                    # the public service protocol; their events() method is the
-                    # only available replay source.
-                    events = await service.events(session_id, after=cursor)
-                    if not events:
-                        await asyncio.sleep(0.5)
-                for event in events:
-                    cursor = event["id"]
-                    yield f"id: {cursor}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
-                session = await service.get_session(session_id)
-                if session["status"] in {"completed", "failed", "cancelled", "interrupted"}:
-                    # A terminal event may commit while this client is yielding
-                    # an older batch. Drain that same durable cursor before EOF.
-                    for event in await service.events(session_id, after=cursor):
-                        if event["id"] > cursor:
-                            cursor = event["id"]
-                            yield f"id: {cursor}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
-                    break
-                if await request.is_disconnected():
-                    return
-                yield ": heartbeat\n\n"
-                await asyncio.sleep(0.5)
-
-        return StreamingResponse(stream(), media_type="text/event-stream",
-                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+        return await stream_agent_events(
+            services.channels.web_channel, session_id, request,
+            after=after, last_event_id=last_event_id,
+        )
 
     @router.get("/sessions/{session_id}/files")
     @router.get("/files")

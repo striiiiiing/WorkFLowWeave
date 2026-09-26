@@ -143,7 +143,9 @@ async def test_builtin_registration_defaults_and_credential_normalization(tmp_pa
     registry = PluginRegistry([], builtin_channels=builtin_channels())
     report = await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     assert not report.errors
-    assert {item.name for item in report.registered} == {"mock", "email"}
+    assert {item.name for item in report.registered if item.kind == "channel"} == {
+        "mock", "email", "qq", "test", "web",
+    }
     store = ResourceStore(tmp_path / "resources.json", channel_register=registry.channelRegister)
     supplied = options(username="user", password={"kind": "env", "name": "KEY"})
     supplied.pop("tls")
