@@ -8,8 +8,12 @@ import SectionCard from '@/shared/ui/SectionCard.vue'
 const props = defineProps<{
   draft: WorkflowDefinition
   editing: boolean
+  advanced: boolean
 }>()
-const emit = defineEmits<{ update: [changes: WorkflowChanges] }>()
+const emit = defineEmits<{
+  update: [changes: WorkflowChanges]
+  'update:advanced': [value: boolean]
+}>()
 const schedule = computed(() =>
   props.draft.interval_seconds != null ? 'legacy' : props.draft.cron != null ? 'cron' : 'manual',
 )
@@ -37,6 +41,22 @@ function validateCron(_rule: unknown, value: string, done: (error?: Error) => vo
 
 <template>
   <SectionCard title="基本信息与运行策略">
+    <template #actions>
+      <div class="flex items-center gap-3">
+        <el-switch
+          :model-value="draft.enabled"
+          aria-label="启用工作流"
+          active-text="启用工作流"
+          @update:model-value="emit('update', { enabled: Boolean($event) })"
+        />
+        <el-switch
+          :model-value="advanced"
+          aria-label="高级模式"
+          active-text="高级模式"
+          @update:model-value="emit('update:advanced', Boolean($event))"
+        />
+      </div>
+    </template>
     <div class="form-grid">
       <el-form-item label="工作流 ID">
         <el-input

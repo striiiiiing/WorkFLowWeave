@@ -41,7 +41,7 @@ describe('workflow module UI', () => {
     scope.stop()
   })
 
-  it('does not query system APIs from notification UI', () => {
+  it('does not query system APIs from notification UI', async () => {
     const { editor, scope } = setup()
     editor.replace({ ...createWorkflow(), channels: ['email'] })
     const wrapper = mount(NotificationCard, {
@@ -56,6 +56,21 @@ describe('workflow module UI', () => {
     expect(wrapper.find('.channel-binding-card').exists()).toBe(true)
     expect(wrapper.text()).toContain('编辑')
     expect(wrapper.text()).not.toContain('编辑共用渠道')
+    expect(wrapper.text()).toContain('渠道来自资源配置中心并可在多个工作流复用')
+    expect(wrapper.find('[aria-label="通知渠道 email"]').exists()).toBe(true)
+    await wrapper.get('[aria-label="通知渠道 email"] button').trigger('click')
+    expect(wrapper.emitted('edit')?.[0][0]).toMatchObject({ id: 'email' })
+    scope.stop()
+  })
+
+  it('makes the empty notification binding explicit without inventing a local channel', () => {
+    const { editor, scope } = setup()
+    const wrapper = mount(NotificationCard, {
+      props: { editor, channels: [], capabilities: [] },
+      global: { plugins: [ElementPlus] },
+    })
+    expect(wrapper.text()).toContain('尚未选择通知渠道')
+    expect(wrapper.find('.channel-binding-card').exists()).toBe(false)
     scope.stop()
   })
 })

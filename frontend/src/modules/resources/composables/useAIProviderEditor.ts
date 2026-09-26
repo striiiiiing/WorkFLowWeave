@@ -9,7 +9,7 @@ export function useAIProviderEditor(
   props: { initial?: AIConfig },
   resourcesApi: Pick<
     ResourcesApi,
-    'create' | 'replace' | 'protectCredential' | 'checkAIConnection'
+    'create' | 'replace' | 'protectCredential' | 'checkAIConnection' | 'testAIModel'
   > = useResourcesApi(),
 ) {
   const initial = props.initial
@@ -19,12 +19,14 @@ export function useAIProviderEditor(
   const persisted = ref(props.initial ? structuredClone(initial) : undefined)
   const save = useAsyncTask()
   const health = useAsyncTask()
+  const modelTest = useAsyncTask()
+  const testedModel = ref('')
   const plaintext = ref('')
   const credentialMode = ref<'keep' | 'input' | 'env' | 'none'>(props.initial ? 'keep' : 'input')
   const environmentName = ref(initial.api_key?.kind === 'env' ? initial.api_key.name : '')
   const discovered = ref<string[]>([])
   const checked = ref(false)
-  const busy = computed(() => save.pending.value || health.pending.value)
+  const busy = computed(() => save.pending.value || health.pending.value || modelTest.pending.value)
   const connectionChanged = computed(
     () =>
       !persisted.value ||
@@ -45,6 +47,8 @@ export function useAIProviderEditor(
       checked.value = false
       discovered.value = []
       health.error.value = ''
+      modelTest.error.value = ''
+      testedModel.value = ''
     },
   )
   function checkHealth() {
@@ -56,6 +60,18 @@ export function useAIProviderEditor(
       discovered.value = await resourcesApi.checkAIConnection(id)
       checked.value = true
     })
+  }
+  async function testModel(model: string) {
+    if (!persisted.value || connectionChanged.value || busy.value) return
+    testedModel.value = ''
+    const result = await modelTest.run(async () => {
+      const result = await resourcesApi.testAIModel(persisted.value!.id, model)
+      if (result.status !== 'success') {
+        throw new Error(result.error?.message ?? `模型“${model}”没有正常返回结果`)
+      }
+      return result
+    })
+    if (result.status === 'success') testedModel.value = model
   }
   async function submit(validate: () => Promise<boolean>) {
     if (busy.value) return { status: 'busy' as const }
@@ -102,6 +118,8 @@ export function useAIProviderEditor(
     persisted,
     save,
     health,
+    modelTest,
+    testedModel,
     plaintext,
     credentialMode,
     environmentName,
@@ -110,6 +128,7 @@ export function useAIProviderEditor(
     busy,
     connectionChanged,
     checkHealth,
+    testModel,
     submit,
   }
 }

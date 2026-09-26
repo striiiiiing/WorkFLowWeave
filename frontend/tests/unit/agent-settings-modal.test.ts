@@ -73,6 +73,14 @@ async function setup() {
   await flushPromises()
   return wrapper
 }
+
+it('exposes the default reasoning expansion preference in general settings', async () => {
+  const wrapper = await setup()
+  const tab = wrapper.findAll('[role="tab"]').find((item) => item.text().includes('基础设置'))
+  await tab?.trigger('click')
+  expect(wrapper.get('[aria-label="默认展开思考过程"]').exists()).toBe(true)
+})
+
 it('saves the browser default from the real catalog and exposes API errors without closing the draft', async () => {
   const save = vi
     .spyOn(agentsApi, 'updateConfig')

@@ -181,6 +181,26 @@ it('does not group later dependent reads into the previous parallel group', () =
   expect(rows[0].group).toBe(rows[1].group)
   expect(rows[2].group).not.toBe(rows[0].group)
 })
+
+it('shows only real reasoning events and keeps them collapsed by default', async () => {
+  const wrapper = mount(AgentTranscript, {
+    props: {
+      events: [
+        event(1, 'message.delta', { message_id: 'answer', reasoning: '先检查数据' }),
+        event(2, 'message.delta', { message_id: 'answer', content: '结果如下' }),
+      ],
+      running: false,
+      sessionId: 's',
+    },
+    global,
+  })
+  wrappers.push(wrapper)
+  const reasoning = wrapper.get('details.reasoning-block')
+  expect(reasoning.text()).toContain('先检查数据')
+  expect(reasoning.attributes('open')).toBeUndefined()
+  await wrapper.setProps({ expandReasoning: true })
+  expect(wrapper.get('details.reasoning-block').attributes('open')).toBeDefined()
+})
 it('keeps the parent branch visible and selects the child without mutating session metadata', async () => {
   const sessions = [
     { session_id: 'p', branch_id: 'main', status: 'completed' },

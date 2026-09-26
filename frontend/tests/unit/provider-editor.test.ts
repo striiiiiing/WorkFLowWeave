@@ -14,6 +14,7 @@ vi.mock('@/app/services', () => ({
     replace: vi.fn(),
     protectCredential: vi.fn(),
     checkAIConnection: vi.fn(),
+    testAIModel: vi.fn(),
   },
 }))
 
@@ -38,15 +39,14 @@ function button(wrapper: ReturnType<typeof mount>, text: string) {
 afterEach(() => vi.clearAllMocks())
 
 describe('AI provider editor', () => {
-  it('keeps health checking inside the editor and disables it for an unsaved connection', async () => {
+  it('only discovers models after a saved connection when the model input receives focus', async () => {
     const wrapper = mount(AIProviderEditor, { global })
     await flushPromises()
 
-    const health = button(wrapper, '测试连接')
-    expect(health.attributes('disabled')).toBeDefined()
+    const modelInput = wrapper.get('input[aria-label="模型名称"]')
     expect(wrapper.text()).toContain('保存渠道后，可在这里独立检查健康。')
 
-    await health.trigger('click')
+    await modelInput.trigger('click')
     await flushPromises()
 
     expect(resourcesApi.checkAIConnection).not.toHaveBeenCalled()
@@ -69,7 +69,7 @@ describe('AI provider editor', () => {
     })
     await flushPromises()
 
-    await button(wrapper, '测试连接').trigger('click')
+    await wrapper.get('input[aria-label="模型名称"]').trigger('click')
     await flushPromises()
 
     expect(resourcesApi.checkAIConnection).toHaveBeenCalledWith('provider')
@@ -120,7 +120,7 @@ describe('AI provider editor', () => {
     const wrapper = mount(AIProviderEditor, { props: { initial }, global })
     await flushPromises()
 
-    await button(wrapper, '测试连接').trigger('click')
+    await wrapper.get('input[aria-label="模型名称"]').trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('上游 HTTP 405')
     expect(wrapper.text()).toContain('vendor.model/pro')
@@ -203,8 +203,7 @@ describe('AI provider editor', () => {
     await flushPromises()
 
     await wrapper.get('input[placeholder="https://api.openai.com/v1"]').setValue(saved.base_url)
-    expect(button(wrapper, '测试连接').attributes('disabled')).toBeDefined()
-    await button(wrapper, '测试连接').trigger('click')
+    await wrapper.get('input[aria-label="模型名称"]').trigger('click')
     expect(resourcesApi.checkAIConnection).not.toHaveBeenCalled()
 
     await wrapper.find('form').trigger('submit')
@@ -214,9 +213,7 @@ describe('AI provider editor', () => {
       'provider',
       expect.objectContaining({ base_url: saved.base_url }),
     )
-    expect(button(wrapper, '测试连接').attributes('disabled')).toBeUndefined()
-
-    await button(wrapper, '测试连接').trigger('click')
+    await wrapper.get('input[aria-label="模型名称"]').trigger('click')
     await flushPromises()
     expect(resourcesApi.checkAIConnection).toHaveBeenCalledWith('provider')
     wrapper.unmount()
@@ -244,9 +241,36 @@ describe('AI provider editor', () => {
     expect(resourcesApi.protectCredential).toHaveBeenCalledWith('new-key')
     expect(resourcesApi.replace).toHaveBeenCalled()
     expect(wrapper.text()).toContain('replace failed')
-    expect(button(wrapper, '测试连接').attributes('disabled')).toBeDefined()
-    await button(wrapper, '测试连接').trigger('click')
+    await wrapper.get('input[aria-label="模型名称"]').trigger('click')
     expect(resourcesApi.checkAIConnection).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('tests the selected model with a real Hi request and exposes failed responses', async () => {
+    const initial = config({ models: { 'vendor.model/pro': {} } })
+    vi.mocked(resourcesApi.testAIModel).mockResolvedValue({
+      task_id: 'model-test',
+      status: 'success',
+      text: 'Hi there',
+      error: null,
+    })
+    const wrapper = mount(AIProviderEditor, { props: { initial }, global })
+    await flushPromises()
+
+    await button(wrapper, '测试').trigger('click')
+    await flushPromises()
+    expect(resourcesApi.testAIModel).toHaveBeenCalledWith('provider', 'vendor.model/pro')
+    expect(wrapper.text()).toContain('测试成功')
+
+    vi.mocked(resourcesApi.testAIModel).mockResolvedValueOnce({
+      task_id: 'model-test',
+      status: 'failed',
+      text: '',
+      error: { code: 'provider_rejected', message: '模型拒绝请求', details: {} },
+    })
+    await button(wrapper, '测试').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('模型拒绝请求')
     wrapper.unmount()
   })
 
