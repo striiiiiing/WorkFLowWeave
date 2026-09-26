@@ -43,8 +43,7 @@ const fanIn = () => props.editor.draft.value!.fan_in!
         ai-prop="fan_in.ai"
         model-prop="fan_in.model"
         optional
-        @update:ai="editor.updateFanIn({ ai: $event })"
-        @update:model="editor.updateFanIn({ model: $event })"
+        @selection="(ai, model) => editor.updateFanIn({ ai, model })"
       />
       <el-form-item v-if="fanIn().ai" label="汇总提示词">
         <el-input

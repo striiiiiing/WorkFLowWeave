@@ -22,16 +22,17 @@ const modelPrompt = computed(() => {
 })
 
 async function open() {
-  visible.value = true
   model.value = ''
   preferredModel.value = ''
-  await action.run(async () => {
+  const result = await action.run(async () => {
     const available = await api.models()
     const preferred = readDefaultAgentModel()
     models.value = available
     preferredModel.value = preferred
     model.value = available.some((item) => item.reference === preferred) ? preferred : ''
   })
+  if (isTaskSuccess(result) && model.value) await create()
+  else visible.value = true
 }
 
 async function create() {
@@ -39,14 +40,17 @@ async function create() {
   const result = await action.run(() =>
     api.create({ workflow_session_id: props.session.session_id, model: model.value }),
   )
-  if (!isTaskSuccess(result)) return
+  if (!isTaskSuccess(result)) {
+    visible.value = true
+    return
+  }
   visible.value = false
   await router.push(`/agents/${encodeURIComponent(result.value.session_id)}`)
 }
 </script>
 
 <template>
-  <el-button v-if="canContinue" @click="open">继续讨论</el-button>
+  <el-button v-if="canContinue" :loading="action.pending.value" @click="open">继续讨论</el-button>
   <el-dialog v-model="visible" title="从 Workflow 结果创建 Agent 会话" width="min(90vw, 580px)">
     <el-alert
       v-if="action.error.value"

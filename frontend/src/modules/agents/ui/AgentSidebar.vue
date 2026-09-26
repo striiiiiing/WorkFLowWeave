@@ -3,20 +3,18 @@ import { computed, ref } from 'vue'
 import type { AgentSession } from '../model/types'
 import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 
-const props = defineProps<{ sessions: AgentSession[]; selectedId?: string; pending?: boolean }>()
+const props = defineProps<{ sessions: AgentSession[]; selectedId?: string }>()
 const emit = defineEmits<{
   select: [session: AgentSession]
-  create: []
   branches: []
-  settings: []
 }>()
 const search = ref('')
 const visible = computed(() => {
   const query = search.value.trim().toLowerCase()
   return query
     ? props.sessions.filter((session) =>
-        [session.session_id, session.branch_id, session.model ?? ''].some((value) =>
-          value.toLowerCase().includes(query),
+        [session.title ?? '', session.session_id, session.branch_id, session.model ?? ''].some(
+          (value) => value.toLowerCase().includes(query),
         ),
       )
     : props.sessions
@@ -25,10 +23,6 @@ const visible = computed(() => {
 
 <template>
   <aside class="agent-sidebar">
-    <el-button type="primary" :loading="pending" @click="emit('create')">
-      <AppIcon name="plus" size="sm" />
-      新会话
-    </el-button>
     <el-input v-model="search" placeholder="搜索会话与分支" aria-label="搜索会话" clearable>
       <template #prefix><AppIcon name="search" size="sm" /></template>
     </el-input>
@@ -43,7 +37,7 @@ const visible = computed(() => {
       >
         <AppIcon :name="session.parent_session_id ? 'fork' : 'bot'" size="sm" />
         <span>
-          <strong>{{ session.branch_id || 'main' }}</strong>
+          <strong>{{ session.title || session.branch_id || 'main' }}</strong>
           <small>{{ session.session_id }}</small>
         </span>
         <i :class="session.status" />
@@ -54,10 +48,6 @@ const visible = computed(() => {
       <el-button text @click="emit('branches')">
         <AppIcon name="fork" size="sm" />
         分支树
-      </el-button>
-      <el-button text @click="emit('settings')">
-        <AppIcon name="settings" size="sm" />
-        设置
       </el-button>
     </div>
   </aside>

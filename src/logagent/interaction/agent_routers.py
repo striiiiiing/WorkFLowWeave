@@ -49,7 +49,8 @@ class AgentFileWrite(StrictModel):
 
 
 class AgentModelSetting(StrictModel):
-    model: str = Field(min_length=1)
+    model: str | None = Field(default=None, min_length=1)
+    title: str | None = Field(default=None, min_length=1, max_length=120)
 
 
 class AgentToolSetting(StrictModel):
@@ -205,7 +206,11 @@ def build_agent_router():
 
     @router.patch("/sessions/{session_id}")
     async def update_agent_session(session_id: ID, payload: AgentModelSetting, services: Services):
-        return await _agent(services).set_model(session_id, payload.model)
+        if (payload.model is None) == (payload.title is None):
+            raise LogAgentError("invalid_argument", "只能修改模型或话题名称之一")
+        if payload.model is not None:
+            return await _agent(services).set_model(session_id, payload.model)
+        return await _agent(services).set_title(session_id, payload.title)
 
     @router.get("/config")
     async def get_agent_config(services: Services):

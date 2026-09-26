@@ -2,7 +2,6 @@
 import {
   useSystemDiagnostics,
   usePluginReload,
-  PluginHealthPanel,
   PluginCatalog,
   PluginReloadActions,
 } from '@/modules/system/public'
@@ -21,6 +20,12 @@ const action = usePluginReload(diagnostics.refresh)
     </el-button>
     <PluginReloadActions :action="action" />
   </PageHeader>
+  <el-alert
+    v-if="diagnostics.health.error.value || diagnostics.projection.value.error"
+    :title="diagnostics.health.error.value || diagnostics.projection.value.error"
+    type="error"
+    :closable="false"
+  />
   <el-alert
     v-if="plugins.error.value"
     :title="plugins.error.value"
@@ -46,6 +51,6 @@ const action = usePluginReload(diagnostics.refresh)
     :data="plugins.data.value"
     :pending="plugins.pending.value"
     :error="plugins.error.value"
+    :health="diagnostics.projection.value.rows"
   />
-  <PluginHealthPanel :diagnostics="diagnostics" />
 </template>

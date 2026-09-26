@@ -6,7 +6,12 @@ import PageHeader from '@/shared/ui/PageHeader.vue'
 import { useAsyncTask } from '@/shared/async/useAsyncTask'
 import { useQuery } from '@/shared/async/useQuery'
 import { useCapabilities, useSystemApi } from '@/modules/system/public'
-import { useResourcesApi, type SourceConfigEditorGateway } from '@/modules/resources/public'
+import {
+  ChannelEditor,
+  useResourcesApi,
+  type ChannelConfig,
+  type SourceConfigEditorGateway,
+} from '@/modules/resources/public'
 import { useSourceUsage } from '@/pages/integrations/useSourceUsage'
 import {
   useWorkflowEditor,
@@ -19,7 +24,6 @@ import {
   NotificationCard,
   BackupMatrix,
   WorkflowBasicInfo,
-  WorkflowStageNav,
 } from '@/modules/workflows/public'
 const route = useRoute()
 const router = useRouter()
@@ -47,13 +51,9 @@ const save = useAsyncTask()
 const resourceSavePending = ref(false)
 const form = ref<FormInstance>()
 const advanced = ref(false)
+const channelEditor = ref<{ initial?: ChannelConfig }>()
 const draft = computed(() => editor.draft.value!)
 const catalogValue = computed(() => catalog.data.value!)
-const activeStage = computed(() =>
-  ['sources', 'analyses', 'fanin', 'channels'].includes(String(route.query.stage))
-    ? String(route.query.stage)
-    : 'all',
-)
 const gateway: SourceConfigEditorGateway = {
   resolve: resourcesApi.resolveSource,
   async save(target, value) {
@@ -70,15 +70,12 @@ const gateway: SourceConfigEditorGateway = {
     if (hadDetachedOverride) resourceSavePending.value = true
   },
 }
-function selectStage(stage: string) {
-  void router.replace({ query: { ...route.query, stage } })
-}
 async function submit() {
   const draft = editor.draft.value
   if (!draft) return
   const errors = validateWorkflow(draft)
   if (errors.length) {
-    await router.replace({ query: { ...route.query, stage: 'all' } })
+    ElMessage.error(errors.join('；'))
     return
   }
   const valid = (await form.value?.validate().catch(() => false)) ?? false
@@ -97,31 +94,6 @@ function refreshCatalog() {
 }
 onMounted(() => window.addEventListener('focus', refreshCatalog))
 onScopeDispose(() => window.removeEventListener('focus', refreshCatalog))
-const stages = computed(
-  () =>
-    [
-      {
-        id: 'sources',
-        title: '数据采集源',
-        detail: `${editor.draft.value?.sources.length ?? 0} 个输入源`,
-      },
-      {
-        id: 'analyses',
-        title: '并行 AI 分析',
-        detail: `${editor.draft.value?.analyses.length ?? 0} 路任务`,
-      },
-      {
-        id: 'fanin',
-        title: '汇聚汇总',
-        detail: editor.draft.value?.fan_in ? '已启用汇总' : '未启用',
-      },
-      {
-        id: 'channels',
-        title: '渠道分发',
-        detail: `${editor.draft.value?.channels.length ?? 0} 个渠道`,
-      },
-    ] as const,
-)
 </script>
 <template>
   <div class="workflow-designer pb-10">
@@ -129,6 +101,14 @@ const stages = computed(
       :title="id ? '编辑工作流' : '新建工作流'"
       description="按步骤配置采集、分析、汇聚与分发"
     >
+      <el-switch v-model="advanced" aria-label="高级模式" active-text="高级模式" />
+      <el-switch
+        :model-value="editor.draft.value?.enabled ?? false"
+        :disabled="!editor.ready.value"
+        aria-label="启用工作流"
+        active-text="启用工作流"
+        @update:model-value="editor.update({ enabled: Boolean($event) })"
+      />
       <router-link to="/workflows"><el-button>取消</el-button></router-link>
       <el-button
         type="primary"
@@ -176,15 +156,12 @@ const stages = computed(
       show-icon
     />
     <el-button v-if="catalog.error.value" @click="catalog.refresh">重新加载资源目录</el-button>
-    <el-skeleton v-if="!editor.ready.value || !catalog.data.value" :rows="10" animated />
+    <el-skeleton v-if="!editor.ready.value || !catalog.data.value" :rows="10" />
     <div v-else class="pipeline-main-column">
-      <WorkflowStageNav :active-stage="activeStage" :stages="stages" @select="selectStage" />
       <el-form ref="form" novalidate :model="draft" label-position="top" @submit.prevent="submit">
-        <el-form-item label="高级模式"><el-switch v-model="advanced" /></el-form-item>
         <div class="flow-stack">
           <WorkflowBasicInfo :draft="draft" :editing="!!id" @update="editor.update" />
           <SourceStepCard
-            v-show="activeStage === 'all' || activeStage === 'sources'"
             :editor="editor"
             :sources="catalogValue.sources"
             :workflows="workflowList.data.value ?? []"
@@ -196,29 +173,42 @@ const stages = computed(
             :protect="resourcesApi.protectCredential"
             :advanced="advanced"
           />
-          <FanOutTaskCard
-            v-show="activeStage === 'all' || activeStage === 'analyses'"
-            :editor="editor"
-            :configs="catalogValue.configs"
-            :advanced="advanced"
-          />
-          <FanInCard
-            v-show="activeStage === 'all' || activeStage === 'fanin'"
-            :editor="editor"
-            :configs="catalogValue.configs"
-            :advanced="advanced"
-          />
+          <FanOutTaskCard :editor="editor" :configs="catalogValue.configs" :advanced="advanced" />
+          <FanInCard :editor="editor" :configs="catalogValue.configs" :advanced="advanced" />
           <NotificationCard
-            v-show="activeStage === 'all' || activeStage === 'channels'"
             :editor="editor"
             :channels="catalogValue.channels"
             :capabilities="capabilities.data.value?.filter((item) => item.kind === 'channel') ?? []"
             :advanced="advanced"
+            @add="channelEditor = {}"
+            @edit="channelEditor = { initial: $event }"
           />
           <BackupMatrix v-if="advanced" :editor="editor" />
         </div>
       </el-form>
     </div>
+    <el-dialog
+      :model-value="!!channelEditor"
+      :title="channelEditor?.initial ? '编辑通知渠道' : '添加通知渠道'"
+      width="680px"
+      destroy-on-close
+      @close="channelEditor = undefined"
+    >
+      <ChannelEditor
+        v-if="channelEditor"
+        :initial="channelEditor.initial"
+        :capabilities="capabilities.data.value?.filter((item) => item.kind === 'channel') ?? []"
+        @saved="
+          async (value) => {
+            channelEditor = undefined
+            await catalog.refresh()
+            if (!editor.draft.value?.channels.includes(value.id))
+              editor.setChannels([...(editor.draft.value?.channels ?? []), value.id])
+          }
+        "
+        @cancel="channelEditor = undefined"
+      />
+    </el-dialog>
   </div>
 </template>
 <style scoped>

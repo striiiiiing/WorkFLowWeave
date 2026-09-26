@@ -50,8 +50,7 @@ function taskId(index: number, task: AnalysisTask) {
         :configs="configs"
         :ai-prop="`analyses.${index}.ai`"
         :model-prop="`analyses.${index}.model`"
-        @update:ai="editor.updateTask(index, { ai: $event ?? '' })"
-        @update:model="editor.updateTask(index, { model: $event ?? '' })"
+        @selection="(ai, model) => editor.updateTask(index, { ai: ai ?? '', model: model ?? '' })"
       />
       <el-form-item label="提示词">
         <el-input

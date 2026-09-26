@@ -3,6 +3,8 @@ import { terminalTurnEvents } from './events'
 
 export function projectAgentSession(session: AgentSession, event: AgentEvent): AgentSession {
   if (event.session_id !== session.session_id) return session
+  if (event.type === 'session.title.changed')
+    return { ...session, title: String(event.data.title), updated_at: event.at }
   if (event.type === 'turn.started') {
     if (session.status === 'running' && session.turn_id !== event.turn_id) return session
     return { ...session, status: 'running', turn_id: event.turn_id }

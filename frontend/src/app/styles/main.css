@@ -11,6 +11,11 @@
   --surface: #fff;
   --border: #e2e8f0;
   --muted: #64748b;
+  --report-text: #202b3a;
+  --report-muted: #435065;
+  --report-code-bg: #edf1f5;
+  --el-transition-duration: 0.15s;
+  --el-transition-duration-fast: 0.1s;
   --el-color-primary: #2563eb;
   --el-border-radius-base: 6px;
 }
@@ -20,6 +25,9 @@ html.dark {
   --surface: #1e293b;
   --border: #334155;
   --muted: #94a3b8;
+  --report-text: #e2e8f0;
+  --report-muted: #c2cbd7;
+  --report-code-bg: #263447;
   --el-bg-color: #1e293b;
   --el-bg-color-overlay: #1e293b;
   --el-fill-color-blank: #1e293b;
@@ -31,6 +39,23 @@ body {
 }
 a {
   color: var(--el-color-primary);
+}
+.session-link {
+  color: var(--el-color-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.session-link:hover {
+  text-decoration-thickness: 2px;
+}
+.session-link:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+.advanced-fields {
+  border-block: 1px solid var(--border);
+  margin: 16px 0;
 }
 button,
 a,
