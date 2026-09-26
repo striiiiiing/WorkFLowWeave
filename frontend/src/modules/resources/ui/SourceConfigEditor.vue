@@ -15,7 +15,6 @@ const props = defineProps<{
   initial: boolean
   capabilities: readonly SchemaCapability[]
   protect: CredentialProtector
-  headerActions?: boolean
 }>()
 const emit = defineEmits<{ saved: [value: SourceConfig]; cancel: [] }>()
 const form = ref<FormInstance>()
@@ -32,7 +31,6 @@ async function submit() {
   })
   if (result.status === 'success') emit('saved', result.value)
 }
-defineExpose({ submit })
 </script>
 <template>
   <el-alert
@@ -83,11 +81,29 @@ defineExpose({ submit })
       @change="editor.updateSetters"
     />
     <SourceAdvancedFields :value="value" @change="editor.updateAdvanced" />
-    <div v-if="!headerActions" class="flex justify-end gap-3">
-      <el-button @click="emit('cancel')">取消</el-button>
-      <el-button type="primary" native-type="submit" :loading="editor.save.pending.value">
-        {{ target.kind === 'workflow-draft' ? '应用到当前工作流' : '保存资源' }}
-      </el-button>
+    <div class="source-editor-actions">
+      <el-switch
+        :model-value="value.enabled"
+        active-text="启用数据源"
+        aria-label="启用数据源"
+        :disabled="editor.save.pending.value"
+        @update:model-value="editor.updateBasic({ enabled: Boolean($event) })"
+      />
+      <div class="flex items-center gap-3">
+        <el-button @click="emit('cancel')">取消</el-button>
+        <el-button type="primary" native-type="submit" :loading="editor.save.pending.value">
+          {{ target.kind === 'workflow-draft' ? '应用到当前工作流' : '保存资源' }}
+        </el-button>
+      </div>
     </div>
   </el-form>
 </template>
+<style scoped>
+.source-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 24px;
+}
+</style>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import type { SchemaCapability } from '@/shared/schema/types'
 import type { SourceConfig, SourceSaveTarget, SourceUsageView } from '../model/types'
 import type { SourceEditorController } from '../composables/useSourceEditor'
@@ -14,7 +14,6 @@ const props = defineProps<{
   protect: CredentialProtector
 }>()
 const emit = defineEmits<{ saved: [value: SourceConfig]; cancel: [] }>()
-const form = ref<InstanceType<typeof SourceConfigEditor>>()
 const scope = computed(() =>
   props.target.kind === 'workflow-draft'
     ? '仅修改当前工作流，保存工作流后生效。'
@@ -50,25 +49,6 @@ const scope = computed(() =>
           </h2>
           <p class="muted text-sm mt-1">{{ scope }}</p>
         </div>
-        <div class="flex flex-wrap items-center gap-2">
-          <el-switch
-            v-if="editor.value.value"
-            :model-value="editor.value.value.enabled"
-            active-text="启用数据源"
-            aria-label="启用数据源"
-            :disabled="editor.save.pending.value"
-            @update:model-value="editor.updateBasic({ enabled: Boolean($event) })"
-          />
-          <el-button @click="emit('cancel')">取消</el-button>
-          <el-button
-            type="primary"
-            :loading="editor.save.pending.value"
-            :disabled="!editor.value.value || !!editor.load.error.value"
-            @click="form?.submit()"
-          >
-            {{ target.kind === 'workflow-draft' ? '应用到当前工作流' : '保存资源' }}
-          </el-button>
-        </div>
       </div>
     </template>
     <el-alert
@@ -83,8 +63,6 @@ const scope = computed(() =>
     <el-skeleton v-if="editor.load.pending.value" :rows="8" />
     <template v-else-if="editor.value.value && !editor.load.error.value">
       <SourceConfigEditor
-        ref="form"
-        header-actions
         :editor="editor"
         :target="target"
         :initial="initial"

@@ -33,7 +33,9 @@ function channel(id: string) {
 </script>
 <template>
   <SectionCard title="4. 渠道分发" description="选择结果通知的目标渠道">
-    <template #actions><el-button size="small" @click="emit('add')">添加渠道</el-button></template>
+    <template #actions>
+      <el-button size="small" @click="emit('add')">添加渠道</el-button>
+    </template>
     <el-form-item label="通知渠道">
       <el-select
         :model-value="draft().channels"
@@ -50,19 +52,30 @@ function channel(id: string) {
         />
       </el-select>
     </el-form-item>
-    <div v-for="channelId in draft().channels" :key="channelId" class="border rounded-lg p-4 mb-4">
-      <div class="flex items-center gap-2 mb-3">
-        <span class="mono break-all">
-          {{ channelId }}{{ channel(channelId)?.enabled === false ? '（已停用）' : '' }}
-        </span>
-        <el-button
-          v-if="channel(channelId)"
-          text
-          size="small"
-          @click="emit('edit', channel(channelId)!)"
-        >
-          编辑共用渠道
-        </el-button>
+    <div
+      v-for="(channelId, index) in draft().channels"
+      :key="channelId"
+      class="channel-binding-card"
+    >
+      <div class="channel-binding-heading">
+        <div class="flex items-center gap-3 min-w-0 flex-wrap">
+          <span class="channel-index">{{ index + 1 }}</span>
+          <div class="min-w-0">
+            <h3 class="font-semibold mono break-all">
+              {{ channelId }}
+            </h3>
+            <p v-if="channel(channelId)" class="muted text-sm mt-1">
+              {{ channel(channelId)?.channel }}
+            </p>
+          </div>
+          <el-tag
+            v-if="channel(channelId)"
+            :type="channel(channelId)?.enabled === false ? 'warning' : 'success'"
+            effect="plain"
+          >
+            {{ channel(channelId)?.enabled === false ? '已停用' : '已启用' }}
+          </el-tag>
+        </div>
       </div>
       <el-alert
         v-if="channel(channelId)?.enabled === false"
@@ -85,6 +98,16 @@ function channel(id: string) {
         :schema="optionSchema(capabilityByChannel[channelId]?.options_schema, 'workflow')"
         @update:model-value="editor.updateChannelOptions(channelId, $event)"
       />
+      <div class="channel-binding-footer">
+        <p class="muted text-xs">复用资源配置；仅在此工作流中覆盖本次发送参数。</p>
+        <el-button
+          v-if="channel(channelId)"
+          size="small"
+          @click="emit('edit', channel(channelId)!)"
+        >
+          编辑
+        </el-button>
+      </div>
     </div>
     <el-form-item v-if="advanced" label="允许发送部分成功的结果">
       <el-switch
@@ -94,3 +117,36 @@ function channel(id: string) {
     </el-form-item>
   </SectionCard>
 </template>
+<style scoped>
+.channel-binding-card {
+  border: 1px solid var(--el-border-color);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.channel-binding-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.channel-index {
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-weight: 700;
+}
+.channel-binding-footer {
+  border-top: 1px solid var(--el-border-color-lighter);
+  margin-top: 16px;
+  padding-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+</style>
