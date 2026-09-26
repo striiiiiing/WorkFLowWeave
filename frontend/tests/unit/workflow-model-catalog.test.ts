@@ -33,6 +33,7 @@ const resourcesApi = {
   list: resourceList,
   resolveSource: vi.fn(),
   checkAIConnection: vi.fn(),
+  testAIModel: vi.fn(),
   protectCredential: vi.fn(),
   get: vi.fn(),
   create: vi.fn(),

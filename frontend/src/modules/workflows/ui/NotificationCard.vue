@@ -52,10 +52,21 @@ function channel(id: string) {
         />
       </el-select>
     </el-form-item>
+    <p class="resource-hint muted text-sm mb-4">
+      渠道来自资源配置中心并可在多个工作流复用；此处只保存渠道引用，工作流参数覆盖需要单独启用。
+    </p>
+    <el-alert
+      v-if="!draft().channels.length"
+      title="尚未选择通知渠道，运行结果不会发送通知。"
+      type="info"
+      :closable="false"
+      class="mb-4"
+    />
     <div
       v-for="(channelId, index) in draft().channels"
       :key="channelId"
       class="channel-binding-card"
+      :aria-label="`通知渠道 ${channelId}`"
     >
       <div class="channel-binding-heading">
         <div class="flex items-center gap-3 min-w-0 flex-wrap">
@@ -99,7 +110,9 @@ function channel(id: string) {
         @update:model-value="editor.updateChannelOptions(channelId, $event)"
       />
       <div class="channel-binding-footer">
-        <p class="muted text-xs">复用资源配置；仅在此工作流中覆盖本次发送参数。</p>
+        <p class="muted text-xs">
+          复用资源配置；仅在此工作流中覆盖本次发送参数。编辑会更新资源中心中的共享渠道。
+        </p>
         <el-button
           v-if="channel(channelId)"
           size="small"

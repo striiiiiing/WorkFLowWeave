@@ -22,8 +22,11 @@ const {
   discovered,
   checked,
   busy,
+  modelTest,
+  testedModel,
   connectionChanged,
   checkHealth,
+  testModel,
   submit: saveDraft,
 } = useAIProviderEditor(props)
 const form = ref<FormInstance>()
@@ -111,7 +114,7 @@ async function submit() {
     >
       <el-input v-model="environmentName" placeholder="OPENAI_API_KEY" />
     </el-form-item>
-    <section aria-label="渠道健康检查" class="mb-5">
+    <section aria-label="渠道模型发现" class="mb-5">
       <p class="muted text-sm mt-2">{{ healthHint }}</p>
       <el-alert
         v-if="health.error.value"
@@ -127,14 +130,30 @@ async function submit() {
         :closable="false"
         show-icon
       />
+      <el-alert
+        v-if="modelTest.error.value"
+        :title="modelTest.error.value"
+        type="error"
+        :closable="false"
+        show-icon
+      />
+      <el-alert
+        v-else-if="testedModel"
+        :title="`模型“${testedModel}”测试成功，已收到正常响应。`"
+        type="success"
+        :closable="false"
+        show-icon
+      />
     </section>
     <AIModelList
       :model-value="draft.models"
       @update:model-value="updateModels"
       :candidates="discovered"
       :testing="health.pending.value"
-      :test-disabled="connectionChanged"
-      @test="checkHealth"
+      :model-testing="modelTest.pending.value"
+      :test-disabled="connectionChanged || !persisted"
+      @discover="checkHealth"
+      @test="testModel"
     />
     <el-form-item label="资源编号" prop="id" :rules="{ ...idRule, required: false }">
       <el-input

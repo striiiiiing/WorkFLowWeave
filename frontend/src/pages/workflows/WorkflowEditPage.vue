@@ -101,14 +101,6 @@ onScopeDispose(() => window.removeEventListener('focus', refreshCatalog))
       :title="id ? '编辑工作流' : '新建工作流'"
       description="按步骤配置采集、分析、汇聚与分发"
     >
-      <el-switch v-model="advanced" aria-label="高级模式" active-text="高级模式" />
-      <el-switch
-        :model-value="editor.draft.value?.enabled ?? false"
-        :disabled="!editor.ready.value"
-        aria-label="启用工作流"
-        active-text="启用工作流"
-        @update:model-value="editor.update({ enabled: Boolean($event) })"
-      />
       <router-link to="/workflows"><el-button>取消</el-button></router-link>
       <el-button
         type="primary"
@@ -160,7 +152,13 @@ onScopeDispose(() => window.removeEventListener('focus', refreshCatalog))
     <div v-else class="pipeline-main-column">
       <el-form ref="form" novalidate :model="draft" label-position="top" @submit.prevent="submit">
         <div class="flow-stack">
-          <WorkflowBasicInfo :draft="draft" :editing="!!id" @update="editor.update" />
+          <WorkflowBasicInfo
+            :draft="draft"
+            :editing="!!id"
+            :advanced="advanced"
+            @update="editor.update"
+            @update:advanced="advanced = $event"
+          />
           <SourceStepCard
             :editor="editor"
             :sources="catalogValue.sources"
