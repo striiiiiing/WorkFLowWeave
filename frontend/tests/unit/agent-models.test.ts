@@ -3,7 +3,7 @@ import {
   groupAgentModels,
   readDefaultAgentModel,
   saveDefaultAgentModel,
-} from '@/domain/agentModels'
+} from '@/modules/agents/public'
 
 afterEach(() => localStorage.clear())
 it('persists only the selected channel reference and explicitly clears the default', () => {

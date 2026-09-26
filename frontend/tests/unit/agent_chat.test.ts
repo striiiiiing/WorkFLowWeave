@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
-import AgentSlashMenu, { type SlashCommand } from '@/components/agent/AgentSlashMenu.vue'
-import { transcriptRows } from '@/components/agent/transcript'
-import type { AgentEvent } from '@/api/agents'
+import AgentSlashMenu, { type SlashCommand } from '@/modules/agents/ui/AgentSlashMenu.vue'
+import { transcriptRows } from '@/modules/agents/model/transcript'
+import type { AgentEvent } from '@/modules/agents/model/types'
 
 describe('AgentSlashMenu', () => {
   const dummyCommands: SlashCommand[] = [

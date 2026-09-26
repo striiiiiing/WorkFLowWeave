@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import { afterEach, expect, it, vi } from 'vitest'
-import { runsApi } from '@/api/runs'
+import { runsApi } from '@/app/services'
 import { computed, defineComponent } from 'vue'
 import {
   parsePhase,
@@ -34,9 +34,9 @@ const ReportHarness = defineComponent({
   template: '<PhaseReport :report="report" :active="active" :advanced="advanced" />',
 })
 import ReportText from '@/shared/ui/ReportText.vue'
-import type { PhaseContent } from '@/types'
+import type { PhaseContent } from '@/modules/runs/public'
 
-vi.mock('@/api/runs', () => ({ runsApi: { phase: vi.fn() } }))
+vi.mock('@/app/services', () => ({ runsApi: { phase: vi.fn() } }))
 const wrappers: ReturnType<typeof mount>[] = []
 afterEach(() => {
   wrappers.forEach((wrapper) => wrapper.unmount())

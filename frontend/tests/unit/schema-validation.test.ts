@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createFieldRule } from '@/shared/schema/schemaValidation'
 import { ParameterInput } from '@/shared/schema/parameters'
-import type { JsonObject } from '@/types'
+import type { JsonObject } from '@/shared/types'
 
 describe('JSON Schema validation used by parameter controls', () => {
   it('uses referenced enum, arrays and nullable types as controls without weakening validation', () => {

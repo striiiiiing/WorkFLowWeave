@@ -3,11 +3,11 @@ import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus, { ElSelect } from 'element-plus'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import AIProviderEditor from '@/modules/resources/ui/AIProviderEditor.vue'
-import { resourcesApi } from '@/api/resources'
-import { createResource } from '@/domain/resources'
-import type { AIConfig } from '@/types'
+import { resourcesApi } from '@/app/services'
+import { createResource } from '@/modules/resources/public'
+import type { AIConfig } from '@/modules/resources/public'
 
-vi.mock('@/api/resources', () => ({
+vi.mock('@/app/services', () => ({
   resourcesApi: {
     list: vi.fn(),
     create: vi.fn(),

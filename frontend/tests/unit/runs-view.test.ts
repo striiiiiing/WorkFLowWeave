@@ -3,11 +3,11 @@ import { runsApiKey } from '@/modules/runs/public'
 import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus, { ElSelect } from 'element-plus'
 import { afterEach, expect, it, vi } from 'vitest'
-import { runsApi } from '@/api/runs'
+import { runsApi } from '@/app/services'
 import RunsView from '@/pages/runs/RunListPage.vue'
-import type { SessionRecord } from '@/types'
+import type { SessionRecord } from '@/modules/runs/public'
 
-vi.mock('@/api/runs', () => ({ runsApi: { list: vi.fn() } }))
+vi.mock('@/app/services', () => ({ runsApi: { list: vi.fn() } }))
 
 const record: SessionRecord = {
   session_id: 'run_1',

@@ -8,9 +8,9 @@ import { workflowsApiKey } from '@/modules/workflows/public'
 import { systemApiKey } from '@/modules/system/public'
 import SourceList from '@/modules/resources/ui/SourceList.vue'
 import SourceConfigEditor from '@/modules/resources/ui/SourceConfigEditor.vue'
-import { resourcesApi } from '@/api/resources'
+import { resourcesApi } from '@/app/services'
 
-vi.mock('@/api/resources', () => ({
+vi.mock('@/app/services', () => ({
   resourcesApi: {
     list: vi.fn(),
     resolveSource: vi.fn(),
