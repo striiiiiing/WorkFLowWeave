@@ -53,6 +53,19 @@ function setup(target: SourceSaveTarget, gateway: SourceConfigEditorGateway) {
 }
 
 describe('single source editor save ownership', () => {
+  it('keeps source actions together at the bottom with enablement on the left', async () => {
+    const { wrapper } = setup(
+      { kind: 'shared-resource', resourceId: 'logs' },
+      { resolve: async () => source(), save: vi.fn() },
+    )
+    await flushPromises()
+    const actions = wrapper.get('.source-editor-actions')
+    expect(actions.find('[role="switch"]').exists()).toBe(true)
+    expect(actions.findAll('button').map((button) => button.text())).toEqual(['取消', '保存资源'])
+    expect(actions.element.firstElementChild?.classList.contains('el-switch')).toBe(true)
+    wrapper.unmount()
+  })
+
   it.each(['shared-resource', 'workflow-draft'] as const)(
     'uses the same component for %s and only the injected destination writes',
     async (kind) => {
