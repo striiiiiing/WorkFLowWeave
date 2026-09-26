@@ -3,19 +3,20 @@ import ElementPlus, { ElSelect } from 'element-plus'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import CredentialEditor from '@/modules/resources/ui/CredentialEditor.vue'
 import ResourceEditor from './resources/ResourceEditorHarness.vue'
-import { generatedResourceId } from '@/domain/resources'
-import { resourcesApi } from '@/api/resources'
-import { systemApi } from '@/api/system'
-import type { CapabilityDescription, ChannelConfig } from '@/types'
+import { generatedResourceId } from '@/modules/resources/public'
+import { resourcesApi } from '@/app/services'
+import { systemApi } from '@/app/services'
+import type { ChannelConfig } from '@/modules/resources/public'
+import type { CapabilityDescription } from '@/modules/system/public'
 
-vi.mock('@/api/resources', () => ({
+vi.mock('@/app/services', () => ({
   resourcesApi: {
     create: vi.fn(),
     replace: vi.fn(),
     protectCredential: vi.fn(),
   },
+  systemApi: { plugins: vi.fn() },
 }))
-vi.mock('@/api/system', () => ({ systemApi: { plugins: vi.fn() } }))
 
 const global = { plugins: [ElementPlus] }
 const encrypted = {

@@ -2,7 +2,8 @@
  * API 客户端单元测试：用受控 Axios adapter 响应验证请求、响应解析和结构化错误传播；不启动真实后端。
  */
 import { describe, expect, it } from 'vitest'
-import { ApiError, errorMessage } from '@/api/client'
+import { ApiError, errorMessage } from '@/shared/api/errors'
+import { errorMessage as appErrorMessage } from '@/app/errorMessage'
 import { createHttpHarness } from '../helpers/httpHarness'
 const { resourcesApi, workflowsApi, runsApi, systemApi, respond, respondText } = createHttpHarness()
 
@@ -15,7 +16,7 @@ describe('HTTP contract', () => {
         errors: [{ path: ['body', 'analyses', 1, 'model'], reason: 'missing' }],
       },
     })
-    expect(errorMessage(error)).toBe('配置无效；分析任务 → 第 2 项 → 模型：请填写此项')
+    expect(appErrorMessage(error)).toBe('配置无效；分析任务 → 第 2 项 → 模型：请填写此项')
     expect(error.info.details.errors).toEqual([
       { path: ['body', 'analyses', 1, 'model'], reason: 'missing' },
     ])
@@ -64,7 +65,7 @@ describe('HTTP contract', () => {
     )
     const error = await workflowsApi.list().catch((cause) => cause)
     expect(error).toBeInstanceOf(ApiError)
-    expect(errorMessage(error)).toBe('无效配置；分析任务：内容太少，请补充完整')
+    expect(appErrorMessage(error)).toBe('无效配置；分析任务：内容太少，请补充完整')
   })
   it('surfaces structured business validation fields', async () => {
     respond(
