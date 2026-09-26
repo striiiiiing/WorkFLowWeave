@@ -8,15 +8,27 @@ export const router = createRouter({
       name: 'dashboard',
       component: () => import('@/pages/dashboard/DashboardPage.vue'),
     },
-    { path: '/workflows', component: () => import('@/views/WorkflowsView.vue') },
-    { path: '/workflows/new', component: () => import('@/views/WorkflowEditView.vue') },
+    {
+      path: '/workflows',
+      name: 'workflows',
+      component: () => import('@/pages/workflows/WorkflowListPage.vue'),
+    },
+    {
+      path: '/workflows/new',
+      name: 'workflow-new',
+      component: () => import('@/pages/workflows/WorkflowEditPage.vue'),
+    },
     {
       path: '/workflows/:id/edit',
       name: 'workflow-edit',
-      component: () => import('@/views/WorkflowEditView.vue'),
+      component: () => import('@/pages/workflows/WorkflowEditPage.vue'),
     },
     { path: '/runs', name: 'runs', component: () => import('@/pages/runs/RunListPage.vue') },
-    { path: '/runs/:id', name: 'run-detail', component: () => import('@/views/RunDetailView.vue') },
+    {
+      path: '/runs/:id',
+      name: 'run-detail',
+      component: () => import('@/pages/runs/RunDetailPage.vue'),
+    },
     {
       path: '/resources',
       name: 'resources',
@@ -30,6 +42,6 @@ export const router = createRouter({
     },
     { path: '/agents', name: 'agents', component: agentPage },
     { path: '/agents/:sessionId', name: 'agent-session', component: agentPage },
-    { path: '/:pathMatch(.*)*', component: () => import('@/views/NotFoundView.vue') },
+    { path: '/:pathMatch(.*)*', component: () => import('@/pages/NotFoundPage.vue') },
   ],
 })

@@ -1,4 +1,4 @@
-import { createWorkflow } from '@/domain/workflow'
+import { createWorkflow } from '@/modules/workflows/public'
 import { computed, defineComponent, effectScope, ref } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'

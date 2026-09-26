@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // Test-only assembly of the actual editors; production pages own this catalog and gateway.
 import { computed, provide } from 'vue'
-import { resourcesApi } from '@/api/resources'
-import { systemApi } from '@/api/system'
+import { resourcesApi } from '@/app/services'
+import { systemApi } from '@/app/services'
 import {
   resourcesApiKey,
   type SourceConfig,
