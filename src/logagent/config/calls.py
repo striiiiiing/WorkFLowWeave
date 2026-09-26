@@ -17,15 +17,28 @@ from logagent.models import (
 from logagent.schema import validate_workflow_options
 
 
+def select_source_call(
+    source: SourceConfig | None, override: SourceOverride | None = None,
+) -> SourceConfig:
+    """Select a workflow's detached source or its shared source."""
+    if override is None or override.source is None:
+        if source is None:
+            raise LogAgentError("invalid_reference", "Workflow 引用的数据源不存在")
+        return source
+    if source is not None and override.source.id != source.id:
+        raise LogAgentError("invalid_reference", "脱离的数据源快照与工作流绑定不匹配")
+    return override.source
+
+
 def resolve_source_call(
-    source: SourceConfig, templates: Mapping[str, SetterTemplate],
+    source: SourceConfig | None, templates: Mapping[str, SetterTemplate],
     override: SourceOverride | None = None,
 ) -> SourceConfig:
     """Expand saved and call templates in order, preserving explicit empty values."""
-    source = copy_model(source)
+    override = copy_model(override) if override is not None else None
+    source = copy_model(select_source_call(source, override))
     layers = [(source.template, source.setters)]
     if override is not None:
-        override = copy_model(override)
         layers.append((override.template, override.setters))
         source.options = {**source.options, **deepcopy(override.options)}
     setters = {}

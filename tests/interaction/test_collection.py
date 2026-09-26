@@ -135,6 +135,42 @@ async def test_agent_service_and_http_share_templates_overrides_and_saved_values
     validate_instance(arguments, schema.json())
 
 
+async def test_http_resolves_legacy_source_template_for_editing(boundary):
+    async with client_for(boundary) as client:
+        response = await client.post("/api/sources/logs/resolve", json={})
+
+    assert response.status_code == 200
+    resolved = response.json()
+    assert resolved["id"] == "logs"
+    assert resolved["display_name"] is None
+    assert resolved["description"] == ""
+    assert resolved["template"] is None
+    assert resolved["setters"] == {
+        "fields": ["message"],
+        "filter": {"level": "INFO"},
+    }
+    assert boundary.services.resources.get("sources", "logs").template == "projection"
+
+    async with client_for(boundary) as client:
+        overridden = await client.post(
+            "/api/sources/logs/resolve",
+            json={
+                "options": {"records": [{"message": "workflow"}]},
+                "setters": {"fields": []},
+            },
+        )
+    assert overridden.status_code == 200
+    assert overridden.json()["template"] is None
+    assert overridden.json()["options"]["records"] == [{"message": "workflow"}]
+    assert overridden.json()["setters"] == {
+        "fields": [],
+        "filter": {"level": "INFO"},
+    }
+    assert boundary.services.resources.get("sources", "logs").options["records"] == [
+        {"message": "saved", "level": "INFO"},
+    ]
+
+
 async def test_http_captures_new_resources_while_agent_keeps_its_round_snapshot(boundary):
     updated = boundary.services.resources.get("sources", "logs")
     updated.options["records"] = [{"message": "new", "level": "INFO"}]

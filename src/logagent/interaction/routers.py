@@ -29,6 +29,7 @@ from logagent.models import (
     SessionRecord,
     SetterTemplate,
     SourceConfig,
+    SourceOverride,
     StrictModel,
     WorkflowDefinition,
     WorkflowStage,
@@ -86,6 +87,11 @@ async def replace_source(ident: ID, payload: SourceConfig, services: Services):
     if ident != payload.id:
         raise LogAgentError("invalid_argument", "路径 ID 与资源 ID 不一致")
     return await _save_resource(services, "sources", payload, mode="replace")
+
+
+@router.post("/sources/{ident}/resolve", response_model=SourceConfig)
+async def resolve_source(ident: ID, payload: SourceOverride, services: Services):
+    return await asyncio.to_thread(services.resources.resolve_source, ident, payload)
 
 
 def _collector_invocation(services: ApplicationServices) -> CollectorInvocation:

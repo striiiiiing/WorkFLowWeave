@@ -22,6 +22,9 @@ def test_starter_resources_are_selectable_and_deleted_defaults_stay_deleted(tmp_
         assert {(p["kind"], p["name"]) for p in plugins} == {
             ("collector", "mock"), ("collector", "logs"), ("collector", "history"),
             ("channel", "mock"), ("channel", "email"),
+            ("channel", "qq"), ("channel", "test"),
+            ("tool", "plugin"), ("tool", "read"), ("tool", "write"),
+            ("tool", "grep"), ("tool", "shell"),
         }
         sources = client.get("/api/sources").json()
         assert {s["id"] for s in sources} == {

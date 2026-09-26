@@ -267,6 +267,7 @@ class AgentService:
                              workflow_session_id: str | None = None,
                              workflow_result: Any = None,
                              session_id: str | None = None,
+                             operation_id: str | None = None,
                              parent_session_id: str | None = None,
                              parent_turn_id: str | None = None,
                              parent_branch_id: str | None = None,
@@ -278,6 +279,11 @@ class AgentService:
             await self.initialize()
             sid = session_id or _new_id("agent_")
             if sid in self.sessions:
+                created = next((event for event in self.sessions[sid].log.events
+                                if event["type"] == "session.created"), None)
+                if operation_id is not None and created is not None \
+                        and created.get("operation_id") == operation_id:
+                    return self._session_view(self.sessions[sid])
                 raise LogAgentError("session_conflict", "Agent session 已存在")
             now = datetime.now(UTC).isoformat()
             session = AgentSession(
@@ -295,6 +301,7 @@ class AgentService:
                 )
             created = await session.log.append(
                 "session.created", branch_id=session.branch_id,
+                operation_id=operation_id,
                 model=session.model, workflow_session_id=workflow_session_id,
                 parent_session_id=parent_session_id, parent_turn_id=parent_turn_id,
                 parent_branch_id=parent_branch_id, parent_event_id=parent_event_id,
@@ -317,7 +324,14 @@ class AgentService:
         return builder.compile(checkpointer=self.checkpointer)
 
     async def fork(self, session_id: str, *, turn_id: str | None = None,
-                   model: str | None = None, message_id: str | None = None) -> dict[str, Any]:
+                   model: str | None = None, message_id: str | None = None,
+                   child_session_id: str | None = None,
+                   operation_id: str | None = None) -> dict[str, Any]:
+        if child_session_id in self.sessions and operation_id is not None:
+            created = next((event for event in self.sessions[child_session_id].log.events
+                            if event["type"] == "session.created"), None)
+            if created is not None and created.get("operation_id") == operation_id:
+                return self._session_view(self.sessions[child_session_id])
         source = self._session(session_id)
         async with source.lock:
             if source.task is not None and not source.task.done():
@@ -359,6 +373,7 @@ class AgentService:
                 messages = messages[:index]
         child = await self.create_session(
             model=model or source.model,
+            session_id=child_session_id, operation_id=operation_id,
             workflow_session_id=source.workflow_session_id,
             parent_session_id=source.session_id, parent_turn_id=selected_turn,
             parent_branch_id=source.branch_id,
@@ -473,6 +488,45 @@ class AgentService:
     async def submit(self, session_id: str, text: str, *, request_id: str) -> dict[str, Any]:
         return await self._accept_message(session_id, text, request_id=request_id, queue=False)
 
+    async def submit_after_idle(self, session_id: str, text: str, *, request_id: str,
+                                valid: Callable[[], bool] | None = None) -> dict[str, Any]:
+        """Admit a normal channel message after the current turn settles.
+
+        The public ``submit`` API intentionally keeps its historical
+        ``session_busy`` response.  ChannelManager uses this entry point so
+        messages accepted by a transport queue are not discarded merely
+        because another source currently owns the model turn.
+        """
+        if not isinstance(text, str) or not text.strip():
+            raise LogAgentError("invalid_argument", "消息不能为空")
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise LogAgentError("invalid_argument", "request_id 不能为空")
+        session = self._session(session_id)
+        digest = _digest(text)
+        while True:
+            wait_task = None
+            async with self._admission_lock:
+                async with session.lock:
+                    if valid is not None and not valid():
+                        raise LogAgentError("message_interrupted", "消息在 Agent 准入前已停止")
+                    previous = session.request_ids.get(request_id)
+                    if previous is not None:
+                        if previous[1] != digest:
+                            raise LogAgentError("request_conflict", "request_id 已用于其他消息")
+                        return {"session_id": session_id, "turn_id": previous[0], "deduplicated": True}
+                    if not self._accepting:
+                        raise LogAgentError("agent_busy", "Agent 当前暂停接收新轮次")
+                    if session.task is not None and not session.task.done():
+                        wait_task = session.task
+                    else:
+                        return await self._start_turn_locked(
+                            session, text, request_id=request_id, digest=digest,
+                        )
+            # wait() does not propagate the previous turn's cancellation to
+            # this admission. A stop on another channel must not drop input
+            # already waiting for the shared Agent session.
+            await asyncio.wait({wait_task})
+
     async def append(self, session_id: str, text: str, *, request_id: str) -> dict[str, Any]:
         """Append a user message at the next safe model boundary.
 
@@ -565,6 +619,10 @@ class AgentService:
     async def events(self, session_id: str, *, after: int = 0) -> list[dict[str, Any]]:
         session = self._session(session_id)
         return await session.log.replay(after)
+
+    async def wait_events(self, session_id: str, *, after: int = 0,
+                          wait_seconds: float = 0.5) -> list[dict[str, Any]]:
+        return await self._session(session_id).log.wait_for_events(after, wait_seconds=wait_seconds)
 
     def tool_views(self) -> list[dict[str, Any]]:
         """Return the published tool DTOs used by the next turn."""
