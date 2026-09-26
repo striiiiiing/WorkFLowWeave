@@ -25,7 +25,10 @@ def snapshot(*, channels=True, fan_in=None, tasks=("first", "second"), **options
     wf = WorkflowDefinition(
         id="demo",
         sources=["source"],
-        analyses=[AnalysisTask(id=key, ai="ai", model="offline", prompt=f"{key}: {{input}}") for key in tasks],
+        analyses=[
+            AnalysisTask(id=key, ai="ai", model="offline", input_prompt=f"{key}: {{input}}")
+            for key in tasks
+        ],
         channels=["one", "two"] if channels else [],
         fan_in=fan_in,
         **options,
@@ -56,12 +59,15 @@ class Collector:
 class AI:
     def __init__(self, *, fail=(), block=None):
         self.calls = []
+        self.requests = []
         self.fail = set(fail)
         self.block = block
         self.started = asyncio.Event()
 
-    async def execute(self, config, prompt, text, *, model, task_id, context):
+    async def execute(self, config, prompt, text, *, model, task_id, context,
+                      system_prompt=None, user_prompt=""):
         self.calls.append((task_id, text, model))
+        self.requests.append((task_id, config.id, prompt, system_prompt, user_prompt))
         if task_id == self.block:
             self.started.set()
             await asyncio.Future()

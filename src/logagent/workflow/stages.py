@@ -89,7 +89,7 @@ class StageNodes:
             if (
                 stage == "aggregate"
                 and snapshot.workflow.fan_in
-                and "$input" in snapshot.workflow.fan_in.order
+                and "$input" in snapshot.workflow.fan_in.ordered_inputs(snapshot.workflow.analyses)
             ):
                 incoming = await self._result(
                     runtime, snapshot, state, required=("collect", "analyze")
@@ -203,17 +203,23 @@ class StageNodes:
             "errors": [e.model_dump(mode="json") for e in result.errors],
         }
 
-    async def _analysis_call(self, config, prompt, text, task_id, result, model):
+    async def _analysis_call(self, config, item, text, task_id, result, model):
         """执行一次带超时的 AI 服务调用，校验结果身份并保留取消传播。
 
         超时及普通异常转换为 AnalysisResult，具体重试由注入的 AI 服务负责。
         """
         try:
             async with asyncio.timeout(config.timeout):
+                workflow = self.snapshot.workflow
                 kwargs = {"model": model, "task_id": task_id, "context": ExecutionContext(
                     workflow_id=result.workflow_id, session_id=result.session_id, stage=result.stage,
-                )}
-                raw = await self.ai_service.execute(copy_model(config), prompt, text, **kwargs)
+                ), "system_prompt": (
+                    workflow.system_prompt if item.system_prompt is None else item.system_prompt
+                ), "user_prompt": item.user_prompt}
+                input_prompt = (
+                    workflow.input_prompt if item.input_prompt is None else item.input_prompt
+                )
+                raw = await self.ai_service.execute(copy_model(config), input_prompt, text, **kwargs)
             if asyncio.current_task().cancelling():
                 raise asyncio.CancelledError
             output = AnalysisResult.model_validate(
@@ -249,7 +255,7 @@ class StageNodes:
         else:
             by_id = {item.task_id: item for item in result.analyses}
             parts = []
-            for key in wf.fan_in.order or [task.id for task in wf.analyses]:
+            for key in wf.fan_in.ordered_inputs(wf.analyses):
                 if key == "$input":
                     parts.append(result.shared_input)
                 elif by_id[key].status == "success":
@@ -257,11 +263,14 @@ class StageNodes:
                 elif wf.fan_in.mark_incomplete:
                     parts.append(f"[{key}: incomplete]")
             text = wf.fan_in.separator.join(parts)
+            reused = wf.fan_in.reused_task(wf.analyses)
+            ai_id = reused.ai if reused else wf.fan_in.ai
+            model = reused.model if reused else wf.fan_in.model
             if not text.strip():
                 self._halt(result, "aggregate_empty", "汇总未产生有效正文")
-            elif wf.fan_in.ai:
+            elif ai_id:
                 result.aggregate = await self._analysis_call(
-                    snapshot.ai[wf.fan_in.ai], wf.fan_in.prompt, text, "final", result, wf.fan_in.model
+                    snapshot.ai[ai_id], wf.fan_in, text, "final", result, model
                 )
                 if result.aggregate.status != "success":
                     self._halt(result, "aggregate_failed", "AI 汇总失败")
