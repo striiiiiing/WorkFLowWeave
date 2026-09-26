@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +17,7 @@ from logagent.errors import LogAgentError, validation_error
 from logagent.models import (
     AIConfig,
     ChannelConfig,
+    ResourceKind,
     SourceConfig,
     StrictModel,
     SystemConfig,
@@ -50,6 +51,12 @@ class LifecycleResourceStore(ResourceStore):
         value = super().save(kind, resource, mode=mode)
         self._published()
         return value
+
+    def save_many(self, resources: Mapping[ResourceKind, list[Any]]) -> None:
+        """Refresh schedules once after a successful nonempty batch."""
+        super().save_many(resources)
+        if any(resources.values()):
+            self._published()
 
     def delete(self, kind: str, ident: str) -> None:
         """删除成功后通知计划刷新，删除失败则直接传播异常。"""

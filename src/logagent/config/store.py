@@ -136,6 +136,13 @@ class ResourceStore:
             raise LogAgentError("invalid_argument", "资源类型无效")
         return kind
 
+    @staticmethod
+    def _value(kind: str, resource: Any) -> StrictModel:
+        try:
+            return _MODELS[kind].model_validate(resource)
+        except ValidationError as exc:
+            raise validation_error(exc) from None
+
     def update_dependencies(
         self,
         *,
@@ -346,10 +353,7 @@ class ResourceStore:
         kind = self._kind(kind)
         if mode not in ("create", "replace", "upsert"):
             raise LogAgentError("invalid_argument", "保存模式无效")
-        try:
-            value = _MODELS[kind].model_validate(resource)
-        except ValidationError as exc:
-            raise validation_error(exc) from None
+        value = self._value(kind, resource)
         with self._lock:
             data = self._view.model_dump(mode="python")
             exists = value.id in data[kind]
@@ -360,6 +364,20 @@ class ResourceStore:
             data[kind][value.id] = value.model_dump(mode="python")
             self._commit(data, changed={(kind, value.id)})
             return copy_model(getattr(self._view, kind)[value.id])
+
+    def save_many(self, resources: Mapping[ResourceKind, list[Any]]) -> None:
+        """Validate and publish mutually dependent resource updates together."""
+        with self._lock:
+            data = self._view.model_dump(mode="python")
+            changed: set[tuple[str, str]] = set()
+            for resource_kind, values in resources.items():
+                kind = self._kind(resource_kind)
+                for resource in values:
+                    value = self._value(kind, resource)
+                    data[kind][value.id] = value.model_dump(mode="python")
+                    changed.add((kind, value.id))
+            if changed:
+                self._commit(data, changed=changed)
 
     def get(self, kind: ResourceKind, ident: str) -> StrictModel | None:
         with self._lock:

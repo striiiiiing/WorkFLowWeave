@@ -17,6 +17,7 @@ from logagent.channel.mock import MockFileChannelType
 from logagent.collection.mock import MockCollector
 from logagent.config import PluginRegistry, ResourceStore
 from logagent.errors import LogAgentError
+from logagent.lifecycle.resources import LifecycleResourceStore
 from logagent.models import (
     AIConfig,
     ChannelConfig,
@@ -74,6 +75,57 @@ async def test_save_reopen_copies_and_original_snapshot(resources):
                              channel_register=registry.channelRegister)
     assert reopened.snapshot("workflow").ai["ai"].models == {"model": {"reasoning_effort": "high"}}
     assert set(read(store)) == {"format_version", "sources", "setters", "ai", "channels", "workflows"}
+
+
+async def test_save_many_updates_model_and_workflow_atomically(resources):
+    store, registry = resources
+    definition = seed(store)
+    before = await asyncio.to_thread(Path(store.location).read_bytes)
+    upgraded = AIConfig(id="ai", provider="mock", models={"next": {}})
+    definition.analyses[0].model = "next"
+
+    with pytest.raises(LogAgentError):
+        store.save("ai", upgraded)
+    assert await asyncio.to_thread(Path(store.location).read_bytes) == before
+
+    invalid = definition.model_copy(update={"sources": ["missing"]})
+    with pytest.raises(LogAgentError):
+        store.save_many({"ai": [upgraded], "workflows": [invalid]})
+    assert await asyncio.to_thread(Path(store.location).read_bytes) == before
+    assert store.snapshot("workflow").workflow.analyses[0].model == "model"
+
+    store.save_many({"ai": [upgraded], "workflows": [definition]})
+    reopened = ResourceStore(
+        store.location, collector_register=registry.collectorRegister,
+        channel_register=registry.channelRegister,
+    )
+    assert reopened.snapshot("workflow").workflow.analyses[0].model == "next"
+    assert reopened.snapshot("workflow").ai["ai"].models == {"next": {}}
+
+
+async def test_lifecycle_batch_refreshes_once_after_success(resources, tmp_path):
+    _, registry = resources
+    refreshed = []
+    store = LifecycleResourceStore(
+        tmp_path / "batch-resources.json",
+        collector_register=registry.collectorRegister,
+        channel_register=registry.channelRegister,
+        on_change=lambda: refreshed.append(True),
+    )
+    store.save_many({
+        "sources": [SourceConfig(id="source", collector="mock")],
+        "ai": [AIConfig(id="ai", provider="mock", models={"model": {}})],
+    })
+    assert refreshed == [True]
+    with pytest.raises(LogAgentError):
+        store.save_many({"workflows": [WorkflowDefinition(
+            id="broken", sources=["missing"],
+            analyses=[{"id": "analysis", "ai": "ai", "model": "model"}],
+        )]})
+    assert refreshed == [True]
+    assert store.list("workflows") == []
+    store.save_many({"ai": []})
+    assert refreshed == [True]
 
 
 async def test_create_replace_and_unknown_fields(resources):
