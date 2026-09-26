@@ -454,3 +454,26 @@ async def test_collector_cannot_swallow_cancellation_and_start_analysis(tmp_path
     assert (await w.wait("run")).status == "cancelled"
     assert not a.calls and not n.calls
     await close(w, store)
+
+
+async def test_recovery_reads_legacy_schedule_in_persisted_snapshot(tmp_path):
+    class LegacySnapshots(SessionStore):
+        def write(self, sid, key, **kwargs):
+            if key == "snapshot":
+                saved = kwargs["body"]["snapshot"]["workflow"]
+                saved.pop("schedule")
+                saved.update(interval_seconds=None, cron="0 9 * * 1", cron_timezone="UTC")
+            return super().write(sid, key, **kwargs)
+
+    path = tmp_path / "legacy.sqlite3"
+    workflow, store, _, _, _ = service(path, store_type=LegacySnapshots)
+    result = await run(workflow)
+    await close(workflow, store)
+    restored, reopened, collector, ai, channel = service(path)
+    try:
+        assert (await restored.recovery_availability("run")).available
+        await restored.recover("run")
+        assert await restored.wait("run") == result
+        assert not collector.calls and not ai.calls and not channel.calls
+    finally:
+        await close(restored, reopened)

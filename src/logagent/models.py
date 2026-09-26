@@ -9,10 +9,8 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Self, TypeVar
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import orjson
-from croniter import croniter
 from pydantic import (
     AfterValidator,
     BaseModel,
@@ -23,6 +21,8 @@ from pydantic import (
     TypeAdapter,
     model_validator,
 )
+
+from logagent.scheduling import cron_trigger
 
 if TYPE_CHECKING:
     from logagent.protocols import CredentialResolver, SessionReader
@@ -241,6 +241,30 @@ class ChannelOverride(StrictModel):
     options: JSONObject = Field(default_factory=dict)
 
 
+class AtSchedule(StrictModel):
+    type: Literal["at"]
+    at: UTCDateTime
+
+
+class EverySchedule(StrictModel):
+    type: Literal["every"]
+    every_seconds: Seconds
+
+
+class CronSchedule(StrictModel):
+    type: Literal["cron"]
+    expression: str
+    timezone: str | None = None
+
+    @model_validator(mode="after")
+    def valid_cron(self) -> Self:
+        cron_trigger(self.expression, self.timezone)
+        return self
+
+
+WorkflowSchedule = Annotated[AtSchedule | EverySchedule | CronSchedule, Field(discriminator="type")]
+
+
 class WorkflowDefinition(StrictModel):
     id: ID
     name: str = ""
@@ -257,27 +281,12 @@ class WorkflowDefinition(StrictModel):
     on_all_empty: SourcePolicy = "stop"
     analysis_failure: ContinuePolicy = "continue"
     send_partial: bool = True
-    interval_seconds: Seconds | None = None
-    cron: str | None = None
-    cron_timezone: str = "UTC"
+    schedule: WorkflowSchedule | None = None
     enabled: bool = True
     backup: BackupPolicy = Field(default_factory=BackupPolicy)
 
     @model_validator(mode="after")
     def valid_references(self) -> Self:
-        try:
-            ZoneInfo(self.cron_timezone)
-        except (ZoneInfoNotFoundError, ValueError):
-            raise ValueError("cron_timezone must be a valid IANA timezone") from None
-        if self.cron is not None:
-            if self.interval_seconds is not None:
-                raise ValueError("cron and interval_seconds are mutually exclusive")
-            if len(self.cron.split()) != 5 or not croniter.is_valid(self.cron):
-                raise ValueError("cron must be a valid five-field expression")
-            try:
-                croniter(self.cron, datetime.now(ZoneInfo(self.cron_timezone))).get_next(datetime)
-            except ValueError:
-                raise ValueError("cron has no future occurrence") from None
         if not self.source_overrides.keys() <= set(self.sources):
             raise ValueError("Source overrides must reference selected sources")
         if any(

@@ -8,6 +8,7 @@ from pydantic import Field, SecretStr, model_validator
 
 from logagent.models import (
     ID,
+    CronSchedule,
     DiscoveryReport,
     SessionStatus,
     SessionVersion,
@@ -15,6 +16,16 @@ from logagent.models import (
     UTCDateTime,
     WorkflowSnapshot,
 )
+
+
+class CronPreviewRequest(CronSchedule):
+    type: Literal["cron"] = "cron"
+
+
+class CronPreviewResponse(StrictModel):
+    description: str
+    timezone: str
+    next_run_at: UTCDateTime
 
 
 class SessionListQuery(StrictModel):
