@@ -36,11 +36,7 @@ const config = {
   sandbox: { enabled: false, network: false },
 }
 
-function session(
-  id: string,
-  status: 'completed' | 'running' = 'completed',
-  extra: Record<string, unknown> = {},
-) {
+function session(id: string, status: string = 'completed', extra: Record<string, unknown> = {}) {
   return {
     session_id: id,
     branch_id: 'main',
@@ -58,11 +54,17 @@ function session(
   }
 }
 
-function event(id: number, type: string, data: Record<string, unknown>) {
+function event(
+  id: number,
+  type: string,
+  data: Record<string, unknown>,
+  sessionId = 'qa-session',
+  turnId: string | null = 'turn-done',
+) {
   return {
     id,
-    session_id: 'qa-session',
-    turn_id: 'turn-done',
+    session_id: sessionId,
+    turn_id: turnId,
     type,
     at: '2026-09-23T00:00:00Z',
     data,
@@ -88,6 +90,53 @@ async function installApi(
 ) {
   const calls: Array<{ method: string; path: string; body?: Record<string, unknown> }> = []
   let messageFailures = options.failFirstMessage ? 1 : 0
+  const sessions = new Map(
+    (options.sessions ?? []).map((item) => [item.session_id, structuredClone(item)]),
+  )
+  const events = new Map<string, ReturnType<typeof event>[]>()
+  if (options.history?.length) events.set('qa-session', structuredClone(options.history))
+
+  function remember(item: ReturnType<typeof session>) {
+    sessions.set(item.session_id, item)
+    if (!events.has(item.session_id)) events.set(item.session_id, [])
+    return item
+  }
+
+  function appendEvent(
+    sessionId: string,
+    type: string,
+    data: Record<string, unknown>,
+    turnId: string | null,
+  ) {
+    const log = events.get(sessionId) ?? []
+    const item = event(
+      Math.max(0, ...log.map((entry) => entry.id)) + 1,
+      type,
+      data,
+      sessionId,
+      turnId,
+    )
+    events.set(sessionId, [...log, item])
+    return item
+  }
+
+  function acceptTurn(sessionId: string, text: string) {
+    const current = remember(sessions.get(sessionId) ?? session(sessionId))
+    const turnId = `turn-${sessionId}-${events.get(sessionId)?.length ?? 0}`
+    current.status = 'running'
+    current.turn_id = turnId
+    appendEvent(sessionId, 'turn.started', {}, turnId)
+    appendEvent(sessionId, 'message.user', { message_id: `message-${turnId}`, text }, turnId)
+    appendEvent(
+      sessionId,
+      'message.completed',
+      { message_id: `assistant-${turnId}`, incremental: false, text: `受控 Agent 回复：${text}` },
+      turnId,
+    )
+    appendEvent(sessionId, 'turn.completed', { checkpoint_id: `checkpoint-${turnId}` }, turnId)
+    current.status = 'completed'
+    return { session_id: sessionId, turn_id: turnId, deduplicated: false }
+  }
 
   await page.route(
     (url) => url.pathname.startsWith('/api/'),
@@ -99,7 +148,7 @@ async function installApi(
       calls.push({ method, path, body })
 
       if (path === '/agents/sessions' && method === 'GET')
-        return json(route, options.sessions ?? [])
+        return json(route, [...sessions.values()])
       if (path === '/agents/config' && method === 'GET')
         return json(route, {
           config,
@@ -111,23 +160,122 @@ async function installApi(
         })
       if (path === '/agents/models') return json(route, models)
       if (path === '/agents/config' && method === 'PUT') return json(route, config)
-      if (path === '/agents/sessions' && method === 'POST')
-        return json(route, options.createdSession ?? session('created-session'))
       if (/^\/agents\/sessions\/[^/]+$/.test(path) && method === 'GET') {
         const id = path.split('/').at(-1)!
-        return json(route, options.sessions?.find((item) => item.session_id === id) ?? session(id))
+        return json(route, sessions.get(id) ?? remember(session(id)))
       }
-      if (/^\/agents\/sessions\/[^/]+\/history$/.test(path))
-        return json(route, options.history ?? [])
-      if (/\/agents\/sessions\/[^/]+\/events$/.test(path)) {
+      if (/^\/agents\/sessions\/[^/]+\/history$/.test(path)) {
+        const id = path.split('/').at(-2)!
+        return json(route, events.get(id) ?? [])
+      }
+      if (/\/channels\/web\/sessions\/[^/]+\/events$/.test(path)) {
+        const id = decodeURIComponent(path.split('/').at(-2)!)
+        const after = Number(new URL(request.url()).searchParams.get('after') ?? 0)
+        const body = (events.get(id) ?? [])
+          .filter((item) => item.id > after)
+          .map((item) => `id: ${item.id}\ndata: ${JSON.stringify(item)}\n\n`)
+          .join('')
         return route.fulfill({
           status: 200,
           headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' },
-          body: ': connected\n\n',
+          body: body || ': connected\n\n',
         })
       }
-      if (/\/agents\/sessions\/[^/]+\/fork$/.test(path))
-        return json(route, session('qa-child', 'completed', { branch_id: 'branch-qa' }))
+
+      if (path === '/channels/web/commands' && method === 'POST') {
+        const text = String(body?.text ?? '')
+        const action = String(
+          body?.action ??
+            (text.startsWith('/append')
+              ? 'append'
+              : text.startsWith('/stop')
+                ? 'stop'
+                : text.startsWith('/fork')
+                  ? 'fork'
+                  : text.trim()
+                    ? 'message'
+                    : 'new'),
+        )
+        const requestId = String(body?.request_id ?? 'request')
+        const sessionId = body?.session ? String(body.session) : undefined
+
+        if (action === 'new' || action === 'workflow') {
+          const created = remember(
+            structuredClone(options.createdSession ?? session('created-session')),
+          )
+          created.workflow_session_id =
+            action === 'workflow' ? String(body?.workflow_session_id ?? 'workflow-result') : null
+          return json(route, {
+            channel: 'web',
+            session: sessionId ?? null,
+            priority: 'command',
+            kind: 'session',
+            result: created,
+          })
+        }
+        if (action === 'fork') {
+          const child = remember(session('qa-child', 'completed', { branch_id: 'branch-qa' }))
+          return json(route, {
+            channel: 'web',
+            session: sessionId ?? null,
+            priority: 'command',
+            kind: 'session',
+            result: child,
+          })
+        }
+        if (!sessionId) return json(route, { error: 'session is required' }, 400)
+        if (action === 'message') {
+          if (messageFailures > 0) {
+            messageFailures -= 1
+            return json(route, { error: 'temporary test failure' }, 503)
+          }
+          const result = acceptTurn(sessionId, text)
+          return json(route, {
+            channel: 'web',
+            session: sessionId,
+            priority: 'conversation',
+            kind: 'turn',
+            result,
+          })
+        }
+        if (action === 'append') {
+          const current = remember(sessions.get(sessionId) ?? session(sessionId, 'running'))
+          const appendText = text.replace(/^\/append\s*/, '')
+          const turnId = current.turn_id ?? `turn-${sessionId}`
+          const queued = appendEvent(
+            sessionId,
+            'command.queued',
+            { command: 'append', request_id: requestId, text: appendText },
+            turnId,
+          )
+          return json(route, {
+            channel: 'web',
+            session: sessionId,
+            priority: 'command',
+            kind: 'turn',
+            result: {
+              session_id: sessionId,
+              turn_id: turnId,
+              deduplicated: false,
+              status: 'queued',
+              event_id: queued.id,
+            },
+          })
+        }
+        if (action === 'stop') {
+          const current = remember(sessions.get(sessionId) ?? session(sessionId, 'running'))
+          current.status = 'cancelled'
+          appendEvent(sessionId, 'turn.cancelled', {}, current.turn_id)
+          return json(route, {
+            channel: 'web',
+            session: sessionId,
+            priority: 'stop',
+            kind: 'session',
+            result: current,
+          })
+        }
+      }
+
       if (/\/agents\/sessions\/[^/]+\/messages$/.test(path)) {
         if (messageFailures > 0) {
           messageFailures -= 1
@@ -220,18 +368,18 @@ test('正式 Agent 入口不含 demo；默认模型持久化并用于新会话�
     .toBe('channel-a:alpha')
 
   await page.reload()
-  await page.getByRole('button', { name: '新建会话' }).click()
+  await page.getByRole('button', { name: '新会话' }).last().click()
   await expect(page).toHaveURL(/\/agents\/created-session$/)
   await expect(page.getByRole('dialog', { name: '创建 Agent 分析会话' })).toHaveCount(0)
   expect(
-    calls.find((call) => call.method === 'POST' && call.path === '/agents/sessions')?.body,
-  ).toEqual({ model: 'channel-a:alpha' })
+    calls.find((call) => call.method === 'POST' && call.path === '/channels/web/commands')?.body,
+  ).toMatchObject({ action: 'new', model: 'channel-a:alpha' })
 })
 
 test('未设置默认模型时新会话保留模型选择步骤', async ({ page }) => {
   const calls = await installApi(page)
   await page.goto('/agents')
-  await page.getByRole('button', { name: '新建会话' }).click()
+  await page.getByRole('button', { name: '新会话' }).first().click()
 
   const dialog = page.getByRole('dialog', { name: '创建 Agent 分析会话' })
   await expect(dialog).toBeVisible()
@@ -243,8 +391,8 @@ test('未设置默认模型时新会话保留模型选择步骤', async ({ page 
 
   await expect(page).toHaveURL(/\/agents\/created-session$/)
   expect(
-    calls.find((call) => call.method === 'POST' && call.path === '/agents/sessions')?.body,
-  ).toEqual({ model: 'channel-a:alpha' })
+    calls.find((call) => call.method === 'POST' && call.path === '/channels/web/commands')?.body,
+  ).toMatchObject({ action: 'new', model: 'channel-a:alpha' })
 })
 
 test('长会话只滚动消息区，输入器留在聊天窗口底部', async ({ page }) => {
@@ -258,7 +406,8 @@ test('长会话只滚动消息区，输入器留在聊天窗口底部', async ({
         })
       : event(id, 'message.completed', {
           message_id: `assistant-${id}`,
-          content: `这是第 ${(index + 1) / 2} 段较长的分析内容。`.repeat(8),
+          incremental: false,
+          text: `这是第 ${(index + 1) / 2} 段较长的分析内容。`.repeat(8),
         })
   })
   history.push(
@@ -281,7 +430,7 @@ test('长会话只滚动消息区，输入器留在聊天窗口底部', async ({
     await page.setViewportSize(viewport)
     const layout = await page.evaluate(() => {
       const transcript = document.querySelector('.transcript-viewport')!
-      const main = document.querySelector('.chatgpt-main')!
+      const main = document.querySelector('.agent-main')!
       const composer = document.querySelector('.composer-container')!
       const rect = (element: Element) => {
         const { top, bottom } = element.getBoundingClientRect()
@@ -328,9 +477,15 @@ test('Workflow 续接自动选择默认模型并提交固定来源', async ({ pa
   await page.getByRole('button', { name: '创建并继续' }).click()
   await expect
     .poll(
-      () => calls.find((call) => call.method === 'POST' && call.path === '/agents/sessions')?.body,
+      () =>
+        calls.find((call) => call.method === 'POST' && call.path === '/channels/web/commands')
+          ?.body,
     )
-    .toEqual({ workflow_session_id: 'workflow-result', model: 'channel-a:alpha' })
+    .toMatchObject({
+      action: 'workflow',
+      workflow_session_id: 'workflow-result',
+      model: 'channel-a:alpha',
+    })
 })
 
 test('运行中发送补充走追加命令，停止按钮另发取消请求', async ({ page }) => {
@@ -341,12 +496,19 @@ test('运行中发送补充走追加命令，停止按钮另发取消请求', as
   await composer.fill('继续检查失败原因')
   await page.getByRole('button', { name: '追加到队列' }).click()
   await expect
-    .poll(() => calls.find((call) => call.path === '/agents/commands')?.body)
+    .poll(() => calls.find((call) => call.path === '/channels/web/commands')?.body)
     .toMatchObject({ session: 'qa-session', text: '/append 继续检查失败原因' })
 
   await page.locator('.capsule-stop-btn').click()
   await expect
-    .poll(() => calls.some((call) => call.method === 'POST' && call.path.endsWith('/cancel')))
+    .poll(() =>
+      calls.some(
+        (call) =>
+          call.method === 'POST' &&
+          call.path === '/channels/web/commands' &&
+          call.body?.action === 'stop',
+      ),
+    )
     .toBe(true)
 })
 
@@ -368,10 +530,14 @@ test('编辑分支首次发送失败后保留分支与请求编号供重试', as
 
   await page.getByRole('button', { name: '确认创建分支并发送' }).click()
   await expect(page).toHaveURL(/\/agents\/qa-child$/)
-  const forks = calls.filter((call) => call.path.endsWith('/fork'))
-  const messages = calls.filter((call) => call.path.endsWith('/messages'))
+  const forks = calls.filter(
+    (call) => call.path === '/channels/web/commands' && call.body?.action === 'fork',
+  )
+  const messages = calls.filter(
+    (call) => call.path === '/channels/web/commands' && call.body?.action === 'message',
+  )
   expect(forks).toHaveLength(1)
-  expect(forks[0].body).toEqual({ message_id: 'message-qa' })
+  expect(forks[0].body).toMatchObject({ action: 'fork', message_id: 'message-qa' })
   expect(messages).toHaveLength(2)
   expect(messages[0].body).toEqual(messages[1].body)
 })

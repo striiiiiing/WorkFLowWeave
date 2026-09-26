@@ -24,7 +24,7 @@ test('real mock session supports streamed continuation, branch, stop, model menu
   const previousResponses = await page.locator('.assistant-content').count()
   const streamResponse = page.waitForResponse(
     (response) =>
-      response.url().includes(`/api/agents/sessions/${sessionId}/events`) &&
+      response.url().includes(`/api/channels/web/sessions/${sessionId}/events`) &&
       response.status() === 200,
   )
   await page.getByRole('textbox', { name: 'Agent 消息' }).fill(prompt)
@@ -95,8 +95,9 @@ test('real mock session supports streamed continuation, branch, stop, model menu
   await expect(page.locator('.running-capsule')).toBeVisible({ timeout: 10_000 })
   const cancelResponse = page.waitForResponse(
     (response) =>
-      response.url().includes(`/api/agents/sessions/${branchId}/cancel`) &&
-      response.request().method() === 'POST',
+      response.url().includes('/api/channels/web/commands') &&
+      response.request().method() === 'POST' &&
+      response.request().postDataJSON()?.action === 'stop',
   )
   await page.locator('.capsule-stop-btn').click()
   expect((await cancelResponse).ok()).toBe(true)

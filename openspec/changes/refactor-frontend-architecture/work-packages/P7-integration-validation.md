@@ -44,3 +44,19 @@ Agent UI E2E 的六项失败为：重载后找不到“新建会话”按钮（6
 真实浏览器尝试使用 Tabbit 打开 `http://localhost:3000/agents`。页面导航到目标 URL 后，首次脚本在读取标题时收到 `Target page, context or browser has been closed`；按恢复流程读取 receipt/diagnose 和标签库存后，重连返回 `CLAIM_FAILED`、`codeDispatched:false`。因此 Tabbit 未提供后续页面操作结果。本地 Chromium E2E 已实际打开 Agent 页面、操作全局设置并执行窄屏用例，但 Agent 页面其余 E2E 失败后即停止；375px 长会话断言未完成。resources→workflows→runs→report→agent 的完整浏览器导航、浏览器级 A→B→A/离开清理及 `collector-demo` 重定向本轮未完成；对应路由单元测试通过，不能替代真实浏览器证据。
 
 本轮结果不全绿，未勾选未通过项，也未进行第三轮修复。待处理证据为 `scripts/check-architecture.mjs` 格式检查及 Agent E2E fixture/API 路径契约差异；在浏览器级复验成功前，以上场景仍属于未验收。
+
+### 2026-09-26 Agent Web 命令 fixture 复验
+
+本轮仅修复前端验证层与证据：`scripts/check-architecture.mjs` 按 Prettier 规范化；`agent-ui.spec.ts` fixture 按真实 `POST /api/channels/web/commands` envelope 分派 new/workflow/message/append/fork/stop，维护 session 状态和带 `id`/`data` 的 `/api/channels/web/sessions/:id/events` SSE 回放；历史 `message.completed` 样本补齐协议要求的 `incremental` 字段。`agent-live-ui.spec.ts` 的真实探针同步使用 Web channel SSE/stop command 路径。未修改后端。
+
+| 命令 | 退出码 | 结果 |
+| --- | ---: | --- |
+| `npm run test:e2e -- --config playwright.agent-ui.config.ts --grep '正式 Agent\|未设置默认模型\|长会话'` | 0 | 3/3 targeted passed。 |
+| `npm run test:e2e -- --config playwright.agent-ui.config.ts` | 0 | 7/7 Agent UI tests passed。 |
+| `npm test` | 0 | 45 files、207 tests passed。 |
+| `npm run typecheck` | 0 | `vue-tsc --noEmit` passed。 |
+| `npm run format:check` | 0 | Prettier 全部通过。 |
+| `npm run architecture:check` | 0 | 207 files 与 27 fixtures 通过。 |
+| `npm run build` | 0 | 3756 modules 构建成功。 |
+
+本轮未运行真实后端会话或 Tabbit 浏览器复验；真实浏览器限制与完整跨模块导航缺口仍按上节记录，未将其标记为通过。
