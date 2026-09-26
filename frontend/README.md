@@ -28,14 +28,12 @@ npm run dev
 
 ## 代码组织
 
-- `api/`：HTTP 传输、后端错误解析及资源/运行/系统接口，不保存页面状态。
-- `types/`：对应 `src/logagent/models.py` 的 HTTP 数据类型。
-- `domain/`：表单初始值与状态展示元数据，不复制后端业务校验。
-- `composables/`：页面请求生命周期、提交状态和运行轮询。请求结果由页面持有；没有资源列表的全局副本。
-- `components/`：共享导航、语义图标、表格、JSON 字段和工作流分步表单。普通按钮、输入框、弹窗直接使用 Element Plus。
-- `views/`：路由页面，负责组合数据与交互；路由懒加载，Element Plus 组件和样式按需引入。
+- `src/app/` 负责应用装配、注入 API 实例、路由、布局、导航和全局样式。
+- `src/pages/` 保存懒加载路由页面与跨模块流程，例如从已加载的运行记录创建 Agent。
+- `src/modules/{resources,workflows,runs,agents,system}/` 分别拥有业务 DTO、API、控制器和界面。其他模块和页面通过对应的 `public.ts` 使用模块能力；`workflows` 可以依赖公开的 `resources` 契约。
+- `src/shared/` 保存 Axios 传输、异步请求生命周期、Schema 控件、共享类型和基础界面，不依赖业务模块。
 
-图标名称在 `components/icons/registry.ts` 一处映射，导航定义在 `router/navigation.ts`，状态文案在 `domain/session.ts`。工作流编辑只有一份草稿，保留已有调用覆盖字段，保存时直接提交后端定义。
+页面组合控制器与模块界面，不重复实现模块请求或业务规则。每份查询状态和编辑草稿只有一个拥有者；`src/app/bootstrap.ts` 装配并注入模块 API。路由页面均懒加载。`/agents` 与 `/agents/:sessionId` 共用稳定的页面实例；离开 Agent 路由时释放会话状态。
 
 ## 接口与行为
 
@@ -50,8 +48,9 @@ npm run dev
 ```sh
 npm test
 npm run typecheck
-npm run build
+npm run architecture:check
 npm run format:check
+npm run build
 npx playwright install --with-deps chromium
 npm run test:e2e
 ```

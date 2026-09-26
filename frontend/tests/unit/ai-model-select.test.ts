@@ -2,8 +2,8 @@ import { defineComponent, ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus, { ElSelect, type FormInstance } from 'element-plus'
 import { describe, expect, it, vi } from 'vitest'
-import AIModelSelect from '@/components/workflow/AIModelSelect.vue'
-import type { AIConfig } from '@/types'
+import AIModelSelect from '@/modules/workflows/ui/AIModelSelect.vue'
+import type { AIConfig } from '@/modules/resources/public'
 
 const config = (id: string, models: string[]): AIConfig => ({
   id,

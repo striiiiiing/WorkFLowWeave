@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import ContinueInAgent from '@/pages/integrations/ContinueInAgent.vue'
 import {
   useRunDetail,
   availabilityLabels,
@@ -17,19 +18,9 @@ const route = useRoute()
 const router = useRouter()
 const id = computed(() => String(route.params.id))
 const detail = useRunDetail(id)
-const {
-  session: query,
-  active,
-  recovery,
-  phases,
-  loadedContext,
-  actionError,
-  actionPending,
-  refreshAll,
-} = detail
+const { session: query, active, recovery, phases, actionError, actionPending, refreshAll } = detail
 const { data: session, pending, error } = query
 const advanced = ref(false)
-const emit = defineEmits<{ continue: [context: typeof loadedContext.value] }>()
 async function cancel() {
   const result = await detail.cancel()
   if (result.status === 'success') ElMessage.info('已接受取消请求')
@@ -59,10 +50,9 @@ async function recover() {
         @refresh="refreshAll"
         @cancel="cancel"
         @recover="recover"
-        @continue="emit('continue', loadedContext)"
       >
-        <template v-if="$slots.continuation" #continuation>
-          <slot name="continuation" :context="loadedContext" />
+        <template #continuation>
+          <ContinueInAgent v-if="session" :session="session" />
         </template>
       </RunActions>
     </PageHeader>

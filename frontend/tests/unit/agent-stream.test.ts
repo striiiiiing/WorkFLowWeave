@@ -1,6 +1,6 @@
 import { effectScope, type EffectScope } from 'vue'
 import { afterEach, expect, it, vi } from 'vitest'
-import { agentsApi, type AgentEvent, type AgentSession } from '@/api/agents'
+import { agentsApi, type AgentEvent, type AgentSession } from '@/app/services'
 import { mergeAgentEvents, useAgentStream } from '@/composables/useAgentStream'
 class FakeEventSource {
   static instances: FakeEventSource[] = []

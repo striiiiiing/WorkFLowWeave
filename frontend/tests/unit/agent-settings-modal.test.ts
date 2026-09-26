@@ -1,12 +1,13 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import { afterEach, expect, it, vi } from 'vitest'
-import { agentsApi, type AgentSettings } from '@/api/agents'
+import { agentsApi } from '@/app/services'
+import type { AgentSettings } from '@/modules/agents/public'
 import AgentGlobalSettingsModal from '@/modules/agents/ui/AgentGlobalSettingsModal.vue'
 import AgentModelSelect from '@/modules/agents/ui/AgentModelSelect.vue'
 import { useAgentSettings } from '@/modules/agents/composables/useAgentSettings'
 import { effectScope } from 'vue'
-import { readDefaultAgentModel } from '@/domain/agentModels'
+import { readDefaultAgentModel } from '@/modules/agents/public'
 
 const settings: AgentSettings = {
   config: {

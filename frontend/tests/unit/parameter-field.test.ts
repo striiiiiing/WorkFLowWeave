@@ -3,7 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import ElementPlus, { ElSelect, type FormInstance } from 'element-plus'
 import { describe, expect, it, vi } from 'vitest'
 import ParameterField from '@/shared/schema/ParameterField.vue'
-import type { JsonObject } from '@/types'
+import type { JsonObject } from '@/shared/types'
 
 function editor(initial: JsonObject, schema?: JsonObject, excludedProperties?: string[]) {
   const value = ref(initial)

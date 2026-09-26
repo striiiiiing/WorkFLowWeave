@@ -6,8 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { useQuery } from '@/shared/async/useQuery'
 import { useSession, POLL_INTERVAL_MS } from '@/modules/runs/composables/useSession'
-import { runsApi } from '@/api/runs'
-import type { SessionRecord } from '@/types'
+import { runsApi } from '@/app/services'
+import type { SessionRecord } from '@/modules/runs/public'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
