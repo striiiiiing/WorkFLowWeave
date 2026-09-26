@@ -191,7 +191,9 @@ class ChannelConfig(StrictModel):
 class AnalysisTask(StrictModel):
     id: ID
     ai: ID
-    prompt: str = "{input}"
+    system_prompt: str | None = None
+    input_prompt: str | None = None
+    user_prompt: str = ""
     model: ModelName
 
 
@@ -199,14 +201,29 @@ class FanInConfig(StrictModel):
     order: list[str] = Field(default_factory=list)
     separator: str = "\n\n"
     ai: ID | None = None
-    prompt: str = "{input}"
+    system_prompt: str | None = None
+    input_prompt: str | None = None
+    user_prompt: str = ""
+    reuse_from: ID | Literal["$first"] | None = "$first"
     model: ModelName | None = None
     mark_incomplete: bool = True
+
+    def ordered_inputs(self, analyses: list[AnalysisTask]) -> list[str]:
+        return self.order or ["$input", *(task.id for task in analyses)]
+
+    def reused_task(self, analyses: list[AnalysisTask]) -> AnalysisTask | None:
+        if self.reuse_from is None:
+            return None
+        if self.reuse_from == "$first":
+            return analyses[0]
+        return next(task for task in analyses if task.id == self.reuse_from)
 
     @model_validator(mode="after")
     def paired_model(self) -> Self:
         if (self.ai is None) != (self.model is None):
             raise ValueError("Fan-in AI and model must be specified together")
+        if self.reuse_from is not None and self.ai is not None:
+            raise ValueError("Fan-in model reuse and explicit AI/model are mutually exclusive")
         return self
 
 
@@ -247,6 +264,8 @@ class WorkflowDefinition(StrictModel):
     sources: Annotated[list[ID], AfterValidator(unique_check("sources IDs"))] = Field(min_length=1)
     analyses: list[AnalysisTask] = Field(min_length=1)
     fan_in: FanInConfig | None = None
+    system_prompt: str = ""
+    input_prompt: str = "{input}"
     channels: Annotated[list[ID], AfterValidator(unique_check("channels IDs"))] = Field(default_factory=list)
     source_overrides: dict[ID, SourceOverride] = Field(default_factory=dict)
     channel_overrides: dict[ID, ChannelOverride] = Field(default_factory=dict)
@@ -293,6 +312,8 @@ class WorkflowDefinition(StrictModel):
             order = self.fan_in.order
             if len(order) != len(set(order)) or not set(order) <= {*tasks, "$input"}:
                 raise ValueError("fan_in order must contain unique analysis IDs or $input")
+            if self.fan_in.reuse_from not in {None, "$first", *tasks}:
+                raise ValueError("fan_in reuse_from must reference an analysis task or $first")
         return self
 
 

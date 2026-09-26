@@ -1,6 +1,6 @@
 """JSON 资源存储的原子发布、引用和快照测试。
 
-真实临时资源文件配合注册表验证保存/重开、创建/替换、引用约束、模板更新
+真实临时资源文件配合注册表验证保存/重开、旧提示词迁移、创建/替换、引用约束、模板更新
 及不可变快照；并发提交和写入故障检查磁盘与已发布视图一致。
 验证失败保留旧有效资源，不将损坏文件作为空存储。
 """
@@ -13,6 +13,7 @@ from pathlib import Path
 import orjson
 import pytest
 
+from logagent.ai.prompts import build_messages
 from logagent.channel.mock import MockFileChannelType
 from logagent.collection.mock import MockCollector
 from logagent.config import PluginRegistry, ResourceStore
@@ -21,6 +22,7 @@ from logagent.lifecycle.resources import LifecycleResourceStore
 from logagent.models import (
     AIConfig,
     ChannelConfig,
+    FanInConfig,
     SetterTemplate,
     SourceConfig,
     SystemConfig,
@@ -75,6 +77,95 @@ async def test_save_reopen_copies_and_original_snapshot(resources):
                              channel_register=registry.channelRegister)
     assert reopened.snapshot("workflow").ai["ai"].models == {"model": {"reasoning_effort": "high"}}
     assert set(read(store)) == {"format_version", "sources", "setters", "ai", "channels", "workflows"}
+
+
+@pytest.mark.parametrize("with_ai", [False, True])
+@pytest.mark.parametrize("load", ["reopen", "reload"])
+@pytest.mark.parametrize("old_prompt,expected", [
+    ("legacy task", "legacy task\n\n{input}"),
+    ("legacy {input}", "legacy {input}"),
+])
+async def test_v1_prompt_migration_preserves_legacy_requests(
+    resources, with_ai, load, old_prompt, expected,
+):
+    store, registry = resources
+    definition = seed(store)
+    store.save("ai", AIConfig(
+        id="ai", provider="mock", system_prompt="legacy system {input}",
+        models={"model": {}},
+    ))
+    definition.fan_in = FanInConfig(
+        ai="ai" if with_ai else None,
+        model="model" if with_ai else None,
+        reuse_from=None,
+    )
+    store.save("workflows", definition)
+    data = read(store)
+    data["format_version"] = 1
+    workflow = data["workflows"]["workflow"]
+    del workflow["system_prompt"], workflow["input_prompt"]
+    task = workflow["analyses"][0]
+    del task["system_prompt"], task["input_prompt"], task["user_prompt"]
+    task["prompt"] = old_prompt
+    fan_in = workflow["fan_in"]
+    del fan_in["system_prompt"], fan_in["input_prompt"], fan_in["user_prompt"]
+    del fan_in["reuse_from"]
+    fan_in["prompt"] = "legacy summary"
+    edit(store, data)
+
+    if load == "reopen":
+        reopened = ResourceStore(
+            store.location, collector_register=registry.collectorRegister,
+            channel_register=registry.channelRegister,
+        )
+    else:
+        store.reload_resources()
+        reopened = store
+    migrated = read(reopened)
+    assert migrated["format_version"] == 2
+    assert "prompt" not in migrated["workflows"]["workflow"]["analyses"][0]
+    assert "prompt" not in migrated["workflows"]["workflow"]["fan_in"]
+    saved = reopened.snapshot("workflow")
+    assert saved.workflow.analyses[0].system_prompt == "legacy system {input}"
+    assert saved.workflow.analyses[0].input_prompt == expected
+    messages = build_messages(
+        saved.workflow.analyses[0].system_prompt,
+        saved.workflow.analyses[0].input_prompt,
+        "collected",
+    )
+    assert messages[0].content == "legacy system {input}"
+    expected_content = (
+        old_prompt.replace("{input}", "collected")
+        if "{input}" in old_prompt else f"{old_prompt}\n\ncollected"
+    )
+    assert messages[1].content == expected_content
+    assert saved.workflow.fan_in.input_prompt == "legacy summary\n\n{input}"
+    assert saved.workflow.fan_in.order == ["analysis"]
+    assert saved.workflow.fan_in.reuse_from is None
+    assert saved.workflow.fan_in.system_prompt == ("legacy system {input}" if with_ai else None)
+    assert reopened.get("workflows", "workflow") == saved.workflow
+
+
+async def test_v1_migration_failure_keeps_original_file(resources, monkeypatch):
+    store, _ = resources
+    seed(store)
+    data = read(store)
+    data["format_version"] = 1
+    workflow = data["workflows"]["workflow"]
+    del workflow["system_prompt"], workflow["input_prompt"]
+    task = workflow["analyses"][0]
+    del task["system_prompt"], task["input_prompt"], task["user_prompt"]
+    task["prompt"] = "legacy {input}"
+    edit(store, data)
+    before = await asyncio.to_thread(Path(store.location).read_bytes)
+
+    def fail(*_):
+        raise OSError
+
+    monkeypatch.setattr("logagent.config.store.os.replace", fail)
+    with pytest.raises(LogAgentError, match="原子保存失败"):
+        ResourceStore(store.location)
+    assert await asyncio.to_thread(Path(store.location).read_bytes) == before
 
 
 async def test_save_many_updates_model_and_workflow_atomically(resources):
@@ -293,7 +384,7 @@ async def test_invalid_document_never_becomes_an_empty_store(resources, change):
     if change == "unknown":
         data["extra"] = "secret"
     elif change == "version":
-        data["format_version"] = 2
+        data["format_version"] = 3
     elif change == "key":
         data["ai"]["ai"]["id"] = "different"
     elif change == "missing_set":
@@ -348,7 +439,7 @@ async def test_removing_referenced_model_rejects_entire_resource_candidate(resou
     store.save("ai", AIConfig(id="ai", provider="mock", models={"model": {}, "summary": {}}))
     if reference == "fan_in":
         from logagent.models import FanInConfig
-        definition.fan_in = FanInConfig(ai="ai", model="summary")
+        definition.fan_in = FanInConfig(ai="ai", model="summary", reuse_from=None)
         store.save("workflows", definition)
     before = await asyncio.to_thread(Path(store.location).read_bytes)
     original = store.snapshot("workflow")

@@ -46,7 +46,7 @@ def test_models_require_explicit_nonempty_json_configuration(models):
 
 @pytest.mark.parametrize("prompt,input_text,expected", [
     ("read {input}", "{input} {other}", "read {input} {other}"),
-    ("read", "body", "read\n\nbody"),
+    ("read", "body", "body\n\nread"),
 ])
 async def test_request_roles_prompt_credentials_and_usage(
     observed_channel, channel_config, prompt, input_text, expected,
@@ -86,3 +86,22 @@ async def test_missing_credentials_fail_before_network(observed_channel, channel
     result = await service.execute(cfg, "", "body", model=next(iter(cfg.models)))
     assert result.error.code == "credential_resolver_missing"
     assert requests == []
+
+
+async def test_workflow_messages_keep_input_and_difference_separate(observed_channel, channel_config):
+    service, requests, _ = observed_channel
+    cfg, _ = channel_config
+    model = next(iter(cfg.models))
+    result = await service.execute(
+        cfg, "input: {input}", "literal {input}", model=model,
+        system_prompt="system {input}", user_prompt="difference {input}",
+    )
+    assert_success(result, cfg)
+    payload = json.loads(requests[0].content)
+    assert payload["messages"] == [
+        {"role": "system", "content": "system {input}"},
+        {"role": "user", "content": "input: literal {input}"},
+        {"role": "user", "content": "difference {input}"},
+    ]
+    assert cfg.system_prompt != "system {input}"
+    await service.close()
