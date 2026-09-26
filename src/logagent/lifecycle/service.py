@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
-import time
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -34,7 +33,7 @@ from logagent.models import (
     HealthReport,
     SystemConfig,
 )
-from logagent.workflow import IntervalTrigger, SessionStore, SessionView, WorkflowService
+from logagent.workflow import SessionStore, SessionView, WorkflowScheduler, WorkflowService
 
 from .defaults import starter_resources
 from .health import capability_diagnostics, component_health, health_components, plugin_health
@@ -61,7 +60,6 @@ class ApplicationLifecycle:
         config: SystemConfig,
         *,
         channel_factories: Mapping[str, ChannelFactory] | None = None,
-        clock: Callable[[], float] = time.monotonic,
         shutdown_timeout: float = _SHUTDOWN_TIMEOUT,
         checkpointer_context_factory: CheckpointerContextFactory | None = None,
     ) -> None:
@@ -75,7 +73,6 @@ class ApplicationLifecycle:
             raise ValueError("shutdown_timeout must be positive and finite")
         self.config = effective_config(config)
         self._channel_factories = channel_factories
-        self._clock = clock
         self._shutdown_timeout = shutdown_timeout
         self._checkpointer_context_factory = (
             checkpointer_context_factory or AsyncSqliteSaver.from_conn_string
@@ -94,7 +91,7 @@ class ApplicationLifecycle:
         self._agent: AgentService | None = None
         self._channels: ChannelManager | None = None
         self._workflow: WorkflowService | None = None
-        self._intervals: IntervalTrigger | None = None
+        self._intervals: WorkflowScheduler | None = None
         self._plugin_report = DiscoveryReport()
         self._reload_diagnostic: ErrorInfo | None = None
         self._reload_in_progress = False
@@ -109,7 +106,6 @@ class ApplicationLifecycle:
         location: str | Path,
         *,
         channel_factories: Mapping[str, ChannelFactory] | None = None,
-        clock: Callable[[], float] = time.monotonic,
         shutdown_timeout: float = _SHUTDOWN_TIMEOUT,
         checkpointer_context_factory: CheckpointerContextFactory | None = None,
     ) -> ApplicationLifecycle:
@@ -118,7 +114,6 @@ class ApplicationLifecycle:
         return cls(
             config,
             channel_factories=channel_factories,
-            clock=clock,
             shutdown_timeout=shutdown_timeout,
             checkpointer_context_factory=checkpointer_context_factory,
         )
@@ -273,7 +268,7 @@ class ApplicationLifecycle:
                 await channels.start_agent(resources.list("channels"))
 
                 stage = "intervals"
-                intervals = IntervalTrigger(workflow, clock=self._clock)
+                intervals = WorkflowScheduler(workflow, resources)
                 self._intervals = intervals
                 intervals.update(resources.list("workflows"))
 

@@ -128,8 +128,7 @@ def _probe_workflow(services: ApplicationServices) -> ErrorInfo | None:
 
 def _probe_intervals(services: ApplicationServices) -> ErrorInfo | None:
     """检查定时触发后台任务是否存活，调度暂停本身不代表故障。"""
-    task = getattr(services.intervals, "_task", None)
-    if task is None or task.done():
+    if not services.intervals.scheduler.running:
         return ErrorInfo(
             code="component_unavailable",
             message="定时触发任务未运行",
