@@ -32,6 +32,16 @@
 
 系统 SHALL 用 APScheduler CronTrigger 验证严格五段表达式并计算带时区的未来到期；SHALL 用 `cron-descriptor` 给用户可读说明。无效表达式或时区 SHALL 明确报错。
 
+#### Scenario: 新建 Cron 留空时区
+
+- **WHEN** 新建 Cron 计划未选择时区
+- **THEN** 系统按运行机器本地时区计算到期，预览显示该时区
+
+#### Scenario: 旧 Cron 未保存时区
+
+- **WHEN** 旧资源中的 Cron 未显式保存 `cron_timezone`
+- **THEN** 迁移后的计划显式使用旧模型默认的 UTC，原运行时间不变
+
 #### Scenario: 预览 Cron
 
 - **WHEN** 用户输入有效表达式与 IANA 时区
