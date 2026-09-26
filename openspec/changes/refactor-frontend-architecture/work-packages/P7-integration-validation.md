@@ -26,4 +26,21 @@ GPT-6 Astra medium 集成 worker 在锁定范围内修改 app/router/bootstrap�
 
 ## 最终结果
 
-待填所有验证命令/退出码、浏览器证据、性能对照、每个本任务 commit 的后端/其他任务路径排除证据、测试时后端 HEAD/dirty 与契约差异、提交链与明确剩余限制。
+### 2026-09-26 最终复验
+
+复验基于 `refactor/frontend-architecture`，HEAD 为 `e134b15`；本任务提交链为 `a2f738d`、`5ef4242`、`e134b15`。开始复验时共享工作区已有后端、其他 OpenSpec 任务及前端文件的脏改动；复验未改动这些文件。下面只记录本轮实际执行的命令与结果。
+
+| 命令 | 退出码 | 结果 |
+| --- | ---: | --- |
+| `npm test`（`frontend/`） | 0 | 45 files、207 tests 全部通过。包含 Agent A→B→A 输入隔离/离开清理和 `collector-demo` query 保留重定向的单元路由用例。 |
+| `npm run typecheck`（`frontend/`） | 0 | `vue-tsc --noEmit` 通过。 |
+| `npm run format:check`（`frontend/`） | 1 | 唯一报告 `scripts/check-architecture.mjs` 格式不符合 Prettier。该文件未在本轮修改。 |
+| `npm run architecture:check`（`frontend/`） | 0 | 207 files 架构规则通过；27 files fixture 正反例通过。输出仍标明 legacy consumers 将在 P2–P7 到期，属于需继续核对的旧出口风险。 |
+| `npm run build`（`frontend/`） | 0 | 3756 modules 构建成功。入口 `index-CzatgCpD.js` 为 293.62 kB；Agent `AgentPage-Fw_Qh2R8.js` 独立 chunk 为 83.48 kB。 |
+| `npm run test:e2e -- --config playwright.agent-ui.config.ts`（`frontend/`，构建产物由 `vite preview` 提供） | 1 | Chromium 实际执行 7 项，1 passed、6 failed。通过项为“窄屏仍能打开全局设置”。失败项见下文。 |
+
+Agent UI E2E 的六项失败为：重载后找不到“新建会话”按钮（60 秒超时）；初次进入 `/agents` 找不到同一按钮；长会话找不到预期的“第 20 条用户消息”；Workflow 续接未观察到预期的 `POST /agents/sessions`；运行中补充未观察到 fixture 预期的 `POST /agents/commands`；编辑分支发送预期 HTTP 503，却收到 HTTP 501 `POST /api/channels/web/commands`。最后一项确认了浏览器与 `agent-ui.spec.ts` 中 `installApi` fixture 的 API 契约不匹配：fixture 未处理页面实际请求的 `/api/channels/web/commands`，兜底返回 501。其他失败按实际断言保留，未推断为同一根因，也未修改 fixture 或业务代码。
+
+真实浏览器尝试使用 Tabbit 打开 `http://localhost:3000/agents`。页面导航到目标 URL 后，首次脚本在读取标题时收到 `Target page, context or browser has been closed`；按恢复流程读取 receipt/diagnose 和标签库存后，重连返回 `CLAIM_FAILED`、`codeDispatched:false`。因此 Tabbit 未提供后续页面操作结果。本地 Chromium E2E 已实际打开 Agent 页面、操作全局设置并执行窄屏用例，但 Agent 页面其余 E2E 失败后即停止；375px 长会话断言未完成。resources→workflows→runs→report→agent 的完整浏览器导航、浏览器级 A→B→A/离开清理及 `collector-demo` 重定向本轮未完成；对应路由单元测试通过，不能替代真实浏览器证据。
+
+本轮结果不全绿，未勾选未通过项，也未进行第三轮修复。待处理证据为 `scripts/check-architecture.mjs` 格式检查及 Agent E2E fixture/API 路径契约差异；在浏览器级复验成功前，以上场景仍属于未验收。
