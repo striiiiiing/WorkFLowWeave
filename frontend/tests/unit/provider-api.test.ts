@@ -21,4 +21,24 @@ describe('provider HTTP actions', () => {
       }),
     )
   })
+
+  it('posts the selected model to the real Hi test endpoint', async () => {
+    const { resourcesApi, respond } = createHttpHarness()
+    const adapter = respond({
+      task_id: 'model-test',
+      status: 'success',
+      text: 'Hi',
+      error: null,
+    })
+    await expect(resourcesApi.testAIModel('provider', 'model-a')).resolves.toMatchObject({
+      status: 'success',
+    })
+    expect(adapter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: '/ai/provider/test-model',
+        method: 'post',
+        data: JSON.stringify({ model: 'model-a' }),
+      }),
+    )
+  })
 })

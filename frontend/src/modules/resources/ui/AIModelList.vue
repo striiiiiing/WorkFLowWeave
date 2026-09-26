@@ -4,8 +4,13 @@ import type { JsonObject } from '@/shared/types'
 import ParameterField from '@/shared/schema/ParameterField.vue'
 
 const models = defineModel<Record<string, JsonObject>>({ required: true })
-const props = defineProps<{ candidates: string[]; testing?: boolean; testDisabled?: boolean }>()
-const emit = defineEmits<{ test: [] }>()
+const props = defineProps<{
+  candidates: string[]
+  testing?: boolean
+  modelTesting?: boolean
+  testDisabled?: boolean
+}>()
+const emit = defineEmits<{ discover: []; test: [model: string] }>()
 const name = ref('')
 const addError = ref('')
 const error = computed(
@@ -71,16 +76,12 @@ function validate(_rule: unknown, _value: unknown, callback: (error?: Error) => 
   <section aria-label="渠道模型" class="mb-5">
     <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
       <h3 class="font-semibold">渠道模型</h3>
-      <el-button
-        v-if="!Object.keys(models).length"
-        :loading="testing"
-        :disabled="testDisabled"
-        @click="emit('test')"
-      >
-        测试连接
-      </el-button>
     </div>
-    <p class="muted text-sm mb-3">在此添加模型，保存后即可在工作流的并行 AI 分析中选择。</p>
+    <p class="muted text-sm mb-3">
+      点击模型输入框会自动读取
+      <code>/v1/models</code>
+      ；保存后即可在工作流的并行 AI 分析中选择。
+    </p>
     <el-form-item prop="models" :rules="{ validator: validate }">
       <div class="flex gap-2 w-full min-w-0">
         <el-autocomplete
@@ -90,6 +91,7 @@ function validate(_rule: unknown, _value: unknown, callback: (error?: Error) => 
           aria-label="模型名称"
           placeholder="输入模型名称，或选择检查发现的模型"
           class="min-w-0 flex-1"
+          @click="emit('discover')"
           @update:model-value="addError = ''"
           @keydown.enter.prevent
         />
@@ -108,8 +110,12 @@ function validate(_rule: unknown, _value: unknown, callback: (error?: Error) => 
       <div class="flex flex-wrap items-center justify-between gap-2">
         <span class="mono break-all">{{ selected }}</span>
         <div class="flex gap-2">
-          <el-button :loading="testing" :disabled="testDisabled" @click="emit('test')">
-            测试连接
+          <el-button
+            :loading="modelTesting"
+            :disabled="testDisabled || modelTesting"
+            @click="emit('test', selected)"
+          >
+            测试
           </el-button>
           <el-button :aria-expanded="expanded.includes(selected)" @click="toggle(selected)">
             {{ expanded.includes(selected) ? '收起参数' : '配置参数' }}

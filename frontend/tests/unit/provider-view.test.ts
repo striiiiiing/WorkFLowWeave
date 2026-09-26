@@ -19,6 +19,7 @@ vi.mock('@/app/services', () => ({
     replace: vi.fn(),
     protectCredential: vi.fn(),
     checkAIConnection: vi.fn(),
+    testAIModel: vi.fn(),
   },
 }))
 

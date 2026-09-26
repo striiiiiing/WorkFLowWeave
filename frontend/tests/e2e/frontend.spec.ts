@@ -398,7 +398,7 @@ test('provider models are configured in the channel and selected by workflows', 
   await page.goto('/resources?kind=ai')
   await page.getByRole('button', { name: '添加供应商渠道' }).click()
   await expect(page.getByLabel('资源编号')).toBeVisible()
-  await expect(page.getByRole('button', { name: '测试连接', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '测试连接', exact: true })).toHaveCount(0)
   await page.getByLabel('服务地址', { exact: true }).fill('http://127.0.0.1:1/v1')
   const key = page.getByLabel('API 密钥', { exact: true })
   await key.fill('browser-test-key')
@@ -432,10 +432,10 @@ test('provider models are configured in the channel and selected by workflows', 
   const healthResponse = page.waitForResponse((response) =>
     response.url().endsWith('/check-connection'),
   )
-  await page.getByRole('button', { name: '测试连接', exact: true }).first().click()
+  await models.getByRole('textbox', { name: '模型名称', exact: true }).click()
   expect((await healthResponse).ok()).toBe(false)
   await expect(
-    page.getByRole('region', { name: '渠道健康检查' }).locator('.el-alert--error'),
+    page.getByRole('region', { name: '渠道模型发现' }).locator('.el-alert--error'),
   ).toBeVisible()
   expect(healthRequests).toHaveLength(1)
   await expect(models.getByText('openai/test.v1', { exact: true })).toBeVisible()

@@ -15,6 +15,7 @@ from logagent.lifecycle import ApplicationServices
 from logagent.models import (
     ID,
     AIConfig,
+    AnalysisResult,
     CapabilityDescription,
     ChannelConfig,
     CollectionContext,
@@ -38,6 +39,7 @@ from logagent.models import (
 from .dependencies import Lifecycle as LifecycleProtocol
 from .dependencies import get_lifecycle, get_services
 from .schemas import (
+    AIModelTestRequest,
     CancelResponse,
     PhaseQuery,
     ProtectCredentialRequest,
@@ -141,6 +143,25 @@ async def check_ai_connection(ident: ID, services: Services, response: Response)
     response.headers["Cache-Control"] = "no-store"
     config = await _get_resource(services, "ai", ident)
     return await services.ai.list_models(config)
+
+
+@router.post("/ai/{ident}/test-model", response_model=AnalysisResult)
+async def test_ai_model(
+    ident: ID,
+    payload: AIModelTestRequest,
+    services: Services,
+    response: Response,
+):
+    """向指定模型发送一次 Hi，只有真实模型返回文本才报告成功。"""
+    response.headers["Cache-Control"] = "no-store"
+    config = await _get_resource(services, "ai", ident)
+    return await services.ai.execute(
+        config,
+        "{input}",
+        "Hi",
+        model=payload.model,
+        task_id="model-test",
+    )
 
 
 @router.put("/ai/{ident}", response_model=AIConfig)
