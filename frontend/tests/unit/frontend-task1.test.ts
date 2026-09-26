@@ -7,17 +7,19 @@ import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import { expect, it, vi } from 'vitest'
 import { pluginHealthRows } from '@/modules/system/public'
-import { createFanIn, createWorkflow } from '@/domain/workflow'
-import SourceStepCard from '@/components/workflow/SourceStepCard.vue'
-import FanInCard from '@/components/workflow/FanInCard.vue'
+import { createFanIn, createWorkflow, useWorkflowEditor } from '@/modules/workflows/public'
+import SourceStepCard from '@/modules/workflows/ui/SourceStepCard.vue'
+import FanInCard from '@/modules/workflows/ui/FanInCard.vue'
 import DashboardView from '@/pages/dashboard/DashboardPage.vue'
-import { workflowsApi } from '@/api/workflows'
-import { runsApi } from '@/api/runs'
-import type { CapabilityDescription, HealthReport } from '@/types'
+import { workflowsApi } from '@/app/services'
+import { runsApi } from '@/app/services'
+import type { CapabilityDescription, HealthReport } from '@/shared/types'
 const { health, plugins } = vi.hoisted(() => ({ health: vi.fn(), plugins: vi.fn() }))
-vi.mock('@/api/system', () => ({ systemApi: { health, plugins } }))
-vi.mock('@/api/workflows', () => ({ workflowsApi: { list: vi.fn().mockResolvedValue([]) } }))
-vi.mock('@/api/runs', () => ({ runsApi: { list: vi.fn().mockResolvedValue([]) } }))
+vi.mock('@/app/services', () => ({
+  systemApi: { health, plugins },
+  workflowsApi: { list: vi.fn().mockResolvedValue([]) },
+  runsApi: { list: vi.fn().mockResolvedValue([]) },
+}))
 const capability = (kind: 'collector' | 'channel', name: string): CapabilityDescription => ({
   kind,
   name,
@@ -106,21 +108,31 @@ it('shows internal monitoring only in dashboard advanced mode', async () => {
 })
 it('hides the four workflow options and preserves edited values across mode changes', async () => {
   plugins.mockResolvedValue([])
-  const workflow = ref({
+  const initial = {
     ...createWorkflow(),
     on_all_empty: 'notice' as const,
     input_separator: 'source-separator',
     fan_in: { ...createFanIn(), separator: 'result-separator', mark_incomplete: false },
-  })
+  }
   const advanced = ref(false)
+  let editor!: ReturnType<typeof useWorkflowEditor>
   const wrapper = mount(
     defineComponent({
       components: { SourceStepCard, FanInCard },
-      setup: () => ({ workflow, advanced }),
+      setup: () => {
+        editor = useWorkflowEditor({ identity: undefined })
+        editor.replace(initial)
+        return { editor, advanced }
+      },
       template:
-        '<el-form :model="workflow"><SourceStepCard v-model="workflow" :sources="[]" :advanced="advanced" /><FanInCard v-model="workflow" :configs="[]" :advanced="advanced" /></el-form>',
+        '<el-form :model="editor.draft"><SourceStepCard :editor="editor" :sources="[]" :gateway="gateway" :capabilities="[]" :protect="protect" :advanced="advanced" /><FanInCard :editor="editor" :configs="[]" :advanced="advanced" /></el-form>',
     }),
-    { global: { plugins: [ElementPlus] } },
+    {
+      global: {
+        plugins: [ElementPlus],
+        mocks: { gateway: { resolve: vi.fn(), save: vi.fn() }, protect: vi.fn() },
+      },
+    },
   )
   await flushPromises()
   const labels = ['全部为空时', '分隔符', '标记不完整结果']
@@ -134,7 +146,7 @@ it('hides the four workflow options and preserves edited values across mode chan
   advanced.value = false
   await flushPromises()
   for (const label of labels) expect(wrapper.text()).not.toContain(label)
-  expect(workflow.value).toMatchObject({
+  expect(editor.draft.value).toMatchObject({
     on_all_empty: 'notice',
     input_separator: 'edited-source',
     fan_in: { separator: 'edited-result', mark_incomplete: false },
