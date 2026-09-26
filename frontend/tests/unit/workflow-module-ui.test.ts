@@ -53,6 +53,9 @@ describe('workflow module UI', () => {
       global: { plugins: [ElementPlus] },
     })
     expect(wrapper.text()).toContain('email')
+    expect(wrapper.find('.channel-binding-card').exists()).toBe(true)
+    expect(wrapper.text()).toContain('编辑')
+    expect(wrapper.text()).not.toContain('编辑共用渠道')
     scope.stop()
   })
 })

@@ -42,11 +42,11 @@ a {
 }
 .session-link {
   color: var(--el-color-primary);
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  text-decoration: none;
 }
 .session-link:hover {
-  text-decoration-thickness: 2px;
+  color: var(--el-color-primary-dark-2, #1d4ed8);
+  text-decoration: none;
 }
 .session-link:focus-visible {
   outline: 2px solid var(--el-color-primary);
