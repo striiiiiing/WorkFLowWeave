@@ -25,6 +25,8 @@ _VALIDATION_CODES = {
     "context_budget_unavailable",
 }
 _CONFLICT_CODES = {
+    "channel_disabled",
+    "request_outcome_unknown",
     "target_unavailable",
     "already_exists",
     "checkpoint_missing",
@@ -53,6 +55,7 @@ _CONFLICT_CODES = {
     "agent_busy",
 }
 _UNAVAILABLE_CODES = {
+    "channel_unavailable",
     "checkpoint",
     "checkpoint_unavailable",
     "configuration_unavailable",
@@ -69,15 +72,17 @@ _UNAVAILABLE_CODES = {
 def status_for_code(code: str) -> int:
     if code == "precondition_required":
         return 428
-    if code in {"read_only", "path_forbidden"}:
+    if code in {"read_only", "path_forbidden", "session_forbidden"}:
         return 403
-    if code == "file_missing":
+    if code in {"file_missing", "channel_not_found", "request_not_found"}:
         return 404
     if code in _VALIDATION_CODES:
         return 422
     if code in _CONFLICT_CODES:
         return 409
     if code == "capacity" or code.startswith("capacity_"):
+        return 429
+    if code == "channel_queue_full":
         return 429
     if code in _UNAVAILABLE_CODES or code.startswith(("storage_", "checkpoint_")):
         return 503

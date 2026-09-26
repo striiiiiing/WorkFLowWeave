@@ -7,6 +7,8 @@ from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
 
 from logagent.agent.service import AgentService
+from logagent.channel.agent import AgentChannel
+from logagent.channel.web import WebChannel
 from logagent.errors import LogAgentError
 from logagent.interaction.app import create_app
 from logagent.interaction.errors import status_for_code
@@ -18,6 +20,7 @@ class FakeAgent:
         self.config = SimpleNamespace(model_dump=lambda mode="json": {"read_lines": 200})
         self.items = {}
         self.counter = 0
+        self.submissions = []
 
     async def list_sessions(self):
         return list(self.items.values())
@@ -36,7 +39,17 @@ class FakeAgent:
         return self.items[session_id]
 
     async def submit(self, session_id, text, *, request_id):
+        self.submissions.append((session_id, text, request_id))
         return {"session_id": session_id, "turn_id": "turn-1", "deduplicated": False}
+
+    async def append(self, session_id, text, *, request_id):
+        return {"session_id": session_id, "turn_id": "turn-1", "deduplicated": False}
+
+    async def compact(self, session_id):
+        return {"session_id": session_id, "turn_id": "turn-1", "deduplicated": False}
+
+    async def fork(self, session_id, **kwargs):
+        return await self.create_session(model=kwargs.get("model"))
 
     async def cancel(self, session_id):
         return self.items[session_id]
@@ -44,12 +57,24 @@ class FakeAgent:
     async def events(self, session_id, *, after=0):
         return [{"id": 1, "type": "session.created", "created_at": "now"}]
 
+    async def wait_events(self, session_id, *, after=0, wait_seconds=0.5):
+        return await self.events(session_id, after=after)
+
+    async def wait(self, turn_id):
+        return {"turn_id": turn_id, "status": "completed"}
+
 
 class Lifecycle:
     def __init__(self):
         self.services = SimpleNamespace(
             agent=FakeAgent(), plugins=SimpleNamespace(generation=1),
         )
+        self.services.agent_channel = AgentChannel(self.services.agent)
+        self.services.channels = _TestChannelManager(self.services)
+
+    def use_agent(self, agent):
+        self.services.agent = agent
+        self.services.agent_channel = AgentChannel(agent, self.services.session_view if hasattr(self.services, "session_view") else None)
 
     async def start(self):
         return self.services
@@ -60,6 +85,21 @@ class Lifecycle:
     async def update_plugin_setting(self, plugin_id, enabled):
         self.setting = (plugin_id, enabled)
         return SimpleNamespace(model_dump=lambda mode="json": {"registered": [], "errors": []})
+
+
+class _TestChannelManager:
+    """Expose only the HTTP transport boundary in isolated route tests."""
+
+    def __init__(self, services):
+        self.services = services
+        self.web_channel = WebChannel(self)
+
+    @property
+    def agent_channel(self):
+        return self.services.agent_channel
+
+    async def dispatch_web(self, command):
+        return await self.agent_channel.dispatch(command)
 
 
 def test_agent_session_message_and_replay_endpoints():
@@ -85,6 +125,19 @@ def test_missing_sse_session_returns_structured_error_before_streaming():
     assert response.json()["error"]["code"] == "session_not_found"
 
 
+def test_web_channel_uses_explicit_message_action_for_slash_prefixed_text():
+    owner = Lifecycle()
+    with TestClient(create_app(owner)) as client:
+        session_id = client.post("/api/agents/sessions", json={}).json()["session_id"]
+        response = client.post("/api/channels/web/commands", json={
+            "channel": "web", "session": session_id, "request_id": "literal",
+            "action": "message", "text": "/stop",
+        })
+    assert response.status_code == 202
+    assert response.json()["kind"] == "turn"
+    assert owner.services.agent.submissions == [(session_id, "/stop", "literal")]
+
+
 def test_agent_conflict_codes_are_http_409():
     for code in ("request_conflict", "session_conflict", "file_conflict", "replace_conflict"):
         assert status_for_code(code) == 409
@@ -104,7 +157,7 @@ async def test_real_sse_disconnect_keeps_turn_running_and_replays_its_completion
         tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model,
     )
     owner = Lifecycle()
-    owner.services.agent = service
+    owner.use_agent(service)
     app = create_app(owner)
     try:
         async with app.router.lifespan_context(app), httpx.AsyncClient(
@@ -166,7 +219,7 @@ async def test_real_sse_disconnect_keeps_turn_running_and_replays_its_completion
 async def test_files_enforce_conditional_writes_and_preserve_external_changes(tmp_path):
     service = AgentService(tmp_path / "workspace", tmp_path / "runtime")
     owner = Lifecycle()
-    owner.services.agent = service
+    owner.use_agent(service)
     app = create_app(owner)
     try:
         async with app.router.lifespan_context(app), httpx.AsyncClient(
@@ -201,7 +254,7 @@ async def test_slow_sse_consumer_does_not_block_turn_and_gets_terminal_racing_ba
     model = GatedModel(responses=[AIMessage(content="completed independently")])
     service = AgentService(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model)
     owner = Lifecycle()
-    owner.services.agent = service
+    owner.use_agent(service)
     app = create_app(owner)
     try:
         sid = (await service.create_session())["session_id"]
@@ -259,6 +312,7 @@ async def test_workflow_source_is_frozen_and_command_stop_has_independent_priori
         list_sessions=AsyncMock(return_value=[record]), get_session=AsyncMock(return_value=record),
         get_phase_content=AsyncMock(return_value=SimpleNamespace(availability="available", content={"outputs": {"answer": "frozen"}})),
     )
+    owner.services.agent_channel = AgentChannel(service, owner.services.session_view)
     app = create_app(owner)
     try:
         async with app.router.lifespan_context(app), httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:

@@ -24,6 +24,7 @@ from logagent.models import (
     CollectionContext,
     SetterTemplate,
     SourceConfig,
+    SourceOverride,
     SystemConfig,
     WorkflowDefinition,
 )
@@ -88,6 +89,91 @@ async def test_workflow_template_precedence_empty_override_and_reference_integri
     store.save("workflows", changed)
     assert store.snapshot("workflow").sources["source"].setters == {"fields": []}
     assert saved.sources["source"].setters == {"fields": ["level"]}
+
+
+async def test_detached_source_snapshot_stays_independent_from_shared_source(bindings):
+    store, _ = bindings
+    store.save("setters", SetterTemplate(id="base", collector="mock",
+                                         setters={"fields": ["message"]}))
+    shared = SourceConfig(
+        id="source", collector="mock", template="base",
+        options={"records": [{"message": "shared"}]},
+    )
+    store.save("sources", shared)
+    detached = store.resolve_source("source")
+    assert detached.template is None
+    assert detached.setters == {"fields": ["message"]}
+
+    store.save("workflows", workflow("linked"))
+    store.save("workflows", workflow("detached", source_overrides={
+        "source": {"source": detached},
+    }))
+    shared.enabled = False
+    store.save("sources", shared)
+    with pytest.raises(LogAgentError, match="没有可用的数据源"):
+        store.snapshot("linked")
+    assert store.snapshot("detached").sources["source"].options["records"] == [
+        {"message": "shared"},
+    ]
+    shared.enabled = True
+    store.save("sources", shared)
+    shared.options["records"] = [{"message": "updated"}]
+    store.save("sources", shared)
+    assert store.snapshot("linked").sources["source"].options["records"] == [
+        {"message": "updated"},
+    ]
+    frozen = store.snapshot("detached").sources["source"]
+    assert frozen.options["records"] == [{"message": "shared"}]
+    assert frozen.setters == {"fields": ["message"]}
+
+    changed_template = store.get("setters", "base")
+    changed_template.setters = {"fields": ["level"]}
+    store.save("setters", changed_template)
+    assert store.snapshot("detached").sources["source"].setters == {"fields": ["message"]}
+    assert store.snapshot("linked").sources["source"].setters == {"fields": ["level"]}
+
+
+async def test_detached_source_snapshot_requires_its_binding_id():
+    from logagent.models import WorkflowDefinition
+
+    with pytest.raises(ValidationError):
+        WorkflowDefinition(
+            id="workflow", sources=["source"],
+            analyses=[{"id": "task", "ai": "ai", "model": "model"}],
+            source_overrides={"source": {"source": {
+                "id": "another", "collector": "mock",
+            }}},
+        )
+
+
+async def test_detached_source_uses_its_own_collector_and_survives_shared_deletion(tmp_path):
+    class AlternateMockCollector(MockCollector):
+        name = "alternate"
+
+    registry = PluginRegistry([MockCollector(), AlternateMockCollector()])
+    await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
+    store = ResourceStore(
+        tmp_path / "resources.json", collector_register=registry.collectorRegister,
+    )
+    store.save("sources", SourceConfig(id="source", collector="mock"))
+    store.save("ai", AIConfig(id="ai", provider="test", models={"model": {}}))
+    detached = SourceConfig(
+        id="source", collector="alternate", options={"records": [{"message": "local"}]},
+    )
+    store.save("workflows", workflow("detached", source_overrides={
+        "source": {"source": detached},
+    }))
+
+    assert store.snapshot("detached").sources["source"].collector == "alternate"
+    store.delete("sources", "source")
+    assert store.snapshot("detached").sources["source"].options["records"] == [
+        {"message": "local"},
+    ]
+    original = detached.model_copy(deep=True)
+    resolved = store.resolve_source("source", SourceOverride(source=detached))
+    assert resolved.collector == "alternate"
+    assert resolved.options["records"] == [{"message": "local"}]
+    assert detached == original
 
 
 async def test_email_account_can_be_saved_before_recipient_but_binding_requires_it(bindings):

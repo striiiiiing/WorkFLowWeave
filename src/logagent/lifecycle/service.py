@@ -17,6 +17,7 @@ from logagent.agent import AgentService
 from logagent.ai import AIService, ChannelFactory, OpenAIChannelFactory
 from logagent.ai.options import LEGACY_HTTP_PROVIDER, OPENAI_COMPATIBLE_PROVIDER
 from logagent.channel import ChannelManager, builtin_channels
+from logagent.channel.agent import AgentChannel
 from logagent.collection import CollectorManager, builtin_collectors
 from logagent.config import (
     ConfigurationReader,
@@ -263,6 +264,14 @@ class ApplicationLifecycle:
                 await agent.initialize()
                 self._agent = agent
 
+                stage = "channel_agent_port"
+                agent_channel = AgentChannel(agent, session_view=session_view)
+                await channels.configure_agent(
+                    agent_channel,
+                    Path(self.config.data_dir) / "agents" / "channels.sqlite3",
+                )
+                await channels.start_agent(resources.list("channels"))
+
                 stage = "intervals"
                 intervals = IntervalTrigger(workflow, clock=self._clock)
                 self._intervals = intervals
@@ -397,6 +406,7 @@ class ApplicationLifecycle:
             if scope == "resources":
                 await asyncio.to_thread(services.resources.reload_resources)
                 self._resource_view_changed()
+                await services.channels.configure(services.resources.list("channels"))
                 logger.info(
                     "resources_reloaded",
                     extra={"event": "resources_reloaded", "scope": "resources"},
@@ -424,11 +434,13 @@ class ApplicationLifecycle:
         try:
             active = await services.workflow.pause_admission()
             active_agent = await services.agent.pause_admission() if services.agent is not None else 0
-            if active or active_agent:
+            active_channels = services.channels.active_operations
+            if active or active_agent or active_channels:
                 self._reload_diagnostic = ErrorInfo(
                     code="plugin_reload_conflict",
                     message="存在活动运行时不能 reload 插件",
-                    details={"active_runs": active, "active_agent_runs": active_agent},
+                    details={"active_runs": active, "active_agent_runs": active_agent,
+                             "active_channel_operations": active_channels},
                 )
                 if was_accepting and not self._shutdown_requested:
                     services.workflow.resume_admission()
@@ -439,10 +451,12 @@ class ApplicationLifecycle:
                 raise LogAgentError(
                     "plugin_reload_conflict",
                     "存在活动运行时不能 reload 插件",
-                    {"active_runs": active, "active_agent_runs": active_agent},
+                    {"active_runs": active, "active_agent_runs": active_agent,
+                     "active_channel_operations": active_channels},
                 )
 
             stage = "unload_owners"
+            await services.channels.suspend()
             for owner in old_owners:
                 await services.channels.unload_owner(owner)
 
@@ -470,6 +484,8 @@ class ApplicationLifecycle:
             if self._shutdown_requested:
                 raise LogAgentError("shutdown", "插件重载期间收到关闭请求")
 
+            stage = "resume_channel_receivers"
+            await services.channels.resume(services.resources.list("channels"))
             self._plugin_report = report
             self._reload_diagnostic = None
             self._reload_requires_recovery = False
@@ -613,6 +629,12 @@ class ApplicationLifecycle:
             ):
                 return False
 
+        if self._channels is not None:
+            if not await self._cleanup(
+                "channels_suspend", self._channels.suspend, errors, _CLEANUP_TIMEOUT,
+            ):
+                return False
+
         if self._intervals is not None and self._workflow is not None:
             if not await self._cleanup(
                 "workflow_pause_admission",
@@ -640,6 +662,12 @@ class ApplicationLifecycle:
             if not await self._cleanup("agent", self._agent.close, errors, _CLEANUP_TIMEOUT):
                 return False
             self._agent = None
+
+        if self._channels is not None:
+            if not await self._cleanup(
+                "channels_ingress", self._channels.close, errors, _CLEANUP_TIMEOUT + 1,
+            ):
+                return False
 
         if self._ai is not None:
             if not await self._cleanup("ai", self._ai.close, errors, _CLEANUP_TIMEOUT):
@@ -755,3 +783,5 @@ class ApplicationLifecycle:
             and self._intervals is not None
         ):
             self._intervals.update(self._resources.list("workflows"))
+            if self._channels is not None:
+                self._channels.request_sync(self._resources.list("channels"))
