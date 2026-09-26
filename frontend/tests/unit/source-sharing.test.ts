@@ -2,15 +2,14 @@ import { defineComponent, ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus, { ElPopconfirm } from 'element-plus'
 import { afterEach, expect, it, vi } from 'vitest'
-import { resourcesApi } from '@/api/resources'
-import SourceStepCard from '@/components/workflow/SourceStepCard.vue'
-import SourceSummary from '@/components/resources/SourceSummary.vue'
-import SourceEditorDrawer from '@/components/resources/SourceEditorDrawer.vue'
-import { createResource, resourceKinds, sourceUsage } from '@/domain/resources'
-import { createWorkflow } from '@/domain/workflow'
-import type { SourceConfig, WorkflowDefinition } from '@/types'
+import { resourcesApi } from '@/app/services'
+import SourceStepCard from '@/modules/workflows/ui/SourceStepCard.vue'
+import { SourceSummary, SourceEditorSession } from '@/modules/resources/public'
+import { createResource, resourceKinds } from '@/modules/resources/public'
+import { createWorkflow, sourceUsage, useWorkflowEditor } from '@/modules/workflows/public'
+import type { SourceConfig, WorkflowDefinition } from '@/shared/types'
 
-vi.mock('@/api/resources', () => ({
+vi.mock('@/app/services', () => ({
   resourcesApi: { resolveSource: vi.fn(), replace: vi.fn() },
 }))
 const wrappers: ReturnType<typeof mount>[] = []
@@ -26,25 +25,36 @@ function setup() {
     collector: 'mock',
     options: { limit: 3 },
   } as SourceConfig
-  const workflow = ref<WorkflowDefinition>({
+  const initial: WorkflowDefinition = {
     ...createWorkflow(),
     id: 'current',
     sources: ['logs'],
-  })
+  }
   const peer = { ...createWorkflow(), id: 'peer', sources: ['logs'] }
   const sources = ref([source])
+  let editor!: ReturnType<typeof useWorkflowEditor>
   const wrapper = mount(
     defineComponent({
       components: { SourceStepCard },
-      setup: () => ({ workflow, sources, workflows: [peer] }),
+      setup: () => {
+        editor = useWorkflowEditor({ identity: undefined })
+        editor.replace(initial)
+        return {
+          editor,
+          sources,
+          usage: (id: string) => sourceUsage(id, [editor.draft.value!, peer]),
+          gateway: { resolve: resourcesApi.resolveSource, save: vi.fn() },
+          protect: vi.fn(),
+        }
+      },
       template:
-        '<el-form :model="workflow"><SourceStepCard v-model="workflow" :sources="sources" :workflows="workflows" /></el-form>',
+        '<el-form :model="editor.draft"><SourceStepCard :editor="editor" :sources="sources" :usage="usage" :gateway="gateway" :capabilities="[]" :protect="protect" /></el-form>',
     }),
-    { global: { plugins: [ElementPlus], stubs: { SourceEditorDrawer: true } } },
+    { global: { plugins: [ElementPlus], stubs: { SourceEditorSession: true } } },
   )
   wrappers.push(wrapper)
   const button = (text: string) => wrapper.findAll('button').find((item) => item.text() === text)!
-  return { wrapper, source, workflow, sources, peer, button }
+  return { wrapper, source, workflow: editor.draft, editor, sources, peer, button }
 }
 
 it('requires detaching a shared source and retains the independent configuration when the center changes', async () => {
@@ -62,9 +72,8 @@ it('requires detaching a shared source and retains the independent configuration
   expect(resourcesApi.replace).not.toHaveBeenCalled()
 
   await button('编辑配置').trigger('click')
-  const editor = wrapper.getComponent(SourceEditorDrawer)
-  expect(editor.props('local')).toBe(true)
-  editor.vm.$emit('saved', { ...source, options: { limit: 8 } })
+  const sourceEditor = wrapper.getComponent(SourceEditorSession)
+  sourceEditor.vm.$emit('saved', { ...source, options: { limit: 8 } })
   await flushPromises()
   expect(workflow.value.source_overrides.logs.source?.options).toEqual({ limit: 8 })
   expect(sources.value[0].options).toEqual({ limit: 99 })
@@ -87,12 +96,11 @@ it('surfaces resolution failure and keeps the original binding intact', async ()
 
 it('requires explicit detachment before editing a legacy sparse override', async () => {
   const { wrapper, workflow, button } = setup()
-  workflow.value.source_overrides = {
-    logs: { options: { limit: 5 }, setters: {}, template: null },
-  }
+  const editor = wrapper.getComponent(SourceStepCard).props('editor')
+  editor.setSource('logs', { options: { limit: 5 }, setters: {}, template: null })
   await flushPromises()
   expect(button('编辑配置').attributes('disabled')).toBeDefined()
-  expect(wrapper.text()).toContain('以下为共用基础配置')
+  expect(wrapper.text()).toContain('多个工作流共用此数据源')
   expect(workflow.value.source_overrides.logs.source).toBeUndefined()
   expect(resourcesApi.resolveSource).not.toHaveBeenCalled()
 })
@@ -101,9 +109,8 @@ it('adds the persisted source to the workflow without replacing other bindings',
   const { wrapper, workflow, source, button } = setup()
   await button('新增采集源').trigger('click')
   const added = { ...source, id: 'new-source' }
-  wrapper.getComponent(SourceEditorDrawer).vm.$emit('saved', added)
+  wrapper.getComponent(SourceEditorSession).vm.$emit('saved', added)
   await flushPromises()
-  expect(wrapper.getComponent(SourceStepCard).emitted('savedSource')).toEqual([[added]])
   expect(workflow.value.sources).toEqual(['logs', 'new-source'])
 })
 

@@ -1,20 +1,18 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import { afterEach, expect, it, vi } from 'vitest'
-import {
-  agentsApi,
-  type AgentEvent,
-  type AgentFile,
-  type AgentSession,
-  type AgentSettings,
-} from '@/api/agents'
-import { ApiError } from '@/api/client'
+import { type AgentEvent, type AgentFile } from '@/modules/agents/public'
+import type { AgentSession, AgentSettings } from '@/modules/agents/public'
+import { agentsApi } from '@/app/services'
+import { ApiError } from '@/shared/api/errors'
 import AgentFileDrawer from '@/modules/agents/ui/AgentFileDrawer.vue'
 import AgentTranscript from '@/modules/agents/ui/AgentTranscript.vue'
 import { useAgentFiles } from '@/modules/agents/composables/useAgentFiles'
-import AgentBranchTree from '@/components/agent/AgentBranchTree.vue'
-import AgentSettingsPanel from '@/components/agent/AgentSettings.vue'
-import { transcriptRows } from '@/components/agent/transcript'
+import { transcriptRows } from '@/modules/agents/public'
+import AgentSidebar from '@/modules/agents/ui/AgentSidebar.vue'
+import AgentGlobalSettingsModal from '@/modules/agents/ui/AgentGlobalSettingsModal.vue'
+import { useAgentSettings } from '@/modules/agents/composables/useAgentSettings'
+import { effectScope } from 'vue'
 const wrappers: ReturnType<typeof mount>[] = []
 afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount())
@@ -194,11 +192,12 @@ it('keeps the parent branch visible and selects the child without mutating sessi
       parent_branch_id: 'main',
     },
   ] as AgentSession[]
-  const wrapper = mount(AgentBranchTree, { props: { sessions, selected: 'c' } })
+  const wrapper = mount(AgentSidebar, { props: { sessions, selectedId: 'c' }, global })
   wrappers.push(wrapper)
-  expect(wrapper.findAll('button')).toHaveLength(2)
-  expect(wrapper.get('[aria-current="page"]').text()).toContain('父分支 main')
-  await wrapper.findAll('button')[0].trigger('click')
+  expect(wrapper.findAll('.agent-session')).toHaveLength(2)
+  expect(wrapper.get('.agent-session.active').text()).toContain('branch')
+  expect(wrapper.text()).toContain('main')
+  await wrapper.findAll('.agent-session')[0].trigger('click')
   expect(wrapper.emitted('select')?.[0][0]).toEqual(sessions[0])
   expect(sessions[1].parent_session_id).toBe('p')
 })
@@ -238,18 +237,34 @@ it('edits persistent settings, exposes disabled tools, and uses the existing plu
   vi.spyOn(agentsApi, 'config').mockResolvedValue(settings)
   const save = vi.spyOn(agentsApi, 'updateConfig').mockResolvedValue(settings.config)
   const toggle = vi.spyOn(agentsApi, 'updateTool').mockResolvedValue({})
-  const wrapper = mount(AgentSettingsPanel, { global })
+  const scope = effectScope()
+  const controller = scope.run(() => useAgentSettings(agentsApi))!
+  const wrapper = mount(AgentGlobalSettingsModal, {
+    props: { modelValue: true, controller },
+    attachTo: document.body,
+    global,
+  })
   wrappers.push(wrapper)
   await flushPromises()
-  expect(wrapper.text()).toContain('按服务进程权限运行')
-  expect(wrapper.text()).toContain('Schema 不可用')
-  await wrapper.get('input[aria-label="Memory 时区"]').setValue('UTC')
-  await wrapper.get('form').trigger('submit')
+  const tab = (name: string) =>
+    [...document.querySelectorAll('[role="tab"]')].find((item) =>
+      item.textContent?.includes(name),
+    ) as HTMLElement
+  tab('工具插件与调度').click()
   await flushPromises()
-  expect(save).toHaveBeenCalledWith(expect.objectContaining({ timezone: 'UTC', idle_timeout: 300 }))
-  await wrapper.get('[role="switch"]').trigger('click')
-  // The last switch belongs to the tool, the first two are sandbox settings.
-  await wrapper.findAll('[role="switch"]')[2].trigger('click')
+  expect(document.body.textContent).toContain('disabled')
+  await wrapper.find('.tool-switch').findComponent({ name: 'ElSwitch' }).vm.$emit('change', true)
   await flushPromises()
   expect(toggle).toHaveBeenCalledWith('agent_shell', true)
+  tab('基础设置').click()
+  await flushPromises()
+  const timezone = document.querySelector('input[placeholder="Asia/Shanghai"]') as HTMLInputElement
+  timezone.value = 'UTC'
+  timezone.dispatchEvent(new Event('input', { bubbles: true }))
+  ;[...document.querySelectorAll('button')]
+    .find((item) => item.textContent?.trim() === '保存全局设置')!
+    .click()
+  await flushPromises()
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ timezone: 'UTC', idle_timeout: 300 }))
+  scope.stop()
 })
