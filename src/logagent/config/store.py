@@ -21,11 +21,13 @@ from logagent.config.calls import (
     resolve_source_call,
     select_source_call,
 )
+from logagent.config.migrations import migrate_resources
 from logagent.config.normalize import normalize_options, validate_effective_source
 from logagent.config.reader import read_json
 from logagent.errors import LogAgentError, validation_error
 from logagent.models import (
     AIConfig,
+    AtSchedule,
     ChannelConfig,
     ResourceKind,
     SaveMode,
@@ -52,7 +54,7 @@ Validator = Callable[[StrictModel], None]
 
 
 class _Resources(StrictModel):
-    format_version: int = Field(ge=1, le=1)
+    format_version: int = Field(ge=2, le=2)
     sources: dict[str, SourceConfig]
     setters: dict[str, SetterTemplate]
     ai: dict[str, AIConfig]
@@ -101,12 +103,16 @@ class ResourceStore:
         self._collectors, self._channels = collector_register, channel_register
         self._validators = dict(validators or {})
         self._lock = threading.RLock()
-        self._view = _Resources(format_version=1, **{kind: {} for kind in _MODELS})
+        self._view = _Resources(format_version=2, **{kind: {} for kind in _MODELS})
         path = Path(self.location)
         if path.exists() or path.is_symlink():
-            candidate = self._parse(read_json(path))
+            data = read_json(path)
+            candidate = self._parse(migrate_resources(data))
             self._validate(candidate, changed=set(), normalize=False)
-            self._view = candidate
+            if data.get("format_version") == 1:
+                self._publish(candidate)
+            else:
+                self._view = candidate
         else:
             for kind, values in (initial_resources or {}).items():
                 target = getattr(self._view, self._kind(kind))
@@ -365,6 +371,17 @@ class ResourceStore:
             self._commit(data, changed={(kind, value.id)})
             return copy_model(getattr(self._view, kind)[value.id])
 
+    def consume_schedule(self, ident: str, expected: AtSchedule) -> bool:
+        """Compare and consume under the publication lock before any run admission."""
+        with self._lock:
+            workflow = self._view.workflows.get(ident)
+            if workflow is None or not workflow.enabled or workflow.schedule != expected:
+                return False
+            data = self._view.model_dump(mode="python")
+            data["workflows"][ident]["schedule"] = None
+            self._commit(data, changed=set(), normalize=False)
+            return True
+
     def save_many(self, resources: Mapping[ResourceKind, list[Any]]) -> None:
         """Validate and publish mutually dependent resource updates together."""
         with self._lock:
@@ -487,7 +504,7 @@ class ResourceStore:
 
     def reload_resources(self) -> None:
         with self._lock:
-            candidate = self._parse(read_json(Path(self.location)))
+            candidate = self._parse(migrate_resources(read_json(Path(self.location))))
             changed = {
                 (kind, ident) for kind in _MODELS
                 for ident, value in getattr(candidate, kind).items()

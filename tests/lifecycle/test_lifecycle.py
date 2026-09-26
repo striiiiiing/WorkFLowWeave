@@ -208,7 +208,7 @@ async def _seed_resources(
             sources=["source"],
             analyses=[AnalysisTask(id="task", ai="ai", model="model")],
             channels=["channel"] if channel else [],
-            interval_seconds=interval,
+            schedule={"type": "every", "every_seconds": interval} if interval else None,
             enabled=enabled,
             include_counts=include_counts,
         ),
@@ -332,18 +332,16 @@ async def test_temporary_config_full_assembly_health_and_idempotent_shutdown(tmp
 async def test_resources_reload_rebuilds_future_plan_and_disabled_rejects_manual(tmp_path):
     config = _config(tmp_path)
     await _seed_resources(config)
-    clock = [0.0]
     lifecycle = ApplicationLifecycle(
         config,
         channel_factories={"mock": TestChannelFactory()},
-        clock=lambda: clock[0],
     )
     services = await lifecycle.start()
-    assert services.intervals._plans["timed"] == (10.0, 10.0)
+    assert services.intervals.scheduler.get_job("timed").trigger.interval.total_seconds() == 10
 
-    _rewrite_workflow(config, interval_seconds=25)
+    _rewrite_workflow(config, schedule={"type": "every", "every_seconds": 25})
     await lifecycle.reload("resources")
-    assert services.intervals._plans["timed"] == (25.0, 25.0)
+    assert services.intervals.scheduler.get_job("timed").trigger.interval.total_seconds() == 25
 
     _rewrite_workflow(config, enabled=False)
     await lifecycle.reload("resources")
@@ -359,18 +357,15 @@ async def test_interval_and_manual_share_capacity_snapshot_and_cancel(tmp_path):
     config = _config(tmp_path, max_concurrent_runs=1)
     await _seed_resources(config)
     provider = BlockingChannelFactory()
-    clock = [0.0]
     lifecycle = ApplicationLifecycle(
         config,
         channel_factories={"mock": provider},
-        clock=lambda: clock[0],
     )
     services = await lifecycle.start()
 
     await services.workflow.trigger("timed", session_id="manual")
     await asyncio.wait_for(provider.started.wait(), 5)
-    clock[0] = 10.0
-    assert await services.intervals.tick() == []
+    assert await services.intervals._execute("timed", services.intervals._plans["timed"]) is None
     assert provider.calls == 1
     assert "LogAgent mock record" in provider.inputs[0]
 
@@ -385,14 +380,13 @@ async def test_interval_and_manual_share_capacity_snapshot_and_cancel(tmp_path):
             options={"records": [{"message": "new snapshot"}]},
         ),
     )
-    clock[0] = 20.0
-    scheduled = await services.intervals.tick()
-    assert len(scheduled) == 1
+    scheduled = await services.intervals._execute("timed", services.intervals._plans["timed"])
+    assert scheduled is not None
     await _wait_for_calls(provider, 2)
     assert "new snapshot" in provider.inputs[1]
 
-    await services.workflow.cancel(scheduled[0])
-    assert (await services.workflow.wait(scheduled[0])).status == "cancelled"
+    await services.workflow.cancel(scheduled)
+    assert (await services.workflow.wait(scheduled)).status == "cancelled"
     await lifecycle.shutdown()
 
 
@@ -452,7 +446,7 @@ async def test_shutdown_waits_for_admitted_interval_archive_before_stopping(tmp_
         if not lifecycle._shutdown_complete:
             await lifecycle.shutdown()
 
-    assert services.intervals._task is None
+    assert not services.intervals.scheduler.running
     assert services.workflow.coordinator.active == 0
     assert not notifications.exists()
 
@@ -647,22 +641,20 @@ async def test_log_file_none_disables_logging_without_default_path(tmp_path):
 async def test_resource_save_rebuilds_future_interval_plan(tmp_path):
     config = _config(tmp_path)
     await _seed_resources(config)
-    clock = [0.0]
     lifecycle = ApplicationLifecycle(
         config,
         channel_factories={"mock": TestChannelFactory()},
-        clock=lambda: clock[0],
     )
     services = await lifecycle.start()
     try:
         workflow = services.resources.get("workflows", "timed")
         services.resources.save(
             "workflows",
-            WorkflowDefinition.model_validate(workflow).model_copy(
-                update={"interval_seconds": 25.0}
-            ),
+            WorkflowDefinition.model_validate({
+                **workflow.model_dump(), "schedule": {"type": "every", "every_seconds": 25.0},
+            }),
         )
-        assert services.intervals._plans["timed"] == (25.0, 25.0)
+        assert services.intervals.scheduler.get_job("timed").trigger.interval.total_seconds() == 25
     finally:
         await lifecycle.shutdown()
 
