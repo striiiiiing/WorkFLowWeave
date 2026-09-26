@@ -130,7 +130,11 @@ function check(sourceFiles) {
           if (moduleName(file) === moduleName(target)) {
             if (isPublic(target) && !isPublic(file)) add(file, 'own-public', specifier)
           } else {
-            if (!isPublic(target) && !(from === 'app' && rel === 'app/bootstrap.ts' && relative(target).includes('/api/'))) add(file, 'module-public', specifier)
+            if (
+              !isPublic(target) &&
+              !(from === 'app' && rel === 'app/bootstrap.ts' && relative(target).includes('/api/'))
+            )
+              add(file, 'module-public', specifier)
             if (
               from === 'modules' &&
               !(moduleName(file) === 'workflows' && moduleName(target) === 'resources')
