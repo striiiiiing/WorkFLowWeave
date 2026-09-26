@@ -15,11 +15,11 @@
 | `CronTimer` | 持有一个 `AsyncIOScheduler` 实例；资源变化时更新其作业，全部 Workflow 共用该调度器的计时循环。 |
 | `executeJob` | 到期后调用现有 `WorkflowService.trigger(workflow_id)`，复用快照、容量、取消和隔离运行语义。 |
 
-APScheduler 只使用内存作业存储，启动时从 Workflow 资源重建计划，避免两份持久化计划。`at` 对应一次性 `DateTrigger`；到期先持久消费计划，再尝试触发，保证进程重启后不会重复执行；准入失败显式记录，不静默补发。`every` 对应 `IntervalTrigger`，允许任意正秒间隔。`cron` 使用基于 `croniter` 的 APScheduler 触发器，保持五段表达式、时区与实际下次触发的语义一致；不把任意间隔或一次性任务硬转为 Cron 表达式。三个前端模式在后端都归一为调度器作业，但触发器类型不同。
+APScheduler 只使用内存作业存储，启动时从 Workflow 资源重建计划，避免两份持久化计划。`at` 对应限定到指定年月日时分秒的 APScheduler `CronTrigger`，到期先持久消费计划，再尝试触发，保证进程重启后不会重复执行；准入失败显式记录，不静默补发。`every` 对应 `IntervalTrigger`，允许任意正秒间隔。`cron` 对应 APScheduler `CronTrigger.from_crontab`，使用指定时区；不能表达为 Cron 的任意间隔仍保持 Interval 语义。三个前端模式在后端归一为 Cron 与 Interval 两类作业。
 
 错过多个周期只触发一次，随后从当前时间计算未来到期。禁用的 Workflow 不自动执行；重新启用后从当前时刻计算计划。资源变化只更新发生变化的作业，不无故重置未变化的周期截止时间。APScheduler 的执行函数只提交 `WorkflowService.trigger`，不得在调度器内复制 Workflow 运行逻辑。
 
-Cron 说明由 `cron-descriptor` 生成，`croniter` 仍是表达式合法性和下一次时间的权威。后端提供只读预览接口返回说明与下一次到期，前端编辑 Cron 时展示；预览失败显示明确错误，不代替保存校验。前端用 `at` 时间选择、`every` 数值与单位、Cron 表达式与时区控件，保持已有编辑器布局。
+Cron 说明由 `cron-descriptor` 生成，APScheduler 的 `CronTrigger` 是表达式合法性和下一次时间的权威。后端提供只读预览接口返回说明与下一次到期，前端编辑 Cron 时展示；预览失败显示明确错误，不代替保存校验。前端用 `at` 时间选择、`every` 数值与单位、Cron 表达式与时区控件，保持已有编辑器布局。
 
 ## 验证重点
 

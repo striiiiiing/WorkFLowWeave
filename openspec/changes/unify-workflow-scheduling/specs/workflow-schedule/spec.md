@@ -30,7 +30,7 @@
 
 ### Requirement: Cron 说明和校验
 
-系统 SHALL 用 `croniter` 验证严格五段表达式并计算带时区的未来到期；SHALL 用 `cron-descriptor` 给用户可读说明。无效表达式或时区 SHALL 明确报错。
+系统 SHALL 用 APScheduler CronTrigger 验证严格五段表达式并计算带时区的未来到期；SHALL 用 `cron-descriptor` 给用户可读说明。无效表达式或时区 SHALL 明确报错。
 
 #### Scenario: 预览 Cron
 

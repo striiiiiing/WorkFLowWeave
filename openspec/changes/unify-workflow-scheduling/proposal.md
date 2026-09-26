@@ -8,7 +8,7 @@
 
 - Workflow 使用单个 `schedule` 字段表示手动、一次性 `at`、周期性 `every` 或 Cron；移除旧调度字段，并显式迁移已保存的旧资源。
 - 调度组件按持久化访问、计划操作、单个 APScheduler 实例和执行入口拆分；所有到期任务仍通过 `WorkflowService.trigger` 运行。
-- Cron 使用 `croniter` 计算下一次到期，使用 `cron-descriptor` 生成可读说明。
+- APScheduler 使用 Cron 与 Interval 两类触发器计算到期，使用 `cron-descriptor` 生成可读 Cron 说明。
 - 前端编辑器可配置三种调度并展示 Cron 说明。
 
 ## Capabilities
@@ -18,5 +18,5 @@
 ## Sources
 
 - [任务要求](../backendFix/任务要求.md)
-- 用户后续要求使用 APScheduler 统一管理所有计划。`at/every/cron` 在调度器内分别映射为符合原语义的触发器，不强行改写为五段 Cron 表达式。
+- 用户更新后的要求指定 APScheduler，并明确 `at/every/cron` 是前端模式，后端归一为 Cron 和 Interval 两类触发器。
 - [已有 Cron 设计](../refine-frontend-interactions/design.md)；本变更明确替换其旧间隔兼容决策，依据用户本次回复“迁移为新 schedule 字段并移除旧字段”。
