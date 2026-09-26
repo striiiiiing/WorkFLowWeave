@@ -92,7 +92,7 @@ describe('monitoring diagnostics', () => {
     })
   })
 
-  it('keeps system health visible when the plugin list query fails', async () => {
+  it('keeps system health visible without loading the plugin list', async () => {
     vi.mocked(workflowsApi.list).mockResolvedValue([])
     vi.mocked(runsApi.list).mockResolvedValue([])
     health.mockResolvedValue({ ...healthReport, status: 'ready', components: [] })
@@ -113,8 +113,9 @@ describe('monitoring diagnostics', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('系统状态')
     expect(wrapper.text()).toContain('就绪')
-    expect(wrapper.text()).toContain('插件目录读取失败')
+    expect(wrapper.text()).not.toContain('插件目录读取失败')
     expect(wrapper.text()).not.toContain('系统状态—')
+    expect(plugins).not.toHaveBeenCalled()
   })
 
   it('shows readable mobile record details and Chinese stage names', () => {
@@ -164,7 +165,7 @@ describe('monitoring diagnostics', () => {
   })
 })
 
-it('reads one health result for all dashboard consumers and retains timestamps and prior counts on refresh failure', async () => {
+it('reads one health result for dashboard consumers and retains prior counts on refresh failure', async () => {
   vi.mocked(workflowsApi.list).mockResolvedValue([])
   vi.mocked(runsApi.list).mockResolvedValue([session])
   health.mockResolvedValue(healthReport)
@@ -183,20 +184,17 @@ it('reads one health result for all dashboard consumers and retains timestamps a
   wrappers.push(wrapper)
   await flushPromises()
   expect(health).toHaveBeenCalledTimes(1)
-  expect(plugins).toHaveBeenCalledTimes(1)
+  expect(plugins).not.toHaveBeenCalled()
   expect(runsApi.list).toHaveBeenCalledWith({ limit: 5 }, expect.any(AbortSignal))
-  await wrapper.get('[role="switch"]').trigger('click')
-  expect(health).toHaveBeenCalledTimes(1)
-  expect(wrapper.text()).toContain('plugins')
-  plugins.mockRejectedValue(new Error('刷新插件失败'))
+  vi.mocked(workflowsApi.list).mockRejectedValue(new Error('刷新工作流失败'))
   await wrapper
     .findAll('button')
     .find((button) => button.text() === '刷新')!
     .trigger('click')
   await flushPromises()
   expect(health).toHaveBeenCalledTimes(2)
-  const card = wrapper.findAll('.el-card').find((card) => card.text().includes('已注册插件能力'))!
-  expect(card.get('.text-3xl').text()).toBe('1')
+  const card = wrapper.findAll('.el-card').find((card) => card.text().includes('已保存工作流'))!
+  expect(card.get('.text-3xl').text()).toBe('0')
   expect(card.text()).toContain('以下内容来自上次成功读取')
   expect(wrapper.text()).toContain('每日汇总')
 })

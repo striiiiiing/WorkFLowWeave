@@ -39,12 +39,6 @@ const emit = defineEmits<{
         @update:model-value="emit('id', $event)"
       />
     </el-form-item>
-    <el-form-item label="启用数据源">
-      <el-switch
-        :model-value="value.enabled"
-        @update:model-value="emit('basic', { enabled: Boolean($event) })"
-      />
-    </el-form-item>
     <el-form-item label="采集器" prop="collector" :rules="idRule">
       <el-select
         :model-value="value.collector"

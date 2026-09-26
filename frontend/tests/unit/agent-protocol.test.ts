@@ -35,6 +35,27 @@ const event = (
 })
 
 describe('Agent event model', () => {
+  it('updates a topic title independently of the active turn', () => {
+    const renamed = {
+      ...event(1, 'session.title.changed', 'old', { title: '告警复盘' }),
+      turn_id: null,
+    }
+    expect(projectAgentSession(session(), parseAgentEvent(renamed))).toMatchObject({
+      title: '告警复盘',
+      status: 'running',
+      turn_id: 'current',
+    })
+  })
+
+  it('accepts reasoning-only provider deltas and rejects a malformed reasoning payload', () => {
+    expect(
+      parseAgentEvent(event(1, 'message.delta', 'current', { reasoning: '实际思考' })).data,
+    ).toEqual({ reasoning: '实际思考' })
+    expect(() => parseAgentEvent(event(2, 'message.delta', 'current', { reasoning: 42 }))).toThrow(
+      'message.delta',
+    )
+  })
+
   it('retains unknown events and rejects malformed known payloads', () => {
     expect(parseAgentEvent(event(1, 'future.detail', 'current', { extra: 1 }))).toEqual(
       event(1, 'future.detail', 'current', { extra: 1 }),

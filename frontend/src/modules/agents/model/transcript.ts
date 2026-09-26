@@ -9,7 +9,7 @@ const terminalTurnLabels: Record<string, string> = {
 
 export interface TranscriptRow {
   key: string
-  role: 'user' | 'assistant' | 'tool' | 'summary' | 'status' | 'command'
+  role: 'user' | 'assistant' | 'reasoning' | 'tool' | 'summary' | 'status' | 'command'
   event: AgentEvent
   text: string
   status?: string
@@ -23,6 +23,17 @@ export function contentText(value: unknown): string {
       .join('')
   return ''
 }
+
+export function reasoningText(value: unknown): string {
+  if (!Array.isArray(value)) return ''
+  return value
+    .map((item) => {
+      if (item?.type === 'reasoning' && typeof item.reasoning === 'string') return item.reasoning
+      if (item?.type === 'thinking' && typeof item.thinking === 'string') return item.thinking
+      return ''
+    })
+    .join('')
+}
 export function transcriptRows(events: AgentEvent[]): TranscriptRow[] {
   const rows: TranscriptRow[] = []
   const lookup = new Map<string, TranscriptRow>()
@@ -35,9 +46,23 @@ export function transcriptRows(events: AgentEvent[]): TranscriptRow[] {
       rows.push({ key: base, role: 'user', event, text: contentText(data.text) })
     else if (
       event.type === 'message.delta' ||
-      (event.type === 'message.completed' && !data.incremental)
+      (event.type === 'message.completed' && (!data.incremental || data.reasoning))
     ) {
-      const content = contentText(data.content ?? data.text)
+      const reasoning = contentText(data.reasoning) || reasoningText(data.content)
+      if (reasoning) {
+        const key = `${event.session_id}:reasoning:${data.message_id ?? event.turn_id}`
+        let row = lookup.get(key)
+        if (!row) {
+          row = { key, role: 'reasoning', event, text: '' }
+          lookup.set(key, row)
+          rows.push(row)
+        }
+        row.text += reasoning
+      }
+      const content =
+        event.type === 'message.completed' && data.incremental
+          ? ''
+          : contentText(data.content ?? data.text)
       if (!content) continue
       const key = `${event.session_id}:message:${data.message_id ?? event.turn_id}`
       let row = lookup.get(key)

@@ -13,6 +13,7 @@ export interface ContextBudget {
 export interface AgentSession {
   session_id: string
   branch_id: string
+  title?: string
   model: string | null
   workflow_session_id: string | null
   created_at: string

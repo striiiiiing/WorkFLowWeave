@@ -73,6 +73,46 @@ describe('AgentSlashMenu', () => {
 })
 
 describe('transcriptRows for Agent events', () => {
+  it('keeps streamed thinking separate and does not repeat an incremental final answer', () => {
+    const base = { session_id: 's1', turn_id: 't1', at: '2026-09-26T10:00:00Z' }
+    const rows = transcriptRows([
+      { ...base, id: 1, type: 'message.delta', data: { message_id: 'm1', reasoning: '推理' } },
+      { ...base, id: 2, type: 'message.delta', data: { message_id: 'm1', content: '答案' } },
+      {
+        ...base,
+        id: 3,
+        type: 'message.completed',
+        data: { message_id: 'm1', incremental: true, text: '答案', reasoning: '补充' },
+      },
+    ])
+    expect(rows.map(({ role, text }) => ({ role, text }))).toEqual([
+      { role: 'reasoning', text: '推理补充' },
+      { role: 'assistant', text: '答案' },
+    ])
+  })
+
+  it('shows a final answer after reasoning-only deltas and supports provider content blocks', () => {
+    const base = { session_id: 's1', turn_id: 't1', at: '2026-09-26T10:00:00Z' }
+    const rows = transcriptRows([
+      {
+        ...base,
+        id: 1,
+        type: 'message.delta',
+        data: { message_id: 'm1', content: [{ type: 'thinking', thinking: '考虑' }] },
+      },
+      {
+        ...base,
+        id: 2,
+        type: 'message.completed',
+        data: { message_id: 'm1', incremental: false, text: '最终答案' },
+      },
+    ])
+    expect(rows.map(({ role, text }) => ({ role, text }))).toEqual([
+      { role: 'reasoning', text: '考虑' },
+      { role: 'assistant', text: '最终答案' },
+    ])
+  })
+
   it('correctly maps user, assistant, and context compacted events', () => {
     const events: AgentEvent[] = [
       {

@@ -49,6 +49,7 @@ class AgentSession:
     workflow_input: Any
     created_at: str
     updated_at: str
+    title: str = ""
     status: str = "created"
     turn_id: str | None = None
     request_ids: dict[str, tuple[str, str]] = field(default_factory=dict)
@@ -244,6 +245,8 @@ class AgentService:
             changed_model = next((event.get("model") for event in reversed(log.events)
                                   if event["type"] == "session.model.changed"), session.model)
             session.model = changed_model
+            session.title = next((event.get("title", "") for event in reversed(log.events)
+                                  if event["type"] == "session.title.changed"), "")
             self.sessions[directory.name] = session
             await self._persist_session(session)
 
@@ -406,6 +409,7 @@ class AgentService:
             if event["type"] == "turn.failed" and event.get("error", {}).get("code")
             in {"checkpoint_missing", "checkpoint_corrupt"}), None)
         return {"session_id": session.session_id, "branch_id": session.branch_id,
+                "title": session.title,
                 "model": session.model, "workflow_session_id": session.workflow_session_id,
                 "parent_session_id": session.parent_session_id,
                 "parent_turn_id": session.parent_turn_id,
@@ -434,6 +438,17 @@ class AgentService:
         async with session.lock:
             event = await session.log.append("session.model.changed", model=model)
             session.model, session.updated_at = model, event["at"]
+            await self._persist_session(session)
+        return self._session_view(session)
+
+    async def set_title(self, session_id: str, title: str):
+        cleaned = title.strip()
+        if not cleaned or len(cleaned) > 120:
+            raise LogAgentError("invalid_argument", "话题名称必须为 1 到 120 个字符")
+        session = self._session(session_id)
+        async with session.lock:
+            event = await session.log.append("session.title.changed", title=cleaned)
+            session.title, session.updated_at = cleaned, event["at"]
             await self._persist_session(session)
         return self._session_view(session)
 
@@ -879,7 +894,28 @@ class AgentService:
             delta["content"] = content
         if tool_calls:
             delta["tool_calls"] = tool_calls
+        kwargs = getattr(chunk, "additional_kwargs", {}) or {}
+        reasoning = kwargs.get("reasoning_content") or kwargs.get("reasoning")
+        if not reasoning:
+            reasoning = getattr(chunk, "reasoning_content", None)
+        if not reasoning and isinstance(content, list):
+            reasoning = "".join(
+                block.get("reasoning", "") if block.get("type") == "reasoning"
+                else block.get("thinking", "")
+                for block in content if isinstance(block, dict)
+                and (block.get("type") == "reasoning" and isinstance(block.get("reasoning"), str)
+                     or block.get("type") == "thinking" and isinstance(block.get("thinking"), str))
+            )
+        if isinstance(reasoning, str) and reasoning:
+            delta["reasoning"] = reasoning
         return delta or None
+
+    @staticmethod
+    def _final_reasoning(result: dict[str, Any]) -> str:
+        for message in reversed(result.get("messages", [])):
+            if isinstance(message, AIMessage):
+                return (AgentService._message_delta(message) or {}).get("reasoning", "")
+        return ""
 
     async def _stream_graph(self, graph: Any, messages: list[Any], *, session: AgentSession,
                             turn_id: str, log: EventLog, idle_timeout: float,
@@ -1094,9 +1130,22 @@ class AgentService:
                         state = await graph.aget_state(graph_config)
                         checkpoint_id = state.config.get("configurable", {}).get("checkpoint_id")
             answer = "" if compact_only else _last_text(result)
-            completed = {"turn_id": turn_id, "incremental": published}
-            if not published:
+            final_message = next((message for message in reversed(result.get("messages", []))
+                                  if isinstance(message, AIMessage)), None)
+            deltas = [event for event in log.events
+                      if event["type"] == "message.delta" and event.get("turn_id") == turn_id
+                      and (final_message is None or not final_message.id
+                           or event.get("message_id") == final_message.id)]
+            text_published = any(_content_text(event.get("content")) for event in deltas)
+            completed = {"turn_id": turn_id, "incremental": text_published}
+            if final_message is not None:
+                completed["message_id"] = final_message.id
+            if not text_published:
                 completed["text"] = answer
+            if not any(event.get("reasoning") for event in deltas):
+                reasoning = self._final_reasoning(result) if not compact_only else ""
+                if reasoning:
+                    completed["reasoning"] = reasoning
             if not compact_only:
                 await log.append("message.completed", **completed)
             await self._cancel_pending_commands(session)
@@ -1249,9 +1298,19 @@ class AgentService:
 
 def _last_text(result: dict[str, Any]) -> str:
     for message in reversed(result.get("messages", [])):
-        if isinstance(message, AIMessage) and isinstance(message.content, str):
-            return message.content
+        if isinstance(message, AIMessage):
+            return _content_text(message.content)
     raise LogAgentError("invalid_response", "Agent 没有返回文本消息")
+
+
+def _content_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(block["text"] for block in content
+                       if isinstance(block, dict) and block.get("type") == "text"
+                       and isinstance(block.get("text"), str))
+    return ""
 
 
 def _digest(value: str) -> str:

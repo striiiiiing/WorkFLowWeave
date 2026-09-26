@@ -114,6 +114,47 @@ async def test_agent_service_is_idempotent_and_runs_one_turn(tmp_path):
                for event in events)
 
 
+async def test_topic_title_survives_restart_and_reasoning_delta_is_real(tmp_path):
+    workspace, runtime = tmp_path / "workspace", tmp_path / "runtime"
+    service = AgentService(workspace, runtime, config=AgentConfig(),
+                           model_provider=lambda _: ScriptedModel(responses=[]))
+    created = await service.create_session(model="scripted")
+    changed = await service.set_title(created["session_id"], "  生产告警复盘  ")
+    assert changed["title"] == "生产告警复盘"
+    with pytest.raises(LogAgentError, match="话题名称"):
+        await service.set_title(created["session_id"], "  ")
+    assert AgentService._message_delta(AIMessageChunk(
+        content="response", additional_kwargs={"reasoning_content": "thinking"},
+    )) == {"content": "response", "reasoning": "thinking"}
+    assert AgentService._message_delta(AIMessageChunk(content="response")) == {"content": "response"}
+    await service.close()
+    restored = AgentService(workspace, runtime, config=AgentConfig(),
+                            model_provider=lambda _: ScriptedModel(responses=[]))
+    await restored.initialize()
+    assert (await restored.get_session(created["session_id"]))["title"] == "生产告警复盘"
+    await restored.close()
+
+
+@pytest.mark.parametrize("structured", [False, True])
+async def test_completed_reasoning_and_answer_are_persisted_separately(tmp_path, structured):
+    response = AIMessage(
+        content=[{"type": "thinking", "thinking": "actual reasoning"},
+                 {"type": "text", "text": "answer"}] if structured else "answer",
+        additional_kwargs={} if structured else {"reasoning_content": "actual reasoning"},
+    )
+    service = AgentService(tmp_path / "workspace", tmp_path / "runtime", config=AgentConfig(),
+                           model_provider=lambda _: ScriptedModel(responses=[response]))
+    created = await service.create_session(model="scripted")
+    accepted = await service.submit(created["session_id"], "hello", request_id="reasoning")
+    assert (await service.wait(accepted["turn_id"]))["text"] == "answer"
+    events = await service.events(created["session_id"])
+    completed = next(event["data"] for event in events if event["type"] == "message.completed")
+    assert completed["text"] == "answer"
+    assert completed["reasoning"] == "actual reasoning"
+    assert completed["incremental"] is False
+    await service.close()
+
+
 async def test_append_queues_behind_running_turn_and_drains_once(tmp_path):
     service = AgentService(
         tmp_path / "workspace", tmp_path / "runtime",

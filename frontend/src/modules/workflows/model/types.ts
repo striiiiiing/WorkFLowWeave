@@ -41,6 +41,8 @@ export interface WorkflowDefinition {
   analysis_failure: ContinuePolicy
   send_partial: boolean
   interval_seconds: number | null
+  cron: string | null
+  cron_timezone: string
   enabled: boolean
   backup: BackupPolicy
 }

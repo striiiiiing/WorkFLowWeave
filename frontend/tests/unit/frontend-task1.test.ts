@@ -79,7 +79,7 @@ it('groups plugin capabilities and reports failed discovery without claiming con
     pluginHealthRows([capability('collector', 'one')], { ...report(), components: [] })[0].status,
   ).toBe('待确认')
 })
-it('shows internal monitoring only in dashboard advanced mode', async () => {
+it('keeps the dashboard focused on system health and recent runs', async () => {
   vi.mocked(workflowsApi.list).mockResolvedValue([])
   vi.mocked(runsApi.list).mockResolvedValue([])
   health.mockResolvedValue(report())
@@ -97,13 +97,11 @@ it('shows internal monitoring only in dashboard advanced mode', async () => {
     },
   })
   await flushPromises()
-  expect(wrapper.text()).toContain('插件健康状态')
-  expect(wrapper.text()).toContain('example')
+  expect(wrapper.text()).toContain('系统状态')
+  expect(wrapper.text()).not.toContain('插件健康状态')
   expect(wrapper.text()).not.toContain('resource_store')
-  await wrapper.get('[role="switch"]').trigger('click')
-  expect(wrapper.text()).toContain('resource_store')
-  await wrapper.get('[role="switch"]').trigger('click')
-  expect(wrapper.text()).not.toContain('resource_store')
+  expect(plugins).not.toHaveBeenCalled()
+  expect(wrapper.find('[role="switch"]').exists()).toBe(false)
   wrapper.unmount()
 })
 it('hides the four workflow options and preserves edited values across mode changes', async () => {

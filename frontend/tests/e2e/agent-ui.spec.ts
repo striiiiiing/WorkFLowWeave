@@ -469,12 +469,7 @@ test('Workflow 续接自动选择默认模型并提交固定来源', async ({ pa
   await page.getByRole('button', { name: 'Workflow 历史' }).click()
   await expect(page.getByText('qa-workflow / workflow-result')).toBeVisible()
   await page.getByRole('button', { name: '继续讨论' }).click()
-  await expect(
-    page
-      .getByRole('dialog', { name: '从 Workflow 结果创建 Agent 会话' })
-      .locator('.el-select__placeholder'),
-  ).toContainText('channel-a / alpha')
-  await page.getByRole('button', { name: '创建并继续' }).click()
+  await expect(page.getByRole('dialog', { name: '从 Workflow 结果创建 Agent 会话' })).toHaveCount(0)
   await expect
     .poll(
       () =>

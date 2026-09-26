@@ -23,7 +23,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <article class="source-card">
+  <article class="source-card" :aria-label="`数据源 ${sourceId}`">
     <div class="source-card-heading">
       <div class="flex items-center gap-3 min-w-0 flex-wrap">
         <span class="source-index">{{ index + 1 }}</span>

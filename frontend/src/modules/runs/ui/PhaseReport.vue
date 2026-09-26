@@ -16,7 +16,7 @@ function copy() {
 </script>
 <template>
   <div class="space-y-3 min-w-0">
-    <el-skeleton v-if="report.pending.value && !report.data.value" :rows="3" animated />
+    <el-skeleton v-if="report.pending.value && !report.data.value" :rows="3" />
     <div v-if="report.error.value" role="alert">
       <p class="text-red-700">{{ report.error.value }}</p>
       <el-button size="small" class="mt-2" @click="report.refresh">重新读取</el-button>

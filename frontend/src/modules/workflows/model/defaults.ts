@@ -30,6 +30,8 @@ export function createWorkflow(): WorkflowDefinition {
     analysis_failure: 'continue',
     send_partial: true,
     interval_seconds: null,
+    cron: null,
+    cron_timezone: 'UTC',
     enabled: true,
     backup: {
       enabled: true,

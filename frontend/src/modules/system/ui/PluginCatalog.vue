@@ -1,12 +1,28 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { CapabilityDescription } from '../model/types'
-const props = defineProps<{ data?: CapabilityDescription[]; pending: boolean; error: string }>()
+import type { PluginHealth } from '../model/pluginHealth'
+const props = defineProps<{
+  data?: CapabilityDescription[]
+  pending: boolean
+  error: string
+  health?: PluginHealth[]
+}>()
 const filter = ref('all')
 const selected = ref<CapabilityDescription>()
 const dialog = ref(false)
 const filtered = computed(
   () => props.data?.filter((item) => filter.value === 'all' || item.kind === filter.value) ?? [],
+)
+function diagnostic(plugin: CapabilityDescription) {
+  return props.health?.find((row) => row.plugin === plugin.plugin && row.kind === plugin.kind)
+}
+const unassigned = computed(
+  () =>
+    props.health?.filter(
+      (row) =>
+        !props.data?.some((plugin) => plugin.plugin === row.plugin && plugin.kind === row.kind),
+    ) ?? [],
 )
 function inspect(plugin: CapabilityDescription) {
   selected.value = plugin
@@ -30,6 +46,19 @@ function inspect(plugin: CapabilityDescription) {
       </template>
       <p class="muted mb-4">{{ plugin.description }}</p>
       <p class="mono muted text-xs">{{ plugin.plugin }}</p>
+      <section :aria-label="`${plugin.name} 健康状态`" class="mt-3">
+        <el-tag :type="diagnostic(plugin)?.errors.length ? 'danger' : 'info'">
+          {{ diagnostic(plugin)?.status ?? '待确认' }}
+        </el-tag>
+        <p
+          v-for="message in diagnostic(plugin)?.errors"
+          :key="message"
+          class="text-red-700 dark:text-red-300 mt-2"
+          role="alert"
+        >
+          {{ message }}
+        </p>
+      </section>
       <div class="flex flex-wrap gap-2 my-4">
         <el-tag v-for="capability in plugin.capabilities" :key="capability" type="info">
           {{ capability }}
@@ -38,6 +67,13 @@ function inspect(plugin: CapabilityDescription) {
       <el-button @click="inspect(plugin)">查看参数结构</el-button>
     </el-card>
   </div>
+  <el-alert
+    v-for="row in unassigned"
+    :key="`${row.kind}/${row.plugin}`"
+    :title="`${row.plugin}: ${row.errors.join('；') || row.status}`"
+    type="error"
+    :closable="false"
+  />
   <el-empty v-if="!pending && !error && !filtered.length" description="暂无匹配的插件能力" />
   <el-dialog v-model="dialog" :title="selected?.name" width="760px">
     <template v-if="selected">

@@ -47,7 +47,7 @@ test('resource editor shares catalogs and saves a retained draft at 375px', asyn
     .evaluate((button: HTMLButtonElement) => button.click())
   await expect(card).toHaveCount(0)
   await expect(drawer.getByLabel('数据源名称', { exact: true })).toHaveValue('保留本次草稿')
-  await drawer.getByRole('switch', { name: '高级模式', exact: true }).locator('..').click()
+  await drawer.locator('summary').filter({ hasText: '高级配置' }).click()
   await drawer.getByRole('spinbutton', { name: '超时 / 秒' }).fill('25')
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,

@@ -72,12 +72,7 @@ it('creates an Agent from the already loaded run and routes to the new session',
   await wrapper.get('button').trigger('click')
   await flushPromises()
   expect(models).toHaveBeenCalledTimes(1)
-  expect(document.body.textContent).toContain('daily / run-1')
-  const createButton = [...document.querySelectorAll('button')].find(
-    (button) => button.textContent?.trim() === '创建并继续',
-  )!
-  createButton.click()
-  await flushPromises()
+  expect(document.body.textContent).not.toContain('创建并继续')
   expect(create).toHaveBeenCalledWith({ workflow_session_id: 'run-1', model: 'local:one' })
   expect(router.currentRoute.value.fullPath).toBe('/agents/agent-1')
   wrapper.unmount()

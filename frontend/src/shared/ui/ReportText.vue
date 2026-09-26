@@ -11,6 +11,8 @@ const content = computed(() => markdown.render(props.text))
 .report-prose {
   line-height: 1.8;
   overflow-wrap: anywhere;
+  color: var(--report-text);
+  background: transparent;
 }
 .report-prose :deep(p),
 .report-prose :deep(ul),
@@ -38,25 +40,25 @@ const content = computed(() => markdown.render(props.text))
   padding-left: 1.5em;
 }
 .report-prose :deep(a) {
-  color: #2563eb;
+  color: var(--el-color-primary);
   text-decoration: underline;
 }
 .report-prose :deep(pre) {
   white-space: pre-wrap;
-  background: #f1f5f9;
+  background: var(--report-code-bg);
   padding: 1em;
   border-radius: 0.5em;
 }
 .report-prose :deep(code) {
-  background: #f1f5f9;
-  color: #0f172a;
+  background: var(--report-code-bg);
+  color: var(--report-text);
   padding: 0.1em 0.3em;
   border-radius: 0.25em;
 }
 .report-prose :deep(blockquote) {
-  border-left: 3px solid #cbd5e1;
+  border-left: 3px solid var(--border);
   padding-left: 1em;
-  color: #475569;
+  color: var(--report-muted);
 }
 .report-prose :deep(table) {
   display: block;
@@ -66,22 +68,7 @@ const content = computed(() => markdown.render(props.text))
 }
 .report-prose :deep(th),
 .report-prose :deep(td) {
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--border);
   padding: 0.4em 0.7em;
-}
-:global(.dark) .report-prose :deep(pre) {
-  background: #0f172a;
-  color: #e2e8f0;
-}
-:global(.dark) .report-prose :deep(code) {
-  background: #0f172a;
-  color: #e2e8f0;
-}
-:global(.dark) .report-prose :deep(blockquote) {
-  color: #cbd5e1;
-}
-:global(.dark) .report-prose :deep(th),
-:global(.dark) .report-prose :deep(td) {
-  border-color: #475569;
 }
 </style>

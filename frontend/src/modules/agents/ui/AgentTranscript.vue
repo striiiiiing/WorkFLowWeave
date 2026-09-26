@@ -12,6 +12,7 @@ const props = defineProps<{
   running: boolean
   sessionId: string
   tools?: AgentTool[]
+  expandReasoning?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -42,7 +43,6 @@ watch(
   () => {
     if (following.value) void scrollToLatest()
   },
-  { deep: true },
 )
 watch(() => props.sessionId, scrollToLatest, { immediate: true })
 
@@ -64,6 +64,19 @@ const groups = computed(() => {
   }
   return result
 })
+
+const completedTurns = computed(
+  () =>
+    new Set(
+      props.events
+        .filter((event) => event.type === 'turn.completed' && event.data.checkpoint_id)
+        .map((event) => `${event.session_id}:${event.turn_id}`),
+    ),
+)
+
+function canFork(event: AgentEvent) {
+  return !props.running && completedTurns.value.has(`${event.session_id}:${event.turn_id}`)
+}
 
 async function copyText(text: string, id: string) {
   try {
@@ -124,27 +137,27 @@ async function copyText(text: string, id: string) {
               <div class="user-bubble-wrapper">
                 <div class="user-bubble">
                   <div class="user-content">{{ row.text }}</div>
-                  <div class="message-actions user-actions">
-                    <button
-                      type="button"
-                      class="msg-act-btn"
-                      title="复制内容"
-                      @click="copyText(row.text, row.key)"
-                    >
-                      <AppIcon :name="copiedId === row.key ? 'check' : 'copy'" size="sm" />
-                    </button>
-                    <button
-                      v-if="row.event.session_id === sessionId && row.event.data.message_id"
-                      type="button"
-                      class="msg-act-btn"
-                      title="编辑并创建分支"
-                      :disabled="running"
-                      @click="emit('edit', row.event)"
-                    >
-                      <AppIcon name="fork" size="sm" />
-                      <span>编辑并创建分支</span>
-                    </button>
-                  </div>
+                </div>
+                <div class="message-actions user-actions">
+                  <button
+                    type="button"
+                    class="msg-act-btn"
+                    title="复制内容"
+                    @click="copyText(row.text, row.key)"
+                  >
+                    <AppIcon :name="copiedId === row.key ? 'check' : 'copy'" size="sm" />
+                  </button>
+                  <button
+                    v-if="row.event.session_id === sessionId && row.event.data.message_id"
+                    type="button"
+                    class="msg-act-btn"
+                    title="编辑并创建分支"
+                    :disabled="running"
+                    @click="emit('edit', row.event)"
+                  >
+                    <AppIcon name="fork" size="sm" />
+                    <span>编辑并创建分支</span>
+                  </button>
                 </div>
               </div>
             </template>
@@ -173,7 +186,7 @@ async function copyText(text: string, id: string) {
                       type="button"
                       class="msg-act-btn"
                       title="以此节点创建独立分支"
-                      :disabled="running"
+                      :disabled="!canFork(row.event)"
                       @click="emit('fork', row.event)"
                     >
                       <AppIcon name="fork" size="sm" />
@@ -183,6 +196,15 @@ async function copyText(text: string, id: string) {
                 </div>
               </div>
             </template>
+
+            <details
+              v-else-if="row.role === 'reasoning'"
+              class="reasoning-block"
+              :open="expandReasoning"
+            >
+              <summary>思考过程</summary>
+              <ReportText :text="row.text" />
+            </details>
 
             <!-- 2.3 单项工具调用 (如工作区写锁/命令) -->
             <div v-else-if="row.role === 'tool'" class="single-tool-wrapper">
@@ -252,16 +274,7 @@ async function copyText(text: string, id: string) {
         </template>
       </template>
 
-      <!-- 思考中骨架指示器 (Streaming Shimmer) -->
-      <div v-if="running" class="thinking-row">
-        <div class="bot-avatar pulse">
-          <AppIcon name="sparkles" size="sm" />
-        </div>
-        <div class="thinking-content">
-          <div class="shimmer-line line-1" />
-          <div class="shimmer-line line-2" />
-        </div>
-      </div>
+      <p v-if="running" class="generation-status" role="status">正在生成回答...</p>
 
       <!-- 空状态 -->
       <div v-if="!groups.length && !running" class="empty-transcript">
@@ -300,7 +313,6 @@ async function copyText(text: string, id: string) {
   min-height: 0;
   overflow-y: auto;
   padding: 20px 16px;
-  scroll-behavior: smooth;
 }
 
 .transcript-stream {
@@ -315,7 +327,8 @@ async function copyText(text: string, id: string) {
 /* User Message */
 .user-bubble-wrapper {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
   margin: 4px 0;
 }
 
@@ -357,22 +370,6 @@ async function copyText(text: string, id: string) {
   box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
 }
 
-.bot-avatar.pulse {
-  animation: avatarPulse 1.6s infinite ease-in-out;
-}
-
-@keyframes avatarPulse {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: scale(0.92);
-    opacity: 0.8;
-  }
-}
-
 .assistant-body {
   flex: 1;
   min-width: 0;
@@ -395,8 +392,26 @@ async function copyText(text: string, id: string) {
 }
 
 .message-row:hover .message-actions,
-.user-bubble:hover .message-actions {
+.message-row:focus-within .message-actions {
   opacity: 1;
+}
+
+.generation-status {
+  margin: 0;
+  color: var(--el-text-color-regular);
+  font-size: 13px;
+}
+
+.reasoning-block {
+  padding: 8px 12px;
+  border-left: 2px solid var(--border);
+  color: var(--el-text-color-regular);
+  font-size: 13px;
+}
+
+.reasoning-block summary {
+  cursor: pointer;
+  padding-bottom: 4px;
 }
 
 .msg-act-btn {
@@ -586,42 +601,6 @@ async function copyText(text: string, id: string) {
   font-family: ui-monospace, monospace;
   color: var(--muted);
   align-self: center;
-}
-
-/* Thinking Indicator */
-.thinking-row {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  margin: 8px 0;
-}
-
-.thinking-content {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  width: 180px;
-}
-
-.shimmer-line {
-  height: 10px;
-  border-radius: 5px;
-  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-}
-
-.shimmer-line.line-2 {
-  width: 60%;
-}
-
-@keyframes shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
 }
 
 /* Empty State */

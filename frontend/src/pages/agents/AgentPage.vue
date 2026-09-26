@@ -21,6 +21,7 @@ import {
   useAgentBranches,
   useAgentSettings,
   readDefaultAgentModel,
+  readExpandReasoning,
   type SlashCommand,
   type AgentEvent,
   type AgentSession,
@@ -47,6 +48,17 @@ const models = computed(() => settings.query.data.value?.models ?? [])
 const showBranches = ref(false)
 const showFiles = ref(false)
 const showSettings = ref(false)
+const showRename = ref(false)
+const topicDraft = ref('')
+const expandReasoning = ref(false)
+function refreshDisplayPreferences() {
+  try {
+    expandReasoning.value = readExpandReasoning()
+  } catch {
+    ElMessage.error('无法读取浏览器思考过程显示设置')
+  }
+}
+refreshDisplayPreferences()
 const showCreate = ref(false)
 const showSource = ref(false)
 const showWorkflows = ref(false)
@@ -154,10 +166,7 @@ async function stop() {
 async function fork(target: AgentSession | AgentEvent = selected.value as AgentSession) {
   if (!target) return
   const result = await action.run(() =>
-    api.fork(
-      target.session_id,
-      'data' in target ? { message_id: String(target.data.message_id) } : {},
-    ),
+    api.fork(target.session_id, 'data' in target ? { turn_id: target.turn_id ?? undefined } : {}),
   )
   if (isTaskSuccess(result)) {
     await sessions.refresh()
@@ -182,7 +191,29 @@ async function setModel(modelReference: string) {
   const id = selected.value.session_id
   const result = await action.run(() => api.setModel(id, modelReference))
   if (!isTaskSuccess(result) || selected.value?.session_id !== id) return
-  await session.select(id)
+  session.session.value = {
+    ...selected.value,
+    model: result.value.model,
+    updated_at: result.value.updated_at,
+  }
+  await sessions.refresh()
+}
+function openRename() {
+  topicDraft.value = selected.value?.title ?? ''
+  showRename.value = true
+}
+async function renameTopic() {
+  const current = selected.value
+  const title = topicDraft.value.trim()
+  if (!current || !title || title.length > 120) return
+  const result = await action.run(() => api.setTitle(current.session_id, title))
+  if (!isTaskSuccess(result) || selected.value?.session_id !== current.session_id) return
+  session.session.value = {
+    ...selected.value,
+    title: result.value.title,
+    updated_at: result.value.updated_at,
+  }
+  showRename.value = false
   await sessions.refresh()
 }
 
@@ -222,7 +253,9 @@ function prepareContinue(record: (typeof workflowHistory.value)[number]) {
     continueModel.value = readDefaultAgentModel()
   } catch {
     continueModel.value = ''
+    ElMessage.error('无法读取浏览器默认模型，请选择模型')
   }
+  if (models.value.some((item) => item.reference === continueModel.value)) void continueWorkflow()
 }
 
 function openFile(path: string) {
@@ -357,11 +390,8 @@ const slashCommands = computed<SlashCommand[]>(() => [
       <AgentSidebar
         :sessions="sessions.data.value ?? []"
         :selected-id="selected?.session_id"
-        :pending="createAction.pending.value"
         @select="select"
-        @create="openCreate"
         @branches="showBranches = true"
-        @settings="showSettings = true"
       />
       <main class="agent-main">
         <template v-if="selected">
@@ -371,13 +401,13 @@ const slashCommands = computed<SlashCommand[]>(() => [
             :running="running"
             :stream-state="session.state.value"
             @change-model="setModel"
-            @open-branches="showBranches = true"
             @open-files="openFile('AGENTS.md')"
             @open-settings="showSettings = true"
             @open-source="openSource"
             @open-workflows="openWorkflows"
             @compact="compact"
             @fork="() => void fork()"
+            @rename="openRename"
           />
           <div v-if="!selected.continuable" class="p-3">
             <el-alert
@@ -394,6 +424,7 @@ const slashCommands = computed<SlashCommand[]>(() => [
             :tools="settings.query.data.value?.tools"
             :session-id="selected.session_id"
             :running="running"
+            :expand-reasoning="expandReasoning"
             @edit="branches.start"
             @fork="fork"
             @file="openFile"
@@ -420,7 +451,32 @@ const slashCommands = computed<SlashCommand[]>(() => [
         />
       </main>
     </div>
-    <AgentGlobalSettingsModal v-if="showSettings" v-model="showSettings" :controller="settings" />
+    <AgentGlobalSettingsModal
+      v-if="showSettings"
+      v-model="showSettings"
+      :controller="settings"
+      @changed="refreshDisplayPreferences"
+    />
+    <el-dialog v-model="showRename" title="命名话题" width="min(90vw, 440px)">
+      <el-input
+        v-model="topicDraft"
+        aria-label="话题名称"
+        maxlength="120"
+        show-word-limit
+        @keydown.enter="renameTopic"
+      />
+      <template #footer>
+        <el-button @click="showRename = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="action.pending.value"
+          :disabled="!topicDraft.trim()"
+          @click="renameTopic"
+        >
+          保存
+        </el-button>
+      </template>
+    </el-dialog>
     <AgentBranchDrawer
       v-model:visible="showBranches"
       :sessions="sessions.data.value ?? []"

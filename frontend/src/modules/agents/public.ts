@@ -8,6 +8,7 @@ export { useAgentCommands } from './composables/useAgentCommands'
 export { useAgentFiles } from './composables/useAgentFiles'
 export { useAgentBranches } from './composables/useAgentBranches'
 export { useAgentSettings } from './composables/useAgentSettings'
+export { readExpandReasoning } from './composables/agentDisplay'
 export {
   readDefaultAgentModel,
   saveDefaultAgentModel,

@@ -27,7 +27,6 @@ const {
   submit: saveDraft,
 } = useAIProviderEditor(props)
 const form = ref<FormInstance>()
-const advanced = ref(false)
 const healthHint = computed(() => {
   if (!persisted.value) return '保存渠道后，可在这里独立检查健康。'
   if (connectionChanged.value) return '连接配置已修改，请先保存，再检查健康。'
@@ -113,9 +112,6 @@ async function submit() {
       <el-input v-model="environmentName" placeholder="OPENAI_API_KEY" />
     </el-form-item>
     <section aria-label="渠道健康检查" class="mb-5">
-      <el-button :loading="health.pending.value" :disabled="connectionChanged" @click="checkHealth">
-        检查健康
-      </el-button>
       <p class="muted text-sm mt-2">{{ healthHint }}</p>
       <el-alert
         v-if="health.error.value"
@@ -136,6 +132,9 @@ async function submit() {
       :model-value="draft.models"
       @update:model-value="updateModels"
       :candidates="discovered"
+      :testing="health.pending.value"
+      :test-disabled="connectionChanged"
+      @test="checkHealth"
     />
     <el-form-item label="资源编号" prop="id" :rules="{ ...idRule, required: false }">
       <el-input
@@ -145,8 +144,8 @@ async function submit() {
         placeholder="可自行填写；留空则自动生成"
       />
     </el-form-item>
-    <el-form-item label="高级模式"><el-switch v-model="advanced" /></el-form-item>
-    <div v-if="advanced">
+    <details class="advanced-fields">
+      <summary class="report-disclosure">高级配置</summary>
       <div class="form-grid">
         <el-form-item
           label="超时 / 秒"
@@ -172,7 +171,7 @@ async function submit() {
           />
         </el-form-item>
       </div>
-    </div>
+    </details>
     <div class="flex justify-end gap-3">
       <el-button @click="emit('cancel')">关闭</el-button>
       <el-button type="primary" native-type="submit" :loading="save.pending.value">

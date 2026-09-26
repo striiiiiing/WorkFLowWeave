@@ -15,7 +15,7 @@ function formatStage(stage: SessionRecord['stage']) {
         <template #default="{ row }">
           <button
             type="button"
-            class="mono min-h-11 text-left"
+            class="session-link mono min-h-11 text-left"
             @click="emit('open', row.session_id)"
           >
             {{ row.session_id }}
@@ -53,7 +53,7 @@ function formatStage(stage: SessionRecord['stage']) {
       <p class="muted text-sm mt-2">{{ formatStage(row.stage) }}</p>
       <button
         type="button"
-        class="inline-block mt-3 min-h-11"
+        class="session-link inline-block mt-3 min-h-11"
         @click="emit('open', row.session_id)"
       >
         查看详情

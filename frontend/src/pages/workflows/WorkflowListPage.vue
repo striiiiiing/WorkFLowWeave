@@ -61,7 +61,7 @@ onScopeDispose(() => window.removeEventListener('focus', refreshOnFocus))
             <AppIcon name="workflow" />
             <div>
               <h2 class="font-semibold">{{ workflow.name || workflow.id }}</h2>
-              <p class="mono muted text-xs mt-1">{{ workflow.id }}</p>
+              <p class="mono muted text-xs mt-1">ID: {{ workflow.id }}</p>
             </div>
           </div>
           <el-tag :type="workflow.enabled ? 'success' : 'info'">
