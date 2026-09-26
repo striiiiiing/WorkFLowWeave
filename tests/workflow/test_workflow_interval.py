@@ -6,6 +6,10 @@
 """
 
 import asyncio
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from pydantic import ValidationError
 
 from logagent.errors import LogAgentError
 from logagent.models import WorkflowDefinition
@@ -68,3 +72,40 @@ async def test_interval_rejection_has_no_busy_retry_and_owned_task_stops():
     await intervals.stop()
     await intervals.stop()
     assert intervals._task is None
+
+
+def test_cron_requires_five_fields_valid_zone_and_no_legacy_interval():
+    assert workflow(cron="0 9 * * *", cron_timezone="Asia/Shanghai").cron == "0 9 * * *"
+    for fields in (
+        {"cron": "0 9 * *"},
+        {"cron": "61 9 * * *"},
+        {"cron": "0 9 * * *", "cron_timezone": "Invalid/Zone"},
+        {"cron": "0 9 * * *", "interval_seconds": 60},
+    ):
+        with pytest.raises(ValidationError):
+            workflow(**fields)
+
+
+async def test_cron_uses_timezone_and_skips_missed_occurrences():
+    wall = [datetime(2026, 9, 26, 0, 59, tzinfo=UTC)]
+
+    class Service:
+        calls = 0
+
+        async def trigger(self, ident):
+            self.calls += 1
+            return f"{ident}-{self.calls}"
+
+    service = Service()
+    intervals = IntervalTrigger(service, clock=lambda: 0.0, wall_clock=lambda: wall[0])
+    config = workflow(cron="0 9 * * *", cron_timezone="Asia/Shanghai")
+    intervals.update([config])
+    assert await intervals.tick() == []
+    # 09:00 Shanghai is 01:00 UTC on this date.
+    wall[0] += timedelta(minutes=1)
+    assert await intervals.tick() == ["demo-1"]
+    assert await intervals.tick() == []
+    wall[0] += timedelta(days=3)
+    assert await intervals.tick() == ["demo-2"]
+    intervals.update([config])
+    assert await intervals.tick() == []

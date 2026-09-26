@@ -12,6 +12,7 @@ from logagent.channel.web import WebChannel
 from logagent.errors import LogAgentError
 from logagent.interaction.app import create_app
 from logagent.interaction.errors import status_for_code
+from tests.agent.helpers import ScriptedModel
 from tests.agent.test_admission import GatedModel
 
 
@@ -149,6 +150,32 @@ def test_agent_tool_switch_uses_lifecycle_reload_boundary():
         response = client.put("/api/agents/tools/agent_shell", json={"enabled": False})
     assert response.status_code == 200
     assert owner.setting == ("agent_shell", False)
+
+
+async def test_topic_patch_is_persisted_and_rejects_ambiguous_updates(tmp_path):
+    service = AgentService(tmp_path / "workspace", tmp_path / "runtime",
+                           model_provider=lambda _: ScriptedModel(responses=[]))
+    owner = Lifecycle()
+    owner.use_agent(service)
+    app = create_app(owner)
+    try:
+        async with app.router.lifespan_context(app), httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            created = await client.post("/api/agents/sessions", json={"model": "test"})
+            path = f"/api/agents/sessions/{created.json()['session_id']}"
+            changed = await client.patch(path, json={"title": "  告警复盘  "})
+            assert changed.status_code == 200
+            assert changed.json()["title"] == "告警复盘"
+            assert (await client.get(path)).json()["title"] == "告警复盘"
+            history = (await client.get(f"{path}/history")).json()
+            assert history[-1]["type"] == "session.title.changed"
+            for payload in ({}, {"title": "new", "model": "test"}, {"title": " "}):
+                rejected = await client.patch(path, json=payload)
+                assert rejected.status_code == 422
+            assert (await client.get(path)).json()["title"] == "告警复盘"
+    finally:
+        await service.close()
 
 
 async def test_real_sse_disconnect_keeps_turn_running_and_replays_its_completion(tmp_path):

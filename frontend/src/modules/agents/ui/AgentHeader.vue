@@ -13,13 +13,13 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   changeModel: [model: string]
-  openBranches: []
   openFiles: []
   openSettings: []
   openSource: []
   openWorkflows: []
   compact: []
   fork: []
+  rename: []
 }>()
 
 const budget = computed<ContextBudget | null>(() => props.session.context_budget)
@@ -79,18 +79,6 @@ const currentModelLabel = computed(() => {
         </template>
       </el-dropdown>
 
-      <!-- 2. 分支指示器 Pill -->
-      <button
-        type="button"
-        class="header-pill branch-pill"
-        title="查看分支执行图谱"
-        @click="emit('openBranches')"
-      >
-        <AppIcon name="fork" size="sm" />
-        <span>{{ session.branch_id || 'main' }}</span>
-        <span class="branch-status-dot" :class="session.status" />
-      </button>
-
       <!-- 3. 连接状态轻量提示 -->
       <span class="connection-badge" :class="streamState">
         <span class="pulse-dot" />
@@ -109,6 +97,11 @@ const currentModelLabel = computed(() => {
     </div>
 
     <div class="header-right">
+      <el-tooltip content="命名话题" placement="bottom">
+        <button type="button" class="action-btn" aria-label="命名话题" @click="emit('rename')">
+          <AppIcon name="edit" size="sm" />
+        </button>
+      </el-tooltip>
       <!-- 4. 上下文预算与智能压缩 Popover -->
       <el-popover placement="bottom-end" :width="320" trigger="hover">
         <template #reference>
@@ -345,13 +338,6 @@ const currentModelLabel = computed(() => {
 
 .connection-badge.reconnecting .pulse-dot {
   background: #f59e0b;
-  animation: blink 1s infinite;
-}
-
-@keyframes blink {
-  50% {
-    opacity: 0.2;
-  }
 }
 
 .token-pill {

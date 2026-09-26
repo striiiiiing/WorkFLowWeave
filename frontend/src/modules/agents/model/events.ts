@@ -25,6 +25,7 @@ const knownEvents = new Set([
   'command.failed',
   'command.cancelled',
   'request.accepted',
+  'session.title.changed',
 ])
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -43,7 +44,11 @@ function content(value: unknown): boolean {
 
 function validPayload(type: string, data: Record<string, unknown>, turnId: string | null): boolean {
   if (type === 'message.user') return typeof data.text === 'string'
-  if (type === 'message.delta') return content(data.content) || data.tool_calls !== undefined
+  if (type === 'session.title.changed') return typeof data.title === 'string'
+  if (type === 'message.delta')
+    return (
+      content(data.content) || typeof data.reasoning === 'string' || data.tool_calls !== undefined
+    )
   if (type === 'message.completed')
     return typeof data.incremental === 'boolean' && (data.incremental || content(data.text))
   if (type === 'context.compacted') return typeof data.summary === 'string'

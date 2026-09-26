@@ -28,7 +28,7 @@ function editor(
       components: { AIModelSelect },
       setup: () => ({ state, form, configs, optional }),
       template:
-        '<el-form ref="form" :model="state"><AIModelSelect v-model:ai="state.ai" v-model:model="state.model" :configs="configs" ai-prop="ai" model-prop="model" :optional="optional" /></el-form>',
+        '<el-form ref="form" :model="state"><AIModelSelect :ai="state.ai" :model="state.model" :configs="configs" ai-prop="ai" model-prop="model" :optional="optional" @selection="(ai, model) => { state.ai = ai; state.model = model }" /></el-form>',
     }),
     { global: { plugins: [ElementPlus] } },
   )
@@ -40,33 +40,29 @@ function editor(
 }
 
 describe('workflow AI channel and model selection', () => {
-  it('selects a configured channel model and clears the model when the channel changes', async () => {
+  it('updates the channel and model in one selection', async () => {
     const { state, wrapper } = editor({ ai: null, model: null }, [
       config('openai', ['gpt-4']),
       config('other', ['gpt-4']),
     ])
-    const selects = wrapper.findAllComponents(ElSelect)
-
-    selects[0].vm.$emit('update:modelValue', 'openai')
-    await flushPromises()
-    selects[1].vm.$emit('update:modelValue', 'gpt-4')
+    const select = wrapper.getComponent(ElSelect)
+    select.vm.$emit('update:modelValue', JSON.stringify(['openai', 'gpt-4']))
     await flushPromises()
     expect(state.value).toEqual({ ai: 'openai', model: 'gpt-4' })
 
-    selects[0].vm.$emit('update:modelValue', 'other')
+    select.vm.$emit('update:modelValue', JSON.stringify(['other', 'gpt-4']))
     await flushPromises()
-    expect(state.value).toEqual({ ai: 'other', model: null })
+    expect(state.value).toEqual({ ai: 'other', model: 'gpt-4' })
     wrapper.unmount()
   })
 
-  it('shows a resource link and disables model selection when no models are configured', () => {
+  it('shows a resource link when no models are configured', () => {
     const { wrapper } = editor({ ai: null, model: null }, [config('empty-channel', [])])
     const resourceLink = wrapper.get('a[href="/resources?kind=ai"]')
-    expect(resourceLink.text()).toContain('前往配置供应商渠道')
+    expect(resourceLink.text()).toContain('配置供应商渠道模型')
     expect(resourceLink.attributes('target')).toBe('_blank')
     expect(resourceLink.attributes('rel')).toBe('noopener')
-    expect(wrapper.findAllComponents(ElSelect)[1].props('disabled')).toBe(true)
-    expect(wrapper.text()).toContain('现有供应商渠道均未配置模型')
+    expect(wrapper.findAllComponents(ElSelect)).toHaveLength(1)
     wrapper.unmount()
   })
 
@@ -74,10 +70,10 @@ describe('workflow AI channel and model selection', () => {
     const { state, wrapper, validate } = editor({ ai: 'deleted-channel', model: 'deleted-model' }, [
       config('openai', ['gpt-4']),
     ])
-    await vi.waitFor(() => expect(wrapper.text()).toContain('供应商渠道不存在：deleted-channel'))
-    expect(wrapper.text()).toContain('失效供应商渠道：deleted-channel')
-    expect(wrapper.text()).toContain('失效渠道模型：deleted-model')
-    expect(wrapper.text()).toContain('供应商渠道不存在：deleted-channel')
+    await vi.waitFor(() =>
+      expect(wrapper.text()).toContain('deleted-channel / deleted-model（不可用）'),
+    )
+    expect(wrapper.text()).toContain('所选模型已不可用')
     expect(await validate()).toBe(false)
     expect(state.value).toEqual({ ai: 'deleted-channel', model: 'deleted-model' })
     wrapper.unmount()

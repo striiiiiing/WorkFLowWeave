@@ -62,6 +62,8 @@ export function createAgentsApi(http: HttpClient) {
     models: (signal?: AbortSignal) => http.request<AgentModel[]>({ url: '/agents/models', signal }),
     setModel: (id: string, model: string) =>
       http.request<AgentSession>({ url: sessionPath(id), method: 'PATCH', data: { model } }),
+    setTitle: (id: string, title: string) =>
+      http.request<AgentSession>({ url: sessionPath(id), method: 'PATCH', data: { title } }),
     send: (id: string, requestId: string, text: string) =>
       commandRequest<TurnAccepted>({
         action: 'message',

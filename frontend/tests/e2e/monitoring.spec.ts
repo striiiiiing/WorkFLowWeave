@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-test('dashboard shares health reads and keeps successful panels when plugin refresh fails', async ({
+test('dashboard reads health once and keeps prior counts when workflow refresh fails', async ({
   page,
 }) => {
   const errors: string[] = []
@@ -13,23 +13,22 @@ test('dashboard shares health reads and keeps successful panels when plugin refr
       if (path === `/api/${key}`) reads[key]++
   })
   await page.goto('/')
-  const pluginMetric = page
+  const workflowMetric = page
     .locator('.el-card')
-    .filter({ has: page.getByText('已注册插件能力', { exact: true }) })
+    .filter({ has: page.getByText('已保存工作流', { exact: true }) })
     .first()
-  await expect(pluginMetric).toContainText('上次成功读取')
-  const priorCount = await pluginMetric.locator('.text-3xl').innerText()
+  await expect(workflowMetric).toContainText('上次成功读取')
+  const priorCount = await workflowMetric.locator('.text-3xl').innerText()
   expect(priorCount).not.toBe('—')
-  expect(reads).toEqual({ health: 1, plugins: 1, sessions: 1, workflows: 1 })
-  await page.getByRole('switch', { name: '高级模式', exact: true }).locator('..').click()
-  await expect(page.getByRole('heading', { name: '组件健康状态' })).toBeVisible()
-  expect(reads.health).toBe(1)
-  await page.route('**/api/plugins', (route) => route.abort('failed'))
+  expect(reads).toEqual({ health: 1, plugins: 0, sessions: 1, workflows: 1 })
+  await expect(page.getByRole('switch', { name: '高级模式', exact: true })).toHaveCount(0)
+  await page.route('**/api/workflows', (route) => route.abort('failed'))
   await page.getByRole('button', { name: '刷新', exact: true }).click()
-  await expect(pluginMetric).toContainText('以下内容来自上次成功读取')
-  await expect(pluginMetric.locator('.text-3xl')).toHaveText(priorCount)
+  await expect(workflowMetric).toContainText('以下内容来自上次成功读取')
+  await expect(workflowMetric.locator('.text-3xl')).toHaveText(priorCount)
   await expect(page.getByRole('heading', { name: '最近执行历史' })).toBeVisible()
   expect(reads.health).toBe(2)
+  expect(reads.plugins).toBe(0)
   await page.screenshot({ path: 'test-results/dashboard-partial-failure.png', fullPage: true })
   expect(errors).toEqual([])
 })

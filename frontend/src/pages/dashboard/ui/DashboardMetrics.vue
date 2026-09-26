@@ -5,11 +5,8 @@ import type { DashboardController } from '../composables/useDashboard'
 import DashboardMetricCard from './DashboardMetricCard.vue'
 const props = defineProps<{ dashboard: DashboardController }>()
 const metrics = computed(() => {
-  const {
-    workflows,
-    system: { plugins, health },
-  } = props.dashboard
-  const state = (query: typeof workflows | typeof plugins | typeof health) => ({
+  const { workflows, sessions, health } = props.dashboard
+  const state = (query: typeof workflows | typeof sessions | typeof health) => ({
     pending: query.pending.value,
     error: query.error.value,
     hasData: query.data.value !== undefined,
@@ -23,10 +20,10 @@ const metrics = computed(() => {
       ...state(workflows),
     },
     {
-      label: '已注册插件能力',
-      value: plugins.data.value?.length ?? '—',
-      description: '采集器与通知渠道',
-      ...state(plugins),
+      label: '最近运行',
+      value: sessions.data.value?.length ?? '—',
+      description: '近期执行记录',
+      ...state(sessions),
     },
     {
       label: '系统状态',

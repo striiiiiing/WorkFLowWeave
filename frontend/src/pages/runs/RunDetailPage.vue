@@ -63,9 +63,12 @@ async function recover() {
       :closable="false"
       show-icon
     />
-    <el-skeleton v-if="pending && !session" :rows="6" animated />
+    <el-skeleton v-if="pending && !session" :rows="6" />
     <template v-if="session">
       <SectionCard title="本次运行">
+        <template #actions>
+          <el-switch v-model="advanced" active-text="高级模式" aria-label="高级模式" />
+        </template>
         <RunSummary :session="session" />
         <p
           v-if="
@@ -82,14 +85,8 @@ async function recover() {
           <el-button size="small" @click="recovery.refresh">重新检查</el-button>
         </div>
       </SectionCard>
-      <div class="flex justify-end">
-        <el-switch v-model="advanced" active-text="高级模式" aria-label="高级模式" />
-      </div>
       <SectionCard title="最终报告" description="本次运行生成的分析结果">
         <PhaseReport :report="phases.aggregate" :active="active" :advanced="advanced" />
-      </SectionCard>
-      <SectionCard title="通知状态" description="每份报告在各个渠道的投递情况">
-        <PhaseReport :report="phases.notify" :active="active" :advanced="advanced" />
       </SectionCard>
       <SectionCard title="过程详情" description="需要追溯结果时，可展开查看采集和分析过程">
         <RunProcessDetails :phases="phases" :active="active" :advanced="advanced" />

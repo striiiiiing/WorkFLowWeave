@@ -33,6 +33,7 @@ import {
   Shield,
   Activity,
   Info,
+  Pencil,
 } from 'lucide-vue-next'
 
 export const icons = {
@@ -70,5 +71,6 @@ export const icons = {
   shield: Shield,
   activity: Activity,
   info: Info,
+  edit: Pencil,
 } as const
 export type IconName = keyof typeof icons

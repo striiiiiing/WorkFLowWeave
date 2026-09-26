@@ -42,7 +42,7 @@ describe('AI provider editor', () => {
     const wrapper = mount(AIProviderEditor, { global })
     await flushPromises()
 
-    const health = button(wrapper, '检查健康')
+    const health = button(wrapper, '测试连接')
     expect(health.attributes('disabled')).toBeDefined()
     expect(wrapper.text()).toContain('保存渠道后，可在这里独立检查健康。')
 
@@ -69,7 +69,7 @@ describe('AI provider editor', () => {
     })
     await flushPromises()
 
-    await button(wrapper, '检查健康').trigger('click')
+    await button(wrapper, '测试连接').trigger('click')
     await flushPromises()
 
     expect(resourcesApi.checkAIConnection).toHaveBeenCalledWith('provider')
@@ -120,7 +120,7 @@ describe('AI provider editor', () => {
     const wrapper = mount(AIProviderEditor, { props: { initial }, global })
     await flushPromises()
 
-    await button(wrapper, '检查健康').trigger('click')
+    await button(wrapper, '测试连接').trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('上游 HTTP 405')
     expect(wrapper.text()).toContain('vendor.model/pro')
@@ -203,8 +203,8 @@ describe('AI provider editor', () => {
     await flushPromises()
 
     await wrapper.get('input[placeholder="https://api.openai.com/v1"]').setValue(saved.base_url)
-    expect(button(wrapper, '检查健康').attributes('disabled')).toBeDefined()
-    await button(wrapper, '检查健康').trigger('click')
+    expect(button(wrapper, '测试连接').attributes('disabled')).toBeDefined()
+    await button(wrapper, '测试连接').trigger('click')
     expect(resourcesApi.checkAIConnection).not.toHaveBeenCalled()
 
     await wrapper.find('form').trigger('submit')
@@ -214,9 +214,9 @@ describe('AI provider editor', () => {
       'provider',
       expect.objectContaining({ base_url: saved.base_url }),
     )
-    expect(button(wrapper, '检查健康').attributes('disabled')).toBeUndefined()
+    expect(button(wrapper, '测试连接').attributes('disabled')).toBeUndefined()
 
-    await button(wrapper, '检查健康').trigger('click')
+    await button(wrapper, '测试连接').trigger('click')
     await flushPromises()
     expect(resourcesApi.checkAIConnection).toHaveBeenCalledWith('provider')
     wrapper.unmount()
@@ -244,8 +244,8 @@ describe('AI provider editor', () => {
     expect(resourcesApi.protectCredential).toHaveBeenCalledWith('new-key')
     expect(resourcesApi.replace).toHaveBeenCalled()
     expect(wrapper.text()).toContain('replace failed')
-    expect(button(wrapper, '检查健康').attributes('disabled')).toBeDefined()
-    await button(wrapper, '检查健康').trigger('click')
+    expect(button(wrapper, '测试连接').attributes('disabled')).toBeDefined()
+    await button(wrapper, '测试连接').trigger('click')
     expect(resourcesApi.checkAIConnection).not.toHaveBeenCalled()
     wrapper.unmount()
   })

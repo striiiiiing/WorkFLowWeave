@@ -6,6 +6,7 @@ import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 import { ElMessage } from 'element-plus'
 import AgentModelSelect from './AgentModelSelect.vue'
 import { groupAgentModels, readDefaultAgentModel } from '../composables/agentModels'
+import { readExpandReasoning, saveExpandReasoning } from '../composables/agentDisplay'
 
 const props = defineProps<{
   modelValue: boolean
@@ -22,8 +23,10 @@ const { query, action, toolsAction } = props.controller
 const draft = ref<AgentConfig>()
 const defaultModel = ref('')
 const preferenceError = ref('')
+const expandReasoning = ref(false)
 try {
   defaultModel.value = readDefaultAgentModel()
+  expandReasoning.value = readExpandReasoning()
 } catch {
   preferenceError.value = '无法读取浏览器中的默认模型设置'
 }
@@ -55,6 +58,12 @@ const readonlyPaths = computed(() => query.data.value?.readonly_paths ?? [])
 async function save() {
   if (!draft.value) return
   if (await props.controller.save(draft.value, defaultModel.value)) {
+    try {
+      saveExpandReasoning(expandReasoning.value)
+    } catch {
+      preferenceError.value = '服务端设置已保存，但浏览器思考过程显示设置保存失败'
+      return
+    }
     preferenceError.value = ''
     ElMessage.success('全局设置已更新，将在下一轮交互时生效')
     emit('changed')
@@ -290,6 +299,11 @@ async function toggleTool(plugin: string, enabled: boolean) {
 
       <!-- 4. 基础运行参数 -->
       <el-tab-pane label="基础设置" name="general">
+        <el-form label-position="top">
+          <el-form-item label="默认展开思考过程">
+            <el-switch v-model="expandReasoning" aria-label="默认展开思考过程" />
+          </el-form-item>
+        </el-form>
         <el-form v-if="draft" label-position="top">
           <div class="form-grid-2">
             <el-form-item label="Memory 时区 (IANA)">

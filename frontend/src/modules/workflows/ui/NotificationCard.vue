@@ -17,6 +17,7 @@ const props = defineProps<{
   capabilities: readonly WorkflowCapability[]
   advanced?: boolean
 }>()
+const emit = defineEmits<{ add: []; edit: [channel: ChannelConfig] }>()
 const draft = () => props.editor.draft.value!
 const capabilityByChannel = computed(() =>
   Object.fromEntries(
@@ -32,6 +33,7 @@ function channel(id: string) {
 </script>
 <template>
   <SectionCard title="4. 渠道分发" description="选择结果通知的目标渠道">
+    <template #actions><el-button size="small" @click="emit('add')">添加渠道</el-button></template>
     <el-form-item label="通知渠道">
       <el-select
         :model-value="draft().channels"
@@ -53,6 +55,14 @@ function channel(id: string) {
         <span class="mono break-all">
           {{ channelId }}{{ channel(channelId)?.enabled === false ? '（已停用）' : '' }}
         </span>
+        <el-button
+          v-if="channel(channelId)"
+          text
+          size="small"
+          @click="emit('edit', channel(channelId)!)"
+        >
+          编辑共用渠道
+        </el-button>
       </div>
       <el-alert
         v-if="channel(channelId)?.enabled === false"
@@ -61,7 +71,7 @@ function channel(id: string) {
         :closable="false"
         class="mb-3"
       />
-      <el-form-item :label="`${channelId}：自定义本次发送`">
+      <el-form-item :label="`${channelId}：覆盖本次发送参数`">
         <el-switch
           :model-value="!!draft().channel_overrides[channelId]"
           @update:model-value="editor.toggleChannelOverride(channelId, Boolean($event))"

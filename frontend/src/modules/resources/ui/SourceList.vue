@@ -37,7 +37,7 @@ const filtered = computed(() =>
       <el-button size="small" @click="emit('retryUsage')">重新加载工作流使用位置</el-button>
     </template>
   </el-alert>
-  <el-skeleton v-if="pending" :rows="4" animated />
+  <el-skeleton v-if="pending" :rows="4" />
   <div v-else class="grid grid-cols-1 gap-4">
     <SourceCard
       v-for="source in filtered"

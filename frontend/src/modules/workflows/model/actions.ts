@@ -14,6 +14,8 @@ export type WorkflowChanges = Partial<
     | 'name'
     | 'enabled'
     | 'interval_seconds'
+    | 'cron'
+    | 'cron_timezone'
     | 'input_separator'
     | 'include_counts'
     | 'collection_concurrency'

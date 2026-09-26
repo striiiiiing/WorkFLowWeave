@@ -30,7 +30,6 @@ const {
   protect,
 } = useChannelEditor(props)
 const form = ref<FormInstance>()
-const advanced = ref(false)
 const credentialEditors = new Map<string, InstanceType<typeof CredentialEditor>>()
 function setCredentialEditor(name: string, editor: unknown) {
   if (editor && typeof editor === 'object' && 'prepare' in editor) {
@@ -125,6 +124,7 @@ async function submit() {
       />
     </el-form-item>
     <ParameterField
+      v-if="capabilityName"
       :key="`options-${capabilityName}`"
       :model-value="draft.options"
       @update:model-value="updateOptions"
@@ -142,14 +142,16 @@ async function submit() {
       :protect="protect"
       @update:model-value="updateCredential(name, $event)"
     />
-    <el-form-item label="高级模式"><el-switch v-model="advanced" /></el-form-item>
-    <el-form-item v-if="advanced" label="超时 / 秒">
-      <el-input-number
-        :model-value="draft.timeout"
-        @update:model-value="updateAdvanced({ timeout: $event })"
-        :min="0.001"
-      />
-    </el-form-item>
+    <details class="advanced-fields">
+      <summary class="report-disclosure">高级配置</summary>
+      <el-form-item label="超时 / 秒">
+        <el-input-number
+          :model-value="draft.timeout"
+          @update:model-value="updateAdvanced({ timeout: $event })"
+          :min="0.001"
+        />
+      </el-form-item>
+    </details>
     <div class="flex justify-end gap-3">
       <el-button @click="emit('cancel')">取消</el-button>
       <el-button type="primary" native-type="submit" :loading="save.pending.value">

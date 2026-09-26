@@ -279,18 +279,6 @@ function handleInput(e: Event) {
   height: 12px;
   border-radius: 50%;
   border: 2px solid #10b981;
-  animation: pulseRipple 1.6s infinite;
-}
-
-@keyframes pulseRipple {
-  0% {
-    transform: scale(0.6);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(1.6);
-    opacity: 0;
-  }
 }
 
 .capsule-text {
@@ -444,13 +432,6 @@ function handleInput(e: Event) {
 .stop-btn {
   background: #ef4444;
   color: #fff;
-  animation: stopPulse 1.2s infinite;
-}
-
-@keyframes stopPulse {
-  50% {
-    transform: scale(0.95);
-  }
 }
 
 .fade-enter-active,
