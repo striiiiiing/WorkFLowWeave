@@ -1,17 +1,20 @@
-import { workflowsApi } from '@/api/workflows'
 import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus, { ElForm } from 'element-plus'
 import { afterEach, expect, it, vi } from 'vitest'
-import { resourcesApi } from '@/api/resources'
-import FanOutTaskCard from '@/components/workflow/FanOutTaskCard.vue'
-import FanInCard from '@/components/workflow/FanInCard.vue'
-import WorkflowEditView from '@/views/WorkflowEditView.vue'
-import { createFanIn } from '@/domain/workflow'
-import type { AIConfig, WorkflowDefinition } from '@/types'
+import FanOutTaskCard from '@/modules/workflows/ui/FanOutTaskCard.vue'
+import FanInCard from '@/modules/workflows/ui/FanInCard.vue'
+import WorkflowEditPage from '@/pages/workflows/WorkflowEditPage.vue'
+import { createFanIn, workflowsApiKey } from '@/modules/workflows/public'
+import type { WorkflowsApi, WorkflowDefinition } from '@/modules/workflows/public'
+import { resourcesApiKey } from '@/modules/resources/public'
+import type { AIConfig, ResourcesApi } from '@/modules/resources/public'
+import { systemApiKey } from '@/modules/system/public'
+import type { SystemApi } from '@/modules/system/public'
 
-vi.mock('@/api/workflows', () => ({ workflowsApi: { list: vi.fn().mockResolvedValue([]) } }))
-vi.mock('@/api/resources', () => ({ resourcesApi: { list: vi.fn() } }))
-vi.mock('vue-router', () => ({ useRoute: () => ({ params: {} }), useRouter: () => ({}) }))
+vi.mock('vue-router', () => ({
+  useRoute: () => ({ params: {}, query: {} }),
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+}))
 
 const provider: AIConfig = {
   id: 'provider',
@@ -24,6 +27,30 @@ const provider: AIConfig = {
   retries: 5,
 }
 const wrappers: ReturnType<typeof mount>[] = []
+const resourceList = vi.fn()
+const workflowList = vi.fn().mockResolvedValue([])
+const resourcesApi = {
+  list: resourceList,
+  resolveSource: vi.fn(),
+  checkAIConnection: vi.fn(),
+  protectCredential: vi.fn(),
+  get: vi.fn(),
+  create: vi.fn(),
+  replace: vi.fn(),
+  delete: vi.fn(),
+} as unknown as ResourcesApi
+const workflowsApi = {
+  list: workflowList,
+  get: vi.fn(),
+  create: vi.fn(),
+  replace: vi.fn(),
+  delete: vi.fn(),
+} as unknown as WorkflowsApi
+const systemApi = {
+  plugins: vi.fn().mockResolvedValue([]),
+  health: vi.fn(),
+  reload: vi.fn(),
+} as unknown as SystemApi
 afterEach(() => {
   wrappers.forEach((wrapper) => wrapper.unmount())
   wrappers.length = 0
@@ -31,10 +58,15 @@ afterEach(() => {
 })
 
 async function setup() {
-  vi.mocked(resourcesApi.list).mockImplementation(async (kind) => (kind === 'ai' ? [provider] : []))
-  const wrapper = mount(WorkflowEditView, {
+  resourceList.mockImplementation(async (kind: string) => (kind === 'ai' ? [provider] : []))
+  const wrapper = mount(WorkflowEditPage, {
     global: {
       plugins: [ElementPlus],
+      provide: {
+        [resourcesApiKey as symbol]: resourcesApi,
+        [workflowsApiKey as symbol]: workflowsApi,
+        [systemApiKey as symbol]: systemApi,
+      },
       stubs: {
         RouterLink: { template: '<a><slot /></a>' },
         SourceStepCard: true,
@@ -58,8 +90,8 @@ it('updates both model selectors on return without replacing the workflow draft,
   await flushPromises()
   const expectedDraft = JSON.parse(JSON.stringify(draft))
   let finish!: (value: AIConfig[]) => void
-  vi.mocked(resourcesApi.list).mockImplementationOnce(
-    () => new Promise<AIConfig[]>((resolve) => (finish = resolve)),
+  resourceList.mockImplementation((kind: string) =>
+    kind === 'ai' ? new Promise<AIConfig[]>((resolve) => (finish = resolve)) : Promise.resolve([]),
   )
   window.dispatchEvent(new Event('focus'))
   await flushPromises()
@@ -70,34 +102,34 @@ it('updates both model selectors on return without replacing the workflow draft,
   expect(wrapper.getComponent(FanOutTaskCard).props('configs')).toEqual(updated)
   expect(wrapper.getComponent(FanInCard).props('configs')).toEqual(updated)
   expect(wrapper.getComponent(ElForm).props('model')).toEqual(expectedDraft)
-  expect(vi.mocked(resourcesApi.list).mock.calls.map(([kind]) => kind)).toEqual([
-    'ai',
+  expect(resourceList.mock.calls.map(([kind]) => kind)).toEqual([
     'sources',
     'channels',
     'ai',
     'sources',
     'channels',
+    'ai',
   ])
   expect(wrapper.text()).not.toContain('刷新模型列表')
   wrapper.unmount()
   wrappers.length = 0
   window.dispatchEvent(new Event('focus'))
-  expect(resourcesApi.list).toHaveBeenCalledTimes(6)
-  expect(workflowsApi.list).toHaveBeenCalledTimes(2)
+  expect(resourceList).toHaveBeenCalledTimes(6)
+  expect(workflowList).toHaveBeenCalledTimes(2)
 })
 
 it('shows catalog update failures and retries without losing edits', async () => {
   const wrapper = await setup()
   const draft = wrapper.getComponent(ElForm).props('model') as WorkflowDefinition
   draft.name = '保留草稿'
-  vi.mocked(resourcesApi.list).mockRejectedValueOnce(new Error('目录读取失败'))
+  resourceList.mockRejectedValueOnce(new Error('目录读取失败'))
   window.dispatchEvent(new Event('focus'))
   await flushPromises()
   expect(wrapper.get('[role="alert"]').text()).toContain('目录读取失败')
   const button = (name: string) => wrapper.findAll('button').find((item) => item.text() === name)!
   expect(button('保存工作流').attributes('disabled')).toBeDefined()
   expect(wrapper.getComponent(ElForm).props('model')).toBe(draft)
-  await button('重新加载模型列表').trigger('click')
+  await button('重新加载资源目录').trigger('click')
   await flushPromises()
   expect(wrapper.find('[role="alert"]').exists()).toBe(false)
   expect(button('保存工作流').attributes('disabled')).toBeUndefined()

@@ -9,14 +9,17 @@ import DashboardView from '@/pages/dashboard/DashboardPage.vue'
 import RunsView from '@/pages/runs/RunListPage.vue'
 import { SessionTable } from '@/modules/runs/public'
 import { pluginHealthRows } from '@/modules/system/public'
-import { workflowsApi } from '@/api/workflows'
-import { runsApi } from '@/api/runs'
-import type { CapabilityDescription, HealthReport, SessionRecord } from '@/types'
+import { workflowsApi } from '@/app/services'
+import { runsApi } from '@/app/services'
+import type { SessionRecord } from '@/modules/runs/public'
+import type { CapabilityDescription, HealthReport } from '@/modules/system/public'
 
 const { health, plugins } = vi.hoisted(() => ({ health: vi.fn(), plugins: vi.fn() }))
-vi.mock('@/api/system', () => ({ systemApi: { health, plugins } }))
-vi.mock('@/api/workflows', () => ({ workflowsApi: { list: vi.fn() } }))
-vi.mock('@/api/runs', () => ({ runsApi: { list: vi.fn() } }))
+vi.mock('@/app/services', () => ({
+  systemApi: { health, plugins },
+  workflowsApi: { list: vi.fn() },
+  runsApi: { list: vi.fn() },
+}))
 
 const capability: CapabilityDescription = {
   kind: 'collector',
