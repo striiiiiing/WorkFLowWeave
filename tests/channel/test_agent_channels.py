@@ -586,7 +586,8 @@ class _WorkflowAI:
     def validate(self, config):
         return None
 
-    async def execute(self, config, prompt, text, *, model, task_id, context):
+    async def execute(self, config, prompt, text, *, model, task_id, context,
+                      system_prompt=None, user_prompt=""):
         return AnalysisResult(task_id=task_id, status="success", text="workflow report")
 
 
