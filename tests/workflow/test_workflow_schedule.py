@@ -67,8 +67,11 @@ def test_cron_timezone_and_descriptor_share_apscheduler_weekdays(monkeypatch):
     assert trigger.get_next_fire_time(None, datetime(2026, 9, 27, tzinfo=UTC)) == datetime(
         2026, 9, 28, 1, tzinfo=UTC,
     )
-    assert "Monday" in describe_cron("0 9 * * 0", cron_trigger("0 9 * * 0"))
-    assert "Sunday" in describe_cron("0 9 * * 6", cron_trigger("0 9 * * 6"))
+    assert "星期一" in describe_cron("0 9 * * 0", cron_trigger("0 9 * * 0"))
+    assert "星期日" in describe_cron("0 9 * * 6", cron_trigger("0 9 * * 6"))
+    weekdays = describe_cron("0 9 * * MON-FRI", cron_trigger("0 9 * * MON-FRI"))
+    assert "星期一" in weekdays and "星期五" in weekdays
+    assert "Monday" not in weekdays and "Friday" not in weekdays
 
 
 def test_at_rounds_up_and_has_only_one_occurrence():

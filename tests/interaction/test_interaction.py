@@ -413,7 +413,7 @@ def test_cron_preview_and_schedule_contract():
         })
         assert preview.status_code == 200
         value = preview.json()
-        assert "Monday" in value["description"]
+        assert "星期一" in value["description"]
         assert value["timezone"] == "Asia/Shanghai"
         assert datetime.fromisoformat(value["next_run_at"]).tzinfo is not None
         assert client.post("/api/workflows/cron/preview", json={
