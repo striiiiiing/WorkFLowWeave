@@ -1,13 +1,20 @@
-import type { FanInConfig, WorkflowDefinition } from './types'
+import type { AnalysisTask, FanInConfig, WorkflowDefinition } from './types'
 import { DEFAULT_DAILY_CRON } from './cronPresets'
 
-export function createFanIn(): FanInConfig {
+export function defaultFanInModelSource(analyses: readonly AnalysisTask[]): string | null {
+  return analyses.length ? '$first' : null
+}
+
+export function createFanIn(analyses: readonly AnalysisTask[] = []): FanInConfig {
   return {
     order: [],
     separator: '\n\n',
     ai: null,
     model: null,
-    prompt: '{input}',
+    system_prompt: null,
+    input_prompt: null,
+    user_prompt: '',
+    reuse_from: defaultFanInModelSource(analyses),
     mark_incomplete: true,
   }
 }
@@ -19,6 +26,8 @@ export function createWorkflow(): WorkflowDefinition {
     sources: [],
     analyses: [],
     fan_in: null,
+    system_prompt: '',
+    input_prompt: '{input}',
     channels: [],
     source_overrides: {},
     channel_overrides: {},

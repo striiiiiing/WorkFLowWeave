@@ -321,7 +321,14 @@ test('workflow create, reload, run, and versioned phase reading', async ({ page,
   const saved = await (await request.get('/api/workflows/browser_workflow')).json()
   expect(saved.sources).toEqual(['second_source', 'offline_source'])
   expect(saved.analyses).toEqual([
-    { id: 'task_1', ai: 'offline_ai', model: 'offline_model', prompt: '{input}' },
+    {
+      id: 'task_1',
+      ai: 'offline_ai',
+      model: 'offline_model',
+      system_prompt: null,
+      input_prompt: null,
+      user_prompt: '',
+    },
   ])
   expect(saved.backup.enabled).toBe(true)
   expect(saved.include_counts).toBe(true)
@@ -721,7 +728,16 @@ test('workflow designer persists independent sources and the resource center onl
           id,
           name: id === workflowIds[0] ? '独立巡检工作流' : '共享巡检工作流',
           sources: [sourceId],
-          analyses: [{ id: 'analysis', ai: aiId, model: 'offline', prompt: '{input}' }],
+          analyses: [
+            {
+              id: 'analysis',
+              ai: aiId,
+              model: 'offline',
+              system_prompt: null,
+              input_prompt: null,
+              user_prompt: '',
+            },
+          ],
         },
       })
       expect(response.ok(), await response.text()).toBe(true)
@@ -756,7 +772,7 @@ test('workflow designer persists independent sources and the resource center onl
       timeout: 25,
       template: null,
     })
-    expect(saved.analyses[0].prompt).toBe('保留这个未保存草稿 {input}')
+    expect(saved.analyses[0].user_prompt).toBe('保留这个未保存草稿 {input}')
 
     await page.goto('/resources?kind=sources')
     await expect(page.getByRole('tab', { name: '处理模板', exact: true })).toHaveCount(0)
