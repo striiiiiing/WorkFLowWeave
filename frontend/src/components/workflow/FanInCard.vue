@@ -57,7 +57,7 @@ function toggle(enabled: boolean | string | number) {
         optional
       />
       <el-form-item v-if="model.fan_in.ai" label="汇总提示词">
-        <el-input v-model="model.fan_in.prompt" type="textarea" :rows="3" />
+        <el-input v-model="model.fan_in.user_prompt" type="textarea" :rows="3" />
       </el-form-item>
       <el-form-item v-if="advanced" label="分隔符">
         <el-input v-model="model.fan_in.separator" type="textarea" :rows="2" />

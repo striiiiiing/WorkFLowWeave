@@ -3,6 +3,7 @@ import type { AIConfig } from '@/modules/resources/public'
 import type { AnalysisTask } from '../model/types'
 import type { WorkflowEditorController } from '../composables/useWorkflowEditor'
 import AIModelSelect from './AIModelSelect.vue'
+import PromptOverrides from './PromptOverrides.vue'
 import SectionCard from '@/shared/ui/SectionCard.vue'
 const props = defineProps<{
   editor: WorkflowEditorController
@@ -54,12 +55,19 @@ function taskId(index: number, task: AnalysisTask) {
       />
       <el-form-item label="提示词">
         <el-input
-          :model-value="task.prompt"
+          :model-value="task.user_prompt"
           type="textarea"
           :rows="3"
-          @update:model-value="editor.updateTask(index, { prompt: $event })"
+          @update:model-value="editor.updateTask(index, { user_prompt: $event })"
         />
       </el-form-item>
+      <PromptOverrides
+        v-if="advanced"
+        :value="task"
+        :shared-system-prompt="draft().system_prompt"
+        :shared-input-prompt="draft().input_prompt"
+        @update="editor.updateTask(index, $event)"
+      />
     </div>
     <div v-if="advanced" class="form-grid">
       <el-form-item label="分析并发">

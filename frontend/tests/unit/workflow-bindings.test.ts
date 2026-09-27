@@ -39,7 +39,7 @@ describe('workflow bindings', () => {
   it('keeps the fan-in draft when temporarily disabled and restored', async () => {
     const initial = {
       ...createWorkflow(),
-      fan_in: { ...createFanIn(), order: ['task'], prompt: 'keep me', separator: '---' },
+      fan_in: { ...createFanIn(), order: ['task'], input_prompt: 'keep me', separator: '---' },
     }
     let editor!: ReturnType<typeof useWorkflowEditor>
     const wrapper = mount(
@@ -65,7 +65,7 @@ describe('workflow bindings', () => {
       .vm.$emit('update:modelValue', true)
     expect(editor.draft.value?.fan_in).toMatchObject({
       order: ['task'],
-      prompt: 'keep me',
+      input_prompt: 'keep me',
       separator: '---',
     })
     wrapper.unmount()
@@ -75,8 +75,22 @@ describe('workflow bindings', () => {
     const initial = {
       ...createWorkflow(),
       analyses: [
-        { id: 'first', ai: '', model: '', prompt: '{input}' },
-        { id: 'second', ai: '', model: '', prompt: '{input}' },
+        {
+          id: 'first',
+          ai: '',
+          model: '',
+          system_prompt: null,
+          input_prompt: null,
+          user_prompt: '',
+        },
+        {
+          id: 'second',
+          ai: '',
+          model: '',
+          system_prompt: null,
+          input_prompt: null,
+          user_prompt: '',
+        },
       ],
       fan_in: { ...createFanIn(), order: ['first', 'second'] },
     }
