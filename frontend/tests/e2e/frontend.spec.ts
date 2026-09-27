@@ -299,6 +299,8 @@ test('workflow create, reload, run, and versioned phase reading', async ({ page,
     .locator('.el-select')
     .click()
   await page.getByRole('option', { name: 'Asia/Shanghai' }).click()
+  await expect(page.getByText('实际采用时区：Asia/Shanghai')).toBeVisible()
+  await expect(page.getByText('下一次运行：', { exact: false })).toBeVisible()
   await page.getByRole('button', { name: '加载已有数据源', exact: true }).click()
   await page.getByText('选择数据源', { exact: true }).click()
   await page.getByRole('option', { name: 'offline_source', exact: true }).click()
@@ -325,9 +327,14 @@ test('workflow create, reload, run, and versioned phase reading', async ({ page,
   ])
   expect(saved.backup.enabled).toBe(true)
   expect(saved.include_counts).toBe(true)
-  expect(saved.interval_seconds).toBeNull()
-  expect(saved.cron).toBe('0 9 * * *')
-  expect(saved.cron_timezone).toBe('Asia/Shanghai')
+  expect(saved.schedule).toEqual({
+    type: 'cron',
+    expression: '0 9 * * *',
+    timezone: 'Asia/Shanghai',
+  })
+  expect(saved.interval_seconds).toBeUndefined()
+  expect(saved.cron).toBeUndefined()
+  expect(saved.cron_timezone).toBeUndefined()
   expect(saved.description).toBeUndefined()
   // The built-in offline collector exits before AI, so this smoke test never calls a model service.
   saved.source_overrides = {
