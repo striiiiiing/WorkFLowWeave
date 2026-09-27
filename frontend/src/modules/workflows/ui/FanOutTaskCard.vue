@@ -20,22 +20,6 @@ function taskId(index: number, task: AnalysisTask) {
     <template #actions>
       <el-button size="small" @click="editor.addTask">添加任务</el-button>
     </template>
-    <el-form-item label="共享系统提示词">
-      <el-input
-        :model-value="draft().system_prompt"
-        type="textarea"
-        :rows="3"
-        @update:model-value="editor.update({ system_prompt: $event })"
-      />
-    </el-form-item>
-    <el-form-item label="共享输入模板">
-      <el-input
-        :model-value="draft().input_prompt"
-        type="textarea"
-        :rows="3"
-        @update:model-value="editor.update({ input_prompt: $event })"
-      />
-    </el-form-item>
     <el-form-item
       prop="analyses"
       :rules="{ type: 'array', required: true, min: 1, message: '至少添加一个分析任务' }"
@@ -69,6 +53,14 @@ function taskId(index: number, task: AnalysisTask) {
         :model-prop="`analyses.${index}.model`"
         @selection="(ai, model) => editor.updateTask(index, { ai: ai ?? '', model: model ?? '' })"
       />
+      <el-form-item label="提示词">
+        <el-input
+          :model-value="task.user_prompt"
+          type="textarea"
+          :rows="3"
+          @update:model-value="editor.updateTask(index, { user_prompt: $event })"
+        />
+      </el-form-item>
       <PromptOverrides
         v-if="advanced"
         :value="task"
