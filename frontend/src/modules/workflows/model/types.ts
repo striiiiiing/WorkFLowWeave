@@ -24,6 +24,11 @@ export interface BackupPolicy {
   on_failure: ContinuePolicy
   retention_days: number | null
 }
+export type WorkflowSchedule =
+  | { type: 'at'; at: string }
+  | { type: 'every'; every_seconds: number }
+  | { type: 'cron'; expression: string; timezone: string | null }
+
 export interface WorkflowDefinition {
   id: string
   name: string
@@ -40,9 +45,7 @@ export interface WorkflowDefinition {
   on_all_empty: SourcePolicy
   analysis_failure: ContinuePolicy
   send_partial: boolean
-  interval_seconds: number | null
-  cron: string | null
-  cron_timezone: string
+  schedule: WorkflowSchedule | null
   enabled: boolean
   backup: BackupPolicy
 }

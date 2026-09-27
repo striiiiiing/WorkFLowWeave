@@ -5,9 +5,37 @@ import { describe, expect, it } from 'vitest'
 import { ApiError, errorMessage } from '@/shared/api/errors'
 import { errorMessage as appErrorMessage } from '@/app/errorMessage'
 import { createHttpHarness } from '../helpers/httpHarness'
-const { resourcesApi, workflowsApi, runsApi, systemApi, respond, respondText } = createHttpHarness()
+import { createWorkflow } from '@/modules/workflows/public'
+const { resourcesApi, workflowsApi, runsApi, systemApi, respond, respondText, lastRequest } =
+  createHttpHarness()
 
 describe('HTTP contract', () => {
+  it('saves only the new schedule contract and requests a Cron preview', async () => {
+    const workflow = {
+      ...createWorkflow(),
+      schedule: { type: 'cron' as const, expression: '0 9 * * *', timezone: null },
+    }
+    respond(workflow)
+    await workflowsApi.create(workflow)
+    expect(JSON.parse(lastRequest().data as string)).toMatchObject({ schedule: workflow.schedule })
+    expect(JSON.parse(lastRequest().data as string)).not.toHaveProperty('interval_seconds')
+    expect(JSON.parse(lastRequest().data as string)).not.toHaveProperty('cron')
+    expect(JSON.parse(lastRequest().data as string)).not.toHaveProperty('cron_timezone')
+
+    respond({
+      description: '每天 9:00',
+      timezone: 'Asia/Shanghai',
+      next_run_at: '2026-09-28T01:00:00Z',
+    })
+    await expect(workflowsApi.previewCron('0 9 * * *', null)).resolves.toMatchObject({
+      timezone: 'Asia/Shanghai',
+    })
+    expect(lastRequest().url).toBe('/workflows/cron/preview')
+    expect(JSON.parse(lastRequest().data as string)).toEqual({
+      expression: '0 9 * * *',
+      timezone: null,
+    })
+  })
   it('explains nested fields and numbered tasks in user language', () => {
     const error = new ApiError(422, {
       code: 'validation',
