@@ -1,7 +1,8 @@
-import { computed, ref, toRaw, watch } from 'vue'
+import { computed, onScopeDispose, ref, toRaw, watch } from 'vue'
 import { useResourcesApi } from '../api/dependencies'
 import type { ResourcesApi } from '../api/resourcesApi'
 import { useAsyncTask } from '@/shared/async/useAsyncTask'
+import { useErrorFormatter } from '@/shared/async/errorFormatter'
 import { createResource, generatedResourceId } from '../model/resources'
 import type { AIConfig } from '../model/types'
 
@@ -9,7 +10,7 @@ export function useAIProviderEditor(
   props: { initial?: AIConfig },
   resourcesApi: Pick<
     ResourcesApi,
-    'create' | 'replace' | 'protectCredential' | 'checkAIConnection' | 'testAIModel'
+    'create' | 'replace' | 'protectCredential' | 'discoverAIModels'
   > = useResourcesApi(),
 ) {
   const initial = props.initial
@@ -18,60 +19,69 @@ export function useAIProviderEditor(
   const draft = ref(initial)
   const persisted = ref(props.initial ? structuredClone(initial) : undefined)
   const save = useAsyncTask()
-  const health = useAsyncTask()
-  const modelTest = useAsyncTask()
-  const testedModel = ref('')
+  const health = { pending: ref(false), error: ref('') }
+  const formatError = useErrorFormatter()
   const plaintext = ref('')
   const credentialMode = ref<'keep' | 'input' | 'env' | 'none'>(props.initial ? 'keep' : 'input')
   const environmentName = ref(initial.api_key?.kind === 'env' ? initial.api_key.name : '')
   const discovered = ref<string[]>([])
   const checked = ref(false)
-  const busy = computed(() => save.pending.value || health.pending.value || modelTest.pending.value)
-  const connectionChanged = computed(
-    () =>
-      !persisted.value ||
-      draft.value.base_url !== persisted.value.base_url ||
-      draft.value.provider !== persisted.value.provider ||
-      JSON.stringify(draft.value.api_key) !== JSON.stringify(persisted.value.api_key) ||
-      credentialMode.value !== 'keep',
-  )
+  const busy = computed(() => save.pending.value)
+  let discoveryVersion = 0
   watch(
     () => [
       draft.value.base_url,
       draft.value.provider,
+      draft.value.api_key,
+      draft.value.timeout,
+      draft.value.retries,
       credentialMode.value,
       environmentName.value,
       plaintext.value,
     ],
     () => {
+      discoveryVersion++
       checked.value = false
       discovered.value = []
+      health.pending.value = false
       health.error.value = ''
-      modelTest.error.value = ''
-      testedModel.value = ''
     },
   )
-  function checkHealth() {
-    if (!persisted.value || connectionChanged.value || busy.value) return
-    const id = persisted.value.id
+  onScopeDispose(() => {
+    discoveryVersion++
+  })
+
+  async function discoverModels() {
+    const version = ++discoveryVersion
     checked.value = false
     discovered.value = []
-    void health.run(async () => {
-      discovered.value = await resourcesApi.checkAIConnection(id)
-      checked.value = true
-    })
-  }
-  async function testModel(model: string) {
-    if (!persisted.value || connectionChanged.value || busy.value) return
-    testedModel.value = ''
-    const result = await modelTest.run(async () => {
-      const result = await resourcesApi.testAIModel(persisted.value!.id, model)
-      if (result.status !== 'success') {
-        throw new Error(result.error?.message ?? `模型“${model}”没有正常返回结果`)
+    health.error.value = ''
+    health.pending.value = true
+    try {
+      // The draft contains Vue proxies; the API accepts JSON, so snapshot that exact payload.
+      const config = JSON.parse(JSON.stringify(draft.value)) as AIConfig
+      if (!config.base_url) throw new Error('请先填写服务地址')
+      if (credentialMode.value === 'input') {
+        if (!plaintext.value) throw new Error('请先填写 API 密钥')
+        config.api_key = await resourcesApi.protectCredential(plaintext.value)
+      } else if (credentialMode.value === 'env') {
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(environmentName.value)) {
+          throw new Error('请输入有效环境变量名称')
+        }
+        config.api_key = { kind: 'env', name: environmentName.value }
+      } else if (credentialMode.value === 'none') {
+        config.api_key = null
       }
-      return result
-    })
-    if (result.status === 'success') testedModel.value = model
+      if (version !== discoveryVersion) return
+      const models = await resourcesApi.discoverAIModels(config)
+      if (version !== discoveryVersion) return
+      discovered.value = models
+      checked.value = true
+    } catch (cause) {
+      if (version === discoveryVersion) health.error.value = formatError(cause)
+    } finally {
+      if (version === discoveryVersion) health.pending.value = false
+    }
   }
   async function submit(validate: () => Promise<boolean>) {
     if (busy.value) return { status: 'busy' as const }
@@ -118,17 +128,13 @@ export function useAIProviderEditor(
     persisted,
     save,
     health,
-    modelTest,
-    testedModel,
     plaintext,
     credentialMode,
     environmentName,
     discovered,
     checked,
     busy,
-    connectionChanged,
-    checkHealth,
-    testModel,
+    discoverModels,
     submit,
   }
 }

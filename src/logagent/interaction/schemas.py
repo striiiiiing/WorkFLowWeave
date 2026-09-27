@@ -84,9 +84,3 @@ class ReloadResponse(StrictModel):
 
 class ProtectCredentialRequest(StrictModel):
     plaintext: SecretStr = Field(min_length=1)
-
-
-class AIModelTestRequest(StrictModel):
-    """指定一个已保存模型执行一次最小真实请求。"""
-
-    model: str = Field(min_length=1)

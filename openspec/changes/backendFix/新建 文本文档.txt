@@ -1,0 +1,34 @@
+采用ssh myserver:~/opt/workflowServer的以下实现
+包含save_many
+提示词部分改为：
+｛system prompt｝，每项可以自己设置，但是默认同步，包括fan-in
+{user prompt}，这里带有{input}，如此设计是为了input未来可以带有图片，对于fan-in时，这里的input应该是全部前一步排序采取给出的，比如{input，第一个分析}这样
+{user prompt}，这里带有每个的差异项
+
+
+
+实现Cron相关逻辑
+
+采用类似于openclaw的设计，
+
+| 组件           | 职责       | 关键方法              |
+| :------------- | :--------- | :-------------------- |
+| **CronStore**  | 持久化存储 | load / save           |
+| **CronOps**    | CRUD 操作  | add / remove / update |
+| **CronTimer**  | 定时调度   | armTimer / onTimer    |
+| **executeJob** | 任务执行   | main vs isolated      |
+
+**一个定时器管所有任务**。不是给每个任务都开一个定时器
+
+同时有三种调度类型，at 用于一次性提醒，every 用于周期性任务，cron 则支持复杂的时间表达式。
+
+at/every/cron只是前端表现，实际上到了后端都是Cron和interval
+
+
+
+
+
+采用APScheduler来实现
+
+cron-descriptor给出cron说明
+

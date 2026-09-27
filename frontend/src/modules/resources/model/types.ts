@@ -1,4 +1,4 @@
-import type { ErrorInfo, JsonObject } from '@/shared/types'
+import type { JsonObject } from '@/shared/types'
 
 export type SourcePolicy = 'stop' | 'notice' | 'skip'
 export interface SourceConfig {
@@ -35,12 +35,6 @@ export interface AIConfig {
   retries: number
 }
 
-export interface AIModelTestResult {
-  task_id: string
-  status: 'success' | 'failed' | 'timeout' | 'cancelled'
-  text: string
-  error: ErrorInfo | null
-}
 export interface ChannelConfig {
   id: string
   channel: string

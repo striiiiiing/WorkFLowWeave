@@ -18,8 +18,7 @@ vi.mock('@/app/services', () => ({
     create: vi.fn(),
     replace: vi.fn(),
     protectCredential: vi.fn(),
-    checkAIConnection: vi.fn(),
-    testAIModel: vi.fn(),
+    discoverAIModels: vi.fn(),
   },
 }))
 
@@ -71,7 +70,7 @@ describe('resource category actions', () => {
     expect(wrapper.text()).toContain('删除')
     expect(wrapper.text()).not.toContain('检查健康')
     expect(wrapper.text()).not.toContain('检查连接')
-    expect(resourcesApi.checkAIConnection).not.toHaveBeenCalled()
+    expect(resourcesApi.discoverAIModels).not.toHaveBeenCalled()
 
     wrapper.unmount()
   })

@@ -6,6 +6,7 @@ import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 import { useWorkflowList, useWorkflowsApi } from '@/modules/workflows/public'
 import { useRunActions } from '@/modules/runs/public'
 import { useAsyncTask } from '@/shared/async/useAsyncTask'
+import ContinueInAgent from '@/pages/integrations/ContinueInAgent.vue'
 const router = useRouter()
 const workflowsApi = useWorkflowsApi()
 const query = useWorkflowList(workflowsApi)
@@ -75,6 +76,9 @@ onScopeDispose(() => window.removeEventListener('focus', refreshOnFocus))
         <span>{{ workflow.channels.length }} 个通知渠道</span>
       </div>
       <div class="flex flex-wrap justify-end gap-2 mt-6">
+        <div class="mr-auto">
+          <ContinueInAgent :workflow-id="workflow.id" />
+        </div>
         <el-popconfirm title="确认删除此工作流？" @confirm="remove(workflow.id)">
           <template #reference>
             <el-button type="danger" plain :disabled="action.pending.value">删除</el-button>

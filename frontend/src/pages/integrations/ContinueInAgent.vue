@@ -2,18 +2,31 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { isTaskSuccess, useAsyncTask } from '@/shared/async/useAsyncTask'
-import { useAgentsApi, readDefaultAgentModel, type AgentModel } from '@/modules/agents/public'
-import type { SessionRecord } from '@/modules/runs/public'
+import {
+  AgentModelSelect,
+  useAgentsApi,
+  readDefaultAgentModel,
+  type AgentModel,
+} from '@/modules/agents/public'
+import { useRunsApi, type SessionRecord } from '@/modules/runs/public'
 
-const props = defineProps<{ session: SessionRecord }>()
+const props = defineProps<{
+  session?: SessionRecord
+  workflowId?: string
+  workflowSessionId?: string
+}>()
 const router = useRouter()
 const api = useAgentsApi()
+const runsApi = useRunsApi()
 const action = useAsyncTask()
 const visible = ref(false)
 const models = ref<AgentModel[]>([])
 const model = ref('')
 const preferredModel = ref('')
-const canContinue = computed(() => ['completed', 'partial'].includes(props.session.status))
+const source = ref<SessionRecord>()
+const canContinue = computed(
+  () => !props.session || ['completed', 'partial'].includes(props.session.status),
+)
 const modelPrompt = computed(() => {
   if (!preferredModel.value) return '请选择用于续接讨论的模型。'
   if (!models.value.some((item) => item.reference === preferredModel.value))
@@ -22,13 +35,29 @@ const modelPrompt = computed(() => {
 })
 
 async function open() {
+  source.value = props.session
   model.value = ''
+  models.value = []
   preferredModel.value = ''
   const result = await action.run(async () => {
     const available = await api.models()
     const preferred = readDefaultAgentModel()
     models.value = available
     preferredModel.value = preferred
+    if (!source.value) {
+      if (props.workflowSessionId) source.value = await runsApi.get(props.workflowSessionId)
+      else {
+        if (!props.workflowId) throw new Error('缺少工作流 ID')
+        const records = await runsApi.list({ workflow_id: props.workflowId, limit: 1000 })
+        source.value = records
+          .filter((item) => ['completed', 'partial'].includes(item.status))
+          .sort((a, b) =>
+            (b.finished_at ?? b.updated_at).localeCompare(a.finished_at ?? a.updated_at),
+          )[0]
+      }
+    }
+    if (!source.value || !['completed', 'partial'].includes(source.value.status))
+      throw new Error('Workflow 没有可继续的最终结果')
     model.value = available.some((item) => item.reference === preferred) ? preferred : ''
   })
   if (isTaskSuccess(result) && model.value) await create()
@@ -36,9 +65,10 @@ async function open() {
 }
 
 async function create() {
-  if (!canContinue.value || !models.value.some((item) => item.reference === model.value)) return
+  const selectedSource = source.value
+  if (!selectedSource || !models.value.some((item) => item.reference === model.value)) return
   const result = await action.run(() =>
-    api.create({ workflow_session_id: props.session.session_id, model: model.value }),
+    api.create({ workflow_session_id: selectedSource.session_id, model: model.value }),
   )
   if (!isTaskSuccess(result)) {
     visible.value = true
@@ -50,7 +80,9 @@ async function create() {
 </script>
 
 <template>
-  <el-button v-if="canContinue" :loading="action.pending.value" @click="open">继续讨论</el-button>
+  <el-button v-if="canContinue" :loading="action.pending.value" @click="open">
+    {{ workflowId ? '从最新结果继续' : '继续讨论' }}
+  </el-button>
   <el-dialog v-model="visible" title="从 Workflow 结果创建 Agent 会话" width="min(90vw, 580px)">
     <el-alert
       v-if="action.error.value"
@@ -58,26 +90,22 @@ async function create() {
       type="error"
       :closable="false"
     />
-    <template v-else>
-      <p>来源 {{ session.workflow_id }} / {{ session.session_id }}</p>
-      <p class="mb-3">本次运行记录会固定为新会话的上下文。</p>
-      <el-select v-model="model" aria-label="续接模型" placeholder="选择模型" class="w-full">
-        <el-option
-          v-for="item in models"
-          :key="item.reference"
-          :label="`${item.ai} / ${item.model}`"
-          :value="item.reference"
-        />
-      </el-select>
-      <p v-if="modelPrompt" class="mt-2 text-sm" role="status">{{ modelPrompt }}</p>
-    </template>
+    <p v-if="source">来源 {{ source.workflow_id }} / {{ source.session_id }}</p>
+    <p v-if="source" class="mb-3">本次运行记录会固定为新会话的上下文。</p>
+    <AgentModelSelect
+      v-model="model"
+      :models="models"
+      label="续接模型"
+      :disabled="action.pending.value"
+    />
+    <p v-if="modelPrompt" class="mt-2 text-sm" role="status">{{ modelPrompt }}</p>
     <template #footer>
       <el-button @click="visible = false">取消</el-button>
       <el-button :loading="action.pending.value" @click="open">重新加载模型</el-button>
       <el-button
         type="primary"
         :loading="action.pending.value"
-        :disabled="!models.some((item) => item.reference === model)"
+        :disabled="!source || !models.some((item) => item.reference === model)"
         @click="create"
       >
         创建并继续
