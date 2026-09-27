@@ -177,7 +177,8 @@ export function useWorkflowEditor(options: WorkflowEditorOptions) {
   function deleteTask(index: number) {
     const removedId = requireDraft().analyses[index]?.id
     const next = apply(removeAnalysis(requireDraft(), index))
-    if (removedId) disabledFanIn.value = removeFanInReferences(disabledFanIn.value, removedId)
+    if (removedId)
+      disabledFanIn.value = removeFanInReferences(disabledFanIn.value, removedId, next.analyses)
     const nextIds: Record<number, string> = {}
     Object.entries(analysisDraftIds.value).forEach(([key, value]) => {
       const oldIndex = Number(key)
@@ -252,7 +253,7 @@ export function useWorkflowEditor(options: WorkflowEditorOptions) {
     toggleChannelOverride,
     updateChannelOptions,
     updateBackup,
-    createFanIn,
+    createFanIn: () => createFanIn(requireDraft().analyses),
   }
 }
 
