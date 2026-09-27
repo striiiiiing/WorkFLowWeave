@@ -403,3 +403,35 @@ def test_plugins_health_reload_and_unavailable_health():
             update={"status": "unavailable", "accepting_runs": False}
         )
         assert client.get("/api/health").status_code == 503
+
+
+def test_cron_preview_and_schedule_contract():
+    lifecycle = Lifecycle()
+    with _client(lifecycle) as client:
+        preview = client.post("/api/workflows/cron/preview", json={
+            "expression": "0 9 * * 0", "timezone": "Asia/Shanghai",
+        })
+        assert preview.status_code == 200
+        value = preview.json()
+        assert "Monday" in value["description"]
+        assert value["timezone"] == "Asia/Shanghai"
+        assert datetime.fromisoformat(value["next_run_at"]).tzinfo is not None
+        assert client.post("/api/workflows/cron/preview", json={
+            "expression": "not cron",
+        }).status_code == 422
+        assert client.post("/api/workflows/cron/preview", json={
+            "expression": "0 9 * * *", "timezone": "Invalid/Zone",
+        }).status_code == 422
+        base = {"id": "daily", "sources": ["s"],
+                "analyses": [{"id": "a", "ai": "ai", "model": "model"}]}
+        for field in ("cron", "interval_seconds", "cron_timezone"):
+            assert client.post("/api/workflows", json={**base, field: None}).status_code == 422
+        for schedule in (
+            {"type": "at", "at": "2027-01-01T09:00:00+08:00"},
+            {"type": "every", "every_seconds": 2.5},
+            {"type": "cron", "expression": "0 9 * * *"},
+        ):
+            response = client.post("/api/workflows", json={**base, "schedule": schedule})
+            assert response.status_code == 201
+            assert response.json()["schedule"]["type"] == schedule["type"]
+            client.delete("/api/workflows/daily")

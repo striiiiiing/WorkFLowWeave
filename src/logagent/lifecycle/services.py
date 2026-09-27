@@ -9,7 +9,7 @@ from logagent.channel import ChannelManager
 from logagent.collection import CollectorManager
 from logagent.config import CredentialManager, PluginRegistry, ResourceStore
 from logagent.models import SystemConfig
-from logagent.workflow import IntervalTrigger, SessionStore, SessionView, WorkflowService
+from logagent.workflow import SessionStore, SessionView, WorkflowScheduler, WorkflowService
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +31,6 @@ class ApplicationServices:
     ai: AIService
     channels: ChannelManager
     workflow: WorkflowService
-    intervals: IntervalTrigger
+    intervals: WorkflowScheduler
     log_path: str | None
     agent: AgentService | None = None

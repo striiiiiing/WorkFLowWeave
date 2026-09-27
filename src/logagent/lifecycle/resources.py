@@ -16,6 +16,7 @@ from logagent.config import ResourceStore
 from logagent.errors import LogAgentError, validation_error
 from logagent.models import (
     AIConfig,
+    AtSchedule,
     ChannelConfig,
     ResourceKind,
     SourceConfig,
@@ -51,6 +52,12 @@ class LifecycleResourceStore(ResourceStore):
         value = super().save(kind, resource, mode=mode)
         self._published()
         return value
+
+    def consume_schedule(self, ident: str, expected: AtSchedule) -> bool:
+        consumed = super().consume_schedule(ident, expected)
+        if consumed:
+            self._published()
+        return consumed
 
     def save_many(self, resources: Mapping[ResourceKind, list[Any]]) -> None:
         """Refresh schedules once after a successful nonempty batch."""

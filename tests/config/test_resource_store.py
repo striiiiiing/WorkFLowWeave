@@ -293,7 +293,7 @@ async def test_invalid_document_never_becomes_an_empty_store(resources, change):
     if change == "unknown":
         data["extra"] = "secret"
     elif change == "version":
-        data["format_version"] = 2
+        data["format_version"] = 3
     elif change == "key":
         data["ai"]["ai"]["id"] = "different"
     elif change == "missing_set":
@@ -359,3 +359,79 @@ async def test_removing_referenced_model_rejects_entire_resource_candidate(resou
     current = store.snapshot("workflow")
     assert current.ai == original.ai
     assert current.workflow == original.workflow
+
+
+@pytest.mark.parametrize("legacy, expected", [
+    ({"interval_seconds": 2.5}, {"type": "every", "every_seconds": 2.5}),
+    ({"cron": "0 9 * * *"}, {"type": "cron", "expression": "0 9 * * *", "timezone": "UTC"}),
+    ({"cron": "0 9 * * 1-5", "cron_timezone": "Asia/Shanghai"},
+     {"type": "cron", "expression": "0 9 * * mon,tue,wed,thu,fri", "timezone": "Asia/Shanghai"}),
+    ({"cron": "0 9 * * 1/2"},
+     {"type": "cron", "expression": "0 9 * * mon,wed,fri", "timezone": "UTC"}),
+    ({"cron": "0 9 * * fri-sun"},
+     {"type": "cron", "expression": "0 9 * * sun,fri,sat", "timezone": "UTC"}),
+    ({"interval_seconds": None, "cron": None, "cron_timezone": "UTC"}, None),
+])
+async def test_legacy_schedule_migration_publishes_version_two(resources, legacy, expected):
+    store, _ = resources
+    seed(store)
+    data = read(store)
+    data["format_version"] = 1
+    data["workflows"]["workflow"].pop("schedule")
+    data["workflows"]["workflow"].update(legacy)
+    edit(store, data)
+    migrated = ResourceStore(store.location)
+    result = read(migrated)
+    assert result["format_version"] == 2
+    assert result["workflows"]["workflow"]["schedule"] == expected
+    assert not {"interval_seconds", "cron", "cron_timezone"} & result["workflows"]["workflow"].keys()
+    before = await asyncio.to_thread(Path(store.location).read_bytes)
+    ResourceStore(store.location)
+    assert await asyncio.to_thread(Path(store.location).read_bytes) == before
+
+
+@pytest.mark.parametrize("legacy", [
+    {"interval_seconds": 10, "cron": "0 9 * * *"},
+    {"cron": "invalid"},
+    {"cron": "0 9 * * *", "cron_timezone": "Invalid/Zone"},
+    {"interval_seconds": -1},
+    {"schedule": None, "cron": "0 9 * * *"},
+    {"cron": "0 9 1 * 1"},
+])
+async def test_migration_failure_keeps_file_and_published_view(resources, legacy):
+    store, _ = resources
+    original = seed(store)
+    data = read(store)
+    data["format_version"] = 1
+    data["workflows"]["workflow"].pop("schedule")
+    data["workflows"]["workflow"].update(legacy)
+    edit(store, data)
+    before = await asyncio.to_thread(Path(store.location).read_bytes)
+    with pytest.raises(LogAgentError):
+        store.reload_resources()
+    with pytest.raises(LogAgentError):
+        ResourceStore(store.location)
+    assert store.get("workflows", "workflow") == original
+    assert await asyncio.to_thread(Path(store.location).read_bytes) == before
+
+
+async def test_reload_migrates_and_atomic_publish_failure_preserves_view(resources, monkeypatch):
+    store, _ = resources
+    original = seed(store)
+    data = read(store)
+    data["format_version"] = 1
+    data["workflows"]["workflow"].pop("schedule")
+    data["workflows"]["workflow"]["interval_seconds"] = 42
+    edit(store, data)
+    before = await asyncio.to_thread(Path(store.location).read_bytes)
+    def fail(*args):
+        raise OSError("disk full")
+    with monkeypatch.context() as patch:
+        patch.setattr("logagent.config.store.os.replace", fail)
+        with pytest.raises(LogAgentError, match="原子保存"):
+            store.reload_resources()
+        assert store.get("workflows", "workflow") == original
+        assert await asyncio.to_thread(Path(store.location).read_bytes) == before
+    store.reload_resources()
+    assert store.get("workflows", "workflow").schedule.every_seconds == 42
+    assert read(store)["format_version"] == 2

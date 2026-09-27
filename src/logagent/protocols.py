@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Literal, Protocol, overload
 
 from logagent.models import (
+    AtSchedule,
     CapabilityDescription,
     ChannelConfig,
     CollectionContext,
@@ -114,6 +115,8 @@ class ResourceReader(Protocol):
 
 
 class ResourceStore(ResourceReader, Protocol):
+    def consume_schedule(self, ident: str, expected: AtSchedule) -> bool: ...
+
     def save(
         self, kind: ResourceKind, resource: StrictModel | JSONObject, *, mode: SaveMode = "upsert"
     ) -> StrictModel: ...
