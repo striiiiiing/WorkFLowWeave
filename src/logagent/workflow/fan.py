@@ -61,7 +61,7 @@ def build_work_subgraph(*, stage, runtime, snapshot, context, stage_nodes, state
                 incoming = await stage_nodes._result(state, required=("collect",))
                 task = next(task for task in wf.analyses if task.id == ident)
                 result = await stage_nodes._analysis_call(
-                    snapshot.ai[task.ai], task.prompt, incoming.shared_input, ident, incoming, task.model
+                    snapshot.ai[task.ai], task, incoming.shared_input, ident, incoming, task.model
                 )
             return result.model_dump(mode="json")
 

@@ -19,7 +19,7 @@ from typing import Literal
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from pydantic import Field, TypeAdapter
 
-from logagent.config.migrations import migrate_workflow
+from logagent.config.migrations import migrate_legacy_snapshot
 from logagent.errors import LogAgentError, exception_error
 from logagent.models import (
     ID,
@@ -338,10 +338,9 @@ class WorkflowService:
         entry = await asyncio.to_thread(self.session_store.entry, session_id, "snapshot")
         if entry is None or entry["body"] is None:
             raise LogAgentError("recovery_unavailable", "原配置快照不可用")
-        saved_snapshot = entry["body"]["snapshot"]
-        snapshot = WorkflowSnapshot.model_validate({
-            **saved_snapshot, "workflow": migrate_workflow(saved_snapshot["workflow"]),
-        })
+        snapshot = WorkflowSnapshot.model_validate(
+            migrate_legacy_snapshot(entry["body"]["snapshot"])
+        )
         _, archives = await asyncio.to_thread(self.session_store.entries, session_id)
         existing = {entry["write_key"] for entry in archives}
         async for saved in self._checkpointer.alist(config):

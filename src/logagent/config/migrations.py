@@ -1,4 +1,4 @@
-"""Explicit compatibility at persisted-data boundaries; new API input stays strict."""
+"""Versioned compatibility at persisted-data boundaries; new API input stays strict."""
 
 from copy import deepcopy
 from typing import Any
@@ -6,10 +6,12 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from logagent.errors import LogAgentError
 
+RESOURCE_FORMAT_VERSION = 3
 LEGACY_SCHEDULE_FIELDS = {"interval_seconds", "cron", "cron_timezone"}
 
 
 def migrate_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
+    """Convert legacy scheduling fields on one workflow snapshot or resource."""
     result = deepcopy(workflow)
     legacy = LEGACY_SCHEDULE_FIELDS & result.keys()
     if "schedule" in result and legacy:
@@ -75,14 +77,94 @@ def _legacy_cron(expression: str) -> str:
     return " ".join(fields)
 
 
-def migrate_resources(data: Any) -> Any:
-    if not isinstance(data, dict) or data.get("format_version") != 1:
-        return data
-    result = deepcopy(data)
-    if isinstance(result.get("workflows"), dict):
-        result["workflows"] = {
+def _object(value: Any, name: str) -> dict:
+    if not isinstance(value, dict):
+        raise LogAgentError("invalid_config", f"旧资源 {name} 必须是对象")
+    return value
+
+
+def _input_prompt(value: Any) -> str:
+    if not isinstance(value, str):
+        raise LogAgentError("invalid_config", "旧 prompt 必须是字符串")
+    return value if "{input}" in value else f"{value}\n\n{{input}}"
+
+
+def _migrate_workflow_prompts(workflow: dict, ai: dict) -> None:
+    analyses = workflow.get("analyses")
+    if not isinstance(analyses, list):
+        raise LogAgentError("invalid_config", "旧 Workflow analyses 必须是列表")
+    workflow["system_prompt"] = ""
+    workflow["input_prompt"] = "{input}"
+    for task in analyses:
+        task = _object(task, "analysis")
+        config = _object(ai.get(task.get("ai")), "analysis AI")
+        task["system_prompt"] = config.get("system_prompt", "")
+        task["input_prompt"] = _input_prompt(task.pop("prompt", "{input}"))
+        task["user_prompt"] = ""
+    fan_in = workflow.get("fan_in")
+    if fan_in is not None:
+        fan_in = _object(fan_in, "fan_in")
+        if fan_in.get("ai") is not None:
+            config = _object(ai.get(fan_in["ai"]), "fan_in AI")
+            fan_in["system_prompt"] = config.get("system_prompt", "")
+        fan_in["input_prompt"] = _input_prompt(fan_in.pop("prompt", "{input}"))
+        fan_in["user_prompt"] = ""
+        fan_in["reuse_from"] = None
+        if fan_in.get("order", []) == []:
+            fan_in["order"] = [task.get("id") for task in analyses]
+
+
+def _migrate_v1_schedule(data: dict) -> dict:
+    migrated = deepcopy(data)
+    workflows = migrated.get("workflows")
+    if isinstance(workflows, dict):
+        migrated["workflows"] = {
             key: migrate_workflow(value) if isinstance(value, dict) else value
-            for key, value in result["workflows"].items()
+            for key, value in workflows.items()
         }
-    result["format_version"] = 2
-    return result
+    migrated["format_version"] = 2
+    return migrated
+
+
+def _migrate_v2_prompts(data: dict) -> dict:
+    migrated = deepcopy(data)
+    ai = _object(migrated.get("ai"), "ai")
+    workflows = _object(migrated.get("workflows"), "workflows")
+    for value in workflows.values():
+        _migrate_workflow_prompts(_object(value, "workflow"), ai)
+    migrated["format_version"] = RESOURCE_FORMAT_VERSION
+    return migrated
+
+
+_MIGRATIONS = {1: _migrate_v1_schedule, 2: _migrate_v2_prompts}
+
+
+def migrate_resources(data: Any) -> tuple[Any, bool]:
+    """Upgrade only stored versions; API payloads use current strict models."""
+    if not isinstance(data, dict):
+        return data, False
+    changed = False
+    version = data.get("format_version")
+    while type(version) is int and version in _MIGRATIONS:
+        data = _MIGRATIONS[version](data)
+        changed = True
+        version = data["format_version"]
+    return data, changed
+
+
+def migrate_legacy_snapshot(data: Any) -> Any:
+    """Read old session archives without accepting legacy fields in new API requests."""
+    if not isinstance(data, dict) or not isinstance(data.get("workflow"), dict):
+        return data
+    migrated = deepcopy(data)
+    workflow = migrated["workflow"]
+    if LEGACY_SCHEDULE_FIELDS & workflow.keys():
+        workflow = migrate_workflow(workflow)
+        migrated["workflow"] = workflow
+    analyses = workflow.get("analyses")
+    fan_in = workflow.get("fan_in")
+    has_legacy_prompt = any(isinstance(task, dict) and "prompt" in task for task in analyses or [])
+    has_legacy_prompt |= isinstance(fan_in, dict) and "prompt" in fan_in
+    if has_legacy_prompt:
+        _migrate_workflow_prompts(workflow, _object(migrated.get("ai"), "ai"))
+    return migrated
