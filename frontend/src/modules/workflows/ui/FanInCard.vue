@@ -84,14 +84,14 @@ function selectModelSource(value: string) {
           :model-value="fanIn().reuse_from ?? '$none'"
           @update:model-value="selectModelSource"
         >
-          <el-option value="$first" label="第一个分析任务" />
+          <el-option v-if="draft().analyses.length" value="$first" label="第一个分析任务" />
           <el-option
             v-for="task in draft().analyses"
             :key="task.id"
             :value="task.id"
             :label="task.id"
           />
-          <el-option value="$none" label="独立选择或不使用 AI" />
+          <el-option value="$none" label="不复用（可独立选择模型）" />
         </el-select>
       </el-form-item>
       <AIModelSelect

@@ -1,6 +1,6 @@
 import { effectScope, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
-import ElementPlus, { ElInput, ElRadioGroup, ElSelect } from 'element-plus'
+import ElementPlus, { ElInput, ElOption, ElRadioGroup, ElSelect } from 'element-plus'
 import { describe, expect, it } from 'vitest'
 import FanInCard from '@/modules/workflows/ui/FanInCard.vue'
 import FanOutTaskCard from '@/modules/workflows/ui/FanOutTaskCard.vue'
@@ -40,6 +40,22 @@ describe('workflow module UI', () => {
     expect(editor.draft.value?.fan_in).toBeNull()
     await toggle.trigger('click')
     expect(editor.draft.value?.fan_in).toMatchObject({ separator: '\n\n' })
+    scope.stop()
+  })
+
+  it('does not offer the first-task model source before a task exists', () => {
+    const { editor, scope } = setup()
+    editor.toggleFanIn(true)
+    const wrapper = mount(FanInCard, {
+      props: { editor, configs: [] },
+      global: { plugins: [ElementPlus] },
+    })
+    const modelSource = wrapper.findAllComponents(ElSelect)[1]
+    expect(modelSource.props('modelValue')).toBe('$none')
+    expect(modelSource.findAllComponents(ElOption).map((option) => option.props('value'))).toEqual([
+      '$none',
+    ])
+    wrapper.unmount()
     scope.stop()
   })
 
@@ -106,14 +122,26 @@ describe('workflow module UI', () => {
     editor.addTask()
     editor.addTask()
     editor.toggleFanIn(true)
-    editor.updateFanIn({ reuse_from: null, ai: 'provider', model: 'model' })
+    expect(editor.draft.value?.fan_in).toMatchObject({
+      reuse_from: '$first',
+      ai: null,
+      model: null,
+    })
     const wrapper = mount(FanInCard, {
       props: { editor, configs: [] },
       global: { plugins: [ElementPlus] },
     })
+    const modelSource = wrapper.findAllComponents(ElSelect)[1]
+    expect(modelSource.props('modelValue')).toBe('$first')
+    expect(modelSource.findAllComponents(ElOption).at(-1)!.props('label')).toBe(
+      '不复用（可独立选择模型）',
+    )
+    await modelSource.vm.$emit('update:modelValue', '$none')
+    expect(editor.draft.value?.fan_in?.reuse_from).toBeNull()
+    editor.updateFanIn({ ai: 'provider', model: 'model' })
     await wrapper.get('[aria-label="上移 task_1"]').trigger('click')
     expect(editor.draft.value?.fan_in?.order).toEqual(['task_1', '$input', 'task_2'])
-    await wrapper.findAllComponents(ElSelect)[1].vm.$emit('update:modelValue', 'task_2')
+    await modelSource.vm.$emit('update:modelValue', 'task_2')
     expect(editor.draft.value?.fan_in).toMatchObject({
       reuse_from: 'task_2',
       ai: null,

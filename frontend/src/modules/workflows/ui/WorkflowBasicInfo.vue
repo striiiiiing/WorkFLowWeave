@@ -103,12 +103,15 @@ function validateCron(_rule: unknown, value: string, done: (error?: Error) => vo
       </el-form-item>
     </div>
     <el-form-item label="系统提示词">
-      <el-input
-        :model-value="draft.system_prompt"
-        type="textarea"
-        :rows="3"
-        @update:model-value="emit('update', { system_prompt: $event })"
-      />
+      <div class="prompt-field">
+        <el-input
+          :model-value="draft.system_prompt"
+          type="textarea"
+          :rows="3"
+          @update:model-value="emit('update', { system_prompt: $event })"
+        />
+        <span class="prompt-hint">并行 AI 分析和汇聚汇总环节共用，在高级模式下可设置覆盖</span>
+      </div>
     </el-form-item>
     <el-form-item v-if="advanced" label="输入模板">
       <el-input
@@ -126,3 +129,16 @@ function validateCron(_rule: unknown, value: string, done: (error?: Error) => vo
     />
   </SectionCard>
 </template>
+
+<style scoped>
+.prompt-field {
+  width: 100%;
+}
+.prompt-hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+</style>

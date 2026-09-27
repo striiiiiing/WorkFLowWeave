@@ -1,7 +1,10 @@
-import type { FanInConfig, WorkflowDefinition } from './types'
+import type { AnalysisTask, FanInConfig, WorkflowDefinition } from './types'
 
-// Defaults mirror the backend WorkflowDefinition/FanInConfig contract.
-export function createFanIn(): FanInConfig {
+export function defaultFanInModelSource(analyses: readonly AnalysisTask[]): string | null {
+  return analyses.length ? '$first' : null
+}
+
+export function createFanIn(analyses: readonly AnalysisTask[] = []): FanInConfig {
   return {
     order: [],
     separator: '\n\n',
@@ -10,7 +13,7 @@ export function createFanIn(): FanInConfig {
     system_prompt: null,
     input_prompt: null,
     user_prompt: '',
-    reuse_from: '$first',
+    reuse_from: defaultFanInModelSource(analyses),
     mark_incomplete: true,
   }
 }

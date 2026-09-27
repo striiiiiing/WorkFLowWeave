@@ -24,6 +24,7 @@ describe('workflow model and editor', () => {
     expect(workflow.input_prompt).toBe('{input}')
     const { editor, scope } = setup(workflow)
     editor.addTask()
+    expect(editor.createFanIn().reuse_from).toBe('$first')
     editor.toggleFanIn(true)
     expect(editor.draft.value?.analyses[0]).toMatchObject({
       system_prompt: null,
@@ -36,6 +37,36 @@ describe('workflow model and editor', () => {
       user_prompt: '',
       reuse_from: '$first',
     })
+    scope.stop()
+  })
+
+  it('does not select a missing first task and clears it when the last task is deleted', () => {
+    const { editor, scope } = setup(createWorkflow())
+    expect(editor.createFanIn().reuse_from).toBeNull()
+    editor.toggleFanIn(true)
+    expect(editor.draft.value?.fan_in?.reuse_from).toBeNull()
+    editor.toggleFanIn(false)
+    editor.addTask()
+    editor.toggleFanIn(true)
+    expect(editor.draft.value?.fan_in?.reuse_from).toBeNull()
+    editor.toggleFanIn(false)
+    editor.toggleFanIn(true)
+    editor.updateFanIn({ reuse_from: '$first' })
+    editor.deleteTask(0)
+    expect(editor.draft.value?.fan_in?.reuse_from).toBeNull()
+    scope.stop()
+  })
+
+  it('preserves an existing explicit first-task model source', () => {
+    const workflow = {
+      ...createWorkflow(),
+      fan_in: { ...createFanIn(), reuse_from: '$first' },
+    }
+    const { editor, scope } = setup(workflow)
+    expect(editor.draft.value?.fan_in?.reuse_from).toBe('$first')
+    editor.toggleFanIn(false)
+    editor.toggleFanIn(true)
+    expect(editor.draft.value?.fan_in?.reuse_from).toBe('$first')
     scope.stop()
   })
 

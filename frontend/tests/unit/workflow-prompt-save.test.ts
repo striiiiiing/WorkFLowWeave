@@ -53,7 +53,7 @@ it('saves layered prompts and reopens the same workflow without legacy prompt fi
         user_prompt: '',
       },
     ],
-    fan_in: createFanIn(),
+    fan_in: { ...createFanIn(), reuse_from: '$first' },
   }
   let saved = structuredClone(initial)
   const replace = vi.fn(async (_id: string, value: WorkflowDefinition) => {
@@ -90,6 +90,7 @@ it('saves layered prompts and reopens the same workflow without legacy prompt fi
   await flushPromises()
   const basic = wrapper.getComponent(WorkflowBasicInfo)
   expect(basic.findAllComponents(ElInput).at(-1)!.props('modelValue')).toBe('')
+  expect(basic.text()).toContain('并行 AI 分析和汇聚汇总环节共用，在高级模式下可设置覆盖')
   expect(basic.text()).not.toContain('输入模板')
   const taskCard = wrapper.getComponent(FanOutTaskCard)
   const fanIn = wrapper.getComponent(FanInCard)

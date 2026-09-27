@@ -1,4 +1,4 @@
-import { cloneWorkflow, createFanIn } from './defaults'
+import { cloneWorkflow, createFanIn, defaultFanInModelSource } from './defaults'
 import { validateAnalysisId } from './validation'
 import type { AnalysisTask, BackupPolicy, FanInConfig, WorkflowDefinition } from './types'
 import type {
@@ -130,12 +130,19 @@ export function renameFanInReferences(fanIn: FanInConfig | null, previous: strin
   }
 }
 
-export function removeFanInReferences(fanIn: FanInConfig | null, id: string) {
+export function removeFanInReferences(
+  fanIn: FanInConfig | null,
+  id: string,
+  analyses: readonly AnalysisTask[],
+) {
   if (!fanIn) return null
   return {
     ...fanIn,
     order: fanIn.order.filter((entry) => entry !== id),
-    reuse_from: fanIn.reuse_from === id ? '$first' : fanIn.reuse_from,
+    reuse_from:
+      fanIn.reuse_from === id || (!analyses.length && fanIn.reuse_from === '$first')
+        ? defaultFanInModelSource(analyses)
+        : fanIn.reuse_from,
   }
 }
 
@@ -146,7 +153,7 @@ export function removeAnalysis(workflow: WorkflowDefinition, index: number) {
     ...cloneWorkflow(workflow),
     analyses: workflow.analyses.filter((_entry, taskIndex) => taskIndex !== index),
   }
-  return { ...next, fan_in: removeFanInReferences(next.fan_in, task.id) }
+  return { ...next, fan_in: removeFanInReferences(next.fan_in, task.id, next.analyses) }
 }
 
 export function setFanIn(workflow: WorkflowDefinition, fanIn: FanInConfig | null) {
@@ -154,7 +161,7 @@ export function setFanIn(workflow: WorkflowDefinition, fanIn: FanInConfig | null
 }
 
 export function enableFanIn(workflow: WorkflowDefinition, disabledDraft?: FanInConfig | null) {
-  return setFanIn(workflow, disabledDraft ?? createFanIn())
+  return setFanIn(workflow, disabledDraft ?? createFanIn(workflow.analyses))
 }
 
 export function setChannelIds(workflow: WorkflowDefinition, channels: readonly string[]) {
