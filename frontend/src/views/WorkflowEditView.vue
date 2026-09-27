@@ -196,13 +196,6 @@ function submit() {
               <el-form-item label="启用工作流">
                 <el-switch v-model="workflow.enabled" />
               </el-form-item>
-              <el-form-item label="定时间隔 / 秒（留空只手动运行）">
-                <el-input-number
-                  :model-value="workflow.interval_seconds ?? undefined"
-                  :min="0.001"
-                  @update:model-value="workflow.interval_seconds = $event ?? null"
-                />
-              </el-form-item>
             </div>
           </SectionCard>
           <SourceStepCard
