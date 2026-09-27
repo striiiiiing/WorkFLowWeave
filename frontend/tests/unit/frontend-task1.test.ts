@@ -138,9 +138,11 @@ it('hides the four workflow options and preserves edited values across mode chan
   advanced.value = true
   await flushPromises()
   for (const label of labels) expect(wrapper.text()).toContain(label)
-  const inputs = wrapper.findAll('textarea')
-  await inputs[0].setValue('edited-source')
-  await inputs[1].setValue('edited-result')
+  const separatorInputs = wrapper
+    .findAll('.el-form-item')
+    .filter((item) => item.text().includes('分隔符'))
+  await separatorInputs[0].find('textarea').setValue('edited-source')
+  await separatorInputs[1].find('textarea').setValue('edited-result')
   advanced.value = false
   await flushPromises()
   for (const label of labels) expect(wrapper.text()).not.toContain(label)
@@ -151,9 +153,11 @@ it('hides the four workflow options and preserves edited values across mode chan
   })
   advanced.value = true
   await flushPromises()
-  expect(wrapper.findAll('textarea').map((input) => input.element.value)).toEqual([
-    'edited-source',
-    'edited-result',
-  ])
+  expect(
+    wrapper
+      .findAll('.el-form-item')
+      .filter((item) => item.text().includes('分隔符'))
+      .map((item) => (item.find('textarea').element as HTMLTextAreaElement).value),
+  ).toEqual(['edited-source', 'edited-result'])
   wrapper.unmount()
 })

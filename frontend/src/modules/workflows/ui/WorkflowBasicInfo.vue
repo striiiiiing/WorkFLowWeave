@@ -64,7 +64,7 @@ function changeMode(value: string) {
     updateSchedule({
       type: 'cron',
       expression,
-      timezone: value === 'custom' ? (cron.value?.timezone ?? null) : null,
+      timezone: null,
     })
   }
 }
@@ -226,5 +226,37 @@ function validateCron(_rule: unknown, value: string, done: (error?: Error) => vo
         <div>下一次运行：{{ nextRun }}</div>
       </div>
     </div>
+    <el-form-item label="系统提示词">
+      <div class="prompt-field">
+        <el-input
+          :model-value="draft.system_prompt"
+          type="textarea"
+          :rows="3"
+          @update:model-value="emit('update', { system_prompt: $event })"
+        />
+        <span class="prompt-hint">并行 AI 分析和汇聚汇总环节共用，在高级模式下可设置覆盖</span>
+      </div>
+    </el-form-item>
+    <el-form-item v-if="advanced" label="输入模板">
+      <el-input
+        :model-value="draft.input_prompt"
+        type="textarea"
+        :rows="3"
+        @update:model-value="emit('update', { input_prompt: $event })"
+      />
+    </el-form-item>
   </SectionCard>
 </template>
+
+<style scoped>
+.prompt-field {
+  width: 100%;
+}
+.prompt-hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+</style>

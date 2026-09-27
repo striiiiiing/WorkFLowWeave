@@ -34,7 +34,14 @@ function taskIdRules(task: AnalysisTask) {
 function add() {
   let index = model.value.analyses.length + 1
   while (model.value.analyses.some((item) => item.id === `task_${index}`)) index++
-  model.value.analyses.push({ id: `task_${index}`, ai: '', model: '', prompt: '{input}' })
+  model.value.analyses.push({
+    id: `task_${index}`,
+    ai: '',
+    model: '',
+    system_prompt: null,
+    input_prompt: null,
+    user_prompt: '',
+  })
 }
 function rename(task: AnalysisTask, value: string) {
   draftIds.set(task, value)
@@ -90,7 +97,7 @@ function remove(index: number) {
       />
       <el-form-item label="提示词">
         <el-input
-          v-model="task.prompt"
+          v-model="task.user_prompt"
           type="textarea"
           :rows="3"
           placeholder="使用 {input} 引用共享输入"

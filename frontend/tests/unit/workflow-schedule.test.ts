@@ -179,7 +179,10 @@ describe('workflow schedule editor', () => {
     }) => void
     previewCron.mockImplementationOnce(() => new Promise((resolve) => (resolveFirst = resolve)))
     await vi.advanceTimersByTimeAsync(300)
-    basic.findAllComponents(ElInput).at(-1)!.vm.$emit('update:modelValue', '0 10 * * *')
+    basic
+      .findAllComponents(ElInput)
+      .find((input) => input.props('placeholder') === '0 9 * * *')!
+      .vm.$emit('update:modelValue', '0 10 * * *')
     await nextTick()
     expect(draft.value.schedule).toMatchObject({ expression: '0 10 * * *' })
     previewCron.mockRejectedValueOnce(new Error('无效 Cron 表达式'))

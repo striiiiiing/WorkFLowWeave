@@ -86,8 +86,23 @@ it('updates both model selectors on return without replacing the workflow draft,
   const draft = wrapper.getComponent(ElForm).props('model') as WorkflowDefinition
   draft.name = '未保存的工作流'
   draft.sources = ['logs']
-  draft.analyses = [{ id: 'task', ai: provider.id, model: 'original', prompt: '保留提示词' }]
-  draft.fan_in = { ...createFanIn(), ai: provider.id, model: 'original', order: ['task'] }
+  draft.analyses = [
+    {
+      id: 'task',
+      ai: provider.id,
+      model: 'original',
+      system_prompt: null,
+      input_prompt: null,
+      user_prompt: '保留提示词',
+    },
+  ]
+  draft.fan_in = {
+    ...createFanIn(),
+    reuse_from: null,
+    ai: provider.id,
+    model: 'original',
+    order: ['task'],
+  }
   await flushPromises()
   const expectedDraft = JSON.parse(JSON.stringify(draft))
   let finish!: (value: AIConfig[]) => void
