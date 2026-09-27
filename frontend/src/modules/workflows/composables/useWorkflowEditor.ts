@@ -8,7 +8,9 @@ import {
   enableFanIn,
   moveSource,
   removeAnalysis,
+  removeFanInReferences,
   renameAnalysis,
+  renameFanInReferences,
   restoreSource,
   setChannelIds,
   setChannelOverride,
@@ -158,8 +160,10 @@ export function useWorkflowEditor(options: WorkflowEditorOptions) {
   }
   function updateTaskId(index: number, value: string) {
     analysisDraftIds.value = { ...analysisDraftIds.value, [index]: value }
+    const previous = requireDraft().analyses[index]?.id
     const result = renameAnalysis(requireDraft(), index, value)
     if (result.error) return result.error
+    if (previous) disabledFanIn.value = renameFanInReferences(disabledFanIn.value, previous, value)
     const next = { ...analysisDraftIds.value }
     delete next[index]
     analysisDraftIds.value = next
@@ -171,7 +175,9 @@ export function useWorkflowEditor(options: WorkflowEditorOptions) {
     return value === undefined ? '' : validateAnalysisId(requireDraft(), index, value)
   }
   function deleteTask(index: number) {
+    const removedId = requireDraft().analyses[index]?.id
     const next = apply(removeAnalysis(requireDraft(), index))
+    if (removedId) disabledFanIn.value = removeFanInReferences(disabledFanIn.value, removedId)
     const nextIds: Record<number, string> = {}
     Object.entries(analysisDraftIds.value).forEach(([key, value]) => {
       const oldIndex = Number(key)

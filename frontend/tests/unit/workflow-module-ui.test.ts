@@ -1,9 +1,10 @@
-import { effectScope } from 'vue'
+import { effectScope, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElInput, ElRadioGroup, ElSelect } from 'element-plus'
 import { describe, expect, it } from 'vitest'
 import FanInCard from '@/modules/workflows/ui/FanInCard.vue'
 import FanOutTaskCard from '@/modules/workflows/ui/FanOutTaskCard.vue'
+import PromptOverrides from '@/modules/workflows/ui/PromptOverrides.vue'
 import NotificationCard from '@/modules/workflows/ui/NotificationCard.vue'
 import { createWorkflow, useWorkflowEditor } from '@/modules/workflows/public'
 
@@ -38,6 +39,73 @@ describe('workflow module UI', () => {
     expect(editor.draft.value?.fan_in).toBeNull()
     await toggle.trigger('click')
     expect(editor.draft.value?.fan_in).toMatchObject({ separator: '\n\n' })
+    scope.stop()
+  })
+
+  it('edits shared values and independent empty overrides in advanced mode', async () => {
+    const { editor, scope } = setup()
+    editor.addTask()
+    editor.toggleFanIn(true)
+    const out = mount(FanOutTaskCard, {
+      props: { editor, configs: [], advanced: true },
+      global: { plugins: [ElementPlus] },
+    })
+    const summary = mount(FanInCard, {
+      props: { editor, configs: [], advanced: true },
+      global: { plugins: [ElementPlus] },
+    })
+    await out.findAllComponents(ElInput)[0].vm.$emit('update:modelValue', 'shared system')
+    await out.findAllComponents(ElInput)[1].vm.$emit('update:modelValue', 'shared {input}')
+    expect(editor.draft.value).toMatchObject({
+      system_prompt: 'shared system',
+      input_prompt: 'shared {input}',
+    })
+    expect(editor.draft.value?.analyses[0].system_prompt).toBeNull()
+    expect(editor.draft.value?.fan_in?.input_prompt).toBeNull()
+
+    const taskPrompts = out.getComponent(PromptOverrides)
+    await taskPrompts.findAllComponents(ElRadioGroup)[0].vm.$emit('update:modelValue', 'override')
+    await nextTick()
+    expect(editor.draft.value?.analyses[0].system_prompt).toBe('shared system')
+    await taskPrompts.findAllComponents(ElInput)[0].vm.$emit('update:modelValue', '')
+    expect(editor.draft.value?.analyses[0].system_prompt).toBe('')
+    await taskPrompts.findAllComponents(ElRadioGroup)[1].vm.$emit('update:modelValue', 'override')
+    await nextTick()
+    expect(editor.draft.value?.analyses[0].input_prompt).toBe('shared {input}')
+    await taskPrompts.findAllComponents(ElInput)[2].vm.$emit('update:modelValue', 'literal {input}')
+    expect(editor.draft.value?.analyses[0].user_prompt).toBe('literal {input}')
+
+    const fanPrompts = summary.getComponent(PromptOverrides)
+    await fanPrompts.findAllComponents(ElRadioGroup)[1].vm.$emit('update:modelValue', 'override')
+    await nextTick()
+    await fanPrompts.findAllComponents(ElInput)[0].vm.$emit('update:modelValue', '')
+    expect(editor.draft.value?.fan_in?.input_prompt).toBe('')
+    await fanPrompts.findAllComponents(ElRadioGroup)[1].vm.$emit('update:modelValue', 'shared')
+    expect(editor.draft.value?.fan_in?.input_prompt).toBeNull()
+    out.unmount()
+    summary.unmount()
+    scope.stop()
+  })
+
+  it('reorders fan-in inputs and switches to a reused analysis model', async () => {
+    const { editor, scope } = setup()
+    editor.addTask()
+    editor.addTask()
+    editor.toggleFanIn(true)
+    editor.updateFanIn({ reuse_from: null, ai: 'provider', model: 'model' })
+    const wrapper = mount(FanInCard, {
+      props: { editor, configs: [] },
+      global: { plugins: [ElementPlus] },
+    })
+    await wrapper.get('[aria-label="上移 task_1"]').trigger('click')
+    expect(editor.draft.value?.fan_in?.order).toEqual(['task_1', '$input', 'task_2'])
+    await wrapper.findAllComponents(ElSelect)[1].vm.$emit('update:modelValue', 'task_2')
+    expect(editor.draft.value?.fan_in).toMatchObject({
+      reuse_from: 'task_2',
+      ai: null,
+      model: null,
+    })
+    wrapper.unmount()
     scope.stop()
   })
 
