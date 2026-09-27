@@ -291,8 +291,9 @@ test('workflow create, reload, run, and versioned phase reading', async ({ page,
   await page.getByLabel('工作流 ID', { exact: true }).fill('browser_workflow')
   await page.getByLabel('显示名称', { exact: true }).fill('浏览器验证工作流')
   await page.locator('.el-form-item').filter({ hasText: '运行计划' }).locator('.el-select').click()
-  await page.getByRole('option', { name: 'Cron 定时运行' }).click()
-  await page.getByLabel('Cron 表达式（分 时 日 月 周）').fill('0 9 * * *')
+  await page.getByRole('option', { name: '每天', exact: true }).click()
+  await expect(page.getByLabel('运行时间（计划时区）')).toHaveValue('09:00')
+  await expect(page.getByLabel('Cron 表达式（分 时 日 月 周）')).toHaveCount(0)
   await page
     .locator('.el-form-item')
     .filter({ hasText: '计划时区（IANA）' })
