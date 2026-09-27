@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import FanInCard from '@/modules/workflows/ui/FanInCard.vue'
 import FanOutTaskCard from '@/modules/workflows/ui/FanOutTaskCard.vue'
 import PromptOverrides from '@/modules/workflows/ui/PromptOverrides.vue'
+import WorkflowBasicInfo from '@/modules/workflows/ui/WorkflowBasicInfo.vue'
 import NotificationCard from '@/modules/workflows/ui/NotificationCard.vue'
 import { createWorkflow, useWorkflowEditor } from '@/modules/workflows/public'
 
@@ -46,6 +47,15 @@ describe('workflow module UI', () => {
     const { editor, scope } = setup()
     editor.addTask()
     editor.toggleFanIn(true)
+    const basic = mount(WorkflowBasicInfo, {
+      props: {
+        draft: editor.draft.value!,
+        editing: false,
+        advanced: true,
+        onUpdate: (changes) => editor.update(changes),
+      },
+      global: { plugins: [ElementPlus] },
+    })
     const out = mount(FanOutTaskCard, {
       props: { editor, configs: [], advanced: true },
       global: { plugins: [ElementPlus] },
@@ -54,8 +64,8 @@ describe('workflow module UI', () => {
       props: { editor, configs: [], advanced: true },
       global: { plugins: [ElementPlus] },
     })
-    await out.findAllComponents(ElInput)[0].vm.$emit('update:modelValue', 'shared system')
-    await out.findAllComponents(ElInput)[1].vm.$emit('update:modelValue', 'shared {input}')
+    await basic.findAllComponents(ElInput).at(-2)!.vm.$emit('update:modelValue', 'shared system')
+    await basic.findAllComponents(ElInput).at(-1)!.vm.$emit('update:modelValue', 'shared {input}')
     expect(editor.draft.value).toMatchObject({
       system_prompt: 'shared system',
       input_prompt: 'shared {input}',
@@ -72,8 +82,11 @@ describe('workflow module UI', () => {
     await taskPrompts.findAllComponents(ElRadioGroup)[1].vm.$emit('update:modelValue', 'override')
     await nextTick()
     expect(editor.draft.value?.analyses[0].input_prompt).toBe('shared {input}')
-    await taskPrompts.findAllComponents(ElInput)[2].vm.$emit('update:modelValue', 'literal {input}')
+    await out.findAllComponents(ElInput)[1].vm.$emit('update:modelValue', 'literal {input}')
     expect(editor.draft.value?.analyses[0].user_prompt).toBe('literal {input}')
+
+    await summary.findAllComponents(ElInput)[0].vm.$emit('update:modelValue', 'summary instruction')
+    expect(editor.draft.value?.fan_in?.user_prompt).toBe('summary instruction')
 
     const fanPrompts = summary.getComponent(PromptOverrides)
     await fanPrompts.findAllComponents(ElRadioGroup)[1].vm.$emit('update:modelValue', 'override')
@@ -82,6 +95,7 @@ describe('workflow module UI', () => {
     expect(editor.draft.value?.fan_in?.input_prompt).toBe('')
     await fanPrompts.findAllComponents(ElRadioGroup)[1].vm.$emit('update:modelValue', 'shared')
     expect(editor.draft.value?.fan_in?.input_prompt).toBeNull()
+    basic.unmount()
     out.unmount()
     summary.unmount()
     scope.stop()
