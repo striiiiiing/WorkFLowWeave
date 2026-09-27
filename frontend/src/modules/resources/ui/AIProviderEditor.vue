@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import { ElMessage, type FormInstance } from 'element-plus'
 import type { AIConfig } from '../model/types'
 import { useAIProviderEditor } from '../composables/useAIProviderEditor'
@@ -22,19 +22,10 @@ const {
   discovered,
   checked,
   busy,
-  modelTest,
-  testedModel,
-  connectionChanged,
-  checkHealth,
-  testModel,
+  discoverModels,
   submit: saveDraft,
 } = useAIProviderEditor(props)
 const form = ref<FormInstance>()
-const healthHint = computed(() => {
-  if (!persisted.value) return '保存渠道后，可在这里独立检查健康。'
-  if (connectionChanged.value) return '连接配置已修改，请先保存，再检查健康。'
-  return '检查已保存的连接能否获取模型列表，不会调用模型进行分析。'
-})
 function validateEnvironment(_rule: unknown, _value: unknown, callback: (error?: Error) => void) {
   callback(
     /^[A-Za-z_][A-Za-z0-9_]*$/.test(environmentName.value)
@@ -115,7 +106,9 @@ async function submit() {
       <el-input v-model="environmentName" placeholder="OPENAI_API_KEY" />
     </el-form-item>
     <section aria-label="渠道模型发现" class="mb-5">
-      <p class="muted text-sm mt-2">{{ healthHint }}</p>
+      <p v-if="health.pending.value" class="muted text-sm mt-2" role="status">
+        正在读取模型列表…
+      </p>
       <el-alert
         v-if="health.error.value"
         :title="health.error.value"
@@ -125,21 +118,7 @@ async function submit() {
       />
       <el-alert
         v-else-if="checked"
-        :title="`连接正常，发现 ${discovered.length} 个模型。请在下方选择添加。`"
-        type="success"
-        :closable="false"
-        show-icon
-      />
-      <el-alert
-        v-if="modelTest.error.value"
-        :title="modelTest.error.value"
-        type="error"
-        :closable="false"
-        show-icon
-      />
-      <el-alert
-        v-else-if="testedModel"
-        :title="`模型“${testedModel}”测试成功，已收到正常响应。`"
+        :title="`发现 ${discovered.length} 个模型`"
         type="success"
         :closable="false"
         show-icon
@@ -149,11 +128,7 @@ async function submit() {
       :model-value="draft.models"
       @update:model-value="updateModels"
       :candidates="discovered"
-      :testing="health.pending.value"
-      :model-testing="modelTest.pending.value"
-      :test-disabled="connectionChanged || !persisted"
-      @discover="checkHealth"
-      @test="testModel"
+      @discover="discoverModels"
     />
     <el-form-item label="资源编号" prop="id" :rules="{ ...idRule, required: false }">
       <el-input

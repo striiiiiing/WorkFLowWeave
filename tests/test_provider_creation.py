@@ -1,13 +1,15 @@
-"""Provider persistence and optional connection checks use separate paths."""
+"""Provider persistence and model discovery use separate paths."""
 
 import pytest
 from fastapi.testclient import TestClient
 
 from logagent.ai import AIService, OpenAIChannelFactory
+from logagent.ai.channels import OpenAIChannel
+from logagent.ai.errors import ModelError
 from logagent.errors import LogAgentError
 from logagent.interaction.app import create_app
 from logagent.lifecycle import ApplicationLifecycle
-from logagent.models import AIConfig, AnalysisResult, ErrorInfo, SystemConfig
+from logagent.models import AIConfig, SystemConfig
 
 
 def test_save_without_models_and_check_failure_do_not_block_persistence(tmp_path, monkeypatch):
@@ -59,48 +61,74 @@ def test_provider_without_models_cannot_execute_an_unconfigured_model():
         service.validate(config, "unconfigured")
 
 
-def test_model_test_sends_hi_to_the_selected_model(tmp_path, monkeypatch):
+def test_discover_unsaved_provider_resolves_protected_credential_without_persisting(tmp_path, monkeypatch):
     calls = []
 
-    async def execute(self, config, prompt, input_text, *, model, task_id, context=None, on_cancel=None):
-        calls.append((config.id, prompt, input_text, model, task_id))
-        return AnalysisResult(task_id=task_id, status="success", text="Hi back")
+    async def list_models(self, credential):
+        calls.append((self.base_url, credential))
+        return ["model-a", "model-b"]
 
-    monkeypatch.setattr(AIService, "execute", execute)
+    monkeypatch.setattr(OpenAIChannel, "list_models", list_models)
     owner = ApplicationLifecycle(SystemConfig(
         data_dir=str(tmp_path / "data"), plugin_dir=str(tmp_path / "plugins"),
     ))
     with TestClient(create_app(owner)) as client:
+        protected = client.post("/api/credentials/protect", json={"plaintext": "draft-secret"})
+        assert protected.status_code == 200
         payload = {
-            "id": "provider", "provider": "http", "base_url": "http://127.0.0.1:1/v1",
-            "models": {"model-a": {}},
+            "id": "draft", "provider": "http", "base_url": "http://127.0.0.1:1/v1",
+            "api_key": protected.json(), "timeout": 2,
         }
-        assert client.post("/api/ai", json=payload).status_code == 201
-        response = client.post("/api/ai/provider/test-model", json={"model": "model-a"})
+        response = client.post("/api/ai/discover-models", json=payload)
         assert response.status_code == 200, response.text
-        assert response.json()["status"] == "success"
-        assert calls == [("provider", "{input}", "Hi", "model-a", "model-test")]
+        assert response.json() == ["model-a", "model-b"]
+        assert response.headers["cache-control"] == "no-store"
+        assert calls == [("http://127.0.0.1:1/v1/", "draft-secret")]
+        assert client.get("/api/ai").json() == []
+        assert "draft-secret" not in response.text
 
 
-def test_model_test_keeps_unsuccessful_model_response_as_failure(tmp_path, monkeypatch):
-    async def execute(self, config, prompt, input_text, *, model, task_id, context=None, on_cancel=None):
-        return AnalysisResult(
-            task_id=task_id,
-            status="failed",
-            error=ErrorInfo(code="provider_rejected", message="模型拒绝请求", details={}),
-        )
+def test_discover_uses_current_draft_without_changing_saved_provider(tmp_path, monkeypatch):
+    seen = []
 
-    monkeypatch.setattr(AIService, "execute", execute)
+    async def list_models(self, config):
+        seen.append(config.model_dump(mode="json"))
+        return ["draft-model"]
+
+    monkeypatch.setattr(AIService, "list_models", list_models)
     owner = ApplicationLifecycle(SystemConfig(
         data_dir=str(tmp_path / "data"), plugin_dir=str(tmp_path / "plugins"),
     ))
     with TestClient(create_app(owner)) as client:
-        payload = {
+        saved = {
             "id": "provider", "provider": "http", "base_url": "http://127.0.0.1:1/v1",
-            "models": {"model-a": {}},
+            "models": {"saved-model": {}},
         }
-        assert client.post("/api/ai", json=payload).status_code == 201
-        response = client.post("/api/ai/provider/test-model", json={"model": "model-a"})
+        assert client.post("/api/ai", json=saved).status_code == 201
+        draft = {**saved, "base_url": "http://127.0.0.1:2/v1", "models": {}}
+        response = client.post("/api/ai/discover-models", json=draft)
         assert response.status_code == 200
-        assert response.json()["status"] == "failed"
-        assert response.json()["error"]["code"] == "provider_rejected"
+        assert response.json() == ["draft-model"]
+        assert seen[0]["base_url"] == draft["base_url"]
+        assert seen[0]["models"] == {}
+        assert client.get("/api/ai/provider").json()["models"] == saved["models"]
+        assert client.get("/api/ai/provider").json()["base_url"] == saved["base_url"]
+        assert client.post("/api/ai/provider/test-model", json={"model": "saved-model"}).status_code == 404
+
+
+def test_discover_reports_upstream_failure(tmp_path, monkeypatch):
+    async def unavailable(self, credential):
+        raise ModelError("invalid_response", "模型列表响应缺少 data 数组")
+
+    monkeypatch.setattr(OpenAIChannel, "list_models", unavailable)
+    owner = ApplicationLifecycle(SystemConfig(
+        data_dir=str(tmp_path / "data"), plugin_dir=str(tmp_path / "plugins"),
+    ))
+    with TestClient(create_app(owner)) as client:
+        response = client.post("/api/ai/discover-models", json={
+            "id": "draft", "provider": "http", "base_url": "http://127.0.0.1:1/v1",
+            "retries": 0,
+        })
+        assert response.status_code == 500
+        assert response.json()["error"]["code"] == "invalid_response"
+        assert client.get("/api/ai").json() == []
