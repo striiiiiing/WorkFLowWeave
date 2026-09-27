@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from pathlib import Path as FilePath
 from typing import Annotated, Literal
 from uuid import uuid4
@@ -35,12 +36,15 @@ from logagent.models import (
     WorkflowDefinition,
     WorkflowStage,
 )
+from logagent.scheduling import cron_trigger, describe_cron
 
 from .dependencies import Lifecycle as LifecycleProtocol
 from .dependencies import get_lifecycle, get_services
 from .schemas import (
     AIModelTestRequest,
     CancelResponse,
+    CronPreviewRequest,
+    CronPreviewResponse,
     PhaseQuery,
     ProtectCredentialRequest,
     ReloadQuery,
@@ -54,6 +58,16 @@ from .schemas import (
 router = APIRouter()
 Services = Annotated[ApplicationServices, Depends(get_services)]
 Lifecycle = Annotated[LifecycleProtocol, Depends(get_lifecycle)]
+
+
+@router.post("/workflows/cron/preview", response_model=CronPreviewResponse)
+async def preview_cron(payload: CronPreviewRequest) -> CronPreviewResponse:
+    trigger = cron_trigger(payload.expression, payload.timezone)
+    return CronPreviewResponse(
+        description=describe_cron(payload.expression, trigger),
+        timezone=str(trigger.timezone),
+        next_run_at=trigger.get_next_fire_time(None, datetime.now(UTC)),
+    )
 
 
 async def _save_resource(
