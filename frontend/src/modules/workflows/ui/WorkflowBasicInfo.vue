@@ -4,6 +4,7 @@ import SectionCard from '@/shared/ui/SectionCard.vue'
 import { useCronPreview } from '../composables/useCronPreview'
 import type { WorkflowChanges } from '../model/actions'
 import {
+  DEFAULT_DAILY_CRON,
   dailyCron,
   hourlyCron,
   parseCronPreset,
@@ -29,8 +30,6 @@ const { preview, pending: previewPending, error: previewError, nextRun } = useCr
 const cronMode = ref<CronPreset['mode']>('custom')
 const preset = computed(() => parseCronPreset(cron.value?.expression ?? ''))
 const mode = computed(() => (cron.value ? cronMode.value : (schedule.value?.type ?? 'manual')))
-const localTimezoneOption = '__machine_local__'
-const timezones = ['UTC', 'Asia/Shanghai', 'Asia/Tokyo', 'Europe/London', 'America/New_York']
 const cronTime = computed(() =>
   preset.value.mode === 'daily' || preset.value.mode === 'weekly'
     ? `${String(preset.value.hour).padStart(2, '0')}:${String(preset.value.minute).padStart(2, '0')}`
@@ -58,20 +57,28 @@ function changeMode(value: string) {
       value === 'hourly'
         ? hourlyCron(0)
         : value === 'daily'
-          ? dailyCron(9, 0)
+          ? DEFAULT_DAILY_CRON
           : value === 'weekly'
             ? weeklyCron('MON', 9, 0)
             : (cron.value?.expression ?? '')
-    updateSchedule({ type: 'cron', expression, timezone: cron.value?.timezone ?? null })
+    updateSchedule({
+      type: 'cron',
+      expression,
+      timezone: value === 'custom' ? (cron.value?.timezone ?? null) : null,
+    })
   }
 }
 function setAt(value: Date | null) {
   if (schedule.value?.type !== 'at') return
   updateSchedule({ type: 'at', at: value instanceof Date ? value.toISOString() : '' })
 }
-function setCron(changes: Partial<Extract<WorkflowSchedule, { type: 'cron' }>>) {
+function setCronExpression(expression: string) {
   if (!cron.value) return
-  updateSchedule({ ...cron.value, ...changes })
+  updateSchedule({
+    ...cron.value,
+    expression,
+    timezone: expression === cron.value.expression ? cron.value.timezone : null,
+  })
 }
 function setHourlyMinute(value: number | undefined) {
   if (
@@ -82,19 +89,19 @@ function setHourlyMinute(value: number | undefined) {
     value > 59
   )
     return
-  setCron({ expression: hourlyCron(value) })
+  setCronExpression(hourlyCron(value))
 }
 function setCronTime(value: string) {
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return
   const hour = Number(value.slice(0, 2))
   const minute = Number(value.slice(3, 5))
-  if (cronMode.value === 'daily') setCron({ expression: dailyCron(hour, minute) })
+  if (cronMode.value === 'daily') setCronExpression(dailyCron(hour, minute))
   if (cronMode.value === 'weekly' && preset.value.mode === 'weekly')
-    setCron({ expression: weeklyCron(preset.value.day, hour, minute) })
+    setCronExpression(weeklyCron(preset.value.day, hour, minute))
 }
 function setWeekday(day: Weekday) {
   if (cronMode.value !== 'weekly' || preset.value.mode !== 'weekly') return
-  setCron({ expression: weeklyCron(day, preset.value.hour, preset.value.minute) })
+  setCronExpression(weeklyCron(day, preset.value.hour, preset.value.minute))
 }
 function validateCron(_rule: unknown, value: string, done: (error?: Error) => void) {
   done(value?.trim().split(/\s+/).length === 5 ? undefined : new Error('Cron 表达式需要五个字段'))
@@ -136,7 +143,7 @@ function validateCron(_rule: unknown, value: string, done: (error?: Error) => vo
       <el-form-item label="运行计划">
         <el-select :model-value="mode" @update:model-value="changeMode">
           <el-option value="manual" label="仅手动运行" />
-          <el-option value="at" label="日程任务" />
+          <el-option value="at" label="单次运行" />
           <el-option value="hourly" label="每小时" />
           <el-option value="daily" label="每天" />
           <el-option value="weekly" label="每周" />
@@ -189,7 +196,7 @@ function validateCron(_rule: unknown, value: string, done: (error?: Error) => vo
       </el-form-item>
       <el-form-item
         v-if="cron && (mode === 'daily' || mode === 'weekly')"
-        label="运行时间（计划时区）"
+        :label="cron.timezone ? '运行时间（原有计划时区）' : '运行时间（运行机器本地时区）'"
       >
         <el-input type="time" :model-value="cronTime" @update:model-value="setCronTime" />
       </el-form-item>
@@ -202,33 +209,15 @@ function validateCron(_rule: unknown, value: string, done: (error?: Error) => vo
         <el-input
           :model-value="cron.expression"
           placeholder="0 9 * * *"
-          @update:model-value="setCron({ expression: $event })"
+          @update:model-value="setCronExpression($event)"
         />
-      </el-form-item>
-      <el-form-item v-if="cron" label="计划时区（IANA）">
-        <div class="w-full">
-          <el-select
-            :model-value="cron.timezone ?? localTimezoneOption"
-            filterable
-            allow-create
-            default-first-option
-            @update:model-value="
-              setCron({ timezone: $event === localTimezoneOption ? null : $event })
-            "
-          >
-            <el-option :value="localTimezoneOption" label="运行机器本地时区（不指定）" />
-            <el-option v-for="zone in timezones" :key="zone" :value="zone" :label="zone" />
-            <el-option
-              v-if="cron.timezone && !timezones.includes(cron.timezone)"
-              :value="cron.timezone"
-              :label="cron.timezone"
-            />
-          </el-select>
-          <p v-if="cron.timezone === null" class="text-xs muted mt-1">运行机器本地时区（未指定）</p>
-        </div>
       </el-form-item>
     </div>
     <div v-if="cron" aria-live="polite">
+      <p v-if="cron.timezone === null" class="text-sm muted mb-1">运行机器本地时区（不指定）</p>
+      <p v-else class="text-sm muted mb-1">
+        原有计划时区：{{ cron.timezone }}（只读；修改计划后改用运行机器本地时区）
+      </p>
       <el-alert v-if="previewError" :title="previewError" type="error" :closable="false" />
       <span v-else-if="previewPending">正在计算下一次运行时间…</span>
       <div v-else-if="preview" class="text-sm leading-6">

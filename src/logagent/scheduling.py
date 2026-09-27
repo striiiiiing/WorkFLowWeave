@@ -1,5 +1,7 @@
 """The shared APScheduler interpretation used by validation, preview and execution."""
 
+import calendar
+import re
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -29,7 +31,25 @@ def describe_cron(expression: str, trigger: CronTrigger) -> str:
         weekday = trigger.fields[4]
         monday = datetime(2026, 9, 28, tzinfo=UTC)
         fields[4] = ",".join(
-            names[day] for day in range(7)
+            names[day]
+            for day in range(7)
             if weekday.get_next_value(monday + timedelta(days=day)) == day
         )
-    return ExpressionDescriptor(" ".join(fields), options).get_description()
+    description = ExpressionDescriptor(" ".join(fields), options).get_description()
+    weekday_names = dict(
+        zip(
+            calendar.day_name,
+            (
+                "星期一",
+                "星期二",
+                "星期三",
+                "星期四",
+                "星期五",
+                "星期六",
+                "星期日",
+            ),
+            strict=True,
+        )
+    )
+    weekday_pattern = "|".join(rf"(?<!\w){re.escape(name)}(?!\w)" for name in weekday_names)
+    return re.sub(weekday_pattern, lambda match: weekday_names[match.group()], description)

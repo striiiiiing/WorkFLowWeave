@@ -1,6 +1,6 @@
 import type { FanInConfig, WorkflowDefinition } from './types'
+import { DEFAULT_DAILY_CRON } from './cronPresets'
 
-// Defaults mirror the backend WorkflowDefinition/FanInConfig contract.
 export function createFanIn(): FanInConfig {
   return {
     order: [],
@@ -29,7 +29,7 @@ export function createWorkflow(): WorkflowDefinition {
     on_all_empty: 'stop',
     analysis_failure: 'continue',
     send_partial: true,
-    schedule: null,
+    schedule: { type: 'cron', expression: DEFAULT_DAILY_CRON, timezone: null },
     enabled: true,
     backup: {
       enabled: true,

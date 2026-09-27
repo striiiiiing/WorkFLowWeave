@@ -38,6 +38,8 @@ export function dailyCron(hour: number, minute: number): string {
   return `${minute} ${hour} * * *`
 }
 
+export const DEFAULT_DAILY_CRON = dailyCron(9, 0)
+
 export function weeklyCron(day: Weekday, hour: number, minute: number): string {
   return `${minute} ${hour} * * ${day}`
 }
