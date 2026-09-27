@@ -4,14 +4,19 @@ export type ContinuePolicy = 'stop' | 'continue'
 export interface AnalysisTask {
   id: string
   ai: string
-  prompt: string
+  system_prompt: string | null
+  input_prompt: string | null
+  user_prompt: string
   model: string
 }
 export interface FanInConfig {
   order: string[]
   separator: string
   ai: string | null
-  prompt: string
+  system_prompt: string | null
+  input_prompt: string | null
+  user_prompt: string
+  reuse_from: string | null
   model: string | null
   mark_incomplete: boolean
 }
@@ -30,6 +35,8 @@ export interface WorkflowDefinition {
   sources: string[]
   analyses: AnalysisTask[]
   fan_in: FanInConfig | null
+  system_prompt: string
+  input_prompt: string
   channels: string[]
   source_overrides: Record<string, SourceOverride>
   channel_overrides: Record<string, ChannelOverride>

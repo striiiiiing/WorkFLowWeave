@@ -12,6 +12,8 @@ export type WorkflowChanges = Partial<
     WorkflowDefinition,
     | 'id'
     | 'name'
+    | 'system_prompt'
+    | 'input_prompt'
     | 'enabled'
     | 'interval_seconds'
     | 'cron'
@@ -81,7 +83,14 @@ export function addSource(workflow: WorkflowDefinition, sourceId: string) {
 export function addAnalysis(workflow: WorkflowDefinition): WorkflowDefinition {
   let index = workflow.analyses.length + 1
   while (workflow.analyses.some((task) => task.id === `task_${index}`)) index += 1
-  const task: AnalysisTask = { id: `task_${index}`, ai: '', model: '', prompt: '{input}' }
+  const task: AnalysisTask = {
+    id: `task_${index}`,
+    ai: '',
+    model: '',
+    system_prompt: null,
+    input_prompt: null,
+    user_prompt: '',
+  }
   return { ...cloneWorkflow(workflow), analyses: [...workflow.analyses, task] }
 }
 
@@ -106,16 +115,27 @@ export function renameAnalysis(
   if (error || !workflow.analyses[index]) return { workflow: cloneWorkflow(workflow), error }
   const previous = workflow.analyses[index].id
   const next = updateAnalysis(workflow, index, { id })
-  if (!next.fan_in) return { workflow: next, error: '' }
   return {
-    workflow: {
-      ...next,
-      fan_in: {
-        ...next.fan_in,
-        order: next.fan_in.order.map((entry) => (entry === previous ? id : entry)),
-      },
-    },
+    workflow: { ...next, fan_in: renameFanInReferences(next.fan_in, previous, id) },
     error: '',
+  }
+}
+
+export function renameFanInReferences(fanIn: FanInConfig | null, previous: string, id: string) {
+  if (!fanIn) return null
+  return {
+    ...fanIn,
+    order: fanIn.order.map((entry) => (entry === previous ? id : entry)),
+    reuse_from: fanIn.reuse_from === previous ? id : fanIn.reuse_from,
+  }
+}
+
+export function removeFanInReferences(fanIn: FanInConfig | null, id: string) {
+  if (!fanIn) return null
+  return {
+    ...fanIn,
+    order: fanIn.order.filter((entry) => entry !== id),
+    reuse_from: fanIn.reuse_from === id ? '$first' : fanIn.reuse_from,
   }
 }
 
@@ -126,12 +146,7 @@ export function removeAnalysis(workflow: WorkflowDefinition, index: number) {
     ...cloneWorkflow(workflow),
     analyses: workflow.analyses.filter((_entry, taskIndex) => taskIndex !== index),
   }
-  return next.fan_in
-    ? {
-        ...next,
-        fan_in: { ...next.fan_in, order: next.fan_in.order.filter((id) => id !== task.id) },
-      }
-    : next
+  return { ...next, fan_in: removeFanInReferences(next.fan_in, task.id) }
 }
 
 export function setFanIn(workflow: WorkflowDefinition, fanIn: FanInConfig | null) {

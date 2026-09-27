@@ -3,6 +3,7 @@ import type { AIConfig } from '@/modules/resources/public'
 import type { AnalysisTask } from '../model/types'
 import type { WorkflowEditorController } from '../composables/useWorkflowEditor'
 import AIModelSelect from './AIModelSelect.vue'
+import PromptOverrides from './PromptOverrides.vue'
 import SectionCard from '@/shared/ui/SectionCard.vue'
 const props = defineProps<{
   editor: WorkflowEditorController
@@ -19,6 +20,22 @@ function taskId(index: number, task: AnalysisTask) {
     <template #actions>
       <el-button size="small" @click="editor.addTask">添加任务</el-button>
     </template>
+    <el-form-item label="共享系统提示词">
+      <el-input
+        :model-value="draft().system_prompt"
+        type="textarea"
+        :rows="3"
+        @update:model-value="editor.update({ system_prompt: $event })"
+      />
+    </el-form-item>
+    <el-form-item label="共享输入模板">
+      <el-input
+        :model-value="draft().input_prompt"
+        type="textarea"
+        :rows="3"
+        @update:model-value="editor.update({ input_prompt: $event })"
+      />
+    </el-form-item>
     <el-form-item
       prop="analyses"
       :rules="{ type: 'array', required: true, min: 1, message: '至少添加一个分析任务' }"
@@ -52,14 +69,13 @@ function taskId(index: number, task: AnalysisTask) {
         :model-prop="`analyses.${index}.model`"
         @selection="(ai, model) => editor.updateTask(index, { ai: ai ?? '', model: model ?? '' })"
       />
-      <el-form-item label="提示词">
-        <el-input
-          :model-value="task.prompt"
-          type="textarea"
-          :rows="3"
-          @update:model-value="editor.updateTask(index, { prompt: $event })"
-        />
-      </el-form-item>
+      <PromptOverrides
+        v-if="advanced"
+        :value="task"
+        :shared-system-prompt="draft().system_prompt"
+        :shared-input-prompt="draft().input_prompt"
+        @update="editor.updateTask(index, $event)"
+      />
     </div>
     <div v-if="advanced" class="form-grid">
       <el-form-item label="分析并发">

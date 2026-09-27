@@ -7,7 +7,10 @@ export function createFanIn(): FanInConfig {
     separator: '\n\n',
     ai: null,
     model: null,
-    prompt: '{input}',
+    system_prompt: null,
+    input_prompt: null,
+    user_prompt: '',
+    reuse_from: '$first',
     mark_incomplete: true,
   }
 }
@@ -19,6 +22,8 @@ export function createWorkflow(): WorkflowDefinition {
     sources: [],
     analyses: [],
     fan_in: null,
+    system_prompt: '',
+    input_prompt: '{input}',
     channels: [],
     source_overrides: {},
     channel_overrides: {},

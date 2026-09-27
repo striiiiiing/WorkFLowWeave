@@ -39,7 +39,7 @@ describe('workflow bindings', () => {
   it('keeps the fan-in draft when temporarily disabled and restored', async () => {
     const initial = {
       ...createWorkflow(),
-      fan_in: { ...createFanIn(), order: ['task'], prompt: 'keep me', separator: '---' },
+      fan_in: { ...createFanIn(), order: ['task'], input_prompt: 'keep me', separator: '---' },
     }
     let editor!: ReturnType<typeof useWorkflowEditor>
     const wrapper = mount(
@@ -65,7 +65,7 @@ describe('workflow bindings', () => {
       .vm.$emit('update:modelValue', true)
     expect(editor.draft.value?.fan_in).toMatchObject({
       order: ['task'],
-      prompt: 'keep me',
+      input_prompt: 'keep me',
       separator: '---',
     })
     wrapper.unmount()
@@ -75,8 +75,22 @@ describe('workflow bindings', () => {
     const initial = {
       ...createWorkflow(),
       analyses: [
-        { id: 'first', ai: '', model: '', prompt: '{input}' },
-        { id: 'second', ai: '', model: '', prompt: '{input}' },
+        {
+          id: 'first',
+          ai: '',
+          model: '',
+          system_prompt: null,
+          input_prompt: null,
+          user_prompt: '',
+        },
+        {
+          id: 'second',
+          ai: '',
+          model: '',
+          system_prompt: null,
+          input_prompt: null,
+          user_prompt: '',
+        },
       ],
       fan_in: { ...createFanIn(), order: ['first', 'second'] },
     }
@@ -95,17 +109,17 @@ describe('workflow bindings', () => {
       { global },
     )
     const inputs = wrapper.findComponent(FanOutTaskCard).findAllComponents(ElInput)
-    await inputs[0].vm.$emit('update:modelValue', 'second')
+    await inputs[2].vm.$emit('update:modelValue', 'second')
     expect(editor.draft.value?.analyses[0].id).toBe('first')
     expect(editor.taskIdError(0)).toContain('任务编号不能重名')
     expect(wrapper.findComponent(FanOutTaskCard).find('.el-form-item.is-error').exists()).toBe(true)
     expect(editor.draft.value?.fan_in?.order).toEqual(['first', 'second'])
-    await inputs[0].vm.$emit('update:modelValue', 'renamed')
+    await inputs[2].vm.$emit('update:modelValue', 'renamed')
     expect(editor.draft.value?.fan_in?.order).toEqual(['renamed', 'second'])
     editor.updateFanIn({ order: ['second'] })
-    await inputs[0].vm.$emit('update:modelValue', 'unselected')
+    await inputs[2].vm.$emit('update:modelValue', 'unselected')
     expect(editor.draft.value?.fan_in?.order).toEqual(['second'])
-    await inputs[2].vm.$emit('update:modelValue', 'selected')
+    await inputs[3].vm.$emit('update:modelValue', 'selected')
     expect(editor.draft.value?.fan_in?.order).toEqual(['selected'])
     wrapper.unmount()
   })
