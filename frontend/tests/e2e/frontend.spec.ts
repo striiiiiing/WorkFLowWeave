@@ -754,10 +754,9 @@ test('workflow designer persists independent sources and the resource center onl
     await drawer.getByRole('button', { name: '应用到当前工作流', exact: true }).click()
     await expect(drawer).toBeHidden()
     await expect(card).toContainText('本流专用巡检数据')
-    await page.getByRole('switch', { name: '高级模式' }).click()
-    await page.getByLabel('差异指令', { exact: true }).fill('保留这个未保存草稿 {input}')
+    await page.getByLabel('提示词', { exact: true }).fill('保留这个未保存草稿 {input}')
     await expect(card).toBeVisible()
-    await expect(page.getByLabel('差异指令', { exact: true })).toHaveValue(
+    await expect(page.getByLabel('提示词', { exact: true })).toHaveValue(
       '保留这个未保存草稿 {input}',
     )
     await page.getByRole('button', { name: '保存工作流', exact: true }).click()

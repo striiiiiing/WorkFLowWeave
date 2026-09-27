@@ -2,12 +2,12 @@
 import type { AnalysisTask } from '../model/types'
 
 const props = defineProps<{
-  value: Pick<AnalysisTask, 'system_prompt' | 'input_prompt' | 'user_prompt'>
+  value: Pick<AnalysisTask, 'system_prompt' | 'input_prompt'>
   sharedSystemPrompt: string
   sharedInputPrompt: string
 }>()
 const emit = defineEmits<{
-  update: [changes: Partial<Pick<AnalysisTask, 'system_prompt' | 'input_prompt' | 'user_prompt'>>]
+  update: [changes: Partial<Pick<AnalysisTask, 'system_prompt' | 'input_prompt'>>]
 }>()
 
 function switchSystem(mode: string | number | boolean | undefined) {
@@ -58,14 +58,6 @@ function switchInput(mode: string | number | boolean | undefined) {
         @update:model-value="emit('update', { input_prompt: $event })"
       />
     </div>
-  </el-form-item>
-  <el-form-item label="差异指令">
-    <el-input
-      :model-value="value.user_prompt"
-      type="textarea"
-      :rows="3"
-      @update:model-value="emit('update', { user_prompt: $event })"
-    />
   </el-form-item>
 </template>
 

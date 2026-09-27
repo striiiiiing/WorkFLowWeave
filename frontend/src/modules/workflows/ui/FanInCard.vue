@@ -104,6 +104,14 @@ function selectModelSource(value: string) {
         optional
         @selection="(ai, model) => editor.updateFanIn({ ai, model })"
       />
+      <el-form-item label="提示词">
+        <el-input
+          :model-value="fanIn().user_prompt"
+          type="textarea"
+          :rows="3"
+          @update:model-value="editor.updateFanIn({ user_prompt: $event })"
+        />
+      </el-form-item>
       <PromptOverrides
         v-if="advanced"
         :value="fanIn()"

@@ -102,6 +102,22 @@ function validateCron(_rule: unknown, value: string, done: (error?: Error) => vo
         </el-select>
       </el-form-item>
     </div>
+    <el-form-item label="系统提示词">
+      <el-input
+        :model-value="draft.system_prompt"
+        type="textarea"
+        :rows="3"
+        @update:model-value="emit('update', { system_prompt: $event })"
+      />
+    </el-form-item>
+    <el-form-item v-if="advanced" label="输入模板">
+      <el-input
+        :model-value="draft.input_prompt"
+        type="textarea"
+        :rows="3"
+        @update:model-value="emit('update', { input_prompt: $event })"
+      />
+    </el-form-item>
     <el-alert
       v-if="schedule === 'legacy'"
       :title="`当前保留旧版每 ${draft.interval_seconds} 秒运行；选择 Cron 或仅手动运行后替换此计划。`"
