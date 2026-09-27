@@ -1,6 +1,6 @@
 """JSON 资源存储的原子发布、引用和快照测试。
 
-真实临时资源文件配合注册表验证保存/重开、创建/替换、引用约束、模板更新
+真实临时资源文件配合注册表验证保存/重开、旧提示词迁移、创建/替换、引用约束、模板更新
 及不可变快照；并发提交和写入故障检查磁盘与已发布视图一致。
 验证失败保留旧有效资源，不将损坏文件作为空存储。
 """
@@ -13,14 +13,17 @@ from pathlib import Path
 import orjson
 import pytest
 
+from logagent.ai.prompts import build_messages
 from logagent.channel.mock import MockFileChannelType
 from logagent.collection.mock import MockCollector
 from logagent.config import PluginRegistry, ResourceStore
+from logagent.config.migrations import RESOURCE_FORMAT_VERSION
 from logagent.errors import LogAgentError
 from logagent.lifecycle.resources import LifecycleResourceStore
 from logagent.models import (
     AIConfig,
     ChannelConfig,
+    FanInConfig,
     SetterTemplate,
     SourceConfig,
     SystemConfig,
@@ -75,6 +78,95 @@ async def test_save_reopen_copies_and_original_snapshot(resources):
                              channel_register=registry.channelRegister)
     assert reopened.snapshot("workflow").ai["ai"].models == {"model": {"reasoning_effort": "high"}}
     assert set(read(store)) == {"format_version", "sources", "setters", "ai", "channels", "workflows"}
+
+
+@pytest.mark.parametrize("with_ai", [False, True])
+@pytest.mark.parametrize("load", ["reopen", "reload"])
+@pytest.mark.parametrize("old_prompt,expected", [
+    ("legacy task", "legacy task\n\n{input}"),
+    ("legacy {input}", "legacy {input}"),
+])
+async def test_v1_prompt_migration_preserves_legacy_requests(
+    resources, with_ai, load, old_prompt, expected,
+):
+    store, registry = resources
+    definition = seed(store)
+    store.save("ai", AIConfig(
+        id="ai", provider="mock", system_prompt="legacy system {input}",
+        models={"model": {}},
+    ))
+    definition.fan_in = FanInConfig(
+        ai="ai" if with_ai else None,
+        model="model" if with_ai else None,
+        reuse_from=None,
+    )
+    store.save("workflows", definition)
+    data = read(store)
+    data["format_version"] = 1
+    workflow = data["workflows"]["workflow"]
+    del workflow["system_prompt"], workflow["input_prompt"]
+    task = workflow["analyses"][0]
+    del task["system_prompt"], task["input_prompt"], task["user_prompt"]
+    task["prompt"] = old_prompt
+    fan_in = workflow["fan_in"]
+    del fan_in["system_prompt"], fan_in["input_prompt"], fan_in["user_prompt"]
+    del fan_in["reuse_from"]
+    fan_in["prompt"] = "legacy summary"
+    edit(store, data)
+
+    if load == "reopen":
+        reopened = ResourceStore(
+            store.location, collector_register=registry.collectorRegister,
+            channel_register=registry.channelRegister,
+        )
+    else:
+        store.reload_resources()
+        reopened = store
+    migrated = read(reopened)
+    assert migrated["format_version"] == RESOURCE_FORMAT_VERSION
+    assert "prompt" not in migrated["workflows"]["workflow"]["analyses"][0]
+    assert "prompt" not in migrated["workflows"]["workflow"]["fan_in"]
+    saved = reopened.snapshot("workflow")
+    assert saved.workflow.analyses[0].system_prompt == "legacy system {input}"
+    assert saved.workflow.analyses[0].input_prompt == expected
+    messages = build_messages(
+        saved.workflow.analyses[0].system_prompt,
+        saved.workflow.analyses[0].input_prompt,
+        "collected",
+    )
+    assert messages[0].content == "legacy system {input}"
+    expected_content = (
+        old_prompt.replace("{input}", "collected")
+        if "{input}" in old_prompt else f"{old_prompt}\n\ncollected"
+    )
+    assert messages[1].content == expected_content
+    assert saved.workflow.fan_in.input_prompt == "legacy summary\n\n{input}"
+    assert saved.workflow.fan_in.order == ["analysis"]
+    assert saved.workflow.fan_in.reuse_from is None
+    assert saved.workflow.fan_in.system_prompt == ("legacy system {input}" if with_ai else None)
+    assert reopened.get("workflows", "workflow") == saved.workflow
+
+
+async def test_v1_migration_failure_keeps_original_file(resources, monkeypatch):
+    store, _ = resources
+    seed(store)
+    data = read(store)
+    data["format_version"] = 1
+    workflow = data["workflows"]["workflow"]
+    del workflow["system_prompt"], workflow["input_prompt"]
+    task = workflow["analyses"][0]
+    del task["system_prompt"], task["input_prompt"], task["user_prompt"]
+    task["prompt"] = "legacy {input}"
+    edit(store, data)
+    before = await asyncio.to_thread(Path(store.location).read_bytes)
+
+    def fail(*_):
+        raise OSError
+
+    monkeypatch.setattr("logagent.config.store.os.replace", fail)
+    with pytest.raises(LogAgentError, match="原子保存失败"):
+        ResourceStore(store.location)
+    assert await asyncio.to_thread(Path(store.location).read_bytes) == before
 
 
 async def test_save_many_updates_model_and_workflow_atomically(resources):
@@ -293,7 +385,7 @@ async def test_invalid_document_never_becomes_an_empty_store(resources, change):
     if change == "unknown":
         data["extra"] = "secret"
     elif change == "version":
-        data["format_version"] = 3
+        data["format_version"] = RESOURCE_FORMAT_VERSION + 1
     elif change == "key":
         data["ai"]["ai"]["id"] = "different"
     elif change == "missing_set":
@@ -348,7 +440,7 @@ async def test_removing_referenced_model_rejects_entire_resource_candidate(resou
     store.save("ai", AIConfig(id="ai", provider="mock", models={"model": {}, "summary": {}}))
     if reference == "fan_in":
         from logagent.models import FanInConfig
-        definition.fan_in = FanInConfig(ai="ai", model="summary")
+        definition.fan_in = FanInConfig(ai="ai", model="summary", reuse_from=None)
         store.save("workflows", definition)
     before = await asyncio.to_thread(Path(store.location).read_bytes)
     original = store.snapshot("workflow")
@@ -372,7 +464,7 @@ async def test_removing_referenced_model_rejects_entire_resource_candidate(resou
      {"type": "cron", "expression": "0 9 * * sun,fri,sat", "timezone": "UTC"}),
     ({"interval_seconds": None, "cron": None, "cron_timezone": "UTC"}, None),
 ])
-async def test_legacy_schedule_migration_publishes_version_two(resources, legacy, expected):
+async def test_legacy_schedule_migration_publishes_current_version(resources, legacy, expected):
     store, _ = resources
     seed(store)
     data = read(store)
@@ -382,7 +474,7 @@ async def test_legacy_schedule_migration_publishes_version_two(resources, legacy
     edit(store, data)
     migrated = ResourceStore(store.location)
     result = read(migrated)
-    assert result["format_version"] == 2
+    assert result["format_version"] == RESOURCE_FORMAT_VERSION
     assert result["workflows"]["workflow"]["schedule"] == expected
     assert not {"interval_seconds", "cron", "cron_timezone"} & result["workflows"]["workflow"].keys()
     before = await asyncio.to_thread(Path(store.location).read_bytes)
@@ -434,4 +526,35 @@ async def test_reload_migrates_and_atomic_publish_failure_preserves_view(resourc
         assert await asyncio.to_thread(Path(store.location).read_bytes) == before
     store.reload_resources()
     assert store.get("workflows", "workflow").schedule.every_seconds == 42
-    assert read(store)["format_version"] == 2
+    assert read(store)["format_version"] == RESOURCE_FORMAT_VERSION
+
+
+@pytest.mark.parametrize("version", [1, 2])
+async def test_schedule_and_prompt_migrations_share_one_publication(resources, version):
+    store, _ = resources
+    seed(store)
+    data = read(store)
+    data["format_version"] = version
+    workflow = data["workflows"]["workflow"]
+    workflow.pop("system_prompt")
+    workflow.pop("input_prompt")
+    task = workflow["analyses"][0]
+    task.pop("system_prompt")
+    task.pop("input_prompt")
+    task.pop("user_prompt")
+    task["prompt"] = "legacy task"
+    if version == 1:
+        workflow.pop("schedule")
+        workflow["interval_seconds"] = 45
+    else:
+        workflow["schedule"] = {"type": "every", "every_seconds": 45}
+    edit(store, data)
+
+    store.reload_resources()
+    result = read(store)
+    migrated = result["workflows"]["workflow"]
+    assert result["format_version"] == RESOURCE_FORMAT_VERSION
+    assert migrated["schedule"] == {"type": "every", "every_seconds": 45}
+    assert migrated["analyses"][0]["input_prompt"] == "legacy task\n\n{input}"
+    assert "prompt" not in migrated["analyses"][0]
+    assert "interval_seconds" not in migrated

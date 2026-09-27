@@ -21,7 +21,7 @@ from logagent.config.calls import (
     resolve_source_call,
     select_source_call,
 )
-from logagent.config.migrations import migrate_resources
+from logagent.config.migrations import RESOURCE_FORMAT_VERSION, migrate_resources
 from logagent.config.normalize import normalize_options, validate_effective_source
 from logagent.config.reader import read_json
 from logagent.errors import LogAgentError, validation_error
@@ -54,7 +54,7 @@ Validator = Callable[[StrictModel], None]
 
 
 class _Resources(StrictModel):
-    format_version: int = Field(ge=2, le=2)
+    format_version: int = Field(ge=RESOURCE_FORMAT_VERSION, le=RESOURCE_FORMAT_VERSION)
     sources: dict[str, SourceConfig]
     setters: dict[str, SetterTemplate]
     ai: dict[str, AIConfig]
@@ -103,13 +103,13 @@ class ResourceStore:
         self._collectors, self._channels = collector_register, channel_register
         self._validators = dict(validators or {})
         self._lock = threading.RLock()
-        self._view = _Resources(format_version=2, **{kind: {} for kind in _MODELS})
+        self._view = _Resources(format_version=RESOURCE_FORMAT_VERSION, **{kind: {} for kind in _MODELS})
         path = Path(self.location)
         if path.exists() or path.is_symlink():
-            data = read_json(path)
-            candidate = self._parse(migrate_resources(data))
+            data, migrated = migrate_resources(read_json(path))
+            candidate = self._parse(data)
             self._validate(candidate, changed=set(), normalize=False)
-            if data.get("format_version") == 1:
+            if migrated:
                 self._publish(candidate)
             else:
                 self._view = candidate
@@ -504,7 +504,8 @@ class ResourceStore:
 
     def reload_resources(self) -> None:
         with self._lock:
-            candidate = self._parse(migrate_resources(read_json(Path(self.location))))
+            data, _ = migrate_resources(read_json(Path(self.location)))
+            candidate = self._parse(data)
             changed = {
                 (kind, ident) for kind in _MODELS
                 for ident, value in getattr(candidate, kind).items()

@@ -6,6 +6,7 @@
 """
 
 import asyncio
+from copy import deepcopy
 from datetime import UTC, datetime
 
 import pytest
@@ -14,6 +15,7 @@ from sqlmodel import select
 
 from logagent.errors import LogAgentError
 from logagent.models import (
+    AIConfig,
     ChannelConfig,
     CollectionResult,
     FanInConfig,
@@ -107,6 +109,46 @@ async def test_cancel_resume_reuses_successful_branch_and_original_snapshot(tmp_
     assert not c.calls and a.calls == [("second", "original data\n\nsource: success (1)", "offline")]
     assert len(n.calls) == 4
     await close(new, reopened)
+
+
+async def test_recovery_reads_legacy_prompt_snapshot_without_rewriting_archive(tmp_path):
+    class LegacySnapshotStore(SessionStore):
+        def write(self, sid, key, **kwargs):
+            if key == "snapshot":
+                body = deepcopy(kwargs["body"])
+                workflow = body["snapshot"]["workflow"]
+                del workflow["system_prompt"], workflow["input_prompt"]
+                task = workflow["analyses"][0]
+                task["prompt"] = "legacy task"
+                del task["system_prompt"], task["input_prompt"], task["user_prompt"]
+                kwargs["body"] = body
+            return super().write(sid, key, **kwargs)
+
+    path = tmp_path / "runs.sqlite3"
+    blocked = AI(block="first")
+    original, store, _, _, _ = service(path, ai=blocked, store_type=LegacySnapshotStore)
+    snap = snapshot(channels=False, tasks=("first",), system_prompt="legacy system")
+    snap.workflow.analyses[0].input_prompt = "legacy task\n\n{input}"
+    snap.ai["ai"].system_prompt = "legacy system"
+    await original.trigger(snap, session_id="run")
+    await asyncio.wait_for(blocked.started.wait(), 5)
+    assert await original.cancel("run")
+    assert (await original.wait("run")).status == "cancelled"
+    await close(original, store)
+
+    recovered, archive, _, ai, _ = service(path)
+    assert (await asyncio.to_thread(archive.entry, "run", "snapshot"))["body"][
+        "snapshot"
+    ]["workflow"]["analyses"][0]["prompt"] == "legacy task"
+    await recovered.recover("run")
+    assert (await recovered.wait("run")).status == "completed"
+    assert ai.requests == [
+        ("first", "ai", "legacy task\n\n{input}", "legacy system", "")
+    ]
+    assert (await asyncio.to_thread(archive.entry, "run", "snapshot"))["body"][
+        "snapshot"
+    ]["workflow"]["analyses"][0]["prompt"] == "legacy task"
+    await close(recovered, archive)
 
 
 async def test_business_commit_before_checkpoint_replays_without_external_call(tmp_path):
@@ -229,7 +271,9 @@ async def test_duplicate_capacity_and_shutdown(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "fan_in", [None, FanInConfig(), FanInConfig(ai="ai", model="offline", order=["second", "$input", "first"])]
+    "fan_in", [None, FanInConfig(), FanInConfig(
+        ai="ai", model="offline", reuse_from=None, order=["second", "$input", "first"],
+    )]
 )
 async def test_order_fanin_and_disabled_channel(tmp_path, fan_in):
     w, store, _, _, n = service(tmp_path / "runs.sqlite3")
@@ -240,6 +284,73 @@ async def test_order_fanin_and_disabled_channel(tmp_path, fan_in):
     assert result.deliveries[0].status == "skipped"
     assert all(row[1] == "two" for row in n.calls)
     assert list(result.outputs) == (["first", "second"] if fan_in is None else ["final"])
+    await close(w, store)
+
+
+async def test_layered_prompts_and_ordered_fanin_reuse(tmp_path):
+    w, store, _, ai, _ = service(tmp_path / "runs.sqlite3")
+    snap = snapshot(
+        channels=False,
+        fan_in=FanInConfig(
+            order=["second", "$input", "first"], reuse_from="second",
+            system_prompt="", user_prompt="summary {input}",
+        ),
+        system_prompt="shared {input}", input_prompt="body: {input}",
+    )
+    snap.workflow.analyses[0].system_prompt = "first system"
+    snap.workflow.analyses[0].input_prompt = None
+    snap.workflow.analyses[0].user_prompt = "first instruction"
+    snap.ai["ai"].system_prompt = "ignored AI system"
+    snap.workflow.analyses[1].ai = "other"
+    snap.workflow.analyses[1].model = "other-model"
+    snap.workflow.analyses[1].input_prompt = ""
+    snap.ai["other"] = AIConfig(
+        id="other", provider="mock", system_prompt="ignored other system",
+        models={"other-model": {}},
+    )
+    result = await run(w, snap)
+    assert result.status == "completed"
+    by_id = {request[0]: request for request in ai.requests}
+    assert by_id["first"] == (
+        "first", "ai", "body: {input}", "first system", "first instruction"
+    )
+    assert by_id["second"] == ("second", "other", "", "shared {input}", "")
+    assert by_id["final"] == ("final", "other", "body: {input}", "", "summary {input}")
+    assert ai.calls[-1] == (
+        "final",
+        "second(original data\n\nsource: success (1))\n\n"
+        "original data\n\nsource: success (1)\n\n"
+        "first(original data\n\nsource: success (1))",
+        "other-model",
+    )
+    await close(w, store)
+
+
+async def test_default_fanin_reuses_first_model_and_declared_order(tmp_path):
+    w, store, _, ai, _ = service(tmp_path / "runs.sqlite3")
+    snap = snapshot(channels=False, fan_in=FanInConfig(), system_prompt="shared system")
+    snap.ai["ai"].system_prompt = "ignored AI system"
+    result = await run(w, snap)
+    assert result.status == "completed"
+    assert ai.requests[-1][3] == "shared system"
+    assert ai.calls[-1] == (
+        "final",
+        "original data\n\nsource: success (1)\n\n"
+        "first(original data\n\nsource: success (1))\n\n"
+        "second(original data\n\nsource: success (1))",
+        "offline",
+    )
+    await close(w, store)
+
+
+async def test_fanin_without_reuse_omits_original_input_and_model_call(tmp_path):
+    w, store, _, ai, _ = service(tmp_path / "runs.sqlite3")
+    result = await run(w, snapshot(
+        channels=False, fan_in=FanInConfig(reuse_from=None, order=["second"]),
+    ))
+    assert result.status == "completed"
+    assert result.outputs["final"] == "second(original data\n\nsource: success (1))"
+    assert {call[0] for call in ai.calls} == {"first", "second"}
     await close(w, store)
 
 
@@ -260,7 +371,9 @@ async def test_analysis_failure_policy(tmp_path, policy, partial, status, sends)
 
 async def test_aggregate_failure_does_not_fallback_to_branch_delivery(tmp_path):
     w, store, _, a, n = service(tmp_path / "runs.sqlite3", ai=AI(fail={"final"}))
-    result = await run(w, snapshot(fan_in=FanInConfig(ai="ai", model="offline")))
+    result = await run(w, snapshot(fan_in=FanInConfig(
+        ai="ai", model="offline", reuse_from=None,
+    )))
     assert result.status == "failed" and result.aggregate.status == "failed"
     assert not result.outputs and not n.calls
     await close(w, store)
@@ -290,7 +403,9 @@ async def test_coordinator_completion_cache_is_bounded():
 async def test_failed_work_recovery_reuses_successful_branches(tmp_path, failure):
     w, store, c, _, n = service(tmp_path / "runs.sqlite3", ai=AI(fail={failure}))
     definition = snapshot(
-        analysis_failure="stop", fan_in=FanInConfig(ai="ai", model="offline") if failure == "final" else None
+        analysis_failure="stop", fan_in=FanInConfig(
+            ai="ai", model="offline", reuse_from=None,
+        ) if failure == "final" else None
     )
     first = await run(w, definition)
     assert first.status == "failed" and not n.calls

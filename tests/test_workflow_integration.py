@@ -83,15 +83,16 @@ def _save_resources(registry, resources, output_path, version):
             name=f"Report {version}",
             sources=["source"],
             analyses=[
-                AnalysisTask(id=key, ai="ai", model="model", prompt=f"{version}-{key}: {{input}}")
+                AnalysisTask(id=key, ai="ai", model="model", input_prompt=f"{version}-{key}: {{input}}")
                 for key in ("first", "second")
             ],
             analysis_concurrency=1,
             fan_in=FanInConfig(
                 ai="ai", model="model",
+                reuse_from=None,
                 order=["second", "$input", "first"],
                 separator="\n--\n",
-                prompt=f"{version}-summary: {{input}}",
+                input_prompt=f"{version}-summary: {{input}}",
             ),
             channels=["file"],
         ),
@@ -145,6 +146,9 @@ async def test_real_modules_recovery_preserves_original_output(tmp_path):
         assert not changed_path.exists()
         saved = await asyncio.to_thread(service.session_store.entry, "original-run", "snapshot")
         assert saved["body"]["snapshot"]["ai"]["ai"]["models"] == {"model": {"version": "original"}}
+        saved_workflow = saved["body"]["snapshot"]["workflow"]
+        assert saved_workflow["analyses"][0]["input_prompt"] == "original-first: {input}"
+        assert saved_workflow["fan_in"]["reuse_from"] is None
 
         await service.trigger("demo", session_id="changed-run")
         changed = await service.wait("changed-run")

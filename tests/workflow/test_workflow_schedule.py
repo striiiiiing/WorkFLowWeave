@@ -13,6 +13,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from pydantic import ValidationError
 
 from logagent.config import ResourceStore
+from logagent.config.migrations import RESOURCE_FORMAT_VERSION
 from logagent.errors import LogAgentError
 from logagent.models import WorkflowDefinition
 from logagent.scheduling import cron_trigger, describe_cron
@@ -31,7 +32,7 @@ def store_for(tmp_path, schedule=None):
     path = tmp_path / "resources.json"
     if not path.exists():
         path.write_bytes(orjson.dumps({
-            "format_version": 2,
+            "format_version": RESOURCE_FORMAT_VERSION,
             "sources": {"source": {"id": "source", "collector": "mock"}},
             "ai": {"ai": {"id": "ai", "provider": "mock", "models": {"model": {}}}},
             "setters": {}, "channels": {},
