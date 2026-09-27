@@ -7,10 +7,12 @@ import { runsApi } from '@/app/services'
 import type { SessionRecord } from '@/shared/types'
 import AgentsView from '@/views/AgentsView.vue'
 import AgentContinueButton from '@/components/agent/AgentContinueButton.vue'
-import AgentModelSelect from '@/components/agent/AgentModelSelect.vue'
+import { agentsApiKey, AgentModelSelect } from '@/modules/agents/public'
 import AgentHeader from '@/components/agent/AgentHeader.vue'
 import { saveDefaultAgentModel } from '@/modules/agents/public'
+import { runsApiKey } from '@/modules/runs/public'
 import { ApiError } from '@/shared/api/errors'
+import { errorFormatterKey } from '@/shared/async/errorFormatter'
 const wrappers: ReturnType<typeof mount>[] = []
 const session = (id: string, status = 'completed'): AgentSession => ({
   session_id: id,
@@ -82,7 +84,14 @@ async function setup(status = 'completed') {
   await router.isReady()
   const wrapper = mount(AgentsView, {
     attachTo: document.body,
-    global: { plugins: [ElementPlus, router] },
+    global: {
+      plugins: [ElementPlus, router],
+      provide: {
+        [agentsApiKey as symbol]: agentsApi,
+        [runsApiKey as symbol]: runsApi,
+        [errorFormatterKey as symbol]: (error: unknown) => String(error),
+      },
+    },
   })
   wrappers.push(wrapper)
   await flushPromises()
@@ -133,7 +142,7 @@ it('offers compact during a running turn and sends append through the command en
   expect(cancel).toHaveBeenCalledWith('parent')
   expect(wrapper.find('button[title="停止生成 (Stop)"]').exists()).toBe(false)
 })
-it('previews the newest Workflow result and freezes that source and selected model at creation', async () => {
+it('continues the newest Workflow result directly with a valid default model', async () => {
   saveDefaultAgentModel('local:one')
   const record = (id: string, date: string) =>
     ({
@@ -143,9 +152,10 @@ it('previews the newest Workflow result and freezes that source and selected mod
       finished_at: date,
       updated_at: date,
     }) as SessionRecord
-  const list = vi
-    .spyOn(runsApi, 'list')
-    .mockResolvedValue([record('old', '2026-09-21'), record('preview', '2026-09-23')])
+  vi.spyOn(runsApi, 'list').mockResolvedValue([
+    record('old', '2026-09-21'),
+    record('preview', '2026-09-23'),
+  ])
   vi.spyOn(agentsApi, 'models').mockResolvedValue(settings.models)
   const create = vi.spyOn(agentsApi, 'create').mockResolvedValue(session('continued'))
   const router = createRouter({
@@ -155,20 +165,62 @@ it('previews the newest Workflow result and freezes that source and selected mod
   const wrapper = mount(AgentContinueButton, {
     props: { workflowId: 'wf' },
     attachTo: document.body,
-    global: { plugins: [ElementPlus, router] },
+    global: {
+      plugins: [ElementPlus, router],
+      provide: {
+        [agentsApiKey as symbol]: agentsApi,
+        [runsApiKey as symbol]: runsApi,
+        [errorFormatterKey as symbol]: (error: unknown) => String(error),
+      },
+    },
   })
   wrappers.push(wrapper)
   button('从最新结果继续').click()
   await flushPromises()
-  expect(document.body.textContent).toContain('wf / preview')
-  list.mockResolvedValue([record('later', '2026-09-24')])
-  expect(wrapper.findComponent(AgentModelSelect).props('modelValue')).toBe('local:one')
+  expect(create).toHaveBeenCalledWith({ workflow_session_id: 'preview', model: 'local:one' })
+  expect(router.currentRoute.value.path).toBe('/agents/continued')
+  expect(wrapper.findComponent(AgentModelSelect).exists()).toBe(false)
+})
+
+it('asks for a model when the saved default is no longer available', async () => {
+  saveDefaultAgentModel('removed:one')
+  vi.spyOn(runsApi, 'list').mockResolvedValue([
+    {
+      session_id: 'preview',
+      workflow_id: 'wf',
+      status: 'completed',
+      finished_at: '2026-09-23',
+      updated_at: '2026-09-23',
+    } as SessionRecord,
+  ])
+  vi.spyOn(agentsApi, 'models').mockResolvedValue(settings.models)
+  const create = vi.spyOn(agentsApi, 'create').mockResolvedValue(session('continued'))
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/:pathMatch(.*)*', component: { template: '<div />' } }],
+  })
+  const wrapper = mount(AgentContinueButton, {
+    props: { workflowId: 'wf' },
+    attachTo: document.body,
+    global: {
+      plugins: [ElementPlus, router],
+      provide: {
+        [agentsApiKey as symbol]: agentsApi,
+        [runsApiKey as symbol]: runsApi,
+        [errorFormatterKey as symbol]: (error: unknown) => String(error),
+      },
+    },
+  })
+  wrappers.push(wrapper)
+  button('从最新结果继续').click()
+  await flushPromises()
+  expect(create).not.toHaveBeenCalled()
+  expect(document.body.textContent).toContain('默认模型“removed:one”不在当前目录中')
   wrapper.findComponent(AgentModelSelect).vm.$emit('update:modelValue', 'local:one')
   await flushPromises()
   button('创建并继续').click()
   await flushPromises()
   expect(create).toHaveBeenCalledWith({ workflow_session_id: 'preview', model: 'local:one' })
-  expect(router.currentRoute.value.path).toBe('/agents/continued')
 })
 
 it('keeps the same request ID when a send response is lost and the user explicitly retries', async () => {

@@ -32,8 +32,7 @@ const workflowList = vi.fn().mockResolvedValue([])
 const resourcesApi = {
   list: resourceList,
   resolveSource: vi.fn(),
-  checkAIConnection: vi.fn(),
-  testAIModel: vi.fn(),
+  discoverAIModels: vi.fn(),
   protectCredential: vi.fn(),
   get: vi.fn(),
   create: vi.fn(),

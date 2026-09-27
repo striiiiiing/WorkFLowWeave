@@ -6,6 +6,7 @@ import ContinueInAgent from '@/pages/integrations/ContinueInAgent.vue'
 import { agentsApiKey, saveDefaultAgentModel } from '@/modules/agents/public'
 import type { AgentSession } from '@/modules/agents/public'
 import type { SessionRecord } from '@/modules/runs/public'
+import { runsApiKey } from '@/modules/runs/public'
 import { errorFormatterKey } from '@/shared/async/errorFormatter'
 
 const source: SessionRecord = {
@@ -64,6 +65,7 @@ it('creates an Agent from the already loaded run and routes to the new session',
       plugins: [ElementPlus, router],
       provide: {
         [agentsApiKey as symbol]: { models, create },
+        [runsApiKey as symbol]: { list: vi.fn(), get: vi.fn() },
         [errorFormatterKey as symbol]: (error: unknown) => String(error),
       },
     },
@@ -98,6 +100,7 @@ it('shows a stale default and keeps creation disabled until a current model is s
       plugins: [ElementPlus, router],
       provide: {
         [agentsApiKey as symbol]: { models, create },
+        [runsApiKey as symbol]: { list: vi.fn(), get: vi.fn() },
         [errorFormatterKey as symbol]: (error: unknown) => String(error),
       },
     },

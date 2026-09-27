@@ -405,7 +405,7 @@ test('provider models are configured in the channel and selected by workflows', 
   const healthRequests: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   page.on('request', (request) => {
-    if (request.url().endsWith('/check-connection')) healthRequests.push(request.url())
+    if (request.url().endsWith('/discover-models')) healthRequests.push(request.url())
   })
   await page.goto('/resources?kind=ai')
   await page.getByRole('button', { name: '添加供应商渠道' }).click()
@@ -442,7 +442,7 @@ test('provider models are configured in the channel and selected by workflows', 
   await page.screenshot({ path: 'test-results/provider-editor.png', fullPage: true })
   expect(healthRequests).toEqual([])
   const healthResponse = page.waitForResponse((response) =>
-    response.url().endsWith('/check-connection'),
+    response.url().endsWith('/discover-models'),
   )
   await models.getByRole('textbox', { name: '模型名称', exact: true }).click()
   expect((await healthResponse).ok()).toBe(false)

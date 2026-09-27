@@ -16,7 +16,6 @@ from logagent.lifecycle import ApplicationServices
 from logagent.models import (
     ID,
     AIConfig,
-    AnalysisResult,
     CapabilityDescription,
     ChannelConfig,
     CollectionContext,
@@ -41,7 +40,6 @@ from logagent.scheduling import cron_trigger, describe_cron
 from .dependencies import Lifecycle as LifecycleProtocol
 from .dependencies import get_lifecycle, get_services
 from .schemas import (
-    AIModelTestRequest,
     CancelResponse,
     CronPreviewRequest,
     CronPreviewResponse,
@@ -151,31 +149,18 @@ async def create_ai(payload: AIConfig, services: Services):
     return await _save_resource(services, "ai", payload, mode="create")
 
 
+@router.post("/ai/discover-models", response_model=list[str])
+async def discover_ai_models(payload: AIConfig, services: Services, response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    return await services.ai.list_models(payload)
+
+
 @router.post("/ai/{ident}/check-connection", response_model=list[str])
 async def check_ai_connection(ident: ID, services: Services, response: Response):
     """Explicit model discovery; saving a provider never calls the upstream server."""
     response.headers["Cache-Control"] = "no-store"
     config = await _get_resource(services, "ai", ident)
     return await services.ai.list_models(config)
-
-
-@router.post("/ai/{ident}/test-model", response_model=AnalysisResult)
-async def test_ai_model(
-    ident: ID,
-    payload: AIModelTestRequest,
-    services: Services,
-    response: Response,
-):
-    """向指定模型发送一次 Hi，只有真实模型返回文本才报告成功。"""
-    response.headers["Cache-Control"] = "no-store"
-    config = await _get_resource(services, "ai", ident)
-    return await services.ai.execute(
-        config,
-        "{input}",
-        "Hi",
-        model=payload.model,
-        task_id="model-test",
-    )
 
 
 @router.put("/ai/{ident}", response_model=AIConfig)

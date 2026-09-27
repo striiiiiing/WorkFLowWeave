@@ -9,35 +9,26 @@ describe('provider HTTP actions', () => {
       'POST /api/credentials/protect（HTTP 405）',
     )
   })
-  it('only invokes the explicit check endpoint', async () => {
+  it('discovers models from the supplied provider draft', async () => {
     const { resourcesApi, respond } = createHttpHarness()
     const adapter = respond(['model-a'])
-    await expect(resourcesApi.checkAIConnection('provider')).resolves.toEqual(['model-a'])
+    const draft = {
+      id: 'provider',
+      provider: 'http',
+      base_url: 'https://example.test/v1',
+      api_key: null,
+      system_prompt: '',
+      models: {},
+      timeout: 60,
+      retries: 0,
+    }
+    await expect(resourcesApi.discoverAIModels(draft)).resolves.toEqual(['model-a'])
     expect(adapter).toHaveBeenCalledTimes(1)
     expect(adapter).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: '/ai/provider/check-connection',
+        url: '/ai/discover-models',
         method: 'post',
-      }),
-    )
-  })
-
-  it('posts the selected model to the real Hi test endpoint', async () => {
-    const { resourcesApi, respond } = createHttpHarness()
-    const adapter = respond({
-      task_id: 'model-test',
-      status: 'success',
-      text: 'Hi',
-      error: null,
-    })
-    await expect(resourcesApi.testAIModel('provider', 'model-a')).resolves.toMatchObject({
-      status: 'success',
-    })
-    expect(adapter).toHaveBeenCalledWith(
-      expect.objectContaining({
-        url: '/ai/provider/test-model',
-        method: 'post',
-        data: JSON.stringify({ model: 'model-a' }),
+        data: JSON.stringify(draft),
       }),
     )
   })

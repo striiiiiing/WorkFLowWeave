@@ -6,11 +6,8 @@ import ParameterField from '@/shared/schema/ParameterField.vue'
 const models = defineModel<Record<string, JsonObject>>({ required: true })
 const props = defineProps<{
   candidates: string[]
-  testing?: boolean
-  modelTesting?: boolean
-  testDisabled?: boolean
 }>()
-const emit = defineEmits<{ discover: []; test: [model: string] }>()
+const emit = defineEmits<{ discover: [] }>()
 const name = ref('')
 const addError = ref('')
 const error = computed(
@@ -77,11 +74,6 @@ function validate(_rule: unknown, _value: unknown, callback: (error?: Error) => 
     <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
       <h3 class="font-semibold">渠道模型</h3>
     </div>
-    <p class="muted text-sm mb-3">
-      点击模型输入框会自动读取
-      <code>/v1/models</code>
-      ；保存后即可在工作流的并行 AI 分析中选择。
-    </p>
     <el-form-item prop="models" :rules="{ validator: validate }">
       <div class="flex gap-2 w-full min-w-0">
         <el-autocomplete
@@ -89,7 +81,7 @@ function validate(_rule: unknown, _value: unknown, callback: (error?: Error) => 
           :fetch-suggestions="suggestModels"
           clearable
           aria-label="模型名称"
-          placeholder="输入模型名称，或选择检查发现的模型"
+          placeholder="输入或选择模型名称"
           class="min-w-0 flex-1"
           @click="emit('discover')"
           @update:model-value="addError = ''"
@@ -110,13 +102,6 @@ function validate(_rule: unknown, _value: unknown, callback: (error?: Error) => 
       <div class="flex flex-wrap items-center justify-between gap-2">
         <span class="mono break-all">{{ selected }}</span>
         <div class="flex gap-2">
-          <el-button
-            :loading="modelTesting"
-            :disabled="testDisabled || modelTesting"
-            @click="emit('test', selected)"
-          >
-            测试
-          </el-button>
           <el-button :aria-expanded="expanded.includes(selected)" @click="toggle(selected)">
             {{ expanded.includes(selected) ? '收起参数' : '配置参数' }}
           </el-button>

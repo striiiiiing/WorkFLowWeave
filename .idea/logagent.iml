@@ -8,6 +8,8 @@
       <excludeFolder url="file://$MODULE_DIR$/.mindfs" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/dist" />
+      <excludeFolder url="file://$MODULE_DIR$/.worktree/task-21/.venv" />
+      <excludeFolder url="file://$MODULE_DIR$/.worktree/task-22/.venv" />
     </content>
     <orderEntry type="jdk" jdkName="uv (LogAgent) (2)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />

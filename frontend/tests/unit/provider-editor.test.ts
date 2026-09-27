@@ -13,8 +13,7 @@ vi.mock('@/app/services', () => ({
     create: vi.fn(),
     replace: vi.fn(),
     protectCredential: vi.fn(),
-    checkAIConnection: vi.fn(),
-    testAIModel: vi.fn(),
+    discoverAIModels: vi.fn(),
   },
 }))
 
@@ -39,25 +38,24 @@ function button(wrapper: ReturnType<typeof mount>, text: string) {
 afterEach(() => vi.clearAllMocks())
 
 describe('AI provider editor', () => {
-  it('only discovers models after a saved connection when the model input receives focus', async () => {
+  it('reports missing connection details without saving a new provider', async () => {
     const wrapper = mount(AIProviderEditor, { global })
     await flushPromises()
 
     const modelInput = wrapper.get('input[aria-label="模型名称"]')
-    expect(wrapper.text()).toContain('保存渠道后，可在这里独立检查健康。')
-
     await modelInput.trigger('click')
     await flushPromises()
 
-    expect(resourcesApi.checkAIConnection).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('请先填写服务地址')
+    expect(resourcesApi.discoverAIModels).not.toHaveBeenCalled()
     expect(resourcesApi.create).not.toHaveBeenCalled()
     expect(resourcesApi.replace).not.toHaveBeenCalled()
     expect(resourcesApi.protectCredential).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 
-  it('checks a saved connection without saving and only adds discovered models explicitly', async () => {
-    vi.mocked(resourcesApi.checkAIConnection).mockResolvedValue([
+  it('discovers from a saved connection without saving and only adds models explicitly', async () => {
+    vi.mocked(resourcesApi.discoverAIModels).mockResolvedValue([
       'vendor.model/pro',
       'vendor.model/flash',
     ])
@@ -72,11 +70,11 @@ describe('AI provider editor', () => {
     await wrapper.get('input[aria-label="模型名称"]').trigger('click')
     await flushPromises()
 
-    expect(resourcesApi.checkAIConnection).toHaveBeenCalledWith('provider')
+    expect(resourcesApi.discoverAIModels).toHaveBeenCalledWith(config({ models: { existing: {} } }))
     expect(resourcesApi.create).not.toHaveBeenCalled()
     expect(resourcesApi.replace).not.toHaveBeenCalled()
     expect(resourcesApi.protectCredential).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('连接正常，发现 2 个模型')
+    expect(wrapper.text()).toContain('发现 2 个模型')
     expect(wrapper.text()).not.toContain('vendor.model/pro')
 
     const input = wrapper.get('input[aria-label="模型名称"]')
@@ -110,12 +108,12 @@ describe('AI provider editor', () => {
     wrapper.unmount()
   })
 
-  it('keeps a failed health check from clearing content and still emits the complete saved result', async () => {
+  it('keeps failed discovery from clearing content and still emits the complete saved result', async () => {
     const initial = config({ models: { 'vendor.model/pro': {} } })
     const saved = config({
       models: { 'vendor.model/pro': {}, 'vendor.model/flash': {} },
     })
-    vi.mocked(resourcesApi.checkAIConnection).mockRejectedValue(new Error('上游 HTTP 405'))
+    vi.mocked(resourcesApi.discoverAIModels).mockRejectedValue(new Error('上游 HTTP 405'))
     vi.mocked(resourcesApi.replace).mockResolvedValue(saved)
     const wrapper = mount(AIProviderEditor, { props: { initial }, global })
     await flushPromises()
@@ -194,17 +192,21 @@ describe('AI provider editor', () => {
     wrapper.unmount()
   })
 
-  it('blocks health checks after a saved connection changes until an explicit save', async () => {
+  it('discovers from changed connection details before saving', async () => {
     const initial = config()
     const saved = config({ base_url: 'https://new.example.test/v1' })
     vi.mocked(resourcesApi.replace).mockResolvedValue(saved)
-    vi.mocked(resourcesApi.checkAIConnection).mockResolvedValue([])
+    vi.mocked(resourcesApi.discoverAIModels).mockResolvedValue([])
     const wrapper = mount(AIProviderEditor, { props: { initial }, global })
     await flushPromises()
 
     await wrapper.get('input[placeholder="https://api.openai.com/v1"]').setValue(saved.base_url)
+    await flushPromises()
     await wrapper.get('input[aria-label="模型名称"]').trigger('click')
-    expect(resourcesApi.checkAIConnection).not.toHaveBeenCalled()
+    await flushPromises()
+    expect(resourcesApi.discoverAIModels).toHaveBeenCalledWith(
+      expect.objectContaining({ base_url: saved.base_url }),
+    )
 
     await wrapper.find('form').trigger('submit')
     await flushPromises()
@@ -215,11 +217,11 @@ describe('AI provider editor', () => {
     )
     await wrapper.get('input[aria-label="模型名称"]').trigger('click')
     await flushPromises()
-    expect(resourcesApi.checkAIConnection).toHaveBeenCalledWith('provider')
+    expect(resourcesApi.discoverAIModels).toHaveBeenCalledTimes(2)
     wrapper.unmount()
   })
 
-  it('keeps health disabled when a new credential is protected but saving the changed connection fails', async () => {
+  it('uses protected changed credentials for discovery after saving fails', async () => {
     const initial = config()
     const encrypted = {
       kind: 'encrypted' as const,
@@ -229,6 +231,7 @@ describe('AI provider editor', () => {
     }
     vi.mocked(resourcesApi.protectCredential).mockResolvedValue(encrypted)
     vi.mocked(resourcesApi.replace).mockRejectedValue(new Error('replace failed'))
+    vi.mocked(resourcesApi.discoverAIModels).mockResolvedValue([])
     const wrapper = mount(AIProviderEditor, { props: { initial }, global })
     await flushPromises()
 
@@ -242,35 +245,63 @@ describe('AI provider editor', () => {
     expect(resourcesApi.replace).toHaveBeenCalled()
     expect(wrapper.text()).toContain('replace failed')
     await wrapper.get('input[aria-label="模型名称"]').trigger('click')
-    expect(resourcesApi.checkAIConnection).not.toHaveBeenCalled()
+    await flushPromises()
+    expect(resourcesApi.discoverAIModels).toHaveBeenCalledWith(
+      expect.objectContaining({ api_key: encrypted }),
+    )
     wrapper.unmount()
   })
 
-  it('tests the selected model with a real Hi request and exposes failed responses', async () => {
-    const initial = config({ models: { 'vendor.model/pro': {} } })
-    vi.mocked(resourcesApi.testAIModel).mockResolvedValue({
-      task_id: 'model-test',
-      status: 'success',
-      text: 'Hi there',
-      error: null,
-    })
-    const wrapper = mount(AIProviderEditor, { props: { initial }, global })
+  it('discovers from a new provider with an unsaved protected key', async () => {
+    const encrypted = {
+      kind: 'encrypted' as const,
+      format_version: 1,
+      key_id: 'key-id',
+      ciphertext: 'ciphertext',
+    }
+    vi.mocked(resourcesApi.protectCredential).mockResolvedValue(encrypted)
+    vi.mocked(resourcesApi.discoverAIModels).mockResolvedValue(['model-a'])
+    const wrapper = mount(AIProviderEditor, { global })
+    await wrapper
+      .get('input[placeholder="https://api.openai.com/v1"]')
+      .setValue('https://example.test/v1')
+    await wrapper.get('input[type="password"]').setValue('new-key')
     await flushPromises()
+    await wrapper.get('input[aria-label="模型名称"]').trigger('click')
+    await flushPromises()
+    expect(resourcesApi.protectCredential).toHaveBeenCalledWith('new-key')
+    expect(resourcesApi.discoverAIModels).toHaveBeenCalledWith(
+      expect.objectContaining({ base_url: 'https://example.test/v1', api_key: encrypted }),
+    )
+    expect(resourcesApi.create).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('发现 1 个模型')
+    wrapper.unmount()
+  })
 
-    await button(wrapper, '测试').trigger('click')
+  it('requests on each click and ignores results from an older connection', async () => {
+    let resolveOld!: (models: string[]) => void
+    vi.mocked(resourcesApi.discoverAIModels)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveOld = resolve
+          }),
+      )
+      .mockResolvedValueOnce(['current-model'])
+    const wrapper = mount(AIProviderEditor, { props: { initial: config() }, global })
+    const input = wrapper.get('input[aria-label="模型名称"]')
+    await input.trigger('click')
+    await wrapper
+      .get('input[placeholder="https://api.openai.com/v1"]')
+      .setValue('https://new.example.test/v1')
     await flushPromises()
-    expect(resourcesApi.testAIModel).toHaveBeenCalledWith('provider', 'vendor.model/pro')
-    expect(wrapper.text()).toContain('测试成功')
-
-    vi.mocked(resourcesApi.testAIModel).mockResolvedValueOnce({
-      task_id: 'model-test',
-      status: 'failed',
-      text: '',
-      error: { code: 'provider_rejected', message: '模型拒绝请求', details: {} },
-    })
-    await button(wrapper, '测试').trigger('click')
+    await input.trigger('click')
     await flushPromises()
-    expect(wrapper.text()).toContain('模型拒绝请求')
+    resolveOld(['old-model'])
+    await flushPromises()
+    expect(resourcesApi.discoverAIModels).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('发现 1 个模型')
+    expect(wrapper.text()).not.toContain('old-model')
     wrapper.unmount()
   })
 

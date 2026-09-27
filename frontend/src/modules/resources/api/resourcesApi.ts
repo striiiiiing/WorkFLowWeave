@@ -5,7 +5,7 @@ import type {
   ResourceMap,
   SourceConfig,
   SourceOverride,
-  AIModelTestResult,
+  AIConfig,
 } from '../model/types'
 
 export function createResourcesApi(http: HttpClient) {
@@ -17,13 +17,11 @@ export function createResourcesApi(http: HttpClient) {
         data: override ?? {},
         signal,
       }),
-    checkAIConnection: (id: string) =>
-      http.request<string[]>({ url: `/ai/${segment(id)}/check-connection`, method: 'POST' }),
-    testAIModel: (id: string, model: string) =>
-      http.request<AIModelTestResult>({
-        url: `/ai/${segment(id)}/test-model`,
+    discoverAIModels: (config: AIConfig) =>
+      http.request<string[]>({
+        url: '/ai/discover-models',
         method: 'POST',
-        data: { model },
+        data: config,
       }),
     protectCredential: (plaintext: string) =>
       http.request<Extract<Credential, { kind: 'encrypted' }>>({
