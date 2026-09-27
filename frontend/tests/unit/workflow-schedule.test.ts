@@ -14,8 +14,8 @@ import { workflowsApiKey } from '@/modules/workflows/api/dependencies'
 import { parseCronPreset } from '@/modules/workflows/model/cronPresets'
 import { createWorkflow, type WorkflowSchedule } from '@/modules/workflows/public'
 
-function setup(schedule: WorkflowSchedule | null = null) {
-  const draft = ref({ ...createWorkflow(), schedule })
+function setup(schedule?: WorkflowSchedule | null) {
+  const draft = ref({ ...createWorkflow(), ...(schedule === undefined ? {} : { schedule }) })
   const previewCron = vi.fn().mockResolvedValue({
     description: '每天 9:00',
     timezone: 'Asia/Shanghai',
@@ -45,7 +45,10 @@ afterEach(() => {
 describe('workflow schedule editor', () => {
   it('edits a one-time instant and generates hourly, daily and weekly cron expressions', async () => {
     const { draft, basic, wrapper } = setup()
-    expect(draft.value.schedule).toBeNull()
+    expect(draft.value.schedule).toEqual({ type: 'cron', expression: '0 9 * * *', timezone: null })
+    expect(basic.findAllComponents(ElSelect)[0].props('modelValue')).toBe('daily')
+    expect(basic.findAllComponents(ElSelect)).toHaveLength(1)
+    expect(basic.text()).toContain('运行机器本地时区（不指定）')
     expect(basic.findAllComponents(ElOption).map((option) => option.props('value'))).toEqual([
       'manual',
       'at',
@@ -54,6 +57,15 @@ describe('workflow schedule editor', () => {
       'weekly',
       'custom',
     ])
+    expect(
+      basic
+        .findAllComponents(ElOption)
+        .find((option) => option.props('value') === 'at')
+        ?.props('label'),
+    ).toBe('单次运行')
+    basic.findAllComponents(ElSelect)[0].vm.$emit('update:modelValue', 'manual')
+    await nextTick()
+    expect(draft.value.schedule).toBeNull()
     basic.findAllComponents(ElSelect)[0].vm.$emit('update:modelValue', 'at')
     await nextTick()
     expect(draft.value.schedule).toEqual({ type: 'at', at: '' })
@@ -112,38 +124,43 @@ describe('workflow schedule editor', () => {
     wrapper.unmount()
   })
 
-  it('previews the backend timezone and allows clearing it', async () => {
+  it('previews the machine timezone without a timezone selector', async () => {
     vi.useFakeTimers()
-    const { draft, previewCron, basic, wrapper } = setup({
-      type: 'cron',
-      expression: '0 9 * * *',
-      timezone: null,
-    })
-    expect(basic.text()).toContain('运行机器本地时区（未指定）')
+    const { previewCron, basic, wrapper } = setup()
+    expect(basic.text()).toContain('运行机器本地时区（不指定）')
     expect(basic.findAllComponents(ElSelect)[0].props('modelValue')).toBe('daily')
+    expect(basic.findAllComponents(ElSelect)).toHaveLength(1)
     await vi.advanceTimersByTimeAsync(300)
     await flushPromises()
     expect(previewCron).toHaveBeenCalledWith('0 9 * * *', null, expect.any(AbortSignal))
     expect(basic.text()).toContain('每天 9:00')
     expect(basic.text()).toContain('实际采用时区：Asia/Shanghai')
     expect(basic.text()).toContain('下一次运行：')
+    wrapper.unmount()
+  })
 
-    basic.findAllComponents(ElSelect)[1].vm.$emit('update:modelValue', 'Asia/Shanghai')
-    await nextTick()
-    await vi.advanceTimersByTimeAsync(300)
-    expect(draft.value.schedule).toEqual({
+  it('preserves an existing explicit timezone until the schedule changes', async () => {
+    vi.useFakeTimers()
+    const { draft, previewCron, basic, wrapper } = setup({
       type: 'cron',
       expression: '0 9 * * *',
-      timezone: 'Asia/Shanghai',
+      timezone: 'UTC',
     })
-    expect(previewCron).toHaveBeenLastCalledWith(
-      '0 9 * * *',
-      'Asia/Shanghai',
-      expect.any(AbortSignal),
-    )
-    basic.findAllComponents(ElSelect)[1].vm.$emit('update:modelValue', '__machine_local__')
+    expect(basic.text()).toContain('原有计划时区：UTC（只读')
+    expect(basic.findAllComponents(ElSelect)).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(300)
+    expect(previewCron).toHaveBeenCalledWith('0 9 * * *', 'UTC', expect.any(AbortSignal))
+    basic.findAllComponents(ElInput)[1].vm.$emit('update:modelValue', '新名称')
     await nextTick()
-    expect(draft.value.schedule).toMatchObject({ timezone: null })
+    expect(draft.value.schedule).toMatchObject({ timezone: 'UTC' })
+    basic
+      .findAllComponents(ElInput)
+      .find((input) => input.props('type') === 'time')!
+      .vm.$emit('update:modelValue', '10:00')
+    await nextTick()
+    expect(draft.value.schedule).toEqual({ type: 'cron', expression: '0 10 * * *', timezone: null })
+    await vi.advanceTimersByTimeAsync(300)
+    expect(previewCron).toHaveBeenLastCalledWith('0 10 * * *', null, expect.any(AbortSignal))
     wrapper.unmount()
   })
 

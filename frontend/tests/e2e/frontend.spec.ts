@@ -290,17 +290,14 @@ test('workflow create, reload, run, and versioned phase reading', async ({ page,
   await expect(page.getByText('包含采集数量', { exact: true })).toBeVisible()
   await page.getByLabel('工作流 ID', { exact: true }).fill('browser_workflow')
   await page.getByLabel('显示名称', { exact: true }).fill('浏览器验证工作流')
-  await page.locator('.el-form-item').filter({ hasText: '运行计划' }).locator('.el-select').click()
-  await page.getByRole('option', { name: '每天', exact: true }).click()
-  await expect(page.getByLabel('运行时间（计划时区）')).toHaveValue('09:00')
+  await expect(
+    page.locator('.el-form-item').filter({ hasText: '运行计划' }).locator('.el-select'),
+  ).toContainText('每天')
+  await expect(page.getByLabel('运行时间（运行机器本地时区）')).toHaveValue('09:00')
   await expect(page.getByLabel('Cron 表达式（分 时 日 月 周）')).toHaveCount(0)
-  await page
-    .locator('.el-form-item')
-    .filter({ hasText: '计划时区（IANA）' })
-    .locator('.el-select')
-    .click()
-  await page.getByRole('option', { name: 'Asia/Shanghai' }).click()
-  await expect(page.getByText('实际采用时区：Asia/Shanghai')).toBeVisible()
+  await expect(page.getByText('运行机器本地时区（不指定）')).toBeVisible()
+  await expect(page.getByText('计划时区（IANA）')).toHaveCount(0)
+  await expect(page.getByText('实际采用时区：', { exact: false })).toBeVisible()
   await expect(page.getByText('下一次运行：', { exact: false })).toBeVisible()
   await page.getByRole('button', { name: '加载已有数据源', exact: true }).click()
   await page.getByText('选择数据源', { exact: true }).click()
@@ -331,7 +328,7 @@ test('workflow create, reload, run, and versioned phase reading', async ({ page,
   expect(saved.schedule).toEqual({
     type: 'cron',
     expression: '0 9 * * *',
-    timezone: 'Asia/Shanghai',
+    timezone: null,
   })
   expect(saved.interval_seconds).toBeUndefined()
   expect(saved.cron).toBeUndefined()
