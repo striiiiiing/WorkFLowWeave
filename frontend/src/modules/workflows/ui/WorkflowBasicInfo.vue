@@ -3,6 +3,15 @@ import { computed, ref, watch } from 'vue'
 import SectionCard from '@/shared/ui/SectionCard.vue'
 import { useCronPreview } from '../composables/useCronPreview'
 import type { WorkflowChanges } from '../model/actions'
+import {
+  dailyCron,
+  hourlyCron,
+  parseCronPreset,
+  weekdays,
+  weeklyCron,
+  type CronPreset,
+  type Weekday,
+} from '../model/cronPresets'
 import type { WorkflowDefinition, WorkflowSchedule } from '../model/types'
 
 const props = defineProps<{
@@ -17,26 +26,21 @@ const emit = defineEmits<{
 const schedule = computed(() => props.draft.schedule)
 const cron = computed(() => (schedule.value?.type === 'cron' ? schedule.value : null))
 const { preview, pending: previewPending, error: previewError, nextRun } = useCronPreview(cron)
-const mode = computed(() => schedule.value?.type ?? 'manual')
-const everyUnit = ref(1)
-const units = [
-  { label: '秒', value: 1 },
-  { label: '分钟', value: 60 },
-  { label: '小时', value: 3600 },
-  { label: '天', value: 86400 },
-]
+const cronMode = ref<CronPreset['mode']>('custom')
+const preset = computed(() => parseCronPreset(cron.value?.expression ?? ''))
+const mode = computed(() => (cron.value ? cronMode.value : (schedule.value?.type ?? 'manual')))
 const localTimezoneOption = '__machine_local__'
 const timezones = ['UTC', 'Asia/Shanghai', 'Asia/Tokyo', 'Europe/London', 'America/New_York']
-const everyValue = computed(() =>
-  schedule.value?.type === 'every' ? schedule.value.every_seconds / everyUnit.value : undefined,
+const cronTime = computed(() =>
+  preset.value.mode === 'daily' || preset.value.mode === 'weekly'
+    ? `${String(preset.value.hour).padStart(2, '0')}:${String(preset.value.minute).padStart(2, '0')}`
+    : '',
 )
 
 watch(
-  mode,
-  (value) => {
-    if (value !== 'every' || schedule.value?.type !== 'every') return
-    const seconds = schedule.value.every_seconds
-    everyUnit.value = [86400, 3600, 60].find((unit) => seconds >= unit && seconds % unit === 0) ?? 1
+  () => schedule.value?.type,
+  () => {
+    if (cron.value) cronMode.value = parseCronPreset(cron.value.expression).mode
   },
   { immediate: true },
 )
@@ -48,23 +52,49 @@ function changeMode(value: string) {
   if (value === mode.value) return
   if (value === 'manual') emit('update', { schedule: null })
   if (value === 'at') updateSchedule({ type: 'at', at: '' })
-  if (value === 'every') updateSchedule({ type: 'every', every_seconds: 0 })
-  if (value === 'cron') updateSchedule({ type: 'cron', expression: '', timezone: null })
+  if (value === 'hourly' || value === 'daily' || value === 'weekly' || value === 'custom') {
+    cronMode.value = value
+    const expression =
+      value === 'hourly'
+        ? hourlyCron(0)
+        : value === 'daily'
+          ? dailyCron(9, 0)
+          : value === 'weekly'
+            ? weeklyCron('MON', 9, 0)
+            : (cron.value?.expression ?? '')
+    updateSchedule({ type: 'cron', expression, timezone: cron.value?.timezone ?? null })
+  }
 }
 function setAt(value: Date | null) {
   if (schedule.value?.type !== 'at') return
   updateSchedule({ type: 'at', at: value instanceof Date ? value.toISOString() : '' })
 }
-function setEvery(value: number | undefined) {
-  if (schedule.value?.type !== 'every') return
-  updateSchedule({ type: 'every', every_seconds: (value ?? 0) * everyUnit.value })
-}
 function setCron(changes: Partial<Extract<WorkflowSchedule, { type: 'cron' }>>) {
   if (!cron.value) return
   updateSchedule({ ...cron.value, ...changes })
 }
-function validatePositive(_rule: unknown, value: number, done: (error?: Error) => void) {
-  done(Number.isFinite(value) && value > 0 ? undefined : new Error('请输入大于 0 的运行间隔'))
+function setHourlyMinute(value: number | undefined) {
+  if (
+    cronMode.value !== 'hourly' ||
+    typeof value !== 'number' ||
+    !Number.isInteger(value) ||
+    value < 0 ||
+    value > 59
+  )
+    return
+  setCron({ expression: hourlyCron(value) })
+}
+function setCronTime(value: string) {
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return
+  const hour = Number(value.slice(0, 2))
+  const minute = Number(value.slice(3, 5))
+  if (cronMode.value === 'daily') setCron({ expression: dailyCron(hour, minute) })
+  if (cronMode.value === 'weekly' && preset.value.mode === 'weekly')
+    setCron({ expression: weeklyCron(preset.value.day, hour, minute) })
+}
+function setWeekday(day: Weekday) {
+  if (cronMode.value !== 'weekly' || preset.value.mode !== 'weekly') return
+  setCron({ expression: weeklyCron(day, preset.value.hour, preset.value.minute) })
 }
 function validateCron(_rule: unknown, value: string, done: (error?: Error) => void) {
   done(value?.trim().split(/\s+/).length === 5 ? undefined : new Error('Cron 表达式需要五个字段'))
@@ -106,9 +136,17 @@ function validateCron(_rule: unknown, value: string, done: (error?: Error) => vo
       <el-form-item label="运行计划">
         <el-select :model-value="mode" @update:model-value="changeMode">
           <el-option value="manual" label="仅手动运行" />
-          <el-option value="at" label="指定时间运行一次" />
-          <el-option value="every" label="固定间隔运行" />
-          <el-option value="cron" label="Cron 定时运行" />
+          <el-option value="at" label="日程任务" />
+          <el-option value="hourly" label="每小时" />
+          <el-option value="daily" label="每天" />
+          <el-option value="weekly" label="每周" />
+          <el-option value="custom" label="自定义" />
+          <el-option
+            v-if="schedule?.type === 'every'"
+            value="every"
+            label="旧运行计划（只读）"
+            disabled
+          />
         </el-select>
       </el-form-item>
       <el-form-item
@@ -123,31 +161,40 @@ function validateCron(_rule: unknown, value: string, done: (error?: Error) => vo
           @update:model-value="setAt"
         />
       </el-form-item>
-      <el-form-item
-        v-if="schedule?.type === 'every'"
-        label="运行间隔"
-        prop="schedule.every_seconds"
-        :rules="{ validator: validatePositive }"
-      >
-        <div class="flex w-full gap-2">
-          <el-input-number
-            class="flex-1"
-            :model-value="everyValue"
-            :min="0"
-            @update:model-value="setEvery"
+      <el-form-item v-if="schedule?.type === 'every'" label="原有计划">
+        <span>每 {{ schedule.every_seconds }} 秒运行（只读）</span>
+      </el-form-item>
+      <el-form-item v-if="cron && mode === 'hourly'" label="每小时第几分钟">
+        <el-input-number
+          :model-value="preset.mode === 'hourly' ? preset.minute : undefined"
+          :min="0"
+          :max="59"
+          :step="1"
+          step-strictly
+          @update:model-value="setHourlyMinute"
+        />
+      </el-form-item>
+      <el-form-item v-if="cron && mode === 'weekly'" label="星期">
+        <el-select
+          :model-value="preset.mode === 'weekly' ? preset.day : undefined"
+          @update:model-value="setWeekday"
+        >
+          <el-option
+            v-for="day in weekdays"
+            :key="day.value"
+            :value="day.value"
+            :label="day.label"
           />
-          <el-select class="w-28" :model-value="everyUnit" @update:model-value="everyUnit = $event">
-            <el-option
-              v-for="unit in units"
-              :key="unit.value"
-              :value="unit.value"
-              :label="unit.label"
-            />
-          </el-select>
-        </div>
+        </el-select>
       </el-form-item>
       <el-form-item
-        v-if="cron"
+        v-if="cron && (mode === 'daily' || mode === 'weekly')"
+        label="运行时间（计划时区）"
+      >
+        <el-input type="time" :model-value="cronTime" @update:model-value="setCronTime" />
+      </el-form-item>
+      <el-form-item
+        v-if="cron && mode === 'custom'"
         label="Cron 表达式（分 时 日 月 周）"
         prop="schedule.expression"
         :rules="[{ required: true, message: '请输入 Cron 表达式' }, { validator: validateCron }]"
