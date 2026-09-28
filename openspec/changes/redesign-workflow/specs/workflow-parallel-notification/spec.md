@@ -1,5 +1,9 @@
 # Workflow 并行通知
 
+## Purpose
+
+让 Workflow 的独立通知投递能够并行推进，同时保留每次投递的意图提交与确定回执边界，使部分失败、恢复时不确定投递和稳定展示顺序都具备可验证且一致的业务含义。
+
 ## ADDED Requirements
 
 ### Requirement: 独立通知并行推进

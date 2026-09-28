@@ -15,29 +15,29 @@
 - [x] 1.2 明确父图/子图/业务存档的职责、namespace 清理条件，以及 Agent 主动读取保持不变。
 - [x] 1.3 重新执行 OpenSpec 严格校验、链接与语义一致性检查；完整记录验证范围，不把 API 存在视为运行保证。
 
-## 实施任务（尚未实施）
+## 实施任务
 
-- [ ] 2.1 父图使用官方 saver，collect/analyze/notify 使用 `compile(checkpointer=None)`；核验父子图直接装配、配置传播和每次调用独立 namespace。
-- [ ] 2.2 原轮次中断续跑使用最新 thread 配置和原 invocation；验证已保存成功任务与 pending writes 的复用。不把 astream 的 subgraphs 参数误认为持久化选项。
-- [ ] 2.3 阶段 resume 使用父图入口 checkpoint、原快照与必要上游输入，通过公开状态更新 API 建立新轮次并执行到 finish；目标阶段所有分支重做，前序阶段不重做。
-- [ ] 2.4 执行轮次、恢复入口和图版本进入持久化控制状态；业务存档键区分新轮次与同轮续跑。清除下游引用时处理 reducer 合并语义，不让旧成功缓存跳过主动重跑。
-- [ ] 2.5 通知使用 session/轮次/output/channel 稳定键；原轮次续跑复用回执，新轮次正常发送。旧通知键在旧轮次恢复时保持可识别，不误判为新投递。
-- [ ] 2.6 HTTP resume 增加可选 stage/checkpoint_id，recover 复用同一实现；无 stage 保持当前运行续跑语义。拒绝跨 session、子图内部、已失效入口和并发运行请求。
-- [ ] 2.7 以父图已提交结果为清理屏障，复用运行生命周期管理受控异步清理；候选按 invocation 合并，启动/结束核对可重新发现未处理候选。
-- [ ] 2.8 在 saver 存储边界实现 namespace 删除适配，按当前 SQLite schema 原子删除 checkpoints/writes；使用原连接互斥和参数化语句，不调用整 thread 删除。
-- [ ] 2.9 同一 session 的清理与恢复采用共同互斥边界；父图历史入口与业务存档保留，内部历史已清理时不再暴露为可恢复入口。
-- [ ] 2.10 复用 AgentCommand/SessionReader 的现有读取路径，不传入 Workflow checkpoint，不自动改写既有 Agent 会话。
+- [x] 2.1 父图使用官方 saver，collect/analyze/notify 使用 `compile(checkpointer=None)`；核验父子图直接装配、配置传播和每次调用独立 namespace。
+- [x] 2.2 原轮次中断续跑使用最新 thread 配置和原 invocation；验证已保存成功任务与 pending writes 的复用。不把 astream 的 subgraphs 参数误认为持久化选项。
+- [x] 2.3 阶段 resume 使用父图入口 checkpoint、原快照与必要上游输入，通过公开状态更新 API 建立新轮次并执行到 finish；目标阶段所有分支重做，前序阶段不重做。
+- [x] 2.4 执行轮次、恢复入口和图版本进入持久化控制状态；业务存档键区分新轮次与同轮续跑。清除下游引用时处理 reducer 合并语义，不让旧成功缓存跳过主动重跑。
+- [x] 2.5 通知使用 session/轮次/output/channel 稳定键；原轮次续跑复用回执，新轮次正常发送。仅保证新图内部同轮恢复；旧版通知键兼容由用户明确取消。
+- [x] 2.6 HTTP resume 增加可选 stage/checkpoint_id，recover 复用同一实现；无 stage 保持当前运行续跑语义。拒绝跨 session、子图内部、已失效入口和并发运行请求。
+- [x] 2.7 以父图已提交结果为清理屏障，复用运行生命周期管理受控异步清理；候选按 invocation 合并，启动/结束核对可重新发现未处理候选。
+- [x] 2.8 在 saver 存储边界实现 namespace 删除适配，按当前 SQLite schema 原子删除 checkpoints/writes；使用原连接互斥和参数化语句，不调用整 thread 删除。
+- [x] 2.9 同一 session 的清理与恢复采用共同互斥边界；父图历史入口与业务存档保留，内部历史已清理时不再暴露为可恢复入口。
+- [x] 2.10 复用 AgentCommand/SessionReader 的现有读取路径，不传入 Workflow checkpoint，不自动改写既有 Agent 会话。
 
 ## 验证任务
 
-- [ ] 3.1 真实进程强退：并行分支部分结果与 pending writes 已提交、其他分支尚未完成；重启沿原 namespace 续跑，成功外部调用不重复。
-- [ ] 3.2 业务失败作为结果正常汇合时，无 stage 的 resume 不隐式重试；选择 stage 后整阶段重新执行。
-- [ ] 3.3 从 analyze 重跑：采集调用计数不增加，全部分析、汇总、通知和 finish 计数增加；从 notify 重跑只增加本轮通知与 finish。
-- [ ] 3.4 主动重跑后的进程中断：保持本轮标识，确定回执不重发，不确定回执不自动补发；旧轮次历史可按固定业务版本读取。
-- [ ] 3.5 清理窗口：子图已返回但父图未提交时保留；父图提交后删除内部 checkpoint 和 writes；活动 invocation 与父图 namespace 不受影响。
-- [ ] 3.6 清理竞态/错误：并发 resume、重复候选、事务中断回滚、进程退出后补扫、旧 graph_revision 和已清理子图历史的明确反馈。
-- [ ] 3.7 删除已完成子图内部历史后，仍能由父图入口主动重跑；同时验证 BackupPolicy、输入过期、下游旧正文过期、Agent 固定版本读取。
-- [ ] 3.8 每个后端测试命令硬超时 60 秒，随后执行静态检查、构建、最小集成烟测及差异审查；不将微型验证当作生产恢复验收。
+- [x] 3.1 真实进程强退：并行分支部分结果与 pending writes 已提交、其他分支尚未完成；重启沿原 namespace 续跑，成功外部调用不重复。
+- [x] 3.2 业务失败作为结果正常汇合时，无 stage 的 resume 不隐式重试；选择 stage 后整阶段重新执行。
+- [x] 3.3 从 analyze 重跑：采集调用计数不增加，全部分析、汇总、通知和 finish 计数增加；从 notify 重跑只增加本轮通知与 finish。
+- [x] 3.4 主动重跑后的进程中断：保持本轮标识，确定回执不重发，不确定回执不自动补发；旧轮次历史可按固定业务版本读取。
+- [x] 3.5 清理窗口：子图已返回但父图未提交时保留；父图提交后删除内部 checkpoint 和 writes；活动 invocation 与父图 namespace 不受影响。
+- [x] 3.6 清理竞态/错误：并发 resume、重复候选、事务中断回滚、进程退出后补扫、旧 graph_revision 和已清理子图历史的明确反馈。
+- [x] 3.7 删除已完成子图内部历史后，仍能由父图入口主动重跑；同时验证 BackupPolicy、输入过期、下游旧正文过期、Agent 固定版本读取。
+- [x] 3.8 每个后端测试命令硬超时 60 秒，随后执行静态检查、构建、最小集成烟测及差异审查；不将微型验证当作生产恢复验收。
 
 ## 决策与默认值依据
 
@@ -60,3 +60,7 @@
 - 本轮只修改设计、能力规范和任务文件，没有实现生产代码；完整业务恢复和清理测试仍未执行。
 - `openspec validate redesign-workflow --strict --no-interactive` 通过，退出码 0；相对链接、Markdown 围栏、逐文件尾随空白及草图隔离检查通过。限定目录 `git diff --check` 通过，新文件仍未跟踪，空白另由逐文件检查覆盖。
 - 已检查首轮规范与新设计一致性：成功任务复用限于同轮中断续跑，主动阶段重跑含新一轮通知；fork/Agent 不再列为待定；根 tasks.md 只追加修订入口和汇总项，详细任务新建于本文件。
+
+## 本轮后端交付
+
+详见 [后端节点图实施](../2026-09-28-backend-implementation/task.md)。用户限定仅后端，并取消旧版历史兼容；前端及浏览器相关混合任务保持未勾选。后端 HTTP/SSE、真实 SQLite 与进程强退已验证，不声称生产负载或浏览器验收通过。

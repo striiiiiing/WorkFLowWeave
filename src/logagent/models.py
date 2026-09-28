@@ -488,6 +488,25 @@ class RecoveryAvailability(StrictModel):
     reason: ErrorInfo | None = None
 
 
+class WorkflowProgress(StrictModel):
+    """已提交业务结果的轻量引用，不包含正文或运行配置。"""
+
+    session_id: ID
+    execution_epoch: str | None = None
+    stage: WorkflowStage | None = None
+    event: Literal["item", "aggregate", "delivery", "lifecycle"]
+    status: str
+    item_id: ID | None = None
+    output_id: ID | None = None
+    channel_id: ID | None = None
+    label: str | None = None
+    result_ref: str | None = None
+    version: SessionVersion | None = None
+    availability: ArtifactAvailability = "pending"
+    error: ErrorInfo | None = None
+    summary: JSONObject = Field(default_factory=dict)
+
+
 class SessionRecord(StrictModel):
     """Read-only business session data, independent of execution checkpoints."""
 
@@ -503,6 +522,8 @@ class SessionRecord(StrictModel):
     error: ErrorInfo | None = None
     artifacts: list[ArtifactInfo] = Field(default_factory=list)
     snapshot_availability: ArtifactAvailability
+    execution_epoch: str | None = None
+    progress: list[WorkflowProgress] = Field(default_factory=list)
 
 
 class PluginEntry(StrictModel):
