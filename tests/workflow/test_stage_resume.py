@@ -7,7 +7,7 @@ from sqlmodel import select
 
 from logagent.errors import LogAgentError
 from logagent.models import FanInConfig
-from logagent.workflow.session_store import SessionEntry
+from logagent.workflow.storage.models import SessionEntry
 from tests.workflow.helpers import AI, archived, snapshot
 from tests.workflow.test_workflow_recovery import close, run, service
 

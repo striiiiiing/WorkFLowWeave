@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal, Self, TypeVar
 import orjson
 from pydantic import (
     AfterValidator,
-    BaseModel,
     BeforeValidator,
     ConfigDict,
     Field,
@@ -22,7 +21,9 @@ from pydantic import (
     model_validator,
 )
 
+from logagent.model_base import StrictModel
 from logagent.scheduling import cron_trigger
+from logagent.workflow.storage.retention import BackupPolicy
 
 if TYPE_CHECKING:
     from logagent.protocols import CredentialResolver, SessionReader
@@ -95,12 +96,6 @@ SessionStatus = Literal[
 ArtifactAvailability = Literal[
     "available", "pending", "not_saved", "expired", "missing", "corrupt", "write_failed"
 ]
-
-
-class StrictModel(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid", strict=False
-    )
 
 
 class ErrorInfo(StrictModel):
@@ -225,21 +220,6 @@ class FanInConfig(StrictModel):
         if self.reuse_from is not None and self.ai is not None:
             raise ValueError("Fan-in model reuse and explicit AI/model are mutually exclusive")
         return self
-
-
-class BackupPolicy(StrictModel):
-    """Retention policy for business content and any persisted execution copies."""
-
-    enabled: bool = True
-    snapshot: bool = True
-    collection: bool = True
-    analysis: bool = True
-    final: bool = True
-    on_failure: ContinuePolicy = "stop"
-    checkpoint_retention_days: int | None = Field(default=None, gt=0)
-    collection_retention_days: int | None = Field(default=None, gt=0)
-    analysis_retention_days: int | None = Field(default=None, gt=0)
-    final_retention_days: int | None = Field(default=None, gt=0)
 
 
 class SourceOverride(StrictModel):

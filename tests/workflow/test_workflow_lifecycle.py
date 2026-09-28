@@ -10,24 +10,29 @@ import asyncio
 import pytest
 
 from logagent.errors import LogAgentError
-from logagent.workflow import WorkflowService
+from logagent.workflow.execution.runner import WorkflowRunner
 from tests.workflow.helpers import AI, Channel, Collector, snapshot
 
 
-async def test_pause_waits_for_admitted_trigger_to_finish_archiving(tmp_path):
+async def test_pause_waits_for_admitted_trigger_snapshot(tmp_path):
     ai = AI(block="first")
-    workflow = WorkflowService(Collector(), ai, Channel(), database=tmp_path / "runs.sqlite3")
     entered, release = asyncio.Event(), asyncio.Event()
-    original = workflow._snapshot
 
-    async def delayed(value):
-        entered.set()
-        await release.wait()
-        return await original(value)
+    class Resources:
+        async def snapshot(self, workflow_id):
+            entered.set()
+            await release.wait()
+            return snapshot()
 
-    workflow._snapshot = delayed
+    workflow = WorkflowRunner(
+        Collector(),
+        ai,
+        Channel(),
+        Resources(),
+        database=tmp_path / "runs.sqlite3",
+    )
     try:
-        trigger = asyncio.create_task(workflow.trigger(snapshot(), session_id="admitted"))
+        trigger = asyncio.create_task(workflow.trigger("saved", session_id="admitted"))
         await entered.wait()
         pause = asyncio.create_task(workflow.pause_admission())
         await asyncio.sleep(0)
@@ -46,7 +51,7 @@ async def test_pause_waits_for_admitted_trigger_to_finish_archiving(tmp_path):
 
 
 async def test_cancelled_shutdown_caller_does_not_abandon_owned_cleanup(tmp_path):
-    workflow = WorkflowService(Collector(), AI(), Channel(), database=tmp_path / "runs.sqlite3")
+    workflow = WorkflowRunner(Collector(), AI(), Channel(), database=tmp_path / "runs.sqlite3")
     await workflow.start()
     entered, release = asyncio.Event(), asyncio.Event()
     original = workflow.coordinator.shutdown

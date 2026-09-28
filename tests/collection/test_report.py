@@ -2,7 +2,8 @@
 import pytest
 
 from logagent.models import SourceConfig
-from logagent.workflow import SessionStore, WorkflowService
+from logagent.workflow.execution.runner import WorkflowRunner
+from logagent.workflow.storage.facts import SessionStore
 from tests.collection.test_manager import CONTEXT, FunctionCollector, manager_for
 from tests.workflow.helpers import AI, Channel, snapshot
 
@@ -19,7 +20,7 @@ async def test_report_is_validated_and_archived_with_original_version(tmp_path):
     manager = await manager_for(tmp_path, FunctionCollector(collect))
     store = SessionStore(tmp_path / "runs.sqlite3")
     ai = AI()
-    workflow = WorkflowService(manager, ai, Channel(), session_store=store)
+    workflow = WorkflowRunner(manager, ai, Channel(), session_store=store)
     try:
         config = snapshot(channels=False)
         config.sources["source"].collector = "custom"

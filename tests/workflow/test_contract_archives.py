@@ -6,9 +6,10 @@ import pytest
 from sqlmodel import select
 
 from logagent.models import BackupPolicy
-from logagent.workflow import SessionStore, SessionView
-from logagent.workflow.archive import CheckpointArchive
-from logagent.workflow.session_models import AnalysisBody, CollectionBody, PromptVersion, ReportBody
+from logagent.workflow.storage.facts import SessionStore
+from logagent.workflow.storage.models import AnalysisBody, CollectionBody, PromptVersion, ReportBody
+from logagent.workflow.storage.sessions import SessionView
+from logagent.workflow.stream.subscriptions.checkpoints import CheckpointArchive
 
 
 @pytest.mark.parametrize("days", [

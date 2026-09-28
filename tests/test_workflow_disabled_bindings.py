@@ -10,7 +10,7 @@ from logagent.collection import CollectorManager, MockCollector
 from logagent.config import PluginRegistry, ResourceStore
 from logagent.errors import LogAgentError
 from logagent.models import AIConfig, ChannelConfig, SourceConfig, SystemConfig, WorkflowDefinition
-from logagent.workflow import WorkflowService
+from logagent.workflow.execution.runner import WorkflowRunner
 from tests.workflow_ai_helpers import TestChannelFactory
 
 
@@ -96,7 +96,7 @@ async def test_disabled_bindings_change_real_execution_scope_and_restore(tmp_pat
             channel_overrides={"channel": {"options": {}}},
         ),
     )
-    service = WorkflowService(
+    service = WorkflowRunner(
         CollectorManager(registry.collectorRegister),
         AIService(channel_factories={"test": TestChannelFactory()}),
         ChannelManager(registry.channelRegister),

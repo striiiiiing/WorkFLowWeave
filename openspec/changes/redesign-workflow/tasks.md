@@ -1,8 +1,14 @@
 # 实施任务
 
-当前状态：**现有 worktree 已有执行/恢复/归档及前端适配代码，但尚未按本轮四部分和原生事件契约迁移验收。** 当前实施入口为第 13 节及 [原生事件流与模块拆分任务](tasks/2026-09-28-native-events-layout/task.md)：storage/graph/execution/stream、每个子图独立 nodes、图内 tags、metadata.sessionID、单次 astream_events、checkpoint 7 天/采集 30 天。外部 snapshot 及内部分发的具体机制待讨论，不把旧协议实现视为本轮定案。
+最新协议决定：[沿用现有 Snapshot](tasks/2026-09-28-reuse-snapshot/task.md)。用户确认保留完整 SessionRecord 首帧/版本替换、15 秒心跳、500–5000ms 重连、终态关闭和离页只停止观察；外部协议已确定，新内部链路的回归与浏览器验收仍待完成。
 
-第 1–12 节及既有日期任务保留历史和既有实现证据；其中 astream 主入口、逐事件全扫描确认、默认期限待定和外部完整 snapshot 定案被本轮决定取代。已勾选不代表通过新结构验收，未勾选也不代表当前 worktree 完全没有对应代码。代码行数下降不再是验收要求。不得修改旧日期任务来覆盖其历史结论。
+最新追加：[父图恢复查询与直接编译子图](tasks/2026-09-28-parent-state-compile/task.md)，依据用户最新明确要求移除嵌套状态展开和 stream_channels 覆盖；[业务超时与重试边界](tasks/2026-09-28-business-timeout/task.md)继续有效。[原生 defer 与此前超时方案](tasks/2026-09-28-defer-timeout/task.md)保留历史记录，其中 defer 清理决定继续有效。
+
+最新实施入口：[构图与运行解耦](tasks/2026-09-28-runtime-context/task.md)，依据用户批准的 design §1.1；原生编译图输出配置继续采用，能力依赖迁入 Runtime Context。
+
+当前状态：**已进入四部分完整重构，旧版保存在基线 `880ebb4`，本轮真实验证进行中。** 实施记录见 [原生事件最小真实链路](tasks/2026-09-28-native-event-slice/task.md)。 当前实施入口为第 13 节及 [原生事件流与模块拆分任务](tasks/2026-09-28-native-events-layout/task.md)：storage/graph/execution/stream、每个子图独立 nodes、图内 tags、metadata.sessionID、单次 astream_events、checkpoint 7 天/采集 30 天。外部 snapshot 已按用户决定沿用现有协议；内部分发机制单独处理，既有协议实现不代表新结构已通过验收。
+
+第 1–12 节及既有日期任务保留历史和既有实现证据；其中 astream 主入口、逐事件全扫描确认和默认期限待定被本轮决定取代；外部完整 snapshot 曾重新讨论，最新用户决定恢复采用现有协议。已勾选不代表通过新结构验收，未勾选也不代表当前 worktree 完全没有对应代码。代码行数下降不再是验收要求。不得修改旧日期任务来覆盖其历史结论。
 
 2026-09-28 checkpoint 设计修订另记于 [resume 与清理任务](tasks/2026-09-28-checkpoint-resume/task.md)。下列第 1–5 节保留首轮任务记录；与新设计冲突的“单项业务重试、fork 待定、Agent 读取方式待定”以新任务及当前 design 为准。
 
@@ -152,6 +158,6 @@ aggregate 成功推送的后续补充见 [aggregate 推送任务](tasks/2026-09-
 - [ ] 13.5 先验证当前库的 astream_events v2 元数据、tags 继承、父子图 chunk 和提交时序，再实现薄分发与 subscriptions；删除逐事件全扫和重复标记体系。
 - [ ] 13.6 确定直接异步观察者或有界发布/订阅的进程内分发方式，记录依据；订阅共享单次执行，不引入外部 broker 或第二套持久事件日志。
 - [ ] 13.7 验证追加/去重、补存、快慢分支、恢复/通知、清理交接与分类期限；落实长期在线时的到期触发。
-- [ ] 13.8 另行讨论并确认 snapshot、首帧、版本传输、心跳、断连/离页后，再补充对外协议与前端验收；此前不改动该行为。
+- [ ] 13.8 外部 snapshot 已确认沿用现有协议，依据 [新增任务](tasks/2026-09-28-reuse-snapshot/task.md)完成新内部链路的首帧/版本、重连、心跳、终态关闭和离页回归及浏览器验收；不重写现有协议。
 - [ ] 13.9 实施后按定向测试、静态检查、构建、烟测顺序验证，后端命令硬超时 60 秒；真实浏览器交 Luna max，最终交付统一代码审查。
 - [x] 13.10 完成本轮 OpenSpec 严格校验、链接/围栏/空白检查及文档差异审查，将实际结果写入本轮任务。

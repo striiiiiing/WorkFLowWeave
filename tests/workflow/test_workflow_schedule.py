@@ -17,8 +17,7 @@ from logagent.config.migrations import RESOURCE_FORMAT_VERSION
 from logagent.errors import LogAgentError
 from logagent.models import WorkflowDefinition
 from logagent.scheduling import cron_trigger, describe_cron
-from logagent.workflow import WorkflowScheduler
-from logagent.workflow.scheduler import schedule_trigger
+from logagent.workflow.execution.scheduler import WorkflowScheduler, schedule_trigger
 
 
 def definition(schedule=None, **kwargs):

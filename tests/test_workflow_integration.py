@@ -27,8 +27,8 @@ from logagent.models import (
     SystemConfig,
     WorkflowDefinition,
 )
-from logagent.workflow import WorkflowService
-from logagent.workflow.session_models import SessionHeader
+from logagent.workflow.execution.runner import WorkflowRunner
+from logagent.workflow.storage.models import SessionHeader
 from tests.workflow.helpers import archived
 from tests.workflow_ai_helpers import TestChannelFactory
 
@@ -43,7 +43,7 @@ async def _application(tmp_path, *, provider=None):
     resources = ResourceStore(tmp_path / "resources.json", collector_register=registry.collectorRegister, channel_register=registry.channelRegister)
     ai = AIService(channel_factories={"mock": provider or TestChannelFactory()})
     channels = ChannelManager(registry.channelRegister)
-    service = WorkflowService(
+    service = WorkflowRunner(
         CollectorManager(registry.collectorRegister),
         ai,
         channels,
@@ -150,7 +150,7 @@ async def test_real_modules_recovery_preserves_original_output(tmp_path):
     # Reopen every concrete service and SQLite connection, using current resources.
     async with _application(tmp_path) as (_, resources, service):
         assert resources.get("sources", "source").options["records"][0]["message"] == "changed"
-        await service.recover("original-run")
+        await service.resume("original-run")
         recovered = await service.wait("original-run")
         assert recovered == original
         assert _notifications(original_path) == notifications
@@ -217,7 +217,7 @@ async def test_real_ai_cancellation_resumes_saved_snapshot_after_resource_change
         _save_resources(registry, resources, changed_path, "changed")
 
     async with _application(tmp_path) as (_, _, service):
-        await service.recover("interrupted")
+        await service.resume("interrupted")
         recovered = await service.wait("interrupted")
         assert recovered.status == "completed"
         assert recovered.shared_input == '{"message":"original"}\n\nsource: success (1)'
@@ -231,6 +231,6 @@ async def test_real_ai_cancellation_resumes_saved_snapshot_after_resource_change
         history = await service.history("interrupted")
         assert sum(row["write_key"].startswith("collect:item:source:epoch:") for row in history) == 1
         assert sum(row["write_key"].startswith("analyze:item:first:epoch:") for row in history) == 1
-        await service.recover("interrupted")
+        await service.resume("interrupted")
         assert await service.wait("interrupted") == recovered
         assert _notifications(original_path) == notes

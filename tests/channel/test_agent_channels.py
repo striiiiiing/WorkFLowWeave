@@ -27,7 +27,7 @@ from logagent.models import (
     WorkflowDefinition,
     WorkflowSnapshot,
 )
-from logagent.workflow import WorkflowService
+from logagent.workflow.execution.runner import WorkflowRunner
 from tests.agent.helpers import ScriptedModel
 
 
@@ -597,7 +597,7 @@ async def test_workflow_notification_uses_manager_and_test_channel_one_way_send(
         SystemConfig(plugin_dir=str(tmp_path / "plugins"), data_dir=str(tmp_path))
     )
     channels = ChannelManager(registry.channelRegister)
-    workflow = WorkflowService(
+    workflow = WorkflowRunner(
         CollectorManager(registry.collectorRegister),
         _WorkflowAI(),
         channels,

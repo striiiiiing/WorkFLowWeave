@@ -5,14 +5,16 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from logagent.models import BackupPolicy
-from logagent.workflow import SessionStore, SessionView, WorkflowService
+from logagent.workflow.execution.runner import WorkflowRunner
+from logagent.workflow.storage.facts import SessionStore
+from logagent.workflow.storage.sessions import SessionView
 from tests.workflow.helpers import AI, Channel, Collector, snapshot
 
 
 @pytest.mark.parametrize("backup_enabled", [True, False])
 async def test_name_is_frozen_at_creation_and_survives_expiry_and_reopen(tmp_path, backup_enabled):
     path = tmp_path / "sessions.sqlite3"
-    workflow = WorkflowService(Collector(), AI(), Channel(), database=path)
+    workflow = WorkflowRunner(Collector(), AI(), Channel(), database=path)
     config = snapshot(
         name="每日运行", backup=BackupPolicy(enabled=backup_enabled, collection_retention_days=1,
                                            analysis_retention_days=1, final_retention_days=1),

@@ -33,7 +33,7 @@ from logagent.models import (
     SystemConfig,
     WorkflowDefinition,
 )
-from logagent.workflow.session_models import SessionEntry, SessionHeader
+from logagent.workflow.storage.models import SessionEntry, SessionHeader
 from tests.workflow_ai_helpers import TestChannelFactory
 
 _COLLECTOR_PLUGIN = """
