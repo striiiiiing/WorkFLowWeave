@@ -30,6 +30,8 @@ _CONFLICT_CODES = {
     "target_unavailable",
     "already_exists",
     "checkpoint_missing",
+    "checkpoint_incompatible",
+    "stage_unavailable",
     "not_found",
     "plugin_reload_conflict",
     "recovery_unavailable",
