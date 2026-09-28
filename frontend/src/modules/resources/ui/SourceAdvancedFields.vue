@@ -7,7 +7,6 @@ const policyFields = [
   { key: 'on_error', label: '采集失败' },
   { key: 'on_missing', label: '来源缺失' },
   { key: 'on_empty', label: '采集为空' },
-  { key: 'on_filtered_empty', label: '过滤后为空' },
 ] as const
 </script>
 <template>
@@ -17,6 +16,7 @@ const policyFields = [
       <el-input-number
         :model-value="value.timeout"
         :min="0.001"
+        :step="0.001"
         @update:model-value="emit('change', { timeout: $event })"
       />
     </el-form-item>
@@ -35,6 +35,27 @@ const policyFields = [
         </el-select>
       </el-form-item>
     </div>
-    <p v-if="value.template" class="muted">沿用处理模板：{{ value.template }}</p>
+    <div class="form-grid">
+      <el-form-item label="单项 token 限额">
+        <el-input-number
+          :model-value="value.limits.item_tokens"
+          :min="1"
+          :precision="0"
+          @update:model-value="
+            emit('change', { limits: { ...value.limits, item_tokens: $event || null } })
+          "
+        />
+      </el-form-item>
+      <el-form-item label="字段 token 限额">
+        <el-input-number
+          :model-value="value.limits.field_tokens"
+          :min="1"
+          :precision="0"
+          @update:model-value="
+            emit('change', { limits: { ...value.limits, field_tokens: $event || null } })
+          "
+        />
+      </el-form-item>
+    </div>
   </details>
 </template>

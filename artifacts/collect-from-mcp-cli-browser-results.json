@@ -1,0 +1,207 @@
+{
+  "baseUrl": "http://127.0.0.1:3018",
+  "browser": "Chromium",
+  "runId": "20260928113749",
+  "results": [
+    {
+      "name": "资源页加载与桌面截图",
+      "status": "passed",
+      "detail": "http://127.0.0.1:3018/resources"
+    },
+    {
+      "name": "资源页移动端截图与溢出检查",
+      "status": "passed",
+      "detail": "{\"viewport\":390,\"document\":390}"
+    },
+    {
+      "name": "MCP fixture 目录与 echo schema",
+      "status": "passed",
+      "detail": "{\"server\":\"db4af8f8-83ae-43c1-8da0-f4e14d025583\",\"schema\":{\"properties\":{\"value\":{\"title\":\"Value\",\"type\":\"string\"},\"count\":{\"default\":1,\"title\":\"Count\",\"type\":\"integer\"}},\"required\":[\"value\"],\"title\":\"echoArguments\",\"type\":\"object\"}}"
+    },
+    {
+      "name": "创建并列表回读 CLI argv",
+      "status": "passed",
+      "detail": "{\"id\":\"pw-argv-20260928113749\",\"name\":\"Playwright CLI argv 20260928113749\",\"mode\":\"argv\",\"postStatus\":201,\"posted\":{\"id\":\"pw-argv-20260928113749\",\"display_name\":\"Playwright CLI argv 20260928113749\",\"description\":\"\",\"call\":{\"kind\":\"cli\",\"mode\":\"argv\",\"executable\":\"printf\",\"argv\":[\"hello from Playwright argv\"],\"cwd\":null},\"enabled\":true,\"limits\":{\"item_tokens\":null,\"field_tokens\":null},\"timeout\":60,\"on_error\":\"notice\",\"on_missing\":\"notice\",\"on_empty\":\"notice\"},\"listed\":{\"id\":\"pw-argv-20260928113749\",\"display_name\":\"Playwright CLI argv 20260928113749\",\"description\":\"\",\"call\":{\"kind\":\"cli\",\"mode\":\"argv\",\"executable\":\"printf\",\"argv\":[\"hello from Playwright argv\"],\"cwd\":null},\"enabled\":true,\"limits\":{\"item_tokens\":null,\"field_tokens\":null},\"timeout\":60,\"on_error\":\"notice\",\"on_missing\":\"notice\",\"on_empty\":\"notice\"},\"submit\":{\"buttonOuterHTML\":\"<button aria-disabled=\\\"false\\\" type=\\\"submit\\\" class=\\\"el-button el-button--primary\\\" formnovalidate=\\\"\\\"><!--v-if--><span class=\\\"\\\">保存资源</span></button>\",\"buttonFormNoValidate\":true,\"formNoValidate\":true,\"formOuterHTMLStart\":\"<form data-v-1be88ccd=\\\"\\\" class=\\\"el-form el-form--default el-form--label-top\\\" novalidate=\\\"\\\"><!--v-if--><div class=\\\"form-grid\\\"><div class=\\\"el-form-item asterisk-left el-form-item--label-top\\\"><label id=\\\"el-id-4049-23\\\" for=\\\"el-id-4049-55\\\" class=\\\"el-form-item__label\\\">数据源名称</label><div class=\\\"el-form-item__content\\\"><div class=\\\"el-input\\\"><!-- input --><!-- prepend slot --><!--v-if--><div class=\\\"el-input__wrapper\\\" tabindex=\\\"-1\\\"><!-- prefix slot --><!--v-if--><input class=\\\"el-input__inner\\\" type=\\\"text\\\" autocomplete=\\\"off\\\" tabindex=\\\"0\\\" id=\\\"el-id-4049-55\\\"><!-- suffix slot --><!--v-if--></div><!-- append slot --><!--v-if--></div></div></div><div class=\\\"el-form-item asterisk-left el-form-item--label-top\\\"><label id=\\\"el-id-4049-24\\\" for=\\\"el-id-4049-56\\\" class=\\\"el-form-item__label\\\">资源编号</label><div class=\\\"el-form-item__content\\\"><div class=\\\"el-input\\\"><!-- input --><!-- prepend slot --><!--v-if--><div class=\\\"el-input__wrapper\\\" tabindex=\\\"-1\\\"><!-- prefix slot --><!--v-if--><input class=\\\"el-input__inner\\\" type=\\\"text\\\" autocomplete=\\\"off\\\" tabindex=\\\"0\\\" id=\\\"el-id-4049-56\\\"><!-- suffix slot --><!--v-if--></div><!-- append slot --><!--v-if--></div></div></div></div><div class=\\\"el-form-item asterisk-left el-form-item--label-top\\\"><label id=\\\"el-id-4049-25\\\" for=\\\"el-id-4049-57\\\" class=\\\"el-form-item__label\\\">用途说明</label><div class=\\\"el-form-item__content\\\"><div class=\\\"el-input\\\"><!-- input --><!-- prepend slot --><!--v-if--><div class=\\\"el-input__wrapper\\\" tabindex=\\\"-1\\\"><!-- prefix slot --><!--v-if--><input class=\\\"el-input__inner\\\" type=\\\"text\\\" autocomplete=\\\"off\\\" tabindex=\\\"0\\\" id=\\\"el-id-4049-57\\\"><!-- suffix slot --><!--v-i\"}}"
+    },
+    {
+      "name": "创建并列表回读 CLI shell",
+      "status": "passed",
+      "detail": "{\"id\":\"pw-shell-20260928113749\",\"name\":\"Playwright CLI shell 20260928113749\",\"mode\":\"shell\",\"postStatus\":201,\"posted\":{\"id\":\"pw-shell-20260928113749\",\"display_name\":\"Playwright CLI shell 20260928113749\",\"description\":\"\",\"call\":{\"kind\":\"cli\",\"mode\":\"shell\",\"command\":\"printf \\\"hello from Playwright shell\\\"\",\"cwd\":null},\"enabled\":true,\"limits\":{\"item_tokens\":null,\"field_tokens\":null},\"timeout\":60,\"on_error\":\"notice\",\"on_missing\":\"notice\",\"on_empty\":\"notice\"},\"listed\":{\"id\":\"pw-shell-20260928113749\",\"display_name\":\"Playwright CLI shell 20260928113749\",\"description\":\"\",\"call\":{\"kind\":\"cli\",\"mode\":\"shell\",\"command\":\"printf \\\"hello from Playwright shell\\\"\",\"cwd\":null},\"enabled\":true,\"limits\":{\"item_tokens\":null,\"field_tokens\":null},\"timeout\":60,\"on_error\":\"notice\",\"on_missing\":\"notice\",\"on_empty\":\"notice\"},\"submit\":{\"buttonOuterHTML\":\"<button aria-disabled=\\\"false\\\" type=\\\"submit\\\" class=\\\"el-button el-button--primary\\\" formnovalidate=\\\"\\\"><!--v-if--><span class=\\\"\\\">保存资源</span></button>\",\"buttonFormNoValidate\":true,\"formNoValidate\":true,\"formOuterHTMLStart\":\"<form data-v-1be88ccd=\\\"\\\" class=\\\"el-form el-form--default el-form--label-top\\\" novalidate=\\\"\\\"><!--v-if--><div class=\\\"form-grid\\\"><div class=\\\"el-form-item asterisk-left el-form-item--label-top\\\"><label id=\\\"el-id-4049-95\\\" for=\\\"el-id-4049-127\\\" class=\\\"el-form-item__label\\\">数据源名称</label><div class=\\\"el-form-item__content\\\"><div class=\\\"el-input\\\"><!-- input --><!-- prepend slot --><!--v-if--><div class=\\\"el-input__wrapper\\\" tabindex=\\\"-1\\\"><!-- prefix slot --><!--v-if--><input class=\\\"el-input__inner\\\" type=\\\"text\\\" autocomplete=\\\"off\\\" tabindex=\\\"0\\\" id=\\\"el-id-4049-127\\\"><!-- suffix slot --><!--v-if--></div><!-- append slot --><!--v-if--></div></div></div><div class=\\\"el-form-item asterisk-left el-form-item--label-top\\\"><label id=\\\"el-id-4049-96\\\" for=\\\"el-id-4049-128\\\" class=\\\"el-form-item__label\\\">资源编号</label><div class=\\\"el-form-item__content\\\"><div class=\\\"el-input\\\"><!-- input --><!-- prepend slot --><!--v-if--><div class=\\\"el-input__wrapper\\\" tabindex=\\\"-1\\\"><!-- prefix slot --><!--v-if--><input class=\\\"el-input__inner\\\" type=\\\"text\\\" autocomplete=\\\"off\\\" tabindex=\\\"0\\\" id=\\\"el-id-4049-128\\\"><!-- suffix slot --><!--v-if--></div><!-- append slot --><!--v-if--></div></div></div></div><div class=\\\"el-form-item asterisk-left el-form-item--label-top\\\"><label id=\\\"el-id-4049-97\\\" for=\\\"el-id-4049-129\\\" class=\\\"el-form-item__label\\\">用途说明</label><div class=\\\"el-form-item__content\\\"><div class=\\\"el-input\\\"><!-- input --><!-- prepend slot --><!--v-if--><div class=\\\"el-input__wrapper\\\" tabindex=\\\"-1\\\"><!-- prefix slot --><!--v-if--><input class=\\\"el-input__inner\\\" type=\\\"text\\\" autocomplete=\\\"off\\\" tabindex=\\\"0\\\" id=\\\"el-id-4049-129\\\"><!-- suffix slot --><\"}}"
+    },
+    {
+      "name": "创建并列表回读 MCP echo schema 来源",
+      "status": "passed",
+      "detail": "{\"id\":\"pw-mcp-20260928113749\",\"name\":\"Playwright MCP echo 20260928113749\",\"serverId\":\"db4af8f8-83ae-43c1-8da0-f4e14d025583\",\"tool\":\"echo\",\"postStatus\":201,\"posted\":{\"id\":\"pw-mcp-20260928113749\",\"display_name\":\"Playwright MCP echo 20260928113749\",\"description\":\"\",\"call\":{\"kind\":\"mcp\",\"server\":\"db4af8f8-83ae-43c1-8da0-f4e14d025583\",\"tool\":\"echo\",\"arguments\":{\"value\":\"hello from Playwright\"}},\"enabled\":true,\"limits\":{\"item_tokens\":null,\"field_tokens\":null},\"timeout\":60,\"on_error\":\"notice\",\"on_missing\":\"notice\",\"on_empty\":\"notice\"},\"listed\":{\"id\":\"pw-mcp-20260928113749\",\"display_name\":\"Playwright MCP echo 20260928113749\",\"description\":\"\",\"call\":{\"kind\":\"mcp\",\"server\":\"db4af8f8-83ae-43c1-8da0-f4e14d025583\",\"tool\":\"echo\",\"arguments\":{\"value\":\"hello from Playwright\"}},\"enabled\":true,\"limits\":{\"item_tokens\":null,\"field_tokens\":null},\"timeout\":60,\"on_error\":\"notice\",\"on_missing\":\"notice\",\"on_empty\":\"notice\"},\"submit\":{\"buttonOuterHTML\":\"<button aria-disabled=\\\"false\\\" type=\\\"submit\\\" class=\\\"el-button el-button--primary\\\" formnovalidate=\\\"\\\"><!--v-if--><span class=\\\"\\\">保存资源</span></button>\",\"buttonFormNoValidate\":true,\"formNoValidate\":true,\"formOuterHTMLStart\":\"<form data-v-1be88ccd=\\\"\\\" class=\\\"el-form el-form--default el-form--label-top\\\" novalidate=\\\"\\\"><!--v-if--><div class=\\\"form-grid\\\"><div class=\\\"el-form-item asterisk-left el-form-item--label-top\\\"><label id=\\\"el-id-4049-171\\\" for=\\\"el-id-4049-203\\\" class=\\\"el-form-item__label\\\">数据源名称</label><div class=\\\"el-form-item__content\\\"><div class=\\\"el-input\\\"><!-- input --><!-- prepend slot --><!--v-if--><div class=\\\"el-input__wrapper\\\" tabindex=\\\"-1\\\"><!-- prefix slot --><!--v-if--><input class=\\\"el-input__inner\\\" type=\\\"text\\\" autocomplete=\\\"off\\\" tabindex=\\\"0\\\" id=\\\"el-id-4049-203\\\"><!-- suffix slot --><!--v-if--></div><!-- append slot --><!--v-if--></div></div></div><div class=\\\"el-form-item asterisk-left el-form-item--label-top\\\"><label id=\\\"el-id-4049-172\\\" for=\\\"el-id-4049-204\\\" class=\\\"el-form-item__label\\\">资源编号</label><div class=\\\"el-form-item__content\\\"><div class=\\\"el-input\\\"><!-- input --><!-- prepend slot --><!--v-if--><div class=\\\"el-input__wrapper\\\" tabindex=\\\"-1\\\"><!-- prefix slot --><!--v-if--><input class=\\\"el-input__inner\\\" type=\\\"text\\\" autocomplete=\\\"off\\\" tabindex=\\\"0\\\" id=\\\"el-id-4049-204\\\"><!-- suffix slot --><!--v-if--></div><!-- append slot --><!--v-if--></div></div></div></div><div class=\\\"el-form-item asterisk-left el-form-item--label-top\\\"><label id=\\\"el-id-4049-173\\\" for=\\\"el-id-4049-205\\\" class=\\\"el-form-item__label\\\">用途说明</label><div class=\\\"el-form-item__content\\\"><div class=\\\"el-input\\\"><!-- input --><!-- prepend slot --><!--v-if--><div class=\\\"el-input__wrapper\\\" tabindex=\\\"-1\\\"><!-- prefix slot --><!--v-if--><input class=\\\"el-input__inner\\\" type=\\\"text\\\" autocomplete=\\\"off\\\" tabindex=\\\"0\\\" id=\\\"el-id-4049-205\\\"><!-- suffix slot -\"}}"
+    },
+    {
+      "name": "新建并列表回读 MCP stdio 服务",
+      "status": "passed",
+      "detail": "{\"id\":\"pw-server-20260928113749\",\"postStatus\":201,\"posted\":{\"id\":\"pw-server-20260928113749\",\"transport\":\"stdio\",\"enabled\":true,\"command\":\"/mnt/d/code/LogAgent/.worktree/collect-from-mcp-and-cli/.venv/bin/python\",\"args\":[\"tests/mcp/stdio_server.py\"],\"cwd\":\"/mnt/d/code/LogAgent/.worktree/collect-from-mcp-and-cli\",\"url\":null,\"env\":{},\"headers\":{},\"timeout\":60},\"listed\":{\"id\":\"pw-server-20260928113749\",\"transport\":\"stdio\",\"enabled\":true,\"command\":\"/mnt/d/code/LogAgent/.worktree/collect-from-mcp-and-cli/.venv/bin/python\",\"args\":[\"tests/mcp/stdio_server.py\"],\"cwd\":\"/mnt/d/code/LogAgent/.worktree/collect-from-mcp-and-cli\",\"url\":null,\"env\":{},\"headers\":{},\"timeout\":60},\"submit\":{\"buttonOuterHTML\":\"<button aria-disabled=\\\"false\\\" type=\\\"submit\\\" class=\\\"el-button el-button--primary\\\" formnovalidate=\\\"\\\"><!--v-if--><span class=\\\"\\\"> 保存 </span></button>\",\"buttonFormNoValidate\":true,\"formNoValidate\":true,\"formOuterHTMLStart\":\"<form class=\\\"el-form el-form--default el-form--label-top\\\" novalidate=\\\"\\\"><!--v-if--><div class=\\\"el-form-item asterisk-left el-form-item--label-top\\\"><label id=\\\"el-id-4049-247\\\" for=\\\"el-id-4049-259\\\" class=\\\"el-form-item__label\\\">服务 ID</label><div class=\\\"el-form-item__content\\\"><div class=\\\"el-input\\\"><!-- input --><!-- prepend slot --><!--v-if--><div class=\\\"el-input__wrapper\\\" tabindex=\\\"-1\\\"><!-- prefix slot --><!--v-if--><input class=\\\"el-input__inner\\\" type=\\\"text\\\" autocomplete=\\\"off\\\" tabindex=\\\"0\\\" id=\\\"el-id-4049-259\\\"><!-- suffix slot --><!--v-if--></div><!-- append slot --><!--v-if--></div></div></div><div class=\\\"el-form-item asterisk-left el-form-item--label-top\\\"><label id=\\\"el-id-4049-248\\\" for=\\\"el-id-4049-260\\\" class=\\\"el-form-item__label\\\">传输方式</label><div class=\\\"el-form-item__content\\\"><div class=\\\"el-select\\\"><div class=\\\"el-select__wrapper el-tooltip__trigger el-tooltip__trigger\\\" tabindex=\\\"-1\\\"><!--v-if--><div class=\\\"el-select__selection\\\"><!--v-if--><div class=\\\"el-select__selected-item el-select__input-wrapper is-hidden\\\"><input type=\\\"text\\\" class=\\\"el-select__input\\\" autocomplete=\\\"off\\\" tabindex=\\\"0\\\" role=\\\"combobox\\\" readonly=\\\"\\\" spellcheck=\\\"false\\\" aria-activedescendant=\\\"\\\" aria-controls=\\\"el-id-4049-249\\\" aria-expanded=\\\"false\\\" aria-autocomplete=\\\"none\\\" aria-haspopup=\\\"listbox\\\" value=\\\"\\\" id=\\\"el-id-4049-260\\\" style=\\\"min-width: 11px;\\\"><!--v-if--></div><div class=\\\"el-select__selected-item el-select__placeholder\\\"><span>stdio</span></div></div><div class=\\\"el-select__suffix\\\"><i class=\\\"el-icon el-select__caret el-select__icon\\\"><svg xmlns=\\\"http://www.w3.org/2000/svg\\\" viewBox=\\\"0 0 1024 1024\\\"><path fill=\\\"currentC\"}}"
+    },
+    {
+      "name": "Workflow 六格式及总/单项/字段限额",
+      "status": "passed",
+      "detail": "{\"formats\":[\"原始表示\",\"ISON\",\"TOON\",\"ZON\",\"MD\",\"CSV\"],\"limitControls\":{\"总输入 token\":1,\"单项 token\":1,\"字段 token\":1}}"
+    },
+    {
+      "name": "Workflow 移动端截图与溢出检查",
+      "status": "passed",
+      "detail": "{\"viewport\":390,\"document\":390}"
+    }
+  ],
+  "events": {
+    "apiRequests": [
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/sources",
+        "body": null
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/workflows",
+        "body": null
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/plugins",
+        "body": null
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/mcp_servers",
+        "body": null
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/mcp/catalog?server=db4af8f8-83ae-43c1-8da0-f4e14d025583",
+        "body": null
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/mcp/catalog/db4af8f8-83ae-43c1-8da0-f4e14d025583/tools/echo",
+        "body": null
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/mcp_servers",
+        "body": null
+      },
+      {
+        "method": "POST",
+        "url": "http://127.0.0.1:3018/api/sources",
+        "body": "{\"id\":\"pw-argv-20260928113749\",\"call\":{\"kind\":\"cli\",\"mode\":\"argv\",\"executable\":\"printf\",\"argv\":[\"hello from Playwright argv\"],\"cwd\":null},\"display_name\":\"Playwright CLI argv 20260928113749\",\"description\":\"\",\"enabled\":true,\"limits\":{\"item_tokens\":null,\"field_tokens\":null},\"timeout\":60,\"on_error\":\"notice\",\"on_missing\":\"notice\",\"on_empty\":\"notice\"}"
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/sources",
+        "body": null
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/workflows",
+        "body": null
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/mcp_servers",
+        "body": null
+      },
+      {
+        "method": "POST",
+        "url": "http://127.0.0.1:3018/api/sources",
+        "body": "{\"id\":\"pw-shell-20260928113749\",\"call\":{\"kind\":\"cli\",\"mode\":\"shell\",\"command\":\"printf \\\"hello from Playwright shell\\\"\",\"cwd\":null},\"display_name\":\"Playwright CLI shell 20260928113749\",\"description\":\"\",\"enabled\":true,\"limits\":{\"item_tokens\":null,\"field_tokens\":null},\"timeout\":60,\"on_error\":\"notice\",\"on_missing\":\"notice\",\"on_empty\":\"notice\"}"
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/sources",
+        "body": null
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/workflows",
+        "body": null
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/mcp_servers",
+        "body": null
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/mcp/catalog?server=db4af8f8-83ae-43c1-8da0-f4e14d025583&query=&cursor=0&page_size=100",
+        "body": null
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/mcp/catalog/db4af8f8-83ae-43c1-8da0-f4e14d025583/tools/echo",
+        "body": null
+      },
+      {
+        "method": "POST",
+        "url": "http://127.0.0.1:3018/api/sources",
+        "body": "{\"id\":\"pw-mcp-20260928113749\",\"call\":{\"kind\":\"mcp\",\"server\":\"db4af8f8-83ae-43c1-8da0-f4e14d025583\",\"tool\":\"echo\",\"arguments\":{\"value\":\"hello from Playwright\"}},\"display_name\":\"Playwright MCP echo 20260928113749\",\"description\":\"\",\"enabled\":true,\"limits\":{\"item_tokens\":null,\"field_tokens\":null},\"timeout\":60,\"on_error\":\"notice\",\"on_missing\":\"notice\",\"on_empty\":\"notice\"}"
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/sources",
+        "body": null
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/workflows",
+        "body": null
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/mcp_servers",
+        "body": null
+      },
+      {
+        "method": "POST",
+        "url": "http://127.0.0.1:3018/api/mcp_servers",
+        "body": "{\"id\":\"pw-server-20260928113749\",\"transport\":\"stdio\",\"enabled\":true,\"command\":\"/mnt/d/code/LogAgent/.worktree/collect-from-mcp-and-cli/.venv/bin/python\",\"args\":[\"tests/mcp/stdio_server.py\"],\"cwd\":\"/mnt/d/code/LogAgent/.worktree/collect-from-mcp-and-cli\",\"url\":null,\"env\":{},\"headers\":{},\"timeout\":60}"
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/mcp_servers",
+        "body": null
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/workflows",
+        "body": null
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/sources",
+        "body": null
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/channels",
+        "body": null
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/ai",
+        "body": null
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:3018/api/plugins",
+        "body": null
+      },
+      {
+        "method": "POST",
+        "url": "http://127.0.0.1:3018/api/workflows/cron/preview",
+        "body": "{\"expression\":\"0 9 * * *\",\"timezone\":null}"
+      }
+    ],
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "pageErrors": [],
+    "requestFailures": [],
+    "httpErrors": []
+  }
+}

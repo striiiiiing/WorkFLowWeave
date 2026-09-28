@@ -205,8 +205,15 @@ async function restart() {
           :value="stage.key"
           :label="stage.label"
         />
+        <el-option value="process" label="重新处理原始采集结果" />
       </el-select>
-      <p class="mt-4 text-sm">重做所选阶段及后续流程；进入通知阶段会重新发送。</p>
+      <p class="mt-4 text-sm">
+        {{
+          selectedStage === 'process'
+            ? '使用已保存的原始采集结果重新处理，不重新采集；进入通知阶段会重新发送。'
+            : '重做所选阶段及后续流程；进入通知阶段会重新发送。'
+        }}
+      </p>
       <el-alert
         v-if="stageRecovery.data.value && !stageRecovery.data.value.available"
         class="mt-4"

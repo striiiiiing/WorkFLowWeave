@@ -82,7 +82,7 @@ it('renders readable output by default, exposes JSON only in advanced mode, and 
   expect(wrapper.find('pre').exists()).toBe(false)
 })
 
-it('renders plugin sections and delivery uncertainty without inventing success', async () => {
+it('renders CLI raw output and processing state without inventing a count', async () => {
   vi.mocked(runsApi.phase).mockResolvedValue({
     ...phase,
     stage: 'collect',
@@ -91,20 +91,10 @@ it('renders plugin sections and delivery uncertainty without inventing success',
         {
           source_id: 'logs',
           status: 'success',
-          text: 'AI input',
-          count: 2,
-          report: {
-            sections: [
-              {
-                kind: 'metrics',
-                title: '告警',
-                items: [{ label: '错误数量', value: 2, unit: '条' }],
-              },
-              { kind: 'table', title: '详情', columns: ['内容'], rows: [['网络中断']] },
-            ],
-          },
+          raw: { stdout: '原始输出', stderr: '诊断信息', exit_code: 0 },
         },
       ],
+      input_views: [{ source_id: 'logs', status: 'success', text: '分析输入', truncated: true, omitted: false }],
     },
   })
   const wrapper = mount(ReportHarness, {
@@ -114,8 +104,12 @@ it('renders plugin sections and delivery uncertainty without inventing success',
   wrappers.push(wrapper)
   await vi.dynamicImportSettled()
   await flushPromises()
-  expect(wrapper.text()).toContain('错误数量')
-  expect(wrapper.get('table').text()).toContain('网络中断')
+  expect(wrapper.text()).toContain('原始输出')
+  expect(wrapper.text()).toContain('诊断信息')
+  expect(wrapper.text()).toContain('退出码 0')
+  expect(wrapper.text()).toContain('内容已截取')
+  expect(wrapper.text()).not.toContain('采集数量')
+  expect(wrapper.get('details').text()).toContain('分析输入')
   const parsed = parsePhase('notify', {
     deliveries: [
       {
@@ -129,6 +123,22 @@ it('renders plugin sections and delivery uncertainty without inventing success',
   expect(parsed.items[0].status).toBe('uncertain')
   expect(() => parsePhase('aggregate', { other: 'unsupported' })).toThrow('结果结构')
   expect(unavailableText('pending', false)).toContain('没有此阶段')
+})
+
+it('renders MCP content, structured data, and a failed collection error', () => {
+  const parsed = parsePhase('collect', {
+    collection: [
+      { source_id: 'tool', status: 'success', raw: {
+        content: [{ type: 'text', text: '工具正文' }], structuredContent: { result: 2 },
+      } },
+      { source_id: 'missing', status: 'failed', raw: null,
+        error: { code: 'mcp_failed', message: '服务不可用' } },
+    ],
+    input_views: [{ source_id: 'missing', status: 'skipped', omitted: true }],
+  })
+  expect(parsed.items[0].text).toContain('工具正文')
+  expect(parsed.items[0].text).toContain('"result": 2')
+  expect(parsed.items[1]).toMatchObject({ error: '服务不可用', omitted: true, processingStatus: 'skipped' })
 })
 
 it('does not execute HTML or unsafe URLs inside reports', () => {

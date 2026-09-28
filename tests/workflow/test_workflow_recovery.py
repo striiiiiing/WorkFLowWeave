@@ -44,7 +44,7 @@ async def test_full_history_native_checkpoint_and_completed_recovery(tmp_path):
     path = tmp_path / "runs.sqlite3"
     w, store, c, a, n = service(path)
     result = await run(w)
-    assert result.status == "completed" and result.shared_input == "original data\n\nsource: success (1)"
+    assert result.status == "completed" and result.shared_input == "[source=source; format=none]\noriginal data"
     assert sorted(row[:2] for row in n.calls) == [
         ("first", "one"),
         ("first", "two"),
@@ -61,7 +61,7 @@ async def test_full_history_native_checkpoint_and_completed_recovery(tmp_path):
     record = await w.get_session("run")
     assert record.status == "completed"
     content = await w.session_view.get_phase_content("run", "collect", version=record.version)
-    assert content.content["shared_input"] == "original data\n\nsource: success (1)"
+    assert content.content["shared_input"] == "[source=source; format=none]\noriginal data"
     namespaces = {
         checkpoint.config["configurable"]["checkpoint_ns"]
         async for checkpoint in w._checkpointer.alist(None)
@@ -105,7 +105,7 @@ async def test_cancel_resume_reuses_successful_branch_and_original_snapshot(tmp_
     await new.recover("run")
     result = await new.wait("run")
     assert result.status == "completed"
-    assert not c.calls and a.calls == [("second", "original data\n\nsource: success (1)", "offline")]
+    assert not c.calls and a.calls == [("second", "[source=source; format=none]\noriginal data", "offline")]
     assert len(n.calls) == 4
     await close(new, reopened)
 
@@ -277,9 +277,9 @@ async def test_layered_prompts_and_ordered_fanin_reuse(tmp_path):
     assert by_id["final"] == ("final", "other", "body: {input}", "", "summary {input}")
     assert ai.calls[-1] == (
         "final",
-        "second(original data\n\nsource: success (1))\n\n"
-        "original data\n\nsource: success (1)\n\n"
-        "first(original data\n\nsource: success (1))",
+        "second([source=source; format=none]\noriginal data)\n\n"
+        "[source=source; format=none]\noriginal data\n\n"
+        "first([source=source; format=none]\noriginal data)",
         "other-model",
     )
     await close(w, store)
@@ -294,9 +294,9 @@ async def test_default_fanin_reuses_first_model_and_declared_order(tmp_path):
     assert ai.requests[-1][3] == "shared system"
     assert ai.calls[-1] == (
         "final",
-        "original data\n\nsource: success (1)\n\n"
-        "first(original data\n\nsource: success (1))\n\n"
-        "second(original data\n\nsource: success (1))",
+        "[source=source; format=none]\noriginal data\n\n"
+        "first([source=source; format=none]\noriginal data)\n\n"
+        "second([source=source; format=none]\noriginal data)",
         "offline",
     )
     await close(w, store)
@@ -308,7 +308,7 @@ async def test_fanin_without_reuse_omits_original_input_and_model_call(tmp_path)
         channels=False, fan_in=FanInConfig(reuse_from=None, order=["second"]),
     ))
     assert result.status == "completed"
-    assert result.outputs["final"] == "second(original data\n\nsource: success (1))"
+    assert result.outputs["final"] == "second([source=source; format=none]\noriginal data)"
     assert {call[0] for call in ai.calls} == {"first", "second"}
     await close(w, store)
 

@@ -17,7 +17,7 @@ from logagent.ai import AIService, ChannelFactory, OpenAIChannelFactory
 from logagent.ai.options import LEGACY_HTTP_PROVIDER, OPENAI_COMPATIBLE_PROVIDER
 from logagent.channel import ChannelManager, builtin_channels
 from logagent.channel.agent import AgentChannel
-from logagent.collection import CollectorManager, builtin_collectors
+from logagent.collection import CollectorManager
 from logagent.config import (
     ConfigurationReader,
     CredentialManager,
@@ -26,6 +26,7 @@ from logagent.config import (
 )
 from logagent.errors import LogAgentError
 from logagent.lifecycle.logging import JsonLogSink
+from logagent.mcp import MCPRuntime, SDKConnector
 from logagent.models import (
     CollectionContext,
     DiscoveryReport,
@@ -180,12 +181,14 @@ class ApplicationLifecycle:
                 await checkpointer.setup()
 
                 stage = "plugins"
-                plugins = PluginRegistry(builtin_collectors(), builtin_channels=builtin_channels())
+                plugins = PluginRegistry((), builtin_channels=builtin_channels())
                 self._plugin_report = await plugins.discover_plugins(self.config)
                 credentials = CredentialManager(
                     self.config, resources_path=Path(self.config.data_dir) / "resources.json"
                 )
-                collectors = CollectorManager(plugins.collectorRegister)
+                mcp_runtime = MCPRuntime(SDKConnector(credentials),
+                                         cache_dir=Path(self.config.data_dir) / "mcp-catalog")
+                collectors = CollectorManager(mcp_runtime)
 
                 stage = "ai"
                 ai = AIService(
@@ -248,6 +251,7 @@ class ApplicationLifecycle:
                     Path(self.config.data_dir) / "agents" / "workspace",
                     Path(self.config.data_dir) / "agents" / "runtime",
                     ai_service=ai,
+                    mcp_runtime=mcp_runtime, mcp_binding_reader=session_view.mcp_binding,
                     resources=resources,
                     plugins=plugins,
                     collectors=collectors,

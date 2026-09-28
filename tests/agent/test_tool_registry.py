@@ -19,7 +19,7 @@ async def test_builtin_tools_are_filtered_before_import_and_capture_read_only_vi
     registry = PluginRegistry([])
     report = await registry.discover_plugins(config)
     assert not report.errors
-    assert {item.name for item in registry.toolRegister.describe()} == {"plugin", "read", "write", "grep"}
+    assert {item.name for item in registry.toolRegister.describe()} == {"mcp", "read", "write", "grep"}
     assert "logagent.agent.builtin.shell" not in imports
     read = registry.toolRegister.get("read")
     read.input_schema["properties"].clear()

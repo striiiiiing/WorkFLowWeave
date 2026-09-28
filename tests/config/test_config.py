@@ -12,13 +12,11 @@ from copy import deepcopy
 
 import pytest
 
-from logagent.config import ConfigurationReader, PluginRegistry, expand_source
+from logagent.config import ConfigurationReader, PluginRegistry
 from logagent.errors import LogAgentError
 from logagent.models import (
     CollectionContext,
     CollectorOutput,
-    SetterTemplate,
-    SourceConfig,
     SystemConfig,
 )
 
@@ -261,61 +259,6 @@ async def test_invalid_builtin_declarations_prevent_publication(tmp_path, invali
     assert registry.collectorRegister.describe() == []
 
 
-def test_source_expansion_order_shallow_override_and_empty_list(tmp_path):
-    collector = ConfigurableCollector()
-    template = SetterTemplate(
-        id="template", collector="sample", setters={"fields": ["message"], "filter": {"a": "old"}}
-    )
-    source = SourceConfig(
-        id="source",
-        collector="sample",
-        template="template",
-        options={"required_value": "value", "limit": 7, "connection": {"host": "instance"}},
-        setters={"fields": [], "filter": {"b": "new"}},
-    )
-    expanded = expand_source(
-        source, collector=collector, template=template
-    )
-    assert expanded.options == {
-        "required_value": "value",
-        "limit": 7,
-        "connection": {"host": "instance"},
-    }
-    assert expanded.setters == {"fields": [], "filter": {"b": "new"}}
-    assert expanded.template is None
-    assert expand_source(expanded, collector=collector) == expanded
-    expanded.options["connection"]["host"] = "changed"
-    assert source.options["connection"]["host"] == "instance"
-    assert template.setters["fields"] == ["message"]
-
-
-def test_template_missing_mismatched_or_unknown_setter_rejected():
-    collector = ConfigurableCollector()
-    source = SourceConfig(
-        id="source", collector="sample", template="wanted", options={"required_value": "value"}
-    )
-    with pytest.raises(LogAgentError) as error:
-        expand_source(source, collector=collector)
-    assert error.value.code == "template_missing"
-    for template in (
-        SetterTemplate(id="other", collector="sample"),
-        SetterTemplate(id="wanted", collector="other"),
-        SetterTemplate(id="wanted", collector="sample", setters={"unknown": []}),
-    ):
-        with pytest.raises(LogAgentError):
-            expand_source(source, collector=collector, template=template)
-
-
-@pytest.mark.parametrize("defaults", [{"unknown": "secret"}, {"connection": {"label": "no host"}}])
-def test_instance_options_validate_declared_fields_and_nested_requirements(defaults):
-    with pytest.raises(LogAgentError) as error:
-        expand_source(
-            SourceConfig(id="source", collector="sample", options={"required_value": "yes", **defaults}),
-            collector=ConfigurableCollector(),
-        )
-    assert "secret" not in error.value.info.model_dump_json()
-
-
 async def test_semantic_validation_is_captured_and_receives_copies(tmp_path):
     collector = ConfigurableCollector()
     calls = []
@@ -329,11 +272,10 @@ async def test_semantic_validation_is_captured_and_receives_copies(tmp_path):
     registry, _ = await discover(tmp_path, builtins=[collector])
     registered = registry.collectorRegister.get("sample")
     collector.validate = lambda options, setters: (_ for _ in ()).throw(AssertionError("replaced"))
-    source = SourceConfig(id="source", collector="sample", options={"required_value": "ok"})
-    expanded = expand_source(source, collector=registered)
-    registered.validate(source.options, source.setters)
-    assert calls == ["ok", "ok"]
-    assert expanded.options["required_value"] == source.options["required_value"] == "ok"
+    options = {"required_value": "ok"}
+    registered.validate(options, {})
+    assert calls == ["ok"]
+    assert options == {"required_value": "ok"}
 
 
 async def test_multiple_capabilities_and_package_relative_import(tmp_path):
@@ -420,7 +362,7 @@ async def test_invalid_optional_semantic_hooks_reject_declaration(tmp_path, mode
     assert error.value.code == "builtin_registration_failed"
 
 
-def test_semantic_hook_error_does_not_expose_secret_or_mutate_source():
+async def test_semantic_hook_error_does_not_mutate_options(tmp_path):
     collector = SampleCollector()
 
     def validator(options, setters):
@@ -428,11 +370,11 @@ def test_semantic_hook_error_does_not_expose_secret_or_mutate_source():
         raise RuntimeError("credential-super-secret")
 
     collector.validate = validator
-    source = SourceConfig(id="source", collector="sample")
-    with pytest.raises(LogAgentError) as error:
-        expand_source(source, collector=collector)
-    assert source.options == {}
-    assert "credential-super-secret" not in error.value.info.model_dump_json()
+    registry, _ = await discover(tmp_path, builtins=[collector])
+    options = {}
+    with pytest.raises(RuntimeError, match="credential-super-secret"):
+        registry.collectorRegister.get("sample").validate(options, {})
+    assert options == {}
 
 
 async def test_builtin_conflict_discards_every_capability_of_plugin(tmp_path):
@@ -725,7 +667,9 @@ async def test_string_config_values_normalize_through_readers_and_store(tmp_path
     registry = PluginRegistry([MockCollector()], builtin_channels=[MockFileChannelType()])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     store = ResourceStore(tmp_path / "resources.json", collector_register=registry.collectorRegister, channel_register=registry.channelRegister)
-    source = store.save("sources", {"id": "source", "collector": "mock", "timeout": "2.5"})
+    source = store.save("sources", {"id": "source", "call": {
+        "kind": "cli", "mode": "argv", "executable": "printf", "argv": ["%s", "example"],
+    }, "timeout": "2.5"})
     assert source.timeout == 2.5
     assert store.list("sources")[0].timeout == 2.5
     channel = store.save("channels", {"id": "channel", "channel": "mock", "enabled": "false", "options": {"path": "out.txt"}})

@@ -182,7 +182,7 @@ def collect(
     arguments: Annotated[
         Path | None,
         typer.Option("--arguments", "-a", exists=True, dir_okay=False, readable=True,
-                     help="UTF-8 JSON file containing options and setters overrides."),
+                     help="UTF-8 JSON file containing MCP arguments overrides."),
     ] = None,
     api_url: ApiUrl = "http://127.0.0.1:8000",
 ) -> None:
@@ -210,7 +210,7 @@ def collect(
 
 @app.command("collect-schema")
 def collect_schema(source_id: str, api_url: ApiUrl = "http://127.0.0.1:8000") -> None:
-    """Show the saved source's callable options and setters schema."""
+    """Show the saved source's callable MCP arguments schema."""
     _print_json(_request("GET", _source_path(source_id) + "/call-schema", api_url=api_url))
 
 

@@ -1,17 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { SchemaCapability } from '@/shared/schema/types'
 import type { SourceConfig, SourceSaveTarget, SourceUsageView } from '../model/types'
 import type { SourceEditorController } from '../composables/useSourceEditor'
-import type { CredentialProtector } from '../model/types'
 import SourceConfigEditor from './SourceConfigEditor.vue'
 const props = defineProps<{
   editor: SourceEditorController
   target: SourceSaveTarget
   initial: boolean
-  capabilities: readonly SchemaCapability[]
   usages?: readonly SourceUsageView[]
-  protect: CredentialProtector
 }>()
 const emit = defineEmits<{ saved: [value: SourceConfig]; cancel: [] }>()
 const scope = computed(() =>
@@ -66,8 +62,6 @@ const scope = computed(() =>
         :editor="editor"
         :target="target"
         :initial="initial"
-        :capabilities="capabilities"
-        :protect="protect"
         @saved="emit('saved', $event)"
         @cancel="emit('cancel')"
       />

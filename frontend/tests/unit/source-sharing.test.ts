@@ -131,5 +131,10 @@ it('counts sparse legacy overrides as shared and complete snapshots as independe
     false,
     true,
   ])
-  expect(resourceKinds.map((kind) => kind.key)).toEqual(['sources', 'ai', 'channels'])
+  expect(resourceKinds.map((kind) => kind.key)).toEqual([
+    'sources',
+    'mcp_servers',
+    'ai',
+    'channels',
+  ])
 })

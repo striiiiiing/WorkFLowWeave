@@ -23,12 +23,12 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, MessagesState, StateGraph
 
 from logagent.agent.artifacts import ArtifactStore
-from logagent.agent.builtin import grep, plugin, read, shell, write
+from logagent.agent.builtin import grep, mcp, read, shell, write
 from logagent.agent.builtin.declaration import ToolDeclaration
 from logagent.agent.config import AgentConfig
 from logagent.agent.context import build_system_prompt
 from logagent.agent.events import EventLog
-from logagent.agent.gateway import InvocationSnapshot, PluginGateway
+from logagent.agent.gateway import MCPGateway
 from logagent.agent.graph import AgentToolContext, create_graph
 from logagent.agent.sandbox import ShellSandbox
 from logagent.agent.scheduling import ToolScheduler
@@ -65,6 +65,7 @@ class AgentSession:
     parent_branch_id: str | None = None
     parent_event_id: int | None = None
     pending_appends: list[tuple[str, str, str, str]] = field(default_factory=list)
+    mcp_binding: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +100,7 @@ class AgentService:
                  model_provider: ModelProvider | None = None, ai_service=None,
                  ai_config=None, model: str | None = None, checkpointer=None,
                  resources=None, plugins=None, collectors=None, channels=None,
+                 mcp_runtime=None, mcp_binding_reader=None,
                  declarations: list[ToolDeclaration] | None = None,
                  gateway_factory: Callable[[AgentSession], Any] | None = None,
                  collection_context_factory: Callable[[AgentSession], CollectionContext] | None = None,
@@ -117,12 +119,14 @@ class AgentService:
         self.plugins = plugins
         self.collectors = collectors
         self.channels = channels
+        self.mcp_runtime = mcp_runtime
+        self.mcp_binding_reader = mcp_binding_reader
         self.checkpointer = checkpointer
         self._checkpointer_context = None
         self._owns_checkpointer = checkpointer is None
         self.gateway_factory = gateway_factory
         self.collection_context_factory = collection_context_factory
-        self._declarations = declarations or [plugin.plugin, read.plugin, write.plugin,
+        self._declarations = declarations or [mcp.plugin, read.plugin, write.plugin,
                                                grep.plugin, shell.plugin]
         if read_only_tools:
             self._declarations = [item for item in self._declarations if item.execution == "read"]
@@ -154,7 +158,7 @@ class AgentService:
         await self.workspace.initialize()
         if not (self.workspace.root / "AGENTS.md").exists():
             await self.workspace.write("AGENTS.md", "overwrite", (
-                "协助用户分析日志和 Workflow 结果。用 plugin 按需发现、读取 Schema 并单次调用 Collector。\n"
+                "协助用户分析日志和 Workflow 结果。用 mcp 按需加载目录、发现工具、读取完整 schema 并调用原始 MCP。\n"
                 "通过 read(\"Runtime/self.json\") 查看当前会话与来源。read/grep 用于查阅文件；"
                 "在相应写能力可用且值得长期保存时，用 write 维护 Memory/YYYY-MM-DD.md 或 History/<session>.md。\n"
                 "Shell 是单次执行；同组工具可并发，有前后依赖的调用分成两个模型步骤。"
@@ -211,6 +215,7 @@ class AgentService:
                 parent_turn_id=created.get("parent_turn_id"),
                 parent_branch_id=created.get("parent_branch_id"),
                 parent_event_id=created.get("parent_event_id"),
+                mcp_binding=self._read_mcp_binding(directory.name),
             )
             started_turns = {
                 event.get("turn_id") for event in log.events
@@ -275,7 +280,8 @@ class AgentService:
                              parent_turn_id: str | None = None,
                              parent_branch_id: str | None = None,
                              parent_event_id: int | None = None,
-                             initial_messages: list | None = None) -> dict[str, Any]:
+                             initial_messages: list | None = None,
+                             mcp_binding: dict | None = None) -> dict[str, Any]:
         async with self._admission_lock:
             if not self._accepting:
                 raise LogAgentError("agent_busy", "Agent 当前暂停接收新会话")
@@ -288,11 +294,23 @@ class AgentService:
                         and created.get("operation_id") == operation_id:
                     return self._session_view(self.sessions[sid])
                 raise LogAgentError("session_conflict", "Agent session 已存在")
+            if mcp_binding is None:
+                if workflow_session_id is not None:
+                    mcp_binding = (await self.mcp_binding_reader(workflow_session_id)
+                                   if self.mcp_binding_reader else
+                                   {"error": "原 Workflow 的 MCP 绑定读取能力不可用"})
+                else:
+                    servers = self.resources.invocation_snapshot().get("mcp_servers", {}) if self.resources else {}
+                    mcp_binding = {"servers": {key: value.model_dump(mode="json")
+                                               for key, value in servers.items() if value.enabled},
+                                   "sources": []}
+            self._write_mcp_binding(sid, mcp_binding)
             now = datetime.now(UTC).isoformat()
             session = AgentSession(
                 sid, _new_id("branch_"), model or self.default_model,
                 workflow_session_id, workflow_result, now, now,
                 log=EventLog(self.runtime, sid),
+                mcp_binding=deepcopy(mcp_binding),
                 parent_session_id=parent_session_id,
                 parent_turn_id=parent_turn_id,
                 parent_branch_id=parent_branch_id, parent_event_id=parent_event_id,
@@ -317,6 +335,24 @@ class AgentService:
             self.sessions[sid] = session
             await self._persist_session(session)
             return self._session_view(session)
+
+    def _read_mcp_binding(self, sid):
+        path = self.runtime.parent / "mcp-bindings" / f"{sid}.json"
+        try:
+            return json.loads(path.read_text())
+        except (OSError, ValueError):
+            return {"error": "原会话 MCP 绑定丢失或损坏；已有分析仍可读取"}
+
+    def _write_mcp_binding(self, sid, binding):
+        root = self.runtime.parent / "mcp-bindings"
+        root.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(mode="w", dir=root, delete=False) as out:
+            json.dump(binding, out, ensure_ascii=False)
+            temporary = Path(out.name)
+        try:
+            os.replace(temporary, root / f"{sid}.json")
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def _projection_graph(self):
         """Public state API for copying a message projection, never pending tasks."""
@@ -378,6 +414,7 @@ class AgentService:
             model=model or source.model,
             session_id=child_session_id, operation_id=operation_id,
             workflow_session_id=source.workflow_session_id,
+            workflow_result=source.workflow_input, mcp_binding=deepcopy(source.mcp_binding),
             parent_session_id=source.session_id, parent_turn_id=selected_turn,
             parent_branch_id=source.branch_id,
             parent_event_id=user["id"] - 1 if user else terminal["id"],
@@ -823,8 +860,10 @@ class AgentService:
         declarations = tuple(replace(item, input_schema=deepcopy(item.input_schema))
                              for item in self._tool_declarations())
         if self.resources is None:
+            gateway = (self.gateway_factory(session) if self.gateway_factory is not None else
+                       MCPGateway(self.mcp_runtime, session.mcp_binding) if self.mcp_runtime else None)
             return _TurnResources(config, deepcopy(self.ai_config), session.model,
-                                  None, None, None, declarations, None)
+                                  None, None, None, declarations, gateway)
         snapshot = self.resources.invocation_snapshot()
         ai_config = None
         model_name = session.model
@@ -838,15 +877,8 @@ class AgentService:
                 )
         if self.gateway_factory is not None:
             gateway = self.gateway_factory(session)
-        elif self.plugins is not None and self.collectors is not None and self.channels is not None:
-            gateway = PluginGateway(
-                InvocationSnapshot(
-                    self.plugins.generation, snapshot, self.plugins.collectorRegister,
-                    self.plugins.channelRegister, self.plugins.toolRegister,
-                ),
-                collectors=self.collectors, channels=self.channels,
-                data_dir=Path(getattr(self.resources, "_data_dir", self.workspace.root)),
-            )
+        elif self.mcp_runtime is not None:
+            gateway = MCPGateway(self.mcp_runtime, session.mcp_binding)
         else:
             gateway = None
         return _TurnResources(
