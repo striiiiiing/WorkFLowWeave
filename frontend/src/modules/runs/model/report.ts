@@ -1,4 +1,4 @@
-import type { ArtifactAvailability, ReportSection, WorkflowStage } from './types'
+import type { ArtifactAvailability, WorkflowStage } from './types'
 import type { JsonObject, JsonValue } from '@/shared/types'
 
 export interface ReportItem {
@@ -6,9 +6,12 @@ export interface ReportItem {
   status: string
   text: string
   error?: string
-  count?: number
-  sections?: ReportSection[]
   output?: string
+  processedText?: string
+  processingStatus?: string
+  truncated?: boolean
+  omitted?: boolean
+  exitCode?: number
 }
 export interface ParsedPhase {
   items: ReportItem[]
@@ -31,42 +34,23 @@ function list(value: JsonValue | undefined): JsonValue[] {
 function error(value: JsonValue | undefined): string | undefined {
   return value == null ? undefined : string(object(value).message)
 }
-function sections(value: JsonValue | undefined): ReportSection[] | undefined {
-  if (value == null) return undefined
-  return list(object(value).sections).map((raw): ReportSection => {
-    const item = object(raw)
-    const title = string(item.title)
-    if (item.kind === 'text') return { kind: 'text', title, text: string(item.text) }
-    if (item.kind === 'metrics')
-      return {
-        kind: 'metrics',
-        title,
-        items: list(item.items).map((raw) => {
-          const metric = object(raw)
-          if (typeof metric.value !== 'string' && typeof metric.value !== 'number')
-            throw new Error('插件报告的指标格式无效。')
-          return {
-            label: string(metric.label),
-            value: metric.value,
-            unit: string(metric.unit ?? ''),
-          }
-        }),
-      }
-    if (item.kind === 'table') {
-      const columns = list(item.columns).map(string)
-      const rows = list(item.rows).map((row) =>
-        list(row).map((cell) => {
-          if (cell !== null && !['string', 'number', 'boolean'].includes(typeof cell))
-            throw new Error('插件报告的表格单元格格式无效。')
-          return cell as string | number | boolean | null
-        }),
-      )
-      if (!columns.length || rows.some((row) => row.length !== columns.length))
-        throw new Error('插件报告的表格列数不一致。')
-      return { kind: 'table', title, columns, rows }
-    }
-    throw new Error('无法识别插件报告类型，请在高级模式查看原始数据。')
-  })
+function collectionText(raw: JsonValue | undefined): string {
+  if (raw == null) return ''
+  const value = object(raw)
+  if (typeof value.stdout === 'string') {
+    return [value.stdout, typeof value.stderr === 'string' && value.stderr ? `stderr:\n${value.stderr}` : '']
+      .filter(Boolean)
+      .join('\n\n')
+  }
+  const blocks = Array.isArray(value.content)
+    ? value.content.map((block) => {
+        const content = object(block)
+        return content.type === 'text' ? string(content.text) : JSON.stringify(content, null, 2)
+      })
+    : []
+  if (value.structuredContent != null)
+    blocks.push(JSON.stringify(value.structuredContent, null, 2))
+  return blocks.join('\n\n')
 }
 
 export function parsePhase(stage: WorkflowStage, value: JsonValue): ParsedPhase {
@@ -84,6 +68,12 @@ export function parsePhase(stage: WorkflowStage, value: JsonValue): ParsedPhase 
     }
   if (stage === 'finish')
     return { errors, items: [{ id: '运行结果', status: string(body.status), text: '' }] }
+  const inputViews = stage === 'collect' && body.input_views != null
+    ? new Map(list(body.input_views).map((raw) => {
+        const view = object(raw)
+        return [string(view.source_id), view] as const
+      }))
+    : undefined
   const entries = list(
     body[stage === 'collect' ? 'collection' : stage === 'analyze' ? 'analyses' : 'deliveries'],
   )
@@ -94,13 +84,20 @@ export function parsePhase(stage: WorkflowStage, value: JsonValue): ParsedPhase 
         item[stage === 'collect' ? 'source_id' : stage === 'analyze' ? 'task_id' : 'channel_id'],
       ),
       status: string(item.status),
-      text: stage === 'notify' ? '' : string(item.text),
+      text: stage === 'notify' ? '' : stage === 'collect' ? collectionText(item.raw) : string(item.text),
       error: error(item.error),
     }
     if (stage === 'collect') {
-      if (typeof item.count !== 'number') throw new Error('采集结果缺少数量。')
-      result.count = item.count
-      result.sections = sections(item.report)
+      const view = inputViews?.get(result.id)
+      if (view) {
+        result.processingStatus = string(view.status)
+        result.processedText = typeof view.text === 'string' ? view.text : ''
+        result.truncated = view.truncated === true
+        result.omitted = view.omitted === true
+        result.error ??= error(view.error)
+      }
+      const raw = item.raw == null ? undefined : object(item.raw)
+      if (typeof raw?.exit_code === 'number') result.exitCode = raw.exit_code
     }
     if (stage === 'notify') {
       result.output = string(item.output_id)
@@ -120,6 +117,7 @@ export function resultStatus(status: string, stage: WorkflowStage): string {
     missing: '来源不可用',
     failed: stage === 'notify' ? '投递失败' : '失败',
     timeout: '超时',
+    unknown: '结果不确定',
     cancelled: '已取消',
     skipped: '渠道已停用，未发送',
     uncertain: '投递结果不确定',

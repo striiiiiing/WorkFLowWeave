@@ -202,8 +202,7 @@ def _client(lifecycle: Lifecycle, *, raise_server_exceptions: bool = True) -> Te
 
 def _resource_payloads() -> dict[str, dict]:
     return {
-        "sources": {"id": "source", "collector": "mock"},
-        "setters": {"id": "setter", "collector": "mock", "setters": {}},
+        "sources": {"id": "source", "call": {"kind": "cli", "mode": "argv", "executable": "printf", "argv": ["%s", "example"]}},
         "ai": {"id": "ai", "provider": "mock", "models": {"model": {}}},
         "channels": {"id": "channel", "channel": "mock", "options": {}},
         "workflows": {
@@ -278,7 +277,7 @@ def test_transport_validation_rejects_unknown_fields_and_invalid_query_values():
     with _client(lifecycle) as client:
         unknown = client.post(
             "/api/sources",
-            json={"id": "source", "collector": "mock", "unexpected": True},
+            json={**_resource_payloads()["sources"], "unexpected": True},
         )
         assert unknown.status_code == 422
         assert unknown.json()["error"]["code"] == "validation"

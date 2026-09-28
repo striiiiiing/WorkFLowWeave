@@ -12,7 +12,7 @@ from logagent.workflow.notification import build_notification_graph
 from logagent.workflow.stages import WorkflowOperations
 from logagent.workflow.stream import tagged_node
 
-GRAPH_REVISION = "workflow-stream-v1"
+GRAPH_REVISION = "workflow-mcp-cli-v2"
 PREDECESSORS = {"collect": START, "analyze": "collect", "aggregate": "analyze", "notify": "aggregate"}
 
 
@@ -32,6 +32,7 @@ class GraphState(TypedDict):
     resume_request_id: str | None
     resume_stage: str | None
     resume_checkpoint: str | None
+    reuse_collection_epoch: str | None
 
 
 class ChildState(GraphState):

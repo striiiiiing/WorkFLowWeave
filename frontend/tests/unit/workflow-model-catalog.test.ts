@@ -150,3 +150,28 @@ it('shows catalog update failures and retries without losing edits', async () =>
   expect(button('保存工作流').attributes('disabled')).toBeUndefined()
   expect(draft.name).toBe('保留草稿')
 })
+
+it('shows the new workflow form while an empty resource catalog is pending', async () => {
+  resourceList.mockImplementation(() => new Promise(() => {}))
+  const wrapper = mount(WorkflowEditPage, {
+    global: {
+      plugins: [ElementPlus],
+      provide: {
+        [resourcesApiKey as symbol]: resourcesApi,
+        [workflowsApiKey as symbol]: workflowsApi,
+        [systemApiKey as symbol]: systemApi,
+      },
+      stubs: {
+        RouterLink: { template: '<a><slot /></a>' },
+        SourceStepCard: true,
+        NotificationCard: true,
+        BackupMatrix: true,
+      },
+    },
+  })
+  wrappers.push(wrapper)
+  await flushPromises()
+  expect(wrapper.getComponent(ElForm).exists()).toBe(true)
+  expect(wrapper.text()).toContain('基本信息与运行策略')
+  expect(wrapper.find('button').exists()).toBe(true)
+})

@@ -22,16 +22,16 @@ from logagent.config.calls import (
     select_source_call,
 )
 from logagent.config.migrations import RESOURCE_FORMAT_VERSION, migrate_resources
-from logagent.config.normalize import normalize_options, validate_effective_source
+from logagent.config.normalize import normalize_options
 from logagent.config.reader import read_json
 from logagent.errors import LogAgentError, validation_error
 from logagent.models import (
     AIConfig,
     AtSchedule,
     ChannelConfig,
+    MCPServerConfig,
     ResourceKind,
     SaveMode,
-    SetterTemplate,
     SourceConfig,
     SourceOverride,
     StrictModel,
@@ -47,7 +47,7 @@ from logagent.schema import (
 )
 
 _MODELS = {
-    "sources": SourceConfig, "setters": SetterTemplate, "ai": AIConfig,
+    "sources": SourceConfig, "mcp_servers": MCPServerConfig, "ai": AIConfig,
     "channels": ChannelConfig, "workflows": WorkflowDefinition,
 }
 Validator = Callable[[StrictModel], None]
@@ -56,7 +56,7 @@ Validator = Callable[[StrictModel], None]
 class _Resources(StrictModel):
     format_version: int = Field(ge=RESOURCE_FORMAT_VERSION, le=RESOURCE_FORMAT_VERSION)
     sources: dict[str, SourceConfig]
-    setters: dict[str, SetterTemplate]
+    mcp_servers: dict[str, MCPServerConfig]
     ai: dict[str, AIConfig]
     channels: dict[str, ChannelConfig]
     workflows: dict[str, WorkflowDefinition]
@@ -162,8 +162,8 @@ class ResourceStore:
             self._validators = dict(validators)
 
     def _capability(self, kind, value, changed):
-        registry = self._collectors if kind in ("sources", "setters") else self._channels
-        name = value.collector if kind in ("sources", "setters") else value.channel
+        registry = self._channels
+        name = value.channel
         capability = registry.get(name) if registry is not None else None
         if capability is None and changed:
             raise LogAgentError("capability_missing", "新资源引用的插件能力不可用", {"name": name})
@@ -203,72 +203,42 @@ class ResourceStore:
                 for key in enabled_sources
                 if key in workflow.source_overrides
             }
-            return WorkflowSnapshot(
+            snapshot = WorkflowSnapshot(
                 workflow=snapshot_workflow,
                 sources={
                     key: resolve_source_call(
                         candidate.sources.get(key),
-                        candidate.setters,
+                        {},
                         workflow.source_overrides.get(key),
                     )
                     for key in enabled_sources
                 },
                 ai={key: copy_model(candidate.ai[key]) for key in ai_ids},
                 channels=channels,
+                mcp_servers={
+                    server: copy_model(candidate.mcp_servers[server])
+                    for server in {
+                        select_source_call(candidate.sources.get(key), workflow.source_overrides.get(key)).call.server
+                        for key in enabled_sources
+                        if select_source_call(candidate.sources.get(key), workflow.source_overrides.get(key)).call.kind == "mcp"
+                    }
+                },
                 created_at=datetime.now(UTC),
             )
+            return snapshot
         except KeyError:
             raise LogAgentError("invalid_reference", "Workflow 引用的资源不存在") from None
         except ValidationError as exc:
             raise validation_error(exc) from None
 
-    @staticmethod
-    def _prepare_effective_source(
-        source: SourceConfig,
-        capability,
-        *,
-        data_dir: Path,
-        apply_defaults: bool,
-    ) -> bool:
-        """Normalize and schema-check a source without consulting stored workflows."""
-        normalized = normalize_options(
-            source.options, capability.options_schema,
-            data_dir=data_dir, apply_defaults=apply_defaults,
-        )
-        validate_instance(
-            normalized, resource_options_schema(capability.options_schema), path=["options"],
-        )
-        validate_instance(source.setters, capability.setters_schema, path=["setters"])
-        source.options = normalized
-        if options_complete(normalized, capability.options_schema):
-            validate_effective_source(source, capability)
-            return True
-        return False
-
     def _validate_workflow(self, workflow, candidate, *, changed):
-        for ident, override in workflow.source_overrides.items():
-            detached = override.source
-            if detached is None:
-                continue
-            if detached.id != ident:
-                raise LogAgentError("invalid_reference", "脱离的数据源快照与工作流绑定不匹配")
-            capability = self._collectors.get(detached.collector) if self._collectors else None
-            if capability is None:
-                if changed:
-                    raise LogAgentError("capability_missing", "脱离的数据源采集器能力不可用")
-                continue
-            self._prepare_effective_source(
-                detached, capability, data_dir=self._data_dir, apply_defaults=False,
-            )
-
         # Validate all saved bindings, including disabled ones; only execution filters them.
         snapshot = self._snapshot(workflow, candidate, for_execution=False)
         for kind, resources, overrides, registry in (
-            ("sources", snapshot.sources, workflow.source_overrides, self._collectors),
             ("channels", snapshot.channels, workflow.channel_overrides, self._channels),
         ):
             for ident, effective in resources.items():
-                name = effective.collector if kind == "sources" else effective.channel
+                name = effective.channel
                 capability = registry.get(name) if registry is not None else None
                 if capability is None:
                     if changed and ident in overrides:
@@ -281,53 +251,38 @@ class ResourceStore:
                         data_dir=self._data_dir,
                     )
                     effective.options.update(deepcopy(override.options))
-                if kind == "sources":
-                    validate_effective_source(effective, capability)
-                else:
-                    validate_instance(effective.options, capability.options_schema, path=["options"])
+                validate_instance(effective.options, capability.options_schema, path=["options"])
                 validator = self._validators.get(kind)
                 if validator is not None:
                     _call_validator(validator, effective)
 
     def _validate(self, candidate: _Resources, *, changed: set, normalize: bool) -> None:
-        for kind in ("setters", "sources", "channels", "ai", "workflows"):
+        for kind in ("mcp_servers", "sources", "channels", "ai", "workflows"):
             for ident, value in getattr(candidate, kind).items():
                 is_changed = (kind, ident) in changed
                 effective = value
-                if kind in ("sources", "setters", "channels"):
+                if kind == "sources" and value.call.kind == "mcp":
+                    if value.call.server not in candidate.mcp_servers:
+                        raise LogAgentError("invalid_reference", "来源引用的 MCP 服务不存在")
+                if kind == "channels":
                     registry, capability = self._capability(kind, value, is_changed)
-                    if kind == "sources":
-                        effective = resolve_source_call(value, candidate.setters)
                     if capability is None:
                         continue
-                    if kind == "setters":
-                        validate_instance(value.setters, capability.setters_schema, partial=True)
-                    elif kind == "sources":
-                        self._prepare_effective_source(
-                            effective, capability, data_dir=self._data_dir,
-                            apply_defaults=normalize and is_changed,
-                        )
-                        value.options = effective.options
-                    else:
-                        normalized = normalize_options(
-                            value.options, capability.options_schema,
-                            data_dir=self._data_dir, apply_defaults=normalize and is_changed,
-                        )
-                        validate_instance(normalized, resource_options_schema(capability.options_schema),
-                                          path=["options"])
-                        effective = copy_model(value)
-                        effective.options = normalized
-                        value.options = normalized
+                    normalized = normalize_options(
+                        value.options, capability.options_schema,
+                        data_dir=self._data_dir, apply_defaults=normalize and is_changed,
+                    )
+                    validate_instance(normalized, resource_options_schema(capability.options_schema),
+                                      path=["options"])
+                    effective = copy_model(value)
+                    effective.options = normalized
+                    value.options = normalized
+                    if not options_complete(effective.options, capability.options_schema):
+                        continue
                 if kind == "workflows":
                     self._validate_workflow(value, candidate, changed=is_changed)
                 validator = self._validators.get(kind)
-                # Runtime validators require a complete call. Deferred call
-                # fields are validated after workflow binding above.
                 if validator is not None:
-                    if kind in ("sources", "channels") and not options_complete(
-                        effective.options, capability.options_schema
-                    ):
-                        continue
                     _call_validator(validator, effective)
 
     def _publish(self, candidate: _Resources) -> None:
@@ -436,7 +391,7 @@ class ResourceStore:
             candidate = self._parse(data)
             self._validate(candidate, changed={(kind, resource.id)}, normalize=True)
             if kind == "sources":
-                return resolve_source_call(candidate.sources[resource.id], candidate.setters)
+                return resolve_source_call(candidate.sources[resource.id], {})
             return self._snapshot(candidate.workflows[resource.id], candidate)
 
     def resolve_source(
@@ -462,23 +417,7 @@ class ResourceStore:
                     )
             if source.id != ident:
                 raise LogAgentError("invalid_reference", "数据源快照与资源绑定不匹配")
-            capability = self._collectors.get(source.collector) if self._collectors else None
-            if capability is None:
-                raise LogAgentError(
-                    "capability_missing", "数据源引用的插件能力不可用",
-                    {"name": source.collector},
-                )
-            override.options = normalize_call_options(
-                override.options, capability.options_schema, data_dir=self._data_dir,
-            )
-            effective = resolve_source_call(source, self._view.setters, override)
-            complete = self._prepare_effective_source(
-                effective, capability, data_dir=self._data_dir, apply_defaults=True,
-            )
-            validator = self._validators.get("sources")
-            if complete and validator is not None:
-                _call_validator(validator, effective)
-            return effective
+            return resolve_source_call(source, {}, override)
 
     def snapshot(self, workflow_id: str) -> WorkflowSnapshot:
         with self._lock:
@@ -492,9 +431,10 @@ class ResourceStore:
         with self._lock:
             return {
                 "sources": {
-                    key: resolve_source_call(value, self._view.setters)
+                    key: resolve_source_call(value, {})
                     for key, value in self._view.sources.items() if value.enabled
                 },
+                "mcp_servers": {key: copy_model(value) for key, value in self._view.mcp_servers.items()},
                 "channels": {
                     key: copy_model(value) for key, value in self._view.channels.items()
                     if value.enabled

@@ -32,7 +32,7 @@ export function createWorkflow(): WorkflowDefinition {
     source_overrides: {},
     channel_overrides: {},
     input_separator: '\n\n',
-    include_counts: true,
+    input_processing: { format: 'none', total_tokens: null, item_tokens: null, field_tokens: null },
     collection_concurrency: 4,
     analysis_concurrency: 4,
     on_all_empty: 'stop',

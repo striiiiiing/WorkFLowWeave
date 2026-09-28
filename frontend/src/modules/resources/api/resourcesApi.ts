@@ -1,4 +1,5 @@
 import { segment, type HttpClient } from '@/shared/api'
+import type { JsonObject } from '@/shared/types'
 import type {
   Credential,
   ResourceKind,
@@ -16,6 +17,22 @@ export function createResourcesApi(http: HttpClient) {
         method: 'POST',
         data: override ?? {},
         signal,
+      }),
+    mcpStatus: () => http.request<MCPServerStatus[]>({ url: '/mcp/catalog/status' }),
+    mcpCatalog: (server?: string, query = '', cursor = 0) =>
+      http.request<MCPToolCatalog>({
+        url: '/mcp/catalog',
+        params: { server, query, cursor, page_size: 100 },
+      }),
+    loadMcpCatalog: (server: string, refresh = false) =>
+      http.request<{ server: string; tool_count: number }>({
+        url: `/mcp/catalog/${segment(server)}/load`,
+        method: 'POST',
+        params: { refresh },
+      }),
+    describeMcpTool: (server: string, tool: string) =>
+      http.request<MCPToolDescription>({
+        url: `/mcp/catalog/${segment(server)}/tools/${segment(tool)}`,
       }),
     discoverAIModels: (config: AIConfig) =>
       http.request<string[]>({
@@ -40,5 +57,24 @@ export function createResourcesApi(http: HttpClient) {
     delete: (kind: ResourceKind, id: string) =>
       http.request<void>({ url: `/${kind}/${segment(id)}`, method: 'DELETE' }),
   }
+}
+export interface MCPServerStatus {
+  server: string
+  state: 'unloaded' | 'cached' | 'connected' | 'failed'
+  enabled: boolean
+  error: string | null
+  version: string
+}
+export interface MCPToolCatalog {
+  entries: { server: string; tool: string; description: string }[]
+  next_cursor: number | null
+  incomplete: boolean
+  load_servers: string[]
+  servers: MCPServerStatus[]
+}
+export interface MCPToolDescription {
+  name: string
+  description?: string
+  inputSchema: JsonObject
 }
 export type ResourcesApi = ReturnType<typeof createResourcesApi>

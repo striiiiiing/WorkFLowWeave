@@ -87,11 +87,11 @@ class ProtectCredentialRequest(StrictModel):
 
 
 class ResumeRequest(StrictModel):
-    stage: Literal["collect", "analyze", "aggregate", "notify"] | None = None
+    stage: Literal["collect", "process", "analyze", "aggregate", "notify"] | None = None
     checkpoint_id: str | None = Field(default=None, min_length=1)
     request_id: ID | None = None
 
 
 class RecoveryQuery(StrictModel):
-    stage: Literal["collect", "analyze", "aggregate", "notify"] | None = None
+    stage: Literal["collect", "process", "analyze", "aggregate", "notify"] | None = None
     checkpoint_id: str | None = Field(default=None, min_length=1)

@@ -1,195 +1,117 @@
-"""Single-source execution over an injected, read-only registry view."""
-
+"""Acquire raw MCP/CLI results without Workflow representation or business counts."""
 from __future__ import annotations
 
 import asyncio
-import inspect
-from copy import deepcopy
+import os
+import signal
+from dataclasses import asdict
 
-from pydantic import TypeAdapter, ValidationError
-
-from logagent.errors import LogAgentError, exception_error, validation_error
-from logagent.models import (
-    ID,
-    CapabilityDescription,
-    CollectionContext,
-    CollectionResult,
-    CollectorOutput,
-    ErrorInfo,
-    SourceConfig,
-    copy_model,
-)
-from logagent.protocols import Collector, CollectorRegistryView
-from logagent.schema import validate_instance
-
-_ID = TypeAdapter(ID)
+from logagent.errors import LogAgentError
+from logagent.models import CollectionResult, ErrorInfo, SourceConfig, copy_model
 
 
 class CollectorManager:
-    """Return collection facts; cross-source ordering and policy belong to Workflow.
+    def __init__(self, mcp_runtime):
+        self.mcp = mcp_runtime
 
-    ``validate`` accepts effective sources whose Setter templates were expanded
-    by configuration. ``collect`` never reads mutable plugin defaults/templates.
-    """
+    def validate(self, source):
+        copy_model(source)
 
-    def __init__(self, collector_register: CollectorRegistryView) -> None:
-        self._register = collector_register
+    def describe(self):
+        return []
 
-    def reload_register(self, collector_register: CollectorRegistryView) -> None:
-        """Install one atomically published registry view for future calls."""
-        self._register = collector_register
+    def reload_register(self, registry):
+        """Collector plugins no longer participate in collection."""
 
-    def describe(self) -> list[CapabilityDescription]:
-        return [copy_model(description) for description in self._register.describe()]
-
-    @staticmethod
-    def _copy_source(source: SourceConfig) -> SourceConfig:
-        if not isinstance(source, SourceConfig):
-            raise LogAgentError("invalid_config", "来源必须是 SourceConfig")
+    async def collect(self, source: SourceConfig, context):
+        source = copy_model(source)
         try:
-            return copy_model(source)
-        except ValidationError as exc:
-            raise validation_error(exc) from None
-
-    def _missing(self, source: SourceConfig) -> ErrorInfo:
-        diagnostics = getattr(self._register, "diagnostics", None)
-        errors = diagnostics(source.collector) if diagnostics is not None else []
-        return ErrorInfo(
-            code="collector_missing",
-            message="来源引用的 Collector 未注册或加载失败",
-            details={
-                "collector": source.collector,
-                "discovery_errors": [error.model_dump(mode="json") for error in errors],
-            },
-        )
-
-    @staticmethod
-    def _validate_parameters(collector: Collector, source: SourceConfig) -> None:
-        if source.template is not None:
-            raise LogAgentError(
-                "unresolved_template",
-                "来源的 Setter 模板需要先由配置模块展开",
-                {"errors": [{"path": ["template"], "reason": "unresolved_template"}]},
+            if source.call.kind == "cli":
+                return await self._cli(source)
+            call = source.call
+            execution = await self.mcp.call(
+                context.mcp_servers or {}, call.server, call.tool, call.arguments,
+                context={"workflow_id": context.workflow_id, "session_id": context.session_id,
+                         "source_id": source.id}, timeout_seconds=source.timeout,
             )
-        validate_instance(source.options, collector.options_schema, path=["options"])
-        validate_instance(source.setters, collector.setters_schema, path=["setters"])
-        semantic_validate = getattr(collector, "validate", None)
-        if semantic_validate is not None:
-            if not callable(semantic_validate) or inspect.iscoroutinefunction(semantic_validate):
-                raise LogAgentError("invalid_declaration", "Collector.validate 必须是同步纯函数")
-            try:
-                result = semantic_validate(deepcopy(source.options), deepcopy(source.setters))
-                if inspect.iscoroutine(result):
-                    result.close()
-                if result is not None:
-                    raise LogAgentError("invalid_declaration", "Collector.validate 必须返回 None")
-            except Exception as exc:
-                # A plugin can raise our exception type too; its message/details
-                # remain arbitrary plugin text and cannot bypass this boundary.
-                raise LogAgentError(
-                    "invalid_config",
-                    "来源选项或 Setter 未通过 Collector 语义校验",
-                    {"exception_type": type(exc).__name__},
-                ) from None
-
-    def validate(self, source: SourceConfig) -> None:
-        source = self._copy_source(source)
-        collector = self._register.get(source.collector)
-        if collector is None:
-            error = self._missing(source)
-            raise LogAgentError(error.code, error.message, error.details)
-        self._validate_parameters(collector, source)
-
-    async def collect(self, source: SourceConfig, context: CollectionContext) -> CollectionResult:
-        loop = asyncio.get_running_loop()
-        started = loop.time()
-        if not isinstance(source, SourceConfig) or not isinstance(context, CollectionContext):
-            raise LogAgentError("invalid_argument", "采集调用需要来源配置与运行上下文")
-        try:
-            source_id = _ID.validate_python(source.id)
-        except ValidationError:
-            raise LogAgentError("invalid_argument", "来源实例 ID 无效") from None
-        try:
-            source = self._copy_source(source)
+            metadata = asdict(execution)
+            metadata.pop("raw")
+            raw = execution.raw
+            status = execution.status
+            if status == "success":
+                has_content = raw is not None and (
+                    "structuredContent" in raw or any(
+                        block.get("type") != "text" or block.get("text") != ""
+                        for block in raw.get("content", [])
+                    )
+                )
+                status = "success" if has_content else "empty"
+            elif status == "tool_error":
+                status = "failed"
+            error = None if status in {"success", "empty"} else ErrorInfo(
+                code="mcp_" + execution.status, message="MCP 获取失败",
+                details={"phase": execution.phase, "result_known": execution.result_known},
+            )
+            return CollectionResult(source_id=source.id, status=status,
+                                    raw=raw, error=error, metadata=metadata)
         except LogAgentError as exc:
-            return CollectionResult(source_id=source_id, status="failed", error=exc.info)
+            return CollectionResult(source_id=source.id,
+                                    status="missing" if exc.code in {
+                                        "mcp_out_of_scope", "mcp_tool_missing", "mcp_disabled",
+                                    } else "failed", error=exc.info)
 
-        collector = self._register.get(source.collector)
-        if collector is None:
-            return CollectionResult(
-                source_id=source_id, status="missing", error=self._missing(source)
-            )
-
-        deadline = started + source.timeout
-        timeout = asyncio.timeout_at(deadline)
-        task = asyncio.current_task()
-        initial_cancelling = task.cancelling() if task is not None else 0
-
-        def checkpoint() -> None:
-            # Inside the scope one pending cancellation may belong to its timer.
-            own_cancellation = int(timeout.expired())
-            if task is not None and task.cancelling() > initial_cancelling + own_cancellation:
-                raise asyncio.CancelledError
-            if timeout.expired() or loop.time() >= deadline:
-                raise TimeoutError
-
-        failure: Exception | None = None
-        result: CollectionResult | None = None
+    async def _cli(self, source):
+        call = source.call
+        process = None
+        communicate = None
         try:
-            async with timeout:
-                self._validate_parameters(collector, source)
-                checkpoint()
-                try:
-                    raw = await collector.collect(
-                        deepcopy(source.options), deepcopy(source.setters), context
+            async with asyncio.timeout(source.timeout):
+                kwargs = dict(cwd=call.cwd, stdout=asyncio.subprocess.PIPE,
+                              stderr=asyncio.subprocess.PIPE, start_new_session=True)
+                if call.mode == "argv":
+                    process = await asyncio.create_subprocess_exec(
+                        call.executable, *call.argv, **kwargs,
                     )
-                except Exception as exc:
-                    # Structured error *returns* follow the Collector contract;
-                    # thrown exceptions, including LogAgentError, are private.
-                    raise LogAgentError(
-                        "collection_failed",
-                        "来源执行失败",
-                        {"exception_type": type(exc).__name__},
-                    ) from None
-                checkpoint()
-                try:
-                    # Revalidate instances too: plugins may use model_construct,
-                    # mutate nested data, or return a reused mutable result object.
-                    data = (
-                        raw.model_dump(mode="python", warnings=False)
-                        if isinstance(raw, CollectorOutput)
-                        else raw
-                    )
-                    output = CollectorOutput.model_validate(data)
-                    result = CollectionResult(
-                        source_id=source_id, **output.model_dump(mode="python")
-                    )
-                except ValidationError as exc:
-                    raise validation_error(exc, code="invalid_collector_output") from None
-                checkpoint()
-        except asyncio.CancelledError:
-            # Never invent CollectionStatus.cancelled or consume caller cancellation.
-            raise
-        except Exception as exc:
-            failure = exc
-
-        # __aexit__ has removed the timer's own cancellation by this point.
-        # A swallowed caller cancellation or cleanup error cannot become success,
-        # nor can a cleanup error overwrite an exhausted collection deadline.
-        if task is not None and task.cancelling() > initial_cancelling:
-            raise asyncio.CancelledError
-        if timeout.expired() or loop.time() >= deadline:
+                else:
+                    process = await asyncio.create_subprocess_shell(call.command, **kwargs)
+                communicate = asyncio.create_task(process.communicate())
+                stdout, stderr = await asyncio.shield(communicate)
+            invalid_encoding = False
+            try:
+                output = stdout.decode("utf-8")
+                diagnostic = stderr.decode("utf-8")
+            except UnicodeDecodeError:
+                invalid_encoding = True
+                output = stdout.decode("utf-8", errors="backslashreplace")
+                diagnostic = stderr.decode("utf-8", errors="backslashreplace")
+            raw = {"stdout": output, "stderr": diagnostic, "exit_code": process.returncode}
+            status = "failed" if process.returncode or invalid_encoding else "success" if stdout else "empty"
             return CollectionResult(
-                source_id=source_id,
-                status="timeout",
-                error=ErrorInfo(code="collection_timeout", message="来源整体采集时限已耗尽"),
+                source_id=source.id, status=status, raw=raw,
+                error=(ErrorInfo(code="cli_encoding", message="CLI 输出不是有效 UTF-8，原始字节已转义保留")
+                       if invalid_encoding else ErrorInfo(code="cli_exit", message="CLI 非零退出",
+                           details={"exit_code": process.returncode}) if process.returncode else None),
+                metadata={"kind": "cli", "mode": call.mode, "result_known": True},
             )
-        if failure is not None:
-            error = (
-                failure.info
-                if isinstance(failure, LogAgentError)
-                else exception_error(failure, code="collection_failed", message="来源执行失败")
+        except (TimeoutError, asyncio.CancelledError) as exc:
+            if process is not None:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                stdout, stderr = await communicate if communicate else await process.communicate()
+            else:
+                stdout, stderr = b"", b""
+            if isinstance(exc, asyncio.CancelledError):
+                raise
+            return CollectionResult(
+                source_id=source.id, status="timeout",
+                raw={"stdout": stdout.decode("utf-8", errors="backslashreplace"),
+                     "stderr": stderr.decode("utf-8", errors="backslashreplace"),
+                     "exit_code": process.returncode if process else None},
+                error=ErrorInfo(code="cli_timeout", message="CLI 超时，进程组已终止"),
+                metadata={"result_known": False, "phase": "dispatched" if process else "start"},
             )
-            return CollectionResult(source_id=source_id, status="failed", error=error)
-        assert result is not None
-        return result
+        except OSError as exc:
+            return CollectionResult(source_id=source.id, status="failed",
+                                    error=ErrorInfo(code="cli_failed", message=str(exc)))

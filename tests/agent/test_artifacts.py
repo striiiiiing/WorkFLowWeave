@@ -64,3 +64,13 @@ async def test_credentials_are_redacted_in_complete_artifact_and_preview(tmp_pat
     full = (store.workspace.runtime / result["artifact_path"]).read_text()
     assert "do-not-save" not in full and "do-not-save" not in str(result)
     assert "[REDACTED]" in full
+
+
+async def test_mcp_result_keeps_exact_raw_content_in_full_artifact(tmp_path):
+    store = await store_for(tmp_path)
+    raw = {"status": "success", "raw": {"content": [
+        {"type": "text", "text": "api_key is a field name, not a credential"}
+    ], "structuredContent": {"api_key": "source-data"}, "isError": False}}
+    result = await save(store, raw, config=AgentConfig(preview_tokens=700), preserve_full=True)
+    saved = json.loads((store.workspace.runtime / result["artifact_path"]).read_text())
+    assert saved == raw

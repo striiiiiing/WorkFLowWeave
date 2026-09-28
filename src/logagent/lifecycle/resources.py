@@ -112,8 +112,7 @@ def resource_validators(
     def source_validator(value: StrictModel) -> None:
         """在采集器已注册时校验采集源的运行参数。"""
         source = SourceConfig.model_validate(value)
-        if collector_register.get(source.collector) is not None:
-            collectors.validate(source)
+        collectors.validate(source)
 
     def channel_validator(value: StrictModel) -> None:
         """在通道已注册时校验消息通道的运行参数。"""

@@ -17,7 +17,7 @@ export type WorkflowChanges = Partial<
     | 'enabled'
     | 'schedule'
     | 'input_separator'
-    | 'include_counts'
+    | 'input_processing'
     | 'collection_concurrency'
     | 'analysis_concurrency'
     | 'on_all_empty'
@@ -60,9 +60,8 @@ export function setSourceOverride(
 export function setDetachedSource(workflow: WorkflowDefinition, source: SourceConfig) {
   return setSourceOverride(workflow, source.id, {
     source: structuredClone(source),
-    options: {},
-    setters: {},
-    template: null,
+    arguments: null,
+    limits: { item_tokens: null, field_tokens: null },
   })
 }
 

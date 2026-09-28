@@ -16,6 +16,7 @@ from logagent.models import (
     WorkflowSnapshot,
     copy_model,
 )
+from logagent.workflow.input_processing import process_input
 from logagent.workflow.nodes import ArchiveRuntime, archive_node, epoch_key, safe_node
 
 _STAGES = ("collect", "analyze", "aggregate", "notify", "finish")
@@ -133,16 +134,35 @@ class WorkflowOperations:
         全空 skip 只停止下游，是否降级由 finish 根据原始结果判断。
         """
         wf = snapshot.workflow
-        valid = [item.text for item in result.collection if item.status == "success"]
-        result.shared_input = wf.input_separator.join(valid)
-        if wf.include_counts and valid:
-            result.shared_input += "\n\n" + "\n".join(
-                f"{item.source_id}: {item.status} ({item.count})" for item in result.collection
-            )
+        limited = wf.input_processing.total_tokens is not None or any(
+            source.limits.item_tokens or source.limits.field_tokens
+            for source in snapshot.sources.values()
+        )
+        counters = []
+        if limited:
+            consumers = {(task.ai, task.model) for task in wf.analyses}
+            fan = wf.fan_in
+            if fan and "$input" in fan.ordered_inputs(wf.analyses):
+                reused = fan.reused_task(wf.analyses)
+                if reused:
+                    consumers.add((reused.ai, reused.model))
+                elif fan.ai:
+                    consumers.add((fan.ai, fan.model))
+            if not hasattr(self.ai_service, "input_counter"):
+                raise LogAgentError("tokenizer_unavailable", "AI 服务未提供精确输入 token 计量")
+            counters = [self.ai_service.input_counter(snapshot.ai[ai], model)
+                        for ai, model in sorted(consumers)]
+        result.shared_input, result.input_views = process_input(snapshot, result.collection, counters)
+        valid = [view for view in result.input_views if view.status == "success" and not view.omitted]
+        for view in result.input_views:
+            if view.status == "failed":
+                result.errors.append(view.error)
+                if snapshot.sources[view.source_id].on_error == "stop":
+                    self._halt(result, "input_processing_stopped", "输入处理失败，来源策略要求停止")
         for item in result.collection:
             if item.status == "success":
                 continue
-            policy = "error" if item.status in {"failed", "timeout"} else item.status
+            policy = "error" if item.status in {"failed", "timeout", "cancelled", "unknown"} else item.status
             if getattr(snapshot.sources[item.source_id], "on_" + policy) == "stop":
                 self._halt(result, "collection_stopped", "来源策略要求停止下游阶段")
                 break
@@ -154,6 +174,7 @@ class WorkflowOperations:
         return {
             "collection": [item.model_dump(mode="json") for item in result.collection],
             "shared_input": result.shared_input,
+            "input_views": [view.model_dump(mode="json") for view in result.input_views],
             "stopped": result.stopped,
             "status": result.status,
             "errors": [e.model_dump(mode="json") for e in result.errors],
@@ -310,7 +331,8 @@ class WorkflowOperations:
         degraded |= any(
             item.status in {"failed", "missing", "timeout"} for item in result.collection
         )
+        degraded |= any(view.status == "failed" for view in result.input_views)
         degraded |= any(item.status != "success" for item in result.analyses)
-        degraded |= any(item.status in {"failed", "timeout"} for item in result.deliveries)
+        degraded |= any(item.status in {"failed", "timeout", "cancelled", "unknown"} for item in result.deliveries)
         status = "failed" if result.status == "failed" else "partial" if degraded else "completed"
         return {"status": status, "stopped": result.stopped}

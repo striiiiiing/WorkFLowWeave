@@ -32,9 +32,20 @@ def build_work_subgraph(*, stage, runtime, snapshot, context, stage_nodes, state
             """
             if stage == "collect":
                 config = snapshot.sources[ident]
+                attempt_key = state["archive_key"].replace("collect:item:", "acquisition:item:", 1)
+                attempt = await asyncio.to_thread(runtime.store.entry, runtime.session_id, attempt_key)
+                if attempt is not None:
+                    return CollectionResult(
+                        source_id=ident, status="unknown",
+                        error=ErrorInfo(code="collection_outcome_unknown",
+                                        message="来源调用已开始但结果未知，不自动重放"),
+                        metadata={"result_known": False, "phase": "dispatched"},
+                    ).model_dump(mode="json")
+                await runtime.save(attempt_key, stage="collect", scope="acquisition",
+                                   summary={"item_id": ident, "result_known": False},
+                                   body={"dispatched": True})
                 try:
-                    async with asyncio.timeout(config.timeout):
-                        raw = await collector_manager.collect(copy_model(config), context)
+                    raw = await collector_manager.collect(copy_model(config), context)
                     if asyncio.current_task().cancelling():
                         raise asyncio.CancelledError
                     result = CollectionResult.model_validate(
@@ -83,6 +94,10 @@ def build_work_subgraph(*, stage, runtime, snapshot, context, stage_nodes, state
         async def bounded(state, archived=archived, ident=ident):
             """取得并发许可后选择本项幂等键，执行或复用存档节点。"""
             async with semaphore:
+                if stage == "collect" and state.get("reuse_collection_epoch"):
+                    key = f"collect:item:{ident}:epoch:{state['reuse_collection_epoch']}"
+                    await runtime.read(key)
+                    return {"items": {ident: key}}
                 key = epoch_key(state, f"{stage}:item:{ident}")
                 return await archived({**state, "archive_key": key})
 

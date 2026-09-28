@@ -1,18 +1,12 @@
 import asyncio
-import json
-from contextlib import asynccontextmanager
 
 import pytest
 from langchain_core.messages import AIMessage
 from pydantic import Field
 
 from logagent.agent.service import AgentService
-from logagent.collection.manager import CollectorManager
-from logagent.config import PluginRegistry, ResourceStore
 from logagent.errors import LogAgentError
-from logagent.models import AIConfig, CollectionContext, SourceConfig, SystemConfig
 from tests.agent.helpers import ScriptedModel
-from tests.agent.test_gateway import Collector
 
 
 class GatedModel(ScriptedModel):
@@ -154,76 +148,3 @@ async def test_concurrent_session_creation_publishes_only_one_session(services):
         "session_conflict",
     ]
     assert len(await service.events("shared")) == 1
-
-
-async def test_turn_uses_one_resource_and_plugin_snapshot_for_model_catalog_and_calls(tmp_path, services):
-    collector = Collector()
-    plugin_config = SystemConfig(plugin_dir=str(tmp_path / "plugins"))
-    registry = PluginRegistry([collector])
-    await registry.discover_plugins(plugin_config)
-    collectors = CollectorManager(registry.collectorRegister)
-    ai = AIConfig(id="test-ai", provider="mock", models={"test": {}}, timeout=600)
-    source = SourceConfig(id="records", collector="example", options={"account": "fixed", "limit": 5})
-    resources = ResourceStore(
-        tmp_path / "resources.json", collector_register=registry.collectorRegister,
-        channel_register=registry.channelRegister,
-        initial_resources={"sources": [source], "ai": [ai]},
-    )
-    models = [GatedModel(responses=[
-        AIMessage(content="", tool_calls=[{
-            "id": "collector-call", "name": "plugin",
-            "args": {"action": "call", "target": "sources:records"},
-        }]), AIMessage(content="done"),
-    ]) for _ in range(2)]
-    leases = []
-
-    class AI:
-        @asynccontextmanager
-        async def lease(self, config, **kwargs):
-            index = len(leases)
-            leases.append((config, kwargs))
-            yield models[index]
-
-    contexts = []
-
-    def collection_context(session):
-        value = CollectionContext("agent", session.session_id)
-        contexts.append(value)
-        return value
-
-    service = services(
-        ai_service=AI(), resources=resources, plugins=registry, collectors=collectors,
-        channels=object(), collection_context_factory=collection_context,
-    )
-    sid = (await service.create_session(model="test-ai:test"))["session_id"]
-    first = await service.submit(sid, "call", request_id="first")
-    await asyncio.wait_for(models[0].entered.wait(), 1)
-    generation = registry.generation
-    resources.save("sources", source.model_copy(update={"options": {"account": "fixed", "limit": 9}}))
-    resources.save("ai", ai.model_copy(update={"timeout": 123}))
-    models[0].release.set()
-    await service.wait(first["turn_id"])
-    first_catalog = service.workspace.runtime / "Catalog" / str(generation) / first["turn_id"]
-    old_schema = (first_catalog / "sources-records.json").read_bytes()
-    assert json.loads(old_schema)["properties"]["options"]["properties"]["limit"]["default"] == 5
-    assert leases[0][0].timeout == 600
-    assert collector.calls[0][0]["limit"] == 5
-    assert "read" in {tool.name for tool in models[0].bound_tools}
-
-    registry.update_plugin_setting(plugin_config, "tool", "agent_read", False)
-    await registry.reload_plugins(plugin_config)
-    collectors.reload_register(registry.collectorRegister)
-    resources.update_dependencies(collector_register=registry.collectorRegister,
-                                  channel_register=registry.channelRegister, validators={})
-    second = await service.submit(sid, "again", request_id="second")
-    models[1].release.set()
-    await service.wait(second["turn_id"])
-    new_catalog = service.workspace.runtime / "Catalog" / str(registry.generation) / second["turn_id"]
-    new_schema = json.loads((new_catalog / "sources-records.json").read_text())
-    assert new_schema["properties"]["options"]["properties"]["limit"]["default"] == 9
-    assert leases[1][0].timeout == 123
-    assert collector.calls[1][0]["limit"] == 9
-    assert len(collector.calls) == 2
-    assert "read" not in {tool.name for tool in models[1].bound_tools}
-    assert (first_catalog / "sources-records.json").read_bytes() == old_schema
-    assert len(contexts) == 2 and all(context.session_id == sid for context in contexts)

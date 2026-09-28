@@ -177,7 +177,6 @@ async def _seed_resources(
     channel_path: Path | None = None,
     interval: float = 10.0,
     enabled: bool = True,
-    include_counts: bool = True,
 ) -> None:
     registry = PluginRegistry(
         builtin_collectors(),
@@ -190,7 +189,10 @@ async def _seed_resources(
         channel_register=registry.channelRegister,
         data_dir=config.data_dir,
     )
-    store.save("sources", SourceConfig(id="source", collector=collector))
+    store.save("sources", SourceConfig(id="source", call={
+        "kind": "cli", "mode": "argv", "executable": "printf",
+        "argv": ["%s", "external-data" if collector == "external" else "LogAgent mock record"],
+    }))
     if channel is not None:
         store.save(
             "channels",
@@ -210,7 +212,6 @@ async def _seed_resources(
             channels=["channel"] if channel else [],
             schedule={"type": "every", "every_seconds": interval} if interval else None,
             enabled=enabled,
-            include_counts=include_counts,
         ),
     )
 
@@ -301,11 +302,7 @@ async def test_temporary_config_full_assembly_health_and_idempotent_shutdown(tmp
     )
 
     services = await lifecycle.start()
-    assert {item.name for item in services.collectors.describe()} >= {
-        "history",
-        "logs",
-        "mock",
-    }
+    assert services.collectors.describe() == []
     assert {item.name for item in services.channels.describe()} >= {"email", "mock"}
     assert services.channels._entries == {}
     health = await lifecycle.health()
@@ -376,8 +373,8 @@ async def test_interval_and_manual_share_capacity_snapshot_and_cancel(tmp_path):
         "sources",
         SourceConfig(
             id="source",
-            collector="mock",
-            options={"records": [{"message": "new snapshot"}]},
+            call={"kind": "cli", "mode": "argv", "executable": "printf",
+                  "argv": ["%s", "new snapshot"]},
         ),
     )
     scheduled = await services.intervals._execute("timed", services.intervals._plans["timed"])
@@ -481,7 +478,7 @@ async def test_plugin_reload_conflict_restores_admission_and_later_success_recov
     assert caught.value.code == "plugin_reload_conflict"
     assert services.workflow.coordinator.accepting is True
     assert services.intervals.paused is False
-    assert "external" in {item.name for item in services.collectors.describe()}
+    assert "external" in {item.name for item in services.plugins.collectorRegister.describe()}
     assert (await lifecycle.health()).status == "degraded"
 
     await services.workflow.cancel("active")
@@ -517,7 +514,7 @@ async def test_plugin_reload_conflict_includes_active_agent_turn(tmp_path):
 async def test_invalid_plugin_degrades_and_fixed_reload_recovers_saved_resource(tmp_path):
     config = _config(tmp_path)
     entry = _write_plugin(config.plugin_dir, "external", _COLLECTOR_PLUGIN)
-    await _seed_resources(config, collector="external", include_counts=False)
+    await _seed_resources(config, collector="external")
     entry.write_text("raise RuntimeError('broken plugin')\n", encoding="utf-8")
 
     lifecycle = ApplicationLifecycle(config, channel_factories={"mock": TestChannelFactory()})
@@ -527,7 +524,7 @@ async def test_invalid_plugin_degrades_and_fixed_reload_recovers_saved_resource(
     assert degraded.accepting_runs is True
     plugin_component = next(item for item in degraded.components if item.component == "plugins")
     assert plugin_component.status == "degraded"
-    assert plugin_component.error.details["capability_errors"]
+    assert plugin_component.error is not None
 
     entry.write_text(_COLLECTOR_PLUGIN, encoding="utf-8")
     report = await lifecycle.reload("plugins")
@@ -536,7 +533,7 @@ async def test_invalid_plugin_degrades_and_fixed_reload_recovers_saved_resource(
     await services.workflow.trigger("timed", session_id="recovered")
     result = await services.workflow.wait("recovered")
     assert result.status == "completed"
-    assert result.shared_input == "external-data"
+    assert "external-data" in result.shared_input
     await lifecycle.shutdown()
 
 

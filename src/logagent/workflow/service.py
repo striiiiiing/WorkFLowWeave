@@ -27,6 +27,7 @@ from logagent.models import (
     CollectionResult,
     DeliveryResult,
     ErrorInfo,
+    InputView,
     Notification,
     StrictModel,
     WorkflowDefinition,
@@ -57,6 +58,7 @@ class WorkflowResult(StrictModel):
     )
     collection: list[CollectionResult] = Field(default_factory=list)
     shared_input: str = ""
+    input_views: list[InputView] = Field(default_factory=list)
     analyses: list[AnalysisResult] = Field(default_factory=list)
     aggregate: AnalysisResult | None = None
     outputs: dict[str, str] = Field(default_factory=dict)
@@ -398,7 +400,8 @@ class WorkflowService:
             config = {"configurable": {"thread_id": session_id}}
             if stage is not None:
                 execution_epoch = uuid.uuid4().hex
-                kept = _STAGES[:_STAGES.index(stage)]
+                target_stage = "collect" if stage == "process" else stage
+                kept = _STAGES[:_STAGES.index(target_stage)]
                 retained_phases = {k: v for k, v in saved.values.get("phases", {}).items() if k in kept}
                 config = await graph.aupdate_state(
                     saved.config,
@@ -409,11 +412,14 @@ class WorkflowService:
                         "stopped": False, "status": "running",
                         "resume_request_id": request_id,
                         "resume_stage": stage, "resume_checkpoint": checkpoint_id,
+                        "reuse_collection_epoch": (
+                            saved.values.get("reuse_collection_epoch") or saved.values["execution_epoch"]
+                        ) if stage == "process" else None,
                     },
-                    as_node=PREDECESSORS[stage],
+                    as_node=PREDECESSORS[target_stage],
                 )
                 runtime = ArchiveRuntime(self.session_store, session_id, snapshot.workflow.backup)
-                await self._event(runtime, f"epoch:{execution_epoch}", stage, "running",
+                await self._event(runtime, f"epoch:{execution_epoch}", target_stage, "running",
                                   execution_epoch=execution_epoch, retained_phases=retained_phases)
             self.coordinator.submit(
                 session_id, lambda: self._execute(
@@ -533,7 +539,7 @@ class WorkflowService:
             "session_id": sid, "phases": {}, "deliveries": {},
             "stopped": False, "status": "running",
             "graph_revision": GRAPH_REVISION, "execution_epoch": execution_epoch,
-            "snapshot_ref": "snapshot",
+            "snapshot_ref": "snapshot", "reuse_collection_epoch": None,
         }
         try:
             if resume:
@@ -542,10 +548,11 @@ class WorkflowService:
                 if state.get("resume_stage"):
                     key = f"epoch:{state['execution_epoch']}"
                     if await asyncio.to_thread(self.session_store.entry, sid, key) is None:
-                        await self._event(runtime, key, state["resume_stage"], "running",
+                        resumed_stage = "collect" if state["resume_stage"] == "process" else state["resume_stage"]
+                        await self._event(runtime, key, resumed_stage, "running",
                                           execution_epoch=state["execution_epoch"],
                                           retained_phases={k: v for k, v in state["phases"].items()
-                                                           if _STAGES.index(k) < _STAGES.index(state["resume_stage"])})
+                                                           if _STAGES.index(k) < _STAGES.index(resumed_stage)})
                 if not saved.next and not saved.tasks:
                     return await self._final_result(runtime, snapshot, state)
             record = await self.get_session(sid)
@@ -584,7 +591,11 @@ class WorkflowService:
             await self._cleanup.request(sid)
 
     def _graph(self, runtime, snapshot, ctx, *, registry=None):
+        from dataclasses import replace
+
         from logagent.workflow.graph import build_workflow
+
+        ctx = replace(ctx, mcp_servers=snapshot.mcp_servers)
 
         return build_workflow(
             runtime=runtime, snapshot=snapshot, context=ctx, checkpointer=self._checkpointer,

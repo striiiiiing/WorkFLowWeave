@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from logagent.errors import LogAgentError
 
-RESOURCE_FORMAT_VERSION = 3
+RESOURCE_FORMAT_VERSION = 4
 LEGACY_SCHEDULE_FIELDS = {"interval_seconds", "cron", "cron_timezone"}
 
 
@@ -132,11 +132,24 @@ def _migrate_v2_prompts(data: dict) -> dict:
     workflows = _object(migrated.get("workflows"), "workflows")
     for value in workflows.values():
         _migrate_workflow_prompts(_object(value, "workflow"), ai)
-    migrated["format_version"] = RESOURCE_FORMAT_VERSION
+    migrated["format_version"] = 3
     return migrated
 
 
-_MIGRATIONS = {1: _migrate_v1_schedule, 2: _migrate_v2_prompts}
+def _migrate_v3_sources(data):
+    if data.get("sources") or data.get("setters"):
+        raise LogAgentError("collection_migration_required",
+                            "旧 Collector/Setter 资源不兼容；请备份原文件并将来源重建为 MCP/CLI")
+    result = deepcopy(data)
+    result.pop("setters", None)
+    result["mcp_servers"] = {}
+    result["format_version"] = 4
+    for workflow in result.get("workflows", {}).values():
+        workflow.pop("include_counts", None)
+    return result
+
+
+_MIGRATIONS = {1: _migrate_v1_schedule, 2: _migrate_v2_prompts, 3: _migrate_v3_sources}
 
 
 def migrate_resources(data: Any) -> tuple[Any, bool]:
@@ -156,6 +169,8 @@ def migrate_legacy_snapshot(data: Any) -> Any:
     """Read old session archives without accepting legacy fields in new API requests."""
     if not isinstance(data, dict) or not isinstance(data.get("workflow"), dict):
         return data
+    if any("collector" in source for source in data.get("sources", {}).values()):
+        raise LogAgentError("legacy_snapshot_incompatible", "旧 Collector 运行不能恢复执行；已有分析正文仍可读取")
     migrated = deepcopy(data)
     workflow = migrated["workflow"]
     if LEGACY_SCHEDULE_FIELDS & workflow.keys():

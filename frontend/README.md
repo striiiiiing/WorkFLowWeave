@@ -37,7 +37,7 @@ npm run dev
 
 ## 接口与行为
 
-以 `src/logagent/interaction/routers.py` 和 `models.py` 为准：资源路径为 `/api/{kind}`，运行路径为 `/api/sessions`。资源类型为 `sources`、`setters`、`ai`、`channels`、`workflows`；没有独立凭据 CRUD 接口。AI 凭据支持环境变量引用，编辑时可以保留已有密文，界面不反显密文。
+以 `src/logagent/interaction/routers.py` 和 `models.py` 为准：资源路径为 `/api/{kind}`，运行路径为 `/api/sessions`。资源类型为 `sources`、`mcp_servers`、`ai`、`channels`、`workflows`；没有独立凭据 CRUD 接口。来源编辑支持 MCP 目录 schema 驱动的参数、CLI argv/shell 调用和局部 token 限额。
 
 后端目前内置 AI API 格式为 `OpenAI Compatible API`（provider 值 `openai_compatible_api`），需要有效的 `base_url`。插件参数与模型参数使用带语法校验的 JSON 对象编辑器；参数业务约束由后端验证，插件页可查 Schema。
 
@@ -61,6 +61,6 @@ npm run test:e2e
 
 `proposal.md` 与 `design.md` 未改动；本次取舍和验证结果记录在 OpenSpec 前端 `task.md`。
 
-首次创建资源文件时自动生成 `default_mock`、`default_history`、`default_logs` 三个数据源和 `default_file` 文件通知渠道（输出到 data_dir/notifications.txt）。已有资源文件保持原样，删除默认资源后重启不会重新添加。插件页显示采集器类型 mock/logs/history 和渠道类型 mock/email；工作流选择的是资源实例。logs 需要在 config.json 配置 log_file，email 需要自行填写 SMTP 参数；AI 配置也需要真实模型服务。
+资源文件使用 v4 格式。旧 Collector/Setter 来源不会自动迁移；需要显式创建 MCP 服务及其工具来源，或 CLI 来源。工作流选择资源实例，并单独配置输入格式与 token 限额；AI 配置需要真实模型服务。
 
 前端使用顺序：进入“资源管理”查看默认数据源/渠道并添加 AI 配置，再进入“工作流管理 → 新建工作流”，选择数据源、分析任务的 AI/模型及通知渠道，保存后可编辑、立即运行或删除；运行详情中查看阶段结果。

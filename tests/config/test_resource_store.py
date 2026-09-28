@@ -1,6 +1,6 @@
 """JSON 资源存储的原子发布、引用和快照测试。
 
-真实临时资源文件配合注册表验证保存/重开、旧提示词迁移、创建/替换、引用约束、模板更新
+真实临时资源文件配合注册表验证保存/重开、旧采集资源拒绝、创建/替换、引用约束
 及不可变快照；并发提交和写入故障检查磁盘与已发布视图一致。
 验证失败保留旧有效资源，不将损坏文件作为空存储。
 """
@@ -13,7 +13,6 @@ from pathlib import Path
 import orjson
 import pytest
 
-from logagent.ai.prompts import build_messages
 from logagent.channel.mock import MockFileChannelType
 from logagent.collection.mock import MockCollector
 from logagent.config import PluginRegistry, ResourceStore
@@ -23,8 +22,6 @@ from logagent.lifecycle.resources import LifecycleResourceStore
 from logagent.models import (
     AIConfig,
     ChannelConfig,
-    FanInConfig,
-    SetterTemplate,
     SourceConfig,
     SystemConfig,
     WorkflowDefinition,
@@ -43,7 +40,9 @@ async def resources(tmp_path):
 
 
 def seed(store):
-    store.save("sources", SourceConfig(id="source", collector="mock"))
+    store.save("sources", SourceConfig(id="source", call={
+        "kind": "cli", "mode": "argv", "executable": "printf", "argv": ["%s", "example"],
+    }))
     store.save("ai", AIConfig(id="ai", provider="mock", models={"model": {}}))
     store.save("channels", ChannelConfig(id="channel", channel="mock", options={"path": "out.txt"}))
     definition = WorkflowDefinition(
@@ -68,8 +67,8 @@ async def test_save_reopen_copies_and_original_snapshot(resources):
     original = store.snapshot("workflow")
     assert Path(original.channels["channel"].options["path"]).is_absolute()
     fetched = store.get("sources", "source")
-    fetched.options["records"] = []
-    assert store.get("sources", "source").options != fetched.options
+    fetched.call.argv.append("changed")
+    assert store.get("sources", "source").call.argv != fetched.call.argv
     store.list("workflows")[0].sources.clear()
     assert store.get("workflows", "workflow") == definition
     store.save("ai", AIConfig(id="ai", provider="mock", models={"model": {"reasoning_effort": "high"}}))
@@ -77,96 +76,29 @@ async def test_save_reopen_copies_and_original_snapshot(resources):
     reopened = ResourceStore(store.location, collector_register=registry.collectorRegister,
                              channel_register=registry.channelRegister)
     assert reopened.snapshot("workflow").ai["ai"].models == {"model": {"reasoning_effort": "high"}}
-    assert set(read(store)) == {"format_version", "sources", "setters", "ai", "channels", "workflows"}
+    assert set(read(store)) == {"format_version", "sources", "mcp_servers", "ai", "channels", "workflows"}
 
 
-@pytest.mark.parametrize("with_ai", [False, True])
-@pytest.mark.parametrize("load", ["reopen", "reload"])
-@pytest.mark.parametrize("old_prompt,expected", [
-    ("legacy task", "legacy task\n\n{input}"),
-    ("legacy {input}", "legacy {input}"),
-])
-async def test_v1_prompt_migration_preserves_legacy_requests(
-    resources, with_ai, load, old_prompt, expected,
-):
-    store, registry = resources
-    definition = seed(store)
-    store.save("ai", AIConfig(
-        id="ai", provider="mock", system_prompt="legacy system {input}",
-        models={"model": {}},
-    ))
-    definition.fan_in = FanInConfig(
-        ai="ai" if with_ai else None,
-        model="model" if with_ai else None,
-        reuse_from=None,
-    )
-    store.save("workflows", definition)
-    data = read(store)
-    data["format_version"] = 1
-    workflow = data["workflows"]["workflow"]
-    del workflow["system_prompt"], workflow["input_prompt"]
-    task = workflow["analyses"][0]
-    del task["system_prompt"], task["input_prompt"], task["user_prompt"]
-    task["prompt"] = old_prompt
-    fan_in = workflow["fan_in"]
-    del fan_in["system_prompt"], fan_in["input_prompt"], fan_in["user_prompt"]
-    del fan_in["reuse_from"]
-    fan_in["prompt"] = "legacy summary"
-    edit(store, data)
-
-    if load == "reopen":
-        reopened = ResourceStore(
-            store.location, collector_register=registry.collectorRegister,
-            channel_register=registry.channelRegister,
-        )
-    else:
-        store.reload_resources()
-        reopened = store
-    migrated = read(reopened)
-    assert migrated["format_version"] == RESOURCE_FORMAT_VERSION
-    assert "prompt" not in migrated["workflows"]["workflow"]["analyses"][0]
-    assert "prompt" not in migrated["workflows"]["workflow"]["fan_in"]
-    saved = reopened.snapshot("workflow")
-    assert saved.workflow.analyses[0].system_prompt == "legacy system {input}"
-    assert saved.workflow.analyses[0].input_prompt == expected
-    messages = build_messages(
-        saved.workflow.analyses[0].system_prompt,
-        saved.workflow.analyses[0].input_prompt,
-        "collected",
-    )
-    assert messages[0].content == "legacy system {input}"
-    expected_content = (
-        old_prompt.replace("{input}", "collected")
-        if "{input}" in old_prompt else f"{old_prompt}\n\ncollected"
-    )
-    assert messages[1].content == expected_content
-    assert saved.workflow.fan_in.input_prompt == "legacy summary\n\n{input}"
-    assert saved.workflow.fan_in.order == ["analysis"]
-    assert saved.workflow.fan_in.reuse_from is None
-    assert saved.workflow.fan_in.system_prompt == ("legacy system {input}" if with_ai else None)
-    assert reopened.get("workflows", "workflow") == saved.workflow
-
-
-async def test_v1_migration_failure_keeps_original_file(resources, monkeypatch):
+@pytest.mark.parametrize("version", [1, 2, 3])
+async def test_legacy_collection_resources_require_explicit_rebuild(resources, version):
     store, _ = resources
-    seed(store)
+    original = seed(store)
     data = read(store)
-    data["format_version"] = 1
-    workflow = data["workflows"]["workflow"]
-    del workflow["system_prompt"], workflow["input_prompt"]
-    task = workflow["analyses"][0]
-    del task["system_prompt"], task["input_prompt"], task["user_prompt"]
-    task["prompt"] = "legacy {input}"
+    data["format_version"] = version
+    data["sources"]["source"] = {"id": "source", "collector": "mock"}
+    if version < 3:
+        data["setters"] = {"legacy": {"id": "legacy", "collector": "mock"}}
+        data.pop("mcp_servers")
     edit(store, data)
     before = await asyncio.to_thread(Path(store.location).read_bytes)
-
-    def fail(*_):
-        raise OSError
-
-    monkeypatch.setattr("logagent.config.store.os.replace", fail)
-    with pytest.raises(LogAgentError, match="原子保存失败"):
+    with pytest.raises(LogAgentError) as error:
+        store.reload_resources()
+    assert error.value.code == "collection_migration_required"
+    with pytest.raises(LogAgentError) as error:
         ResourceStore(store.location)
+    assert error.value.code == "collection_migration_required"
     assert await asyncio.to_thread(Path(store.location).read_bytes) == before
+    assert store.snapshot("workflow").workflow == original
 
 
 async def test_save_many_updates_model_and_workflow_atomically(resources):
@@ -205,7 +137,7 @@ async def test_lifecycle_batch_refreshes_once_after_success(resources, tmp_path)
         on_change=lambda: refreshed.append(True),
     )
     store.save_many({
-        "sources": [SourceConfig(id="source", collector="mock")],
+        "sources": [SourceConfig(id="source", call={"kind": "cli", "mode": "argv", "executable": "printf", "argv": ["%s", "example"]})],
         "ai": [AIConfig(id="ai", provider="mock", models={"model": {}})],
     })
     assert refreshed == [True]
@@ -250,41 +182,6 @@ async def test_referenced_resources_cannot_be_deleted(resources, kind, ident):
     assert store.get(kind, ident) is None
 
 
-async def test_template_reference_survives_and_updates_future_snapshots(resources):
-    store, _ = resources
-    seed(store)
-    template = SetterTemplate(id="template", collector="mock", setters={"fields": ["message"]})
-    store.save("setters", template)
-    source = SourceConfig(id="source", collector="mock", template="template")
-    store.save("sources", source)
-    original = store.snapshot("workflow")
-    assert store.get("sources", "source").template == "template"
-    assert store.get("sources", "source").setters == {}
-    template.setters = {"fields": ["level"]}
-    store.save("setters", template)
-    assert store.snapshot("workflow").sources["source"].setters["fields"] == ["level"]
-    assert original.sources["source"].setters["fields"] == ["message"]
-    source.setters = {"fields": []}
-    store.save("sources", source)
-    assert store.snapshot("workflow").sources["source"].setters["fields"] == []
-    with pytest.raises(LogAgentError) as caught:
-        store.delete("setters", "template")
-    assert caught.value.code == "reference_conflict"
-    with pytest.raises(LogAgentError):
-        store.save("setters", SetterTemplate(id="template", collector="missing"))
-
-
-async def test_invalid_template_update_rejects_entire_candidate(resources):
-    store, _ = resources
-    seed(store)
-    store.save("setters", SetterTemplate(id="t", collector="mock", setters={"fields": ["message"]}))
-    store.save("sources", SourceConfig(id="source", collector="mock", template="t"))
-    before = read(store)
-    with pytest.raises(LogAgentError):
-        store.save("setters", SetterTemplate(id="t", collector="mock", setters={"fields": [1]}))
-    assert read(store) == before
-
-
 async def test_resolve_unsaved_definition_and_source_do_not_publish(resources):
     store, _ = resources
     definition = seed(store)
@@ -292,46 +189,31 @@ async def test_resolve_unsaved_definition_and_source_do_not_publish(resources):
     before = read(store)
     assert store.resolve(definition).workflow.id == "unsaved"
     assert store.get("workflows", "unsaved") is None
-    assert store.resolve(SourceConfig(id="unsaved", collector="mock")).options["mode"] == "success"
+    source = SourceConfig(id="unsaved", call={
+        "kind": "cli", "mode": "argv", "executable": "printf", "argv": ["%s", "unsaved"],
+    })
+    assert store.resolve(source).call.argv == ["%s", "unsaved"]
     assert read(store) == before
     definition.sources = ["missing"]
     with pytest.raises(LogAgentError):
         store.resolve(definition)
     with pytest.raises(LogAgentError):
-        store.resolve(SourceConfig(id="unsaved", collector="mock", setters={"fields": [1]}))
+        store.resolve(SourceConfig(id="unsaved", call={
+            "kind": "mcp", "server": "missing", "tool": "echo",
+        }))
 
 
-async def test_effective_source_semantics_on_template_update_and_resolve(tmp_path):
-    class ProjectingCollector(MockCollector):
-        def validate(self, options, setters):
-            available = {key for record in options["records"] for key in record}
-            if not set(setters.get("fields", [])) <= available:
-                raise ValueError("Projection refers to unavailable fields")
-
-    registry = PluginRegistry([ProjectingCollector()])
-    await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
-    store = ResourceStore(tmp_path / "resources.json", collector_register=registry.collectorRegister)
-    store.save("setters", SetterTemplate(id="t", collector="mock", setters={"fields": ["message"]}))
-    store.save("sources", SourceConfig(id="source", collector="mock", template="t"))
-    before = read(store)
-    with pytest.raises(LogAgentError, match="语义校验"):
-        store.save("setters", SetterTemplate(id="t", collector="mock", setters={"fields": ["absent"]}))
-    with pytest.raises(LogAgentError, match="语义校验"):
-        store.resolve(SourceConfig(id="unsaved", collector="mock", setters={"fields": ["absent"]}))
-    assert read(store) == before
-    assert store.get("setters", "t").setters == {"fields": ["message"]}
-    assert store.get("sources", "unsaved") is None
-
-
-async def test_missing_plugin_does_not_block_saved_snapshots(resources):
+async def test_cli_snapshots_do_not_require_collector_registry(resources):
     store, _ = resources
     seed(store)
     reopened = ResourceStore(store.location)
-    assert reopened.snapshot("workflow").sources["source"].collector == "mock"
+    assert reopened.snapshot("workflow").sources["source"].call.kind == "cli"
     reopened.save("ai", AIConfig(id="ai", provider="mock", models={"model": {"reasoning_effort": "low"}}))
     with pytest.raises(LogAgentError) as caught:
-        reopened.save("sources", SourceConfig(id="new", collector="mock"))
-    assert caught.value.code == "capability_missing"
+        reopened.save("sources", SourceConfig(id="new", call={
+            "kind": "mcp", "server": "missing", "tool": "echo",
+        }))
+    assert caught.value.code == "invalid_reference"
     reopened.delete("workflows", "workflow")
     reopened.delete("sources", "source")
 
@@ -451,110 +333,3 @@ async def test_removing_referenced_model_rejects_entire_resource_candidate(resou
     current = store.snapshot("workflow")
     assert current.ai == original.ai
     assert current.workflow == original.workflow
-
-
-@pytest.mark.parametrize("legacy, expected", [
-    ({"interval_seconds": 2.5}, {"type": "every", "every_seconds": 2.5}),
-    ({"cron": "0 9 * * *"}, {"type": "cron", "expression": "0 9 * * *", "timezone": "UTC"}),
-    ({"cron": "0 9 * * 1-5", "cron_timezone": "Asia/Shanghai"},
-     {"type": "cron", "expression": "0 9 * * mon,tue,wed,thu,fri", "timezone": "Asia/Shanghai"}),
-    ({"cron": "0 9 * * 1/2"},
-     {"type": "cron", "expression": "0 9 * * mon,wed,fri", "timezone": "UTC"}),
-    ({"cron": "0 9 * * fri-sun"},
-     {"type": "cron", "expression": "0 9 * * sun,fri,sat", "timezone": "UTC"}),
-    ({"interval_seconds": None, "cron": None, "cron_timezone": "UTC"}, None),
-])
-async def test_legacy_schedule_migration_publishes_current_version(resources, legacy, expected):
-    store, _ = resources
-    seed(store)
-    data = read(store)
-    data["format_version"] = 1
-    data["workflows"]["workflow"].pop("schedule")
-    data["workflows"]["workflow"].update(legacy)
-    edit(store, data)
-    migrated = ResourceStore(store.location)
-    result = read(migrated)
-    assert result["format_version"] == RESOURCE_FORMAT_VERSION
-    assert result["workflows"]["workflow"]["schedule"] == expected
-    assert not {"interval_seconds", "cron", "cron_timezone"} & result["workflows"]["workflow"].keys()
-    before = await asyncio.to_thread(Path(store.location).read_bytes)
-    ResourceStore(store.location)
-    assert await asyncio.to_thread(Path(store.location).read_bytes) == before
-
-
-@pytest.mark.parametrize("legacy", [
-    {"interval_seconds": 10, "cron": "0 9 * * *"},
-    {"cron": "invalid"},
-    {"cron": "0 9 * * *", "cron_timezone": "Invalid/Zone"},
-    {"interval_seconds": -1},
-    {"schedule": None, "cron": "0 9 * * *"},
-    {"cron": "0 9 1 * 1"},
-])
-async def test_migration_failure_keeps_file_and_published_view(resources, legacy):
-    store, _ = resources
-    original = seed(store)
-    data = read(store)
-    data["format_version"] = 1
-    data["workflows"]["workflow"].pop("schedule")
-    data["workflows"]["workflow"].update(legacy)
-    edit(store, data)
-    before = await asyncio.to_thread(Path(store.location).read_bytes)
-    with pytest.raises(LogAgentError):
-        store.reload_resources()
-    with pytest.raises(LogAgentError):
-        ResourceStore(store.location)
-    assert store.get("workflows", "workflow") == original
-    assert await asyncio.to_thread(Path(store.location).read_bytes) == before
-
-
-async def test_reload_migrates_and_atomic_publish_failure_preserves_view(resources, monkeypatch):
-    store, _ = resources
-    original = seed(store)
-    data = read(store)
-    data["format_version"] = 1
-    data["workflows"]["workflow"].pop("schedule")
-    data["workflows"]["workflow"]["interval_seconds"] = 42
-    edit(store, data)
-    before = await asyncio.to_thread(Path(store.location).read_bytes)
-    def fail(*args):
-        raise OSError("disk full")
-    with monkeypatch.context() as patch:
-        patch.setattr("logagent.config.store.os.replace", fail)
-        with pytest.raises(LogAgentError, match="原子保存"):
-            store.reload_resources()
-        assert store.get("workflows", "workflow") == original
-        assert await asyncio.to_thread(Path(store.location).read_bytes) == before
-    store.reload_resources()
-    assert store.get("workflows", "workflow").schedule.every_seconds == 42
-    assert read(store)["format_version"] == RESOURCE_FORMAT_VERSION
-
-
-@pytest.mark.parametrize("version", [1, 2])
-async def test_schedule_and_prompt_migrations_share_one_publication(resources, version):
-    store, _ = resources
-    seed(store)
-    data = read(store)
-    data["format_version"] = version
-    workflow = data["workflows"]["workflow"]
-    workflow.pop("system_prompt")
-    workflow.pop("input_prompt")
-    task = workflow["analyses"][0]
-    task.pop("system_prompt")
-    task.pop("input_prompt")
-    task.pop("user_prompt")
-    task["prompt"] = "legacy task"
-    if version == 1:
-        workflow.pop("schedule")
-        workflow["interval_seconds"] = 45
-    else:
-        workflow["schedule"] = {"type": "every", "every_seconds": 45}
-    edit(store, data)
-
-    store.reload_resources()
-    result = read(store)
-    migrated = result["workflows"]["workflow"]
-    assert result["format_version"] == RESOURCE_FORMAT_VERSION
-    assert migrated["schedule"] == {"type": "every", "every_seconds": 45}
-    assert migrated["analyses"][0]["input_prompt"] == "legacy task\n\n{input}"
-    assert "prompt" not in migrated["analyses"][0]
-    assert "interval_seconds" not in migrated

@@ -46,7 +46,12 @@ export interface WorkflowDefinition {
   source_overrides: Record<string, SourceOverride>
   channel_overrides: Record<string, ChannelOverride>
   input_separator: string
-  include_counts: boolean
+  input_processing: {
+    format: 'none' | 'ison' | 'toon' | 'zon' | 'md' | 'csv'
+    total_tokens: number | null
+    item_tokens: number | null
+    field_tokens: number | null
+  }
   collection_concurrency: number
   analysis_concurrency: number
   on_all_empty: SourcePolicy

@@ -26,33 +26,6 @@ const encrypted = {
   ciphertext: 'ciphertext',
 }
 
-function collector(name: string, idPrefix: string, optionName: string): CapabilityDescription {
-  return {
-    kind: 'collector',
-    name,
-    id_prefix: idPrefix,
-    description: `${name} collector`,
-    plugin: 'test',
-    capabilities: ['collection'],
-    options_schema: {
-      type: 'object',
-      properties: {
-        [optionName]: { type: 'integer', description: optionName },
-      },
-      additionalProperties: false,
-    },
-    setters_schema: {
-      type: 'object',
-      properties: {
-        order: { type: 'string', description: 'order' },
-      },
-      additionalProperties: false,
-    },
-    fields: [],
-    count_unit: 'records',
-  }
-}
-
 const emailCapability: CapabilityDescription = {
   kind: 'channel',
   name: 'email',
@@ -97,83 +70,6 @@ describe('resource IDs and capability changes', () => {
     const plain = generatedResourceId()
     expect(prefixed).toMatch(/^collector_[0-9a-f-]{36}$/)
     expect(plain).toMatch(/^[0-9a-f-]{36}$/)
-  })
-
-  it('keeps a hand-written ID and clears old option, setter, and template drafts', async () => {
-    vi.mocked(systemApi.plugins).mockResolvedValue([
-      collector('first', 'first', 'limit'),
-      collector('second', 'second', 'limit'),
-    ])
-    vi.mocked(resourcesApi.create).mockResolvedValue({} as never)
-    const wrapper = mount(ResourceEditor, { props: { kind: 'sources' }, global })
-    await flushPromises()
-
-    const selects = wrapper.findAllComponents(ElSelect)
-    selects[0].vm.$emit('update:modelValue', 'first')
-    await flushPromises()
-    await wrapper.get('[aria-label="设置 limit"]').setValue(true)
-    await wrapper.get('input[aria-label="limit"]').setValue('3')
-    await wrapper.get('[aria-label="设置 order"]').setValue(true)
-    await wrapper.get('input[aria-label="order"]').setValue('old')
-    await wrapper.get('input[placeholder="可自行填写；留空则自动生成"]').setValue('manual_source')
-
-    selects[0].vm.$emit('update:modelValue', 'second')
-    await flushPromises()
-    expect(wrapper.get('input[placeholder="可自行填写；留空则自动生成"]').element).toHaveProperty(
-      'value',
-      'manual_source',
-    )
-    expect(wrapper.find('input[aria-label="limit"]').exists()).toBe(false)
-    expect(wrapper.find('input[aria-label="order"]').exists()).toBe(false)
-
-    await wrapper.find('form').trigger('submit')
-    await flushPromises()
-    expect(resourcesApi.create).toHaveBeenCalledWith(
-      'sources',
-      expect.objectContaining({
-        id: 'manual_source',
-        collector: 'second',
-        options: {},
-        setters: {},
-        template: null,
-      }),
-    )
-    wrapper.unmount()
-  })
-
-  it('does not clear saved fields while the initial plugin list is loading', async () => {
-    let resolve!: (value: CapabilityDescription[]) => void
-    vi.mocked(systemApi.plugins).mockReturnValue(
-      new Promise((next) => {
-        resolve = next
-      }),
-    )
-    const initial = {
-      id: 'saved_source',
-      collector: 'first',
-      enabled: true,
-      options: { limit: 3 },
-      setters: { order: 'saved' },
-      template: 'saved_template',
-      timeout: 60,
-      on_error: 'notice' as const,
-      on_missing: 'notice' as const,
-      on_empty: 'notice' as const,
-      on_filtered_empty: 'notice' as const,
-    }
-    const wrapper = mount(ResourceEditor, { props: { kind: 'sources', initial }, global })
-    await flushPromises()
-    expect(
-      (wrapper.get('input[placeholder="可自行填写；留空则自动生成"]').element as HTMLInputElement)
-        .value,
-    ).toBe('saved_source')
-    resolve([collector('first', 'first', 'limit')])
-    await flushPromises()
-    expect(
-      (wrapper.get('input[placeholder="可自行填写；留空则自动生成"]').element as HTMLInputElement)
-        .value,
-    ).toBe('saved_source')
-    wrapper.unmount()
   })
 })
 

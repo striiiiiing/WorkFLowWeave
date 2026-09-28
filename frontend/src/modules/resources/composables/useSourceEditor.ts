@@ -10,7 +10,6 @@ import type {
   SourceOverride,
   SourceSaveTarget,
 } from '../model/types'
-import type { SchemaCapability } from '@/shared/schema/types'
 
 export interface SourceEditorInput {
   readonly initial?: SourceConfig
@@ -23,7 +22,7 @@ export function useSourceEditor(input: SourceEditorInput, gateway: SourceConfigE
   const draft = shallowRef<SourceConfig>()
   const save = useAsyncTask()
   let generatedId = !initial
-  // Resolve is the backend-owned merge of legacy templates and sparse overrides.
+  // Resolve is the backend-owned merge of saved and workflow-local call values.
   const load = useQuery(async (signal) => {
     const value = initial
       ? await gateway.resolve(initial.id, override, signal)
@@ -39,16 +38,8 @@ export function useSourceEditor(input: SourceEditorInput, gateway: SourceConfigE
     generatedId = false
     update({ id })
   }
-  function selectCollector(collector: string, capability?: SchemaCapability) {
-    if (saveTarget.kind === 'workflow-draft') throw new Error('独立配置不能更换采集器')
-    if (collector === draft.value?.collector) return
-    update({
-      collector,
-      options: {},
-      setters: {},
-      template: null,
-      ...(!initial && generatedId ? { id: generatedResourceId(capability?.id_prefix) } : {}),
-    })
+  function updateCall(call: SourceConfig['call']) {
+    update({ call, ...(!initial && generatedId ? { id: generatedResourceId() } : {}) })
   }
   async function submit(validate: () => Promise<boolean>) {
     return save.run(async () => {
@@ -70,9 +61,7 @@ export function useSourceEditor(input: SourceEditorInput, gateway: SourceConfigE
     save,
     updateBasic: (fields: SourceBasicChanges) => update(fields),
     updateId,
-    selectCollector,
-    updateOptions: (options: SourceConfig['options']) => update({ options }),
-    updateSetters: (setters: SourceConfig['setters']) => update({ setters }),
+    updateCall,
     updateAdvanced: (fields: SourceAdvancedChanges) => update(fields),
     submit,
   }

@@ -66,7 +66,8 @@ class Collector:
     async def collect(self, config, context):
         record("collect", source_id=config.id)
         return CollectionResult(
-            source_id=config.id, status="success", text="durable input", count=1
+            source_id=config.id, status="success",
+            raw={"stdout": "durable input", "stderr": "", "exit_code": 0},
         )
 
 
@@ -75,7 +76,7 @@ class AI:
                       system_prompt=None, user_prompt=""):
         record("analyze", task_id=task_id, text=text, model=model)
         if mode in {"crash-analysis", "rerun-crash"} and task_id == "second":
-            assert (await asyncio.to_thread(archived, store, "run", "phase:collect"))["body"]["shared_input"] == "durable input\\n\\nsource: success (1)"
+            assert (await asyncio.to_thread(archived, store, "run", "phase:collect"))["body"]["shared_input"] == "[source=source; format=none]\\ndurable input"
             assert (await asyncio.to_thread(archived, store, "run", "analyze:item:first"))["body"]["status"] == "success"
             os._exit(73)
         return AnalysisResult(task_id=task_id, status="success", text=f"{task_id}({text})")
@@ -112,7 +113,10 @@ async def main():
                 analyses=[AnalysisTask(id=key, ai="ai", model="original-model") for key in tasks],
                 channels=channels, analysis_concurrency=1,
             ),
-            sources={"source": SourceConfig(id="source", collector="mock")},
+            sources={"source": SourceConfig(id="source", call={
+                "kind": "cli", "mode": "argv", "executable": "printf",
+                "argv": ["%s", "example"],
+            })},
             ai={"ai": AIConfig(id="ai", provider="mock", models={"original-model": {}})},
             channels={key: ChannelConfig(id=key, channel="mock") for key in channels},
             created_at=datetime.now(UTC),
@@ -177,7 +181,7 @@ def test_hard_exit_during_analysis_recovers_only_unfinished_branch(tmp_path):
     database = tmp_path / "runs.sqlite3"
     store = SessionStore(database)
     try:
-        assert archived(store, "run", "phase:collect")["body"]["shared_input"] == "durable input\n\nsource: success (1)"
+        assert archived(store, "run", "phase:collect")["body"]["shared_input"] == "[source=source; format=none]\ndurable input"
         assert archived(store, "run", "phase:analyze") is None
         assert archived(store, "run", "analyze:item:first") is not None
     finally:
@@ -196,15 +200,15 @@ def test_hard_exit_during_analysis_recovers_only_unfinished_branch(tmp_path):
         "second",
         "second",
     ]
-    assert events[-1]["text"] == "durable input\n\nsource: success (1)"
+    assert events[-1]["text"] == "[source=source; format=none]\ndurable input"
     assert events[-1]["model"] == "original-model"
     report = _report(tmp_path)
     assert active_namespaces <= set(report["used_namespaces"])
     assert report["session"]["execution_epoch"] == epoch
     assert report["result"]["status"] == "completed"
     assert [item["text"] for item in report["result"]["analyses"]] == [
-        "first(durable input\n\nsource: success (1))",
-        "second(durable input\n\nsource: success (1))",
+        "first([source=source; format=none]\ndurable input)",
+        "second([source=source; format=none]\ndurable input)",
     ]
     assert [event["stage"] for event in report["history"] if event["scope"] == "phase"] == [
         "collect",

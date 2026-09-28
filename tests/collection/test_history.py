@@ -11,10 +11,10 @@ import orjson
 import pytest
 from sqlmodel import select
 
-from logagent.collection import CollectorManager, HistoryCollector, builtin_collectors
-from logagent.config import PluginRegistry, ResourceStore
+from logagent.collection import HistoryCollector, builtin_collectors
+from logagent.config import PluginRegistry
 from logagent.errors import LogAgentError
-from logagent.models import BackupPolicy, CollectionContext, SourceConfig, SystemConfig
+from logagent.models import BackupPolicy, CollectionContext, SystemConfig
 from logagent.workflow import SessionStore, SessionView
 from logagent.workflow.session_models import SessionEntry
 
@@ -47,12 +47,9 @@ async def test_real_view_registration_and_content_agree_without_recollection(sto
         "history", "logs", "mock",
     }
     assert {x.name for x in report.registered if x.kind == "tool"} == {
-        "plugin", "read", "write", "grep", "shell",
+        "mcp", "read", "write", "grep", "shell",
     }
-    manager = CollectorManager(registry.collectorRegister)
-    resources = ResourceStore(tmp_path / "resources.json", collector_register=registry.collectorRegister)
-    source = resources.save("sources", SourceConfig(id="past", collector="history"))
-    result = await manager.collect(resources.resolve(source), context(store))
+    result = await HistoryCollector().collect({}, {}, context(store))
     record = await SessionView(store).get_session("old")
     phase = await SessionView(store).get_phase_content("old", "collect", version=record.version)
     assert result.status == "success" and result.count == 1

@@ -19,10 +19,12 @@ import {
   type AIConfig,
   type ChannelConfig,
   type SourceConfig,
+  type MCPServerConfig,
   type SourceFilter,
   type SourceConfigEditorGateway,
 } from '@/modules/resources/public'
 import PageHeader from '@/shared/ui/PageHeader.vue'
+import MCPServerEditor from '@/modules/resources/ui/MCPServerEditor.vue'
 const route = useRoute()
 const router = useRouter()
 const kind = computed<EditableKind>({
@@ -34,9 +36,6 @@ const kind = computed<EditableKind>({
 const list = useResourceList(kind)
 const usage = useSourceUsage()
 const capabilities = useCapabilities()
-const collectors = computed(
-  () => capabilities.data.value?.filter((item) => item.kind === 'collector') ?? [],
-)
 const channels = computed(
   () => capabilities.data.value?.filter((item) => item.kind === 'channel') ?? [],
 )
@@ -49,6 +48,7 @@ const sourceEditor = shallowRef<{
 }>()
 const providerEditor = shallowRef<{ initial?: AIConfig }>()
 const channelEditor = shallowRef<{ initial?: ChannelConfig }>()
+const mcpEditor = shallowRef<{ initial?: MCPServerConfig }>()
 let sourceEditorSequence = 0
 function openSource(initial?: SourceConfig) {
   sourceEditor.value = {
@@ -59,6 +59,7 @@ function openSource(initial?: SourceConfig) {
 }
 function open() {
   if (kind.value === 'sources') openSource()
+  else if (kind.value === 'mcp_servers') mcpEditor.value = {}
   else if (kind.value === 'ai') providerEditor.value = {}
   else channelEditor.value = {}
 }
@@ -71,6 +72,10 @@ function savedSource() {
   sourceEditor.value = undefined
   void list.refresh()
   void usage.refresh()
+}
+function savedMcpServer() {
+  mcpEditor.value = undefined
+  void list.refresh()
 }
 function openWorkflow(id: string) {
   void router.push({ name: 'workflow-edit', params: { id } })
@@ -134,6 +139,30 @@ function openWorkflow(id: string) {
         @retry-usage="usage.refresh"
       />
     </template>
+    <template v-else-if="kind === 'mcp_servers'">
+      <div
+        v-for="server in (list.data.value as MCPServerConfig[] | undefined) ?? []"
+        :key="server.id"
+        class="flex items-center justify-between border-b py-3 gap-3"
+      >
+        <div>
+          <strong>{{ server.id }}</strong>
+          <p class="muted text-sm">
+            {{ server.transport }} · {{ server.enabled ? '已启用' : '已停用' }}
+          </p>
+        </div>
+        <div class="flex gap-2">
+          <el-button @click="mcpEditor = { initial: server }">编辑</el-button>
+          <el-popconfirm title="删除此 MCP 服务？" @confirm="list.remove(server.id)">
+            <template #reference><el-button type="danger" plain>删除</el-button></template>
+          </el-popconfirm>
+        </div>
+      </div>
+      <el-empty
+        v-if="!list.pending.value && !list.data.value?.length"
+        description="暂无 MCP 服务"
+      />
+    </template>
     <template v-else-if="kind === 'ai'">
       <p class="muted text-sm mb-4">
         在渠道中配置连接并添加模型，保存后供工作流选择；健康检查位于渠道编辑窗口内。
@@ -163,12 +192,24 @@ function openWorkflow(id: string) {
     :initial="sourceEditor.initial"
     :target="{ kind: 'shared-resource', resourceId: sourceEditor.initial?.id ?? '' }"
     :gateway="sourceEditor.gateway"
-    :capabilities="collectors"
     :usages="sourceEditor.initial ? usage.references(sourceEditor.initial.id) : []"
-    :protect="list.protect"
     @saved="savedSource"
     @cancel="sourceEditor = undefined"
   />
+  <el-dialog
+    :model-value="!!mcpEditor"
+    :title="mcpEditor?.initial ? '编辑 MCP 服务' : '添加 MCP 服务'"
+    width="680px"
+    destroy-on-close
+    @close="mcpEditor = undefined"
+  >
+    <MCPServerEditor
+      v-if="mcpEditor"
+      :initial="mcpEditor.initial"
+      @saved="savedMcpServer"
+      @cancel="mcpEditor = undefined"
+    />
+  </el-dialog>
   <el-dialog
     :model-value="!!providerEditor"
     :title="(providerEditor?.initial ? '编辑' : '添加') + '供应商渠道'"

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
-from pathlib import Path as FilePath
 from typing import Annotated, Literal
 from uuid import uuid4
 
@@ -26,11 +25,11 @@ from logagent.models import (
     EncryptedCredential,
     HealthReport,
     JSONObject,
+    MCPServerConfig,
     PhaseContent,
     RecoveryAvailability,
     ResourceKind,
     SessionRecord,
-    SetterTemplate,
     SourceConfig,
     SourceOverride,
     StrictModel,
@@ -117,14 +116,13 @@ def _collector_invocation(services: ApplicationServices) -> CollectorInvocation:
     # Shell can call this API while already holding the workspace write lock.
     snapshot = services.resources.invocation_snapshot()
     return CollectorInvocation(
-        snapshot["sources"], services.plugins.collectorRegister.describe(),
-        executor=services.collectors, data_dir=FilePath(services.system_config.data_dir),
+        snapshot["sources"], snapshot["mcp_servers"], executor=services.collectors,
     )
 
 
 @router.get("/sources/{ident}/call-schema", response_model=JSONObject)
 async def source_call_schema(ident: ID, services: Services):
-    return _collector_invocation(services).schema(ident)
+    return await _collector_invocation(services).schema(ident)
 
 
 @router.post("/sources/{ident}/collect", response_model=CollectionResult)
@@ -132,20 +130,51 @@ async def collect_source(ident: ID, payload: CollectionArguments, services: Serv
     invocation = _collector_invocation(services)
     context = CollectionContext(
         "collection", uuid4().hex, services.log_path, services.credentials, services.session_view,
+        dict(invocation.mcp_servers),
     )
     return await invocation.invoke(ident, payload, context)
 
 
-@router.post("/setters", response_model=SetterTemplate, status_code=status.HTTP_201_CREATED)
-async def create_setter(payload: SetterTemplate, services: Services):
-    return await _save_resource(services, "setters", payload, mode="create")
+@router.post("/mcp_servers", response_model=MCPServerConfig, status_code=status.HTTP_201_CREATED)
+async def create_mcp_server(payload: MCPServerConfig, services: Services):
+    return await _save_resource(services, "mcp_servers", payload, mode="create")
 
 
-@router.put("/setters/{ident}", response_model=SetterTemplate)
-async def replace_setter(ident: ID, payload: SetterTemplate, services: Services):
+@router.put("/mcp_servers/{ident}", response_model=MCPServerConfig)
+async def replace_mcp_server(ident: ID, payload: MCPServerConfig, services: Services):
     if ident != payload.id:
         raise LogAgentError("invalid_argument", "路径 ID 与资源 ID 不一致")
-    return await _save_resource(services, "setters", payload, mode="replace")
+    return await _save_resource(services, "mcp_servers", payload, mode="replace")
+
+
+def _mcp_scope(services: ApplicationServices) -> dict[str, MCPServerConfig]:
+    return {item.id: item for item in services.resources.list("mcp_servers")}
+
+
+@router.get("/mcp/catalog/status")
+async def mcp_catalog_status(services: Services):
+    return services.collectors.mcp.status(_mcp_scope(services))
+
+
+@router.get("/mcp/catalog")
+async def mcp_catalog(
+    services: Services, server: ID | None = None, query: str = "",
+    cursor: int = Query(default=0, ge=0), page_size: int = Query(default=20, ge=1, le=100),
+):
+    return services.collectors.mcp.listing(
+        _mcp_scope(services), server=server, query=query, cursor=cursor, page_size=page_size,
+    )
+
+
+@router.post("/mcp/catalog/{server}/load")
+async def load_mcp_catalog(server: ID, services: Services, refresh: bool = False):
+    tools = await services.collectors.mcp.load(_mcp_scope(services), server, refresh=refresh)
+    return {"server": server, "tool_count": len(tools)}
+
+
+@router.get("/mcp/catalog/{server}/tools/{tool:path}")
+async def describe_mcp_tool(server: ID, tool: str, services: Services):
+    return await services.collectors.mcp.describe(_mcp_scope(services), server, tool)
 
 
 @router.post("/ai", response_model=AIConfig, status_code=status.HTTP_201_CREATED)

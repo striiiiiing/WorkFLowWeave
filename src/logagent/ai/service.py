@@ -118,6 +118,16 @@ class AIService:
         except ValidationError as exc:
             raise validation_error(exc) from None
 
+    @staticmethod
+    def input_counter(config, model):
+        import tiktoken
+        try:
+            encoding = tiktoken.encoding_for_model(model)
+        except KeyError as exc:
+            raise LogAgentError("tokenizer_unavailable", "模型没有已知的精确 tokenizer",
+                                {"model": model, "ai": config.id}) from exc
+        return lambda text: len(encoding.encode(text, disallowed_special=()))
+
     async def _credential(self, config: AIConfig) -> str | None:
         """解析本次配置的凭据；未配置认证时返回 None，不读取环境默认密钥。
 

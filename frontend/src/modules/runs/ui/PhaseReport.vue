@@ -4,7 +4,6 @@ import { useAsyncTask } from '@/shared/async/useAsyncTask'
 import { resultStatus, unavailableText } from '../model/report'
 import type { PhaseReportController } from '../composables/usePhaseReport'
 import ReportText from '@/shared/ui/ReportText.vue'
-import PluginReport from './PluginReport.vue'
 const props = defineProps<{ report: PhaseReportController; active: boolean; advanced: boolean }>()
 const copyTask = useAsyncTask()
 function copy() {
@@ -78,15 +77,19 @@ function copy() {
               "
             >
               {{ resultStatus(item.status, report.identity.value!.stage) }}
-              <span v-if="item.count !== undefined">· 采集数量 {{ item.count }}</span>
+              <span v-if="item.exitCode !== undefined">· 退出码 {{ item.exitCode }}</span>
             </span>
           </div>
           <p v-if="item.error" class="text-red-700 mb-2" role="alert">{{ item.error }}</p>
-          <PluginReport v-if="item.sections?.length" :sections="item.sections" />
-          <ReportText v-else-if="item.text" :text="item.text" />
-          <details v-if="item.sections?.length && item.text" class="mt-3">
+          <p v-if="item.processingStatus" class="muted text-sm mb-2">
+            处理状态：{{ resultStatus(item.processingStatus, 'collect') }}
+            <span v-if="item.truncated"> · 内容已截取</span>
+            <span v-if="item.omitted"> · 未进入分析输入</span>
+          </p>
+          <ReportText v-if="item.text" :text="item.text" />
+          <details v-if="item.processedText && item.processedText !== item.text" class="mt-3">
             <summary class="report-disclosure muted">查看提供给分析的正文</summary>
-            <ReportText :text="item.text" />
+            <ReportText :text="item.processedText" />
           </details>
         </article>
       </template>

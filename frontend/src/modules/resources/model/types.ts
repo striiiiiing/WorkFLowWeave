@@ -1,25 +1,37 @@
 import type { JsonObject } from '@/shared/types'
 
 export type SourcePolicy = 'stop' | 'notice' | 'skip'
+export interface SourceLimits {
+  item_tokens: number | null
+  field_tokens: number | null
+}
+export type SourceCall =
+  | { kind: 'mcp'; server: string; tool: string; arguments: JsonObject }
+  | { kind: 'cli'; mode: 'argv'; executable: string; argv: string[]; cwd: string | null }
+  | { kind: 'cli'; mode: 'shell'; command: string; cwd: string | null }
 export interface SourceConfig {
   id: string
   display_name?: string | null
   description?: string
-  collector: string
+  call: SourceCall
   enabled: boolean
-  options: JsonObject
-  setters: JsonObject
-  template: string | null
+  limits: SourceLimits
   timeout: number
   on_error: SourcePolicy
   on_missing: SourcePolicy
   on_empty: SourcePolicy
-  on_filtered_empty: SourcePolicy
 }
-export interface SetterTemplate {
+export interface MCPServerConfig {
   id: string
-  collector: string
-  setters: JsonObject
+  transport: 'stdio' | 'streamable_http' | 'sse'
+  enabled: boolean
+  command: string | null
+  args: string[]
+  cwd: string | null
+  url: string | null
+  env: Record<string, Credential>
+  headers: Record<string, Credential>
+  timeout: number
 }
 export type Credential =
   | { kind: 'env'; name: string }
@@ -45,9 +57,8 @@ export interface ChannelConfig {
 }
 export interface SourceOverride {
   source?: SourceConfig | null
-  options: JsonObject
-  setters: JsonObject
-  template: string | null
+  arguments?: JsonObject | null
+  limits?: SourceLimits
 }
 export interface ChannelOverride {
   options: JsonObject
@@ -70,7 +81,7 @@ export interface SourceConfigEditorGateway {
 }
 export interface ResourceMap {
   sources: SourceConfig
-  setters: SetterTemplate
+  mcp_servers: MCPServerConfig
   ai: AIConfig
   channels: ChannelConfig
 }
@@ -84,5 +95,5 @@ export type SourceBasicChanges = Partial<
   Pick<SourceConfig, 'display_name' | 'description' | 'enabled'>
 >
 export type SourceAdvancedChanges = Partial<
-  Pick<SourceConfig, 'timeout' | 'on_error' | 'on_missing' | 'on_empty' | 'on_filtered_empty'>
+  Pick<SourceConfig, 'timeout' | 'on_error' | 'on_missing' | 'on_empty' | 'limits'>
 >

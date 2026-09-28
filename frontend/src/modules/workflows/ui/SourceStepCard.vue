@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { SchemaCapability } from '@/shared/schema/types'
 import type {
-  Credential,
   SourceConfig,
   SourceConfigEditorGateway,
   SourceUsageView,
@@ -20,8 +18,6 @@ const props = withDefaults(
     workflows?: readonly WorkflowDefinition[]
     usage?: (id: string) => readonly SourceUsageView[] | undefined
     gateway: SourceConfigEditorGateway
-    capabilities: readonly SchemaCapability[]
-    protect: (plaintext: string) => Promise<Extract<Credential, { kind: 'encrypted' }>>
     advanced?: boolean
   }>(),
   { workflows: () => [] },
@@ -136,12 +132,44 @@ function publish(id: string) {
           @update:model-value="editor.update({ input_separator: $event })"
         />
       </el-form-item>
-      <el-form-item label="包含采集数量">
-        <el-switch
-          :model-value="draft().include_counts"
-          @update:model-value="editor.update({ include_counts: Boolean($event) })"
+      <el-form-item label="输入格式">
+        <el-select
+          :model-value="draft().input_processing.format"
+          @update:model-value="
+            editor.update({ input_processing: { ...draft().input_processing, format: $event } })
+          "
+        >
+          <el-option
+            v-for="format in ['none', 'ison', 'toon', 'zon', 'md', 'csv']"
+            :key="format"
+            :value="format"
+            :label="format === 'none' ? '原始表示' : format.toUpperCase()"
+          />
+        </el-select>
+      </el-form-item>
+      <el-form-item
+        v-for="limit in [
+          ['total_tokens', '总输入 token'],
+          ['item_tokens', '单项 token'],
+          ['field_tokens', '字段 token'],
+        ] as const"
+        :key="limit[0]"
+        :label="limit[1]"
+      >
+        <el-input-number
+          :model-value="draft().input_processing[limit[0]]"
+          :min="1"
+          :precision="0"
+          @update:model-value="
+            editor.update({
+              input_processing: { ...draft().input_processing, [limit[0]]: $event || null },
+            })
+          "
         />
       </el-form-item>
+      <p class="muted text-sm">
+        仅 JSON 内容进行格式转换；空白限额表示不截取。来源可覆盖单项和字段限额。
+      </p>
     </div>
     <SourceSelector
       :open="loading"
@@ -161,8 +189,6 @@ function publish(id: string) {
           : { kind: 'shared-resource', resourceId: editorOpen.id || '' }
       "
       :gateway="gateway"
-      :capabilities="capabilities"
-      :protect="protect"
       :usages="editorOpen.id ? usage?.(editorOpen.id) : undefined"
       @saved="saveSource"
       @cancel="editorOpen = undefined"

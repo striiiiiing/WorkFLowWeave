@@ -17,7 +17,7 @@ export interface SessionQuery {
   before?: string
 }
 export interface ResumeOptions {
-  stage?: Exclude<WorkflowStage, 'finish'>
+  stage?: Exclude<WorkflowStage, 'finish'> | 'process'
   checkpoint_id?: string
   request_id?: string
 }

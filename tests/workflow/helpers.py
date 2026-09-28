@@ -35,7 +35,7 @@ def snapshot(*, channels=True, fan_in=None, tasks=("first", "second"), **options
     )
     return WorkflowSnapshot(
         workflow=wf,
-        sources={"source": SourceConfig(id="source", collector="mock")},
+        sources={"source": SourceConfig(id="source", call={"kind": "cli", "mode": "argv", "executable": "echo"})},
         ai={"ai": AIConfig(id="ai", provider="mock", models={"offline": {}})},
         channels={
             key: ChannelConfig(id=key, channel="mock", options={"target": key})
@@ -52,7 +52,7 @@ class Collector:
     async def collect(self, config, context):
         self.calls.append(config.id)
         return CollectionResult(
-            source_id=config.id, status="success", text="original data", count=1
+            source_id=config.id, status="success", raw={"stdout": "original data", "stderr": "", "exit_code": 0}
         )
 
 
