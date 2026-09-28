@@ -20,6 +20,7 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
+from logagent.config.manifest import normalize_plugin_manifest
 from logagent.config.reader import read_json, read_plugin_configuration
 from logagent.config.views import (
     ChannelRegister,
@@ -38,7 +39,6 @@ from logagent.models import (
     ErrorInfo,
     JSONObject,
     PluginKind,
-    PluginManifest,
     PluginSettings,
     SystemConfig,
     copy_model,
@@ -437,9 +437,15 @@ class PluginRegistry:
             stage = "manifest"
             try:
                 try:
-                    manifest = PluginManifest.model_validate(read_json(directory / "plugin.json"))
-                except ValidationError as exc:
-                    raise validation_error(exc) from None
+                    manifest = normalize_plugin_manifest(
+                        read_json(directory / "plugin.json"), directory_name=directory.name
+                    )
+                except LogAgentError as exc:
+                    # Keep the established public diagnostic for an unsafe entry
+                    # while still validating it before any import occurs.
+                    if exc.code == "plugin_manifest_invalid" and exc.details.get("reason") == "entry_backend_invalid":
+                        raise LogAgentError("plugin_entry_invalid", "插件入口无效") from None
+                    raise
                 kind, plugin_id = manifest.kind, manifest.id
                 if kind == "tool":
                     tool_plugins[plugin_id] = {"plugin": plugin_id, "enabled": settings.get(
@@ -454,7 +460,7 @@ class PluginRegistry:
                 if not plugin_settings.enabled:
                     continue
                 stage = "entry"
-                entry = _entry_path(directory, manifest.entry.backend)
+                entry = _entry_path(directory, manifest.entry_backend)
                 module = _import_entry(directory, entry, prefix)
                 transaction = _RegistrationTransaction(kind, plugin_id, entries[kind])
                 stage = "register"

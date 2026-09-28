@@ -22,7 +22,7 @@
 
 ### 1. 清单兼容采用显式归一层
 
-在配置层增加纯归一函数/模型：读取后先识别 LogAgent v1 或 QwenPaw-style 形状，再统一生成内部 manifest。QwenPaw 的 `type=collector/channel/tool` 映射到 LogAgent 的 `kind`；`entry.backend` 仍必须是包内相对 `.py`。`type` 与 `kind` 同时存在且不一致、ID 与目录不一致、路径越界、重复 ID 或未知类型均拒绝。依赖和 `qwenpaw_version` 作为诊断/准入元数据，不在没有安装器授权时自动 pip 安装。
+在配置层增加纯归一函数/模型：读取后先识别 LogAgent v1 或 QwenPaw-style 形状，再统一生成内部 manifest。QwenPaw 的 `type=collector/channel/tool` 映射到 LogAgent 的 `kind`；`entry.backend` 仍必须是包内相对 `.py`。`type` 与 `kind` 同时存在且不一致、路径越界、重复 ID 或未知类型均拒绝；manifest ID 是 owner 身份，保留旧版目录名与 ID 不同的兼容行为。依赖和 `qwenpaw_version` 作为诊断/准入元数据，不在没有安装器授权时自动 pip 安装。
 
 替代方案是直接把 QwenPaw JSON 改写成 LogAgent v1；该方案会丢失上游元数据并把迁移状态隐藏在文件修改中，因此不采用。另一替代方案是宽松接受任意字段并猜测类型，会造成错误插件被加载，违反失败可见原则。
 
