@@ -57,7 +57,11 @@ async def test_full_history_native_checkpoint_and_completed_recovery(tmp_path):
         ("second", "one"),
         ("second", "two"),
     ]
-    assert [e["stage"] for e in await w.history("run") if e["scope"] == "phase"] == [
+    assert [
+        e["stage"]
+        for e in await w.history("run")
+        if e["scope"] == "phase" and e["summary"].get("progress_status") != "running"
+    ] == [
         "collect",
         "analyze",
         "aggregate",

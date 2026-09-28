@@ -8,6 +8,8 @@
 
 当前状态：**已进入四部分完整重构，旧版保存在基线 `880ebb4`，本轮真实验证进行中。** 实施记录见 [原生事件最小真实链路](tasks/2026-09-28-native-event-slice/task.md)。 当前实施入口为第 13 节及 [原生事件流与模块拆分任务](tasks/2026-09-28-native-events-layout/task.md)：storage/graph/execution/stream、每个子图独立 nodes、图内 tags、metadata.sessionID、单次 astream_events、checkpoint 7 天/采集 30 天。外部 snapshot 已按用户决定沿用现有协议；内部分发机制单独处理，既有协议实现不代表新结构已通过验收。
 
+2026-09-29 验收追加记录见 [intent checkpoint 提交屏障任务](tasks/2026-09-29-intent-receipt-barrier/task.md)。本轮发现并修复了 intent checkpoint 已由 LangGraph 同步提交、但唯一 `astream_events` 消费者尚未将 intent 事实追加到 `SessionStore` 时，receipt 仍提前执行的竞态；修复还记录了同步节点线程没有 event loop 的线程适配边界。13.2–13.6、13.8–13.9 仍以当前 worktree 的新测试证据为准，不能仅凭旧日期任务中的通过记录勾选。
+
 第 1–12 节及既有日期任务保留历史和既有实现证据；其中 astream 主入口、逐事件全扫描确认和默认期限待定被本轮决定取代；外部完整 snapshot 曾重新讨论，最新用户决定恢复采用现有协议。已勾选不代表通过新结构验收，未勾选也不代表当前 worktree 完全没有对应代码。代码行数下降不再是验收要求。不得修改旧日期任务来覆盖其历史结论。
 
 2026-09-28 checkpoint 设计修订另记于 [resume 与清理任务](tasks/2026-09-28-checkpoint-resume/task.md)。下列第 1–5 节保留首轮任务记录；与新设计冲突的“单项业务重试、fork 待定、Agent 读取方式待定”以新任务及当前 design 为准。

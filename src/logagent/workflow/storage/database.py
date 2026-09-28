@@ -34,6 +34,10 @@ def _configure_sqlite(connection, _record) -> None:
     cursor = connection.cursor()
     try:
         cursor.execute("PRAGMA journal_mode=WAL")
+        # Checkpoint writes use a separate SQLite connection.  Allow readers and
+        # saver commits to wait for the short transaction boundary instead of
+        # surfacing a transient lock error to a business query.
+        cursor.execute("PRAGMA busy_timeout=5000")
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute("PRAGMA secure_delete=ON")
         cursor.execute("PRAGMA synchronous=FULL")
@@ -90,8 +94,8 @@ class ArchiveDatabase:
             raise
 
     @contextmanager
-    def _transaction(self):
-        """锁内复用外层 Session；立即事务串行化不同实例的版本分配。
+    def _transaction(self, *, immediate=True):
+        """锁内复用外层 Session；写事务立即锁，读事务延迟获取锁。
 
         SQLModel Session 只在最外层提交或回滚，嵌套业务写入不能提前发布。
         """
@@ -104,7 +108,9 @@ class ArchiveDatabase:
             with Session(self._engine) as session:
                 self._session = session
                 try:
-                    session.connection().exec_driver_sql("BEGIN IMMEDIATE")
+                    session.connection().exec_driver_sql(
+                        "BEGIN IMMEDIATE" if immediate else "BEGIN"
+                    )
                     yield session
                     session.commit()
                 except BaseException:

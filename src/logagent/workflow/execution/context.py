@@ -42,6 +42,9 @@ class WorkflowContext:
     collection_slots: asyncio.Semaphore = field(init=False)
     analysis_slots: asyncio.Semaphore = field(init=False)
     fresh_intents: set[tuple[str, str]] = field(default_factory=set, init=False)
+    _intent_barriers: dict[tuple[str, str], asyncio.Future] = field(
+        default_factory=dict, init=False, repr=False
+    )
 
     def __post_init__(self):
         object.__setattr__(
@@ -52,3 +55,39 @@ class WorkflowContext:
         object.__setattr__(
             self, "analysis_slots", asyncio.Semaphore(self.snapshot.workflow.analysis_concurrency)
         )
+
+    def register_intent(self, execution_epoch: str, key: str) -> None:
+        """Register a fresh intent before its checkpoint is emitted."""
+        identity = (execution_epoch, key)
+        self.fresh_intents.add(identity)
+        if identity not in self._intent_barriers:
+            self._intent_barriers[identity] = asyncio.get_running_loop().create_future()
+
+    async def wait_for_intent(self, execution_epoch: str, key: str) -> None:
+        """Wait until the stream consumer has archived the intent checkpoint."""
+        identity = (execution_epoch, key)
+        if identity not in self.fresh_intents:
+            return
+        barrier = self._intent_barriers.get(identity)
+        if barrier is None:
+            raise RuntimeError("intent checkpoint barrier was not registered")
+        await barrier
+
+    def confirm_intent(self, execution_epoch: str, key: str) -> None:
+        """Release receipt execution after durable intent fact creation."""
+        barrier = self._intent_barriers.get((execution_epoch, key))
+        if barrier is not None and not barrier.done():
+            barrier.set_result(None)
+
+    def abort_intents(self, error: BaseException) -> None:
+        """Unblock pending receipts when the single event stream fails."""
+        for barrier in self._intent_barriers.values():
+            if barrier.done():
+                continue
+            if isinstance(error, asyncio.CancelledError):
+                barrier.cancel()
+            else:
+                barrier.set_exception(error)
+                # A sibling may fail before this receipt reaches the await. Mark
+                # the exception as observed while preserving it for a waiter.
+                barrier.exception()

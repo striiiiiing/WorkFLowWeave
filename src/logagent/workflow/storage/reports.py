@@ -175,4 +175,8 @@ def _availability(entries):
     for status in ("expired", "write_failed", "not_saved"):
         if any(entry["availability"] == status for entry in entries):
             return status
+    if any(entry["availability"] == "available" for entry in entries):
+        return "available"
+    if any(entry["availability"] == "pending" for entry in entries):
+        return "pending"
     return "available"

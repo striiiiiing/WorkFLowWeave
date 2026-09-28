@@ -484,7 +484,7 @@ class WorkflowRunner:
                 config,
                 session_id=sid,
                 context=runtime_context,
-                consume=CheckpointSubscription(self.archive, snapshot, state),
+                consume=CheckpointSubscription(self.archive, snapshot, state, runtime_context),
             )
             await self.archive.reconcile(sid)
             saved = await graph.aget_state({"configurable": {"thread_id": sid}})
@@ -559,16 +559,20 @@ async def run_graph(graph, state, config, *, session_id, context, consume):
         "configurable": {**configured, "thread_id": session_id},
         "metadata": {**config.get("metadata", {}), "sessionID": session_id},
     }
-    async with aclosing(
-        graph.astream_events(
-            state,
-            config=config,
-            context=context,
-            version="v2",
-            subgraphs=True,
-            stream_mode=["updates", "checkpoints"],
-            durability="sync",
-        )
-    ) as events:
-        async for event in events:
-            await consume(event)
+    try:
+        async with aclosing(
+            graph.astream_events(
+                state,
+                config=config,
+                context=context,
+                version="v2",
+                subgraphs=True,
+                stream_mode=["updates", "checkpoints"],
+                durability="sync",
+            )
+        ) as events:
+            async for event in events:
+                await consume(event)
+    except BaseException as exc:
+        context.abort_intents(exc)
+        raise

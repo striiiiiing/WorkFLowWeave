@@ -28,7 +28,7 @@ class BackupPolicy(StrictModel):
 def retention(store, sid, epoch):
     from .models import EpochRetention
 
-    with store._transaction() as session:
+    with store._transaction(immediate=False) as session:
         row = session.get(EpochRetention, (sid, epoch))
         return row.model_dump() if row else None
 
