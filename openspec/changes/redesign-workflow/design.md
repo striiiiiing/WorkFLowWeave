@@ -6,7 +6,7 @@
 
 本轮用户授权按 storage、graph、execution、stream 四部分重新组织 Workflow，并明确使用 `astream_events`，图内 tags 分类、`config.metadata.sessionID` 注入运行身份。旧日期任务保留历史；本轮依据与未实施任务见 [原生事件流与模块拆分任务](tasks/2026-09-28-native-events-layout/task.md)。本轮只修改 OpenSpec，不将目录设计或旧任务的通过记录视为新实现已验收。
 
-当前 worktree 已有五阶段图、逐项子图、并行 intent/receipt、恢复及清理，并有未提交的内容 state、分类归档和 snapshot 实现。现状不等于目标结构：当前 archive.py 仍只消费 updates 后扫描历史，service.py 仍组装归档报告，尚未按本轮四部分及原生事件接口拆分。外部 snapshot 的首帧、版本传输、心跳和断连协议重新列为待讨论，不能由现有代码反推为本轮最终决定。
+四部分设计提出时，worktree 已有五阶段图、逐项子图、并行 intent/receipt、恢复及清理，并有未提交的内容 state、分类归档和 snapshot 实现；当时 archive.py 仍只消费 updates 后扫描历史，service.py 仍组装归档报告，尚未按四部分及原生事件接口拆分。这是重构起点记录，不作为最新实现状态。用户随后确认直接沿用现有外部 snapshot，首帧、版本、心跳和连接生命周期按第 4 节执行。
 
 ## Goals / Non-Goals
 
@@ -47,7 +47,28 @@ flowchart LR
 
 采集、分析每个来源/任务一个 LangGraph 分支，按稳定 item ID 合并，arrange 仅整理所需结果。Collector、AI、Channel、凭据解析等通过运行上下文注入，不序列化进 state。子图采用局部 schema/明确输入输出，不继承父图全部历史字段作为方便的通用容器。配置在准入时固定，恢复使用原配置。
 
-局部业务失败按原 continue/stop 规则返回明确结果；取消继续传播，存储或基础设施异常不得转换成空结果或业务成功。依赖注入和图构建保留现有能力接口，不为统一外观增加节点包装层。
+#### 1.1 构图与运行解耦
+
+图在 Workflow 执行器生命周期内构建、编译一次；`build_workflow(*, checkpointer)` 只接收持久化依赖，不接收某次运行的 snapshot、CollectionContext 或能力管理器。父图保持固定五阶段，collect/analyze/notify 用 LangGraph 原生 `Send` 按固定快照展开单项子图；不同运行的来源、分析项和渠道数量不改变编译图，不增加构图缓存或自造任务调度器。
+
+六个原构图参数按以下边界归属：
+
+| 原参数 | 新归属 |
+| --- | --- |
+| snapshot | 原始配置仅在父图 state/checkpoint 序列化保存；每次执行从初始输入或原 checkpoint 派生只读的运行上下文视图，子图不重复序列化整份配置 |
+| context | 持久化的 log_path 等运行输入留在父图 state；CollectionContext 作为采集能力的调用上下文，由 execution 重建并通过 Runtime Context 注入，不等同于 LangGraph Runtime |
+| checkpointer | 生命周期创建，编译时注入；官方 LangGraph 管 checkpoint/pending writes 和恢复 |
+| collector_manager / ai_service / channel_manager | 通过 `StateGraph(..., context_schema=WorkflowContext)` 与执行时 `context=` 注入；节点从 `Runtime[WorkflowContext]` 读取，不通过构图闭包捕获 |
+
+上下文快照只是父图已保存配置的内存视图，不提供另一条可独立覆盖配置的入口。恢复先读取并验证原父图 checkpoint，再重建 runtime context，不从当前资源配置重算输入。配置内容不变时可直接复用同一内存对象；子图只保存局部业务身份和必要正文。
+
+采集/分析 semaphore 按本次执行的原配置创建，不能存在共享图的闭包中；临时通知许可集合也属于本次执行尝试，恢复时重新创建为空。跨运行可共享能力服务，不能共享这些运行临时状态。Send 的单项输入包含 source_id、analysis_id 或 output_id/channel_id，结束结果保留对应业务键；订阅者可直接从原生开始事件 input 和结果事件 output 识别业务项，不查历史、不解析 namespace 猜身份。
+
+单项子图直接以原生 `StateGraph.compile()` 结果注册，使用各图的 input_schema/output_schema 与业务键 reducer。tags 使用原生编译图的 `with_config` 声明并继承；不修改编译图的 stream_channels，也不以 RunnableBinding 包装子图。普通流执行会让多个并行子图重复写入相同 session_id/execution_epoch，因此两项身份字段使用验证相等的 reducer，不接受不同身份合并；主动阶段重跑改变 execution_epoch 时以原生 `Overwrite` 明确替换。分析单项的正文输入使用局部键，不并行回写父图 shared_input。恢复时 `aget_state()` 只读取父图 values、next 和 config，由 LangGraph 在 `astream_events(None)` 时沿原 checkpoint 恢复子图；执行器不展开或解释嵌套 task.state。事件流仍启用 `subgraphs=True` 以接收子图事件。
+
+采集、分析、AI 汇总与通知继续调用各能力原有的有时限业务接口。来源/模型/渠道配置决定总预算；AIService 按 AIConfig.retries 及既有可重试错误分类在预算内重试，采集和通知不新增统一重试。超时、调用失败和缺失能力返回明确的局部业务结果，由 collect/analyze/aggregate/notify 的 continue/stop 或降级策略处理；正常业务超时不让整张图因 NodeTimeoutError 中断。`Send` 只负责动态展开业务项，不配置 TimeoutPolicy；图节点不配置 RetryPolicy，不叠加第二套预算或重试次数。
+
+执行基础设施、checkpoint 或归档异常仍向外传播并保留恢复材料，不能伪装成业务失败或成功。通知发生不确定投递时不自动补发可能已送达的消息；取消继续遵循既有业务能力和执行器契约。依赖注入和图构建保留现有能力接口，不为统一外观增加节点包装层。
 
 删除执行路径对 SessionStore 的读取、写入和成功存档扫描。移除 ArchiveRuntime 的正文缓存/引用解析、archive_node 与 _saved_result 通用存档工厂；阶段用直接函数，不再通过多个闭包层配置一项正常业务调用。最终报告组装属于读取投影，节点不遍历所有阶段存档重建 WorkflowResult。共享结果模型不得定义在 service.py 后被底层阶段反向导入。
 
@@ -95,7 +116,7 @@ config = {
     "metadata": {"sessionID": session_id},
 }
 async for event in graph.astream_events(
-    initial_state, config=config, version="v2",
+    initial_state, config=config, context=run_context, version="v2",
     stream_mode=["updates", "checkpoints"],
     subgraphs=True, durability="sync",
 ):
@@ -118,7 +139,7 @@ storage 统一按稳定事实键 `(session, epoch, stage, kind, item/output/chan
 
 进程退出造成的消费遗漏，在启动、续跑前和结束时按保留的 checkpoint/writes 补齐，复用 storage 的同一追加接口；补存不调用业务、不假设重开 astream_events(None) 会重播全部历史。扫描仅用于必要历史补齐/清理，不进入每条实时事件的常规路径。
 
-具体分发方案须满足：内存有界、慢消费有显式背压、存储事件不静默丢弃、不逐 chunk 创建无界线程/任务。checkpoint 写失败中止执行；归档失败按 BackupPolicy 报告且保留源数据，不把已完成业务改写为业务失败。必要消费者失败或退出使结果无法继续安全接收时，显式收尾执行并保留恢复材料，不伪报已全部归档。对外连接失败的隔离方式留给第 4 节讨论。
+应用自行管理的分发须避免无界队列/任务，必要消费逐事件 await，不静默丢弃存储事件。用户已确认当前 LangChain v2 内部事件队列无界属于已知库行为，本轮仅记录、不修改库实现、不作为阻塞项；不声称整个依赖链内存有界。checkpoint 写失败中止执行；归档失败按 BackupPolicy 报告且保留源数据，不把已完成业务改写为业务失败。必要消费者失败或退出使结果无法继续安全接收时，显式收尾执行并保留恢复材料，不伪报已全部归档。对外连接失败的隔离方式留给第 4 节讨论。
 
 #### 3.1 通知 intent→receipt
 
@@ -146,7 +167,7 @@ storage 统一按稳定事实键 `(session, epoch, stage, kind, item/output/chan
 
 这里的版本引用只用于长期归档的去重和追溯。执行 state/checkpoint 仍保存必要真实内容，节点不回查这些索引恢复输入；不得把本轮设计退回“checkpoint 只保存引用”。
 
-### 4. 对外进度消费与待讨论协议
+### 4. 对外进度消费与 Snapshot 协议
 
 #### 4.1 已确定的业务范围
 
@@ -154,28 +175,29 @@ storage 统一按稳定事实键 `(session, epoch, stage, kind, item/output/chan
 
 对外进度的业务消费归 `stream/subscriptions/`；interaction 保持 HTTP/SSE 的路由与编码边界。storage 向订阅者、HTTP、Agent 和 History Collector 提供同一套查询接口，按 session 和固定业务版本读取；正文可用性、业务成功与运行是否结束分别表达。Agent 主动读取方式不变，内部订阅不重复启动图。
 
-#### 4.2 Snapshot 协议重新讨论
+#### 4.2 沿用现有 Snapshot 协议
 
-用户明确将对外 snapshot 的首帧、递增版本、心跳、断连释放及离页与后台执行的关系留待讨论。本节取代此前第 4.1–4.4 节对 Workflow 具体传输流程的定案，不把现有完整 snapshot 实现当作新的强制验收契约，也不据此直接修改现有前端行为。
+用户确认直接采用原先的 snapshot，以减少兼容问题。本节取代此前待讨论决定；依据与源码位置见 [沿用 Snapshot 任务](tasks/2026-09-28-reuse-snapshot/task.md)。保留现有 `/api/sessions/{session_id}/events`、命名 `snapshot` 事件和完整 `SessionRecord` JSON，不增加增量协议或持久化传输日志。snapshot 包含运行状态、轮次、业务版本、逐项进度和正文可用性，正文继续按固定业务版本独立查询。
 
-待确定：
+服务端先注册 session 观察者，再查询同一 storage 投影并发送首帧；期间的更新由观察者队列接收，随后只发送比已发送版本更高的完整 snapshot。前端按 session 校验身份并仅接受更高的业务 version，重复或较旧 snapshot 不覆盖当前视图；execution_epoch 标识业务轮次，不另分配传输版本。Workflow 不使用 SSE id/Last-Event-ID 重放，重连重新取得最新完整首帧，允许跳过中间版本，不重新执行业务或重发 trigger/resume。
 
-- 对外使用完整 snapshot、必要事件还是两者的明确组合；首帧如何取得，断线期间如何同步。
-- storage 已有固定业务版本如何用于传输排序；不因协议未定取消历史固定版本。
-- 心跳、连接释放、慢订阅处理和业务终态的责任；页面离开是否以及如何与后台执行解耦。
-- 对外订阅与内部必要存储订阅分别如何处理失败；是否采用有界队列分发及其具体生命周期。
+沿用空闲 15 秒的 SSE 注释心跳；心跳不改变业务版本。连接异常由共用前端连接层关闭旧 EventSource 后执行单一退避重连，500ms 起步、指数增长、5000ms 上限，连接成功重置退避。前端保留最后已知结果并明确展示连接中断；解析或身份校验错误关闭订阅并报告，不伪装为网络重试。数值来自现有 routers.py 和 shared/api/eventSource.ts，不新增连接默认值。
 
-这些项目确认前，只实施已确定的内部事件/存储边界，不声称 snapshot、重连和浏览器生命周期已完成本轮验收。
+每个对外观察者沿用容量 64 的有界队列；队列满时关闭该观察者连接，前端通过重连首帧重新同步，不静默丢帧后宣称连接仍同步。此队列仅用于已提交摘要的对外传输，不替代必要归档消费；对外慢连接或断连不取消图执行。内部原生事件分发机制仍按第 3 节单独处理，不因复用外部 snapshot 而确认另一套内部事件总线。
+
+服务端发送 completed/partial/failed/cancelled/interrupted 终态 snapshot 后关闭流；首次读取已为终态时发送一次 snapshot 后关闭。前端收到当前版本终态后主动关闭连接并停止重连。阶段重跑受理后通过现有详情页刷新重新连接；已经关闭的终态页面通过主动同步取得其他入口发起的变化，不新增终态常驻监听。
+
+切换 session、离开页面或释放组件作用域时，前端关闭订阅、终止未完成查询、清除重连计时器，并隔离旧连接/旧查询回调。仅切换浏览器标签页不新增特殊策略。关闭观察不调用取消接口，后台 Workflow 继续；取消须由用户显式操作。浏览器不支持 EventSource 时保留现有明确提示和一次查询/手动同步，不恢复定时轮询。保留这些行为不等于新内部结构已经通过端到端验收。
 
 #### 4.3 已有共用 SSE 能力
 
-保留前后端共用 SSE 层的职责方向：传输函数处理编码、连接等公共能力，Agent 保持既有事件游标和对话语义，不因 Workflow 拆分改写 Agent 存储。Workflow 的数据源适配和对外协议在第 4.2 节确定后接入。此前日期任务中的心跳、退避、完整首帧及终态处理数值与流程是旧方案记录，不自动成为本轮重新讨论后的默认值。
+保留现有前后端共用 SSE 层：传输函数处理编码、连接等公共能力，Agent 保持既有事件游标和对话语义，不因 Workflow 拆分改写 Agent 存储。Workflow 继续通过 runEventSource.ts 消费命名 snapshot，通过 useSession.ts 按版本替换视图；本轮恢复采用的数值和生命周期以第 4.2 节及新增任务的现有源码依据为准，旧日期任务保留历史。
 
 ### 5. 恢复、归档交接与清理
 
 #### 5.1 执行恢复
 
-父图由生命周期注入官方 AsyncSqliteSaver；session_id=thread_id。collect、analyze、notify 子图 `compile(checkpointer=None)`，使用 per-invocation，不采用 Stateless 或跨调用子图记忆。
+父图由生命周期注入官方 AsyncSqliteSaver 并编译一次；session_id=thread_id。每次恢复复用同一编译图，从原 checkpoint 重建 Runtime Context。collect、analyze、notify 子图 `compile(checkpointer=None)`，使用 per-invocation，不采用 Stateless 或跨调用子图记忆。
 
 无 stage 的 resume 使用最新父图和原子图 invocation，依靠 checkpoint/pending writes 复用成功任务；不再读取 SessionStore 正文恢复执行。正常返回 failed 已完成，不隐式重试；执行结束后只补齐必要归档并返回结果，不重发通知。尚未持久化的外部采集/模型结果可能重做，不再承诺旧业务存档能覆盖“外部调用完成但 checkpoint 未提交”的窗口。
 
@@ -183,20 +205,15 @@ storage 统一按稳定事实键 `(session, epoch, stage, kind, item/output/chan
 
 阶段 resume 仅在 checkpoint 保留期内提供：期间保留必要父图阶段入口及其恢复依赖，到期后明确返回 checkpoint_expired，不因长期报告仍在而无限保留入口。本轮为 checkpoint 独立配置保留期，通常最早清理，取代此前“默认保留阶段入口、未设期限”的决定；不新增“从归档重建执行图”的第三种恢复模式。stage/checkpoint_id 必须属于原 session、匹配入口和 graph_revision，缺失明确报错。服务端返回恢复截止时间/不可用原因，前端据此展示，不能只凭正文可读就允许重跑。
 
-#### 5.2 归档交接后清理
+#### 5.2 deferred 子图清理与归档交接
 
-删除的条件同时满足：
+父图在 finish 后连接一个原生 `defer=True` 清理节点；全部业务分支完成后统一处理本 session 的非空子图 namespace，不再由外部 astream 消费者或逐阶段后台候选扫描决定清理时机。defer 是图即将结束时执行的节点，不是异常、取消或 interrupt 时必定执行的 finally；未正常到达该节点时保留子图恢复材料。父图 checkpoint 和阶段入口不在此节点删除。
 
-1. 子图调用已结束，父图后继 checkpoint 已同步接收下游必要内容；更新 chunk 不能替代提交证明。
-2. 将被删除的数据中，每项需长期保留的正文、原配置及意图/回执均已在归档事务中确认；关闭该类长期备份时，not_saved 决定与必要摘要也已提交。不能只检查“队列为空”或“父图已有汇总”。
-3. 未归档的单项结果在被删 namespace/历史中不是最后一份可恢复副本；归档失败或进程退出时保留源数据并可补齐。
-4. 活动执行/恢复所需 invocation、尚在保留期内的父图阶段入口及其 saver 依赖不删除。同 session 恢复和清理在共同互斥边界重新核对；到期的非活动入口可以清理，过期不是无限保留阶段入口的例外。
+清理节点调用 execution 注入的窄交接接口：先从保留 checkpoint/pending writes 补齐全部事实，再确认无未解决归档失败，最后在 saver 事务中删除所有子图 namespace。补存失败向外抛，删除失败回滚；恢复可从原生 pending cleanup 节点继续，不重跑已完成业务。节点不保存 checkpoint，也不实现第二个调度器。
 
-先持久化归档，再删除 checkpoint。崩溃发生在两者之间只造成暂时重复，不造成内容丢失；重启凭稳定事实键重复归档不会创建新业务版本。不能先删后补，也不能因前端收到成功就认为长期归档已完成。
+事件消费可能落后于 defer。正常消费使用经过 sync durability 验证的 loop checkpoint 事件自身不可变 values/config，而非等到消费时再次查询可能已删除的源行；清理前已落库事实由唯一存储事务按稳定键复用。输入/entry checkpoint 不作为持久完成证明，实际步骤和提交时序由真实探针覆盖。不得新增事件确认状态机或通过阻塞消费者等待后续事件来协调。
 
-子图清理最小单位仍为真实 `(thread_id, checkpoint_ns)` 及已证明归属的嵌套 namespace，原子删除 checkpoint 和关联 writes，不删除业务归档。当前 SQLite saver 无已实现的 namespace 删除接口，保留窄存储适配，参数化 SQL、同连接互斥与事务；不复制整个 saver。清理父图历史时必须保留选中入口所需完整存储依赖，不能猜测仅留一行即可恢复；无可靠选择性清理能力时先保留，而非删错。
-
-storage 负责保留策略、到期查询和安全删除；execution 提供活动运行及恢复边界，stream 订阅提供归档完成事实。清理与启动补齐复用已有生命周期能力，不新增执行调度器，不在全局准入锁内扫描所有历史；针对待交接运行/调用处理，互斥只覆盖该 session 的判定和删除。到期检查不能只依赖启动或运行结束：长期在线且没有新执行时，也须有生命周期触发的过期检查，具体周期待实施依据与验证确定，不在本轮虚构默认值。清理失败保留数据并显式报告。SQLite 删除使页可复用，不保证文件立即缩小，不每次 VACUUM。
+保留期到期删除与正常结束的子图清理分开：storage 管保留策略与删除，生命周期任务只处理正文和全 thread 到期；归档未交接、活动执行或未过期轮次阻止全 thread 删除。后台维护不再主动清理某个刚完成阶段的子图。长期在线的到期触发仍需实施依据，不虚构新周期默认。SQLite 删除使页可复用，不保证文件立即缩小，不每次 VACUUM。
 
 #### 5.3 备份、长期版本与内容寿命
 
@@ -231,7 +248,7 @@ BackupPolicy 的定义、期限计算和执行归 storage 所有，作为本轮 
 
 通常按 checkpoint、采集、分析、最终报告的顺序逐渐延长保留时间；这是使用建议，不是配置约束。四类期限独立配置，不校验相互大小、不联动调整，也不因顺序不同拒绝配置。关闭某类备份表示不存该类正文，不是零天期限。checkpoint 7 天、采集 30 天直接依据本轮用户指定，取代此前默认待定；不是从教程或经验推导的数值。
 
-归档事务保存该轮冻结的保留策略及稳定过期索引；运行尚未结束时标记等待确定共同起点，不把未确定截止时间误报为永久保存。原始 content_version 不因正文过期改变；清理移除该类别正文、保留身份/来源关系/摘要和 expired 标记，查询反映可用性变化；对外更新方式由第 4 节后续确定。只删除采集不能级联删除分析/报告，也不能在报告记录内暗藏采集全文以维持其“仍可读取”。共享提示词和最小追溯索引按引用存活，不跟随最短正文期限删除。
+归档事务保存该轮冻结的保留策略及稳定过期索引；运行尚未结束时标记等待确定共同起点，不把未确定截止时间误报为永久保存。原始 content_version 不因正文过期改变；清理移除该类别正文、保留身份/来源关系/摘要和 expired 标记，查询反映可用性变化；已连接观察者按第 4 节接收更高业务版本的 snapshot，终态已关闭页面通过主动同步取得变化。只删除采集不能级联删除分析/报告，也不能在报告记录内暗藏采集全文以维持其“仍可读取”。共享提示词和最小追溯索引按引用存活，不跟随最短正文期限删除。
 
 各类按实际配置到期，清理仍遵守第 5.2 节的交接条件。归档失败、活动执行或清理错误会使物理删除延后，必须报告原因；不能为了满足期限删除未归档的唯一副本。到期入口禁止新 resume，已受理执行的依赖保留到安全交接；所有 checkpoint 清理后可继续读未过期分析/报告。全 thread 删除须确认没有其他活动或未过期轮次，不能误删后来重跑产生的状态。
 
@@ -282,7 +299,7 @@ workflow/
 │   ├── runner.py            # 新建运行、调用图、连接唯一事件流
 │   ├── recovery.py          # 中断续跑、阶段重跑、恢复可用性
 │   ├── tasks.py             # 应用后台任务、容量、取消、等待、准入与收尾
-│   ├── context.py           # 固定配置/能力注入及 metadata.sessionID
+│   ├── context.py           # WorkflowContext schema、固定配置视图、能力注入和每次执行临时资源
 │   └── scheduler.py         # 现有定时/间隔/cron，调用 runner
 └── stream/
     ├── publisher.py         # 原生 astream_events 薄分发，不持有业务状态
@@ -290,7 +307,7 @@ workflow/
         ├── updates.py       # 节点更新消费
         ├── checkpoints.py   # checkpoint 事件消费并调用 storage
         ├── tasks.py         # 原生 Runnable 过程事件消费
-        └── snapshots.py     # 对外视图消费位置；协议未定，不先写占位实现
+        └── snapshots.py     # 对外完整 SessionRecord snapshot；可沿用现有 progress.py，不造占位文件
 ```
 
 局部 state 优先放本子图 graph.py，复杂时再拆本地 state.py；同名 arrange 不代表业务相同，不机械提取到公共 nodes。aggregate 子图组织保留冻结输出职责，不因教程的可选 fan-in 省略 aggregate。finish 的现有终态职责仍由父图表达，拆目录不新增一次业务阶段。
@@ -307,7 +324,7 @@ Collector、AI、Channel、插件及凭据协议保持，通过运行参数/cont
 
 用户明确取消后端低于 1988/1749 行、前端低于 1735/1690 行及其他生产代码净减少要求。本轮含新增归档、恢复、保留策略和实时展示能力，代码增长本身不构成未达标；历史行数仅用于理解之前的实现，不作为验收门槛，也不要求实施时逐项复算。
 
-验收以业务能力、持久化与恢复正确性、职责单一和重复实现消除为准：删除已被替代的正文引用解析、节点存档工厂、缓存和逐事件全量扫描；客户端同步及 SSE 具体改动待第 4 节协议确认后验收；新增职责应能对应本设计中的功能需求。不得为减少行数削弱功能或隐藏失败，也不以增加分层代替解决重复逻辑。
+验收以业务能力、持久化与恢复正确性、职责单一和重复实现消除为准：删除已被替代的正文引用解析、节点存档工厂、缓存和逐事件全量扫描；客户端同步及 SSE 按第 4 节现有 snapshot 协议验收；新增职责应能对应本设计中的功能需求。不得为减少行数削弱功能或隐藏失败，也不以增加分层代替解决重复逻辑。
 
 并发默认 collection_concurrency=4、analysis_concurrency=4、max_concurrent_runs=4 不变。长期备份默认开启；原统一 retention_days=None 被第 5.4 节分类策略取代，checkpoint 默认 7 天、采集默认 30 天、分析与最终报告默认不过期，依据本轮用户指定，各类独立配置。BackupPolicy 归 storage；不增加未经依据的归档延迟阈值、清理周期或新容量默认，不把传输容量变成业务条目上限。
 
@@ -316,7 +333,7 @@ Collector、AI、Channel、插件及凭据协议保持，通过运行参数/cont
 - 旧引用方案：避免 checkpoint 存正文，但保留节点存档、正文缓存、引用转换与双存储协调，不再选用。
 - 内容 state + 原生事件订阅归档：使用 astream_events 的 tags/metadata/调用身份，删除节点对业务库的依赖及自建分类/全扫确认；仍需按真实 API 保持归档与删除边界。
 - 仅 checkpoint 长期保存：不能满足 checkpoint 清理后仍读历史，本轮不选。
-- 对外完整 snapshot 与细粒度事件：均留待第 4 节讨论，本轮只确认消费职责归属，不新建两套并行实时协议。
+- 对外完整 snapshot：用户确认沿用已有协议，保持现有前后端字段、版本及连接生命周期；细粒度增量传输会增加补偿和兼容成本，本轮不采用。
 
 ## Validation
 
@@ -326,4 +343,4 @@ Collector、AI、Channel、插件及凭据协议保持，通过运行参数/cont
 
 保留现有中断/阶段重跑、通知不确定性、固定版本和归档交接验证。补测 checkpoint 默认 7 天、采集 30 天、分析/报告默认不过期、期限顺序任意、关闭正文备份不关闭 checkpoint、迟到归档不延期/复活，以及长期在线时过期删除可被触发。共用提示词不绕过正文保留策略，清理不误删活动恢复或其他轮次。
 
-对外 snapshot、重连、心跳和离页生命周期等待第 4 节确认后另列实施与浏览器验收任务。每条后端测试命令硬超时 60 秒；最终交付统一代码审查。本轮仅执行 OpenSpec 严格校验、相对链接/围栏/空白检查及文档差异审查。
+对外 snapshot、重连、心跳和离页生命周期按第 4 节及 [沿用 Snapshot 任务](tasks/2026-09-28-reuse-snapshot/task.md)回归；已有测试记录不替代新内部执行链路的真实 SSE 与浏览器验收。每条后端测试命令硬超时 60 秒；最终交付统一代码审查。本轮仅执行 OpenSpec 严格校验、相对链接/围栏/空白检查及文档差异审查。

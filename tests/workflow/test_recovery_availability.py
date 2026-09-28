@@ -18,7 +18,7 @@ async def test_query_and_recover_agree_on_missing_checkpoint_without_changing_hi
         assert eligibility.reason.code == "checkpoint_missing"
         assert await workflow.history("run") == before
         with pytest.raises(LogAgentError) as caught:
-            await workflow.recover("run")
+            await workflow.resume("run")
         assert caught.value.info == eligibility.reason
     finally:
         await close(workflow, store)
@@ -39,7 +39,7 @@ async def test_query_checks_active_run_and_allows_cancelled_run_with_material(tm
         assert (await workflow.recovery_availability("run")).available
         assert before == (len(collector.calls), len(ai.calls), len(channel.calls))
         ai.block = None
-        await workflow.recover("run")
+        await workflow.resume("run")
         assert (await workflow.wait("run")).status == "completed"
     finally:
         await close(workflow, store)
