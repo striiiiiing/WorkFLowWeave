@@ -425,7 +425,9 @@ async def test_shutdown_waits_for_admitted_interval_archive_before_stopping(tmp_
     try:
         await asyncio.wait_for(snapshot_written.wait(), 5)
         assert len(session_ids) == 1
-        assert services.workflow.coordinator.active == 0
+        # The event consumer archives the snapshot inside the admitted run;
+        # shutdown must wait for that active task to finish the blocked write.
+        assert services.workflow.coordinator.active == 1
         assert (
             await asyncio.to_thread(
                 services.session_store.entry,

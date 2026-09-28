@@ -37,13 +37,18 @@ def entry_progress(entry):
     scope, stage = entry["scope"], entry["stage"]
     if scope in {"collect", "analyze"}:
         event, status = "item", summary["item_status"]
-    elif scope == "notification" and entry["write_key"].startswith("delivery:"):
+    elif scope == "notification" and (
+        entry["write_key"].startswith("delivery:")
+        or entry["write_key"].startswith("progress:delivery:")
+    ):
         event, status = "delivery", summary["item_status"]
         if (summary.get("error") or {}).get("code") == "delivery_uncertain":
             status = "delivery_uncertain"
     elif scope == "phase" and stage == "aggregate":
         event = "aggregate"
-        status = "failed" if summary.get("stopped") else "success"
+        status = summary.get("progress_status") or (
+            "failed" if summary.get("stopped") else "success"
+        )
     elif scope == "parent" or (scope == "phase" and stage == "finish"):
         if "status" not in summary:
             return None

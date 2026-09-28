@@ -16,7 +16,7 @@ async def next_matching(queue, predicate):
         while True:
             item = await queue.get()
             for progress in item.progress:
-                if progress.status != "pending" and predicate(progress):
+                if progress.status not in {"pending", "running"} and predicate(progress):
                     return progress
             if item.status in {"completed", "partial", "failed", "cancelled", "interrupted"}:
                 lifecycle = WorkflowProgress(
@@ -27,6 +27,15 @@ async def next_matching(queue, predicate):
                 )
                 if predicate(lifecycle):
                     return lifecycle
+
+
+async def wait_for_record(workflow, predicate):
+    async with asyncio.timeout(5):
+        while True:
+            record = await workflow.get_session("run")
+            if predicate(record):
+                return record
+            await asyncio.sleep(0.01)
 
 
 async def test_fast_items_and_report_are_visible_before_slow_siblings(tmp_path):
@@ -57,7 +66,8 @@ async def test_fast_items_and_report_are_visible_before_slow_siblings(tmp_path):
             before = await w.get_session("run")
             assert first.status == "success" and first.version <= before.version
             items = {p.item_id: p for p in before.progress if p.stage == "analyze"}
-            assert items["first"].status == "success" and items["second"].status == "pending"
+            assert before.stage == "analyze"
+            assert items["first"].status == "success" and items["second"].status == "running"
             assert first.result_ref == items["first"].result_ref
             assert "report first" not in first.model_dump_json()
             release_analysis.set()
@@ -75,10 +85,18 @@ async def test_fast_items_and_report_are_visible_before_slow_siblings(tmp_path):
             )
             await slow_send_started.wait()
             assert delivered.status == "success" and w.coordinator.contains("run")
-            record = await w.get_session("run")
+            record = await wait_for_record(
+                w,
+                lambda value: any(
+                    p.event == "delivery"
+                    and p.channel_id == "two"
+                    and p.status == "running"
+                    for p in value.progress
+                ),
+            )
             assert record.status == "running"
             assert all(
-                p.status == "pending"
+                p.status == "running"
                 for p in record.progress
                 if p.event == "delivery" and p.channel_id == "two"
             )
@@ -188,11 +206,17 @@ async def test_stage_rerun_projection_resets_downstream_and_keeps_fixed_history(
         w.ai_service = ai
         await w.resume("run", stage="analyze")
         await ai.started.wait()
-        record = await w.get_session("run")
+        record = await wait_for_record(
+            w,
+            lambda value: any(
+                p.item_id == "first" and p.status == "running" for p in value.progress
+            ),
+        )
         assert record.execution_epoch != before.execution_epoch
         collected = next(p for p in record.progress if p.stage == "collect")
         assert collected.status == "success" and collected.execution_epoch == record.execution_epoch
-        assert next(p for p in record.progress if p.item_id == "first").status == "pending"
+        assert record.stage == "analyze"
+        assert next(p for p in record.progress if p.item_id == "first").status == "running"
         assert next(p for p in record.progress if p.event == "aggregate").result_ref is None
         assert await w.get_session("run", version=before.version) == before
         await w.cancel("run")

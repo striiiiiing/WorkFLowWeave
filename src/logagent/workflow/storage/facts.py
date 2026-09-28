@@ -240,7 +240,7 @@ class SessionStore(ArchiveDatabase):
 
     def entry(self, session_id: str, key: str) -> dict | None:
         """按 session 和稳定业务键读取单条存档，不存在时返回 None。"""
-        with self._transaction() as session:
+        with self._transaction(immediate=False) as session:
             row = session.exec(
                 select(SessionEntry).where(
                     SessionEntry.session_id == session_id,
@@ -253,7 +253,7 @@ class SessionStore(ArchiveDatabase):
         self, session_id: str, version: int | None = None, *, include_body=True
     ) -> tuple[dict, list[dict]]:
         """一致读取 session 头及截至指定版本的全部条目，按版本升序返回。"""
-        with self._transaction() as session:
+        with self._transaction(immediate=False) as session:
             header = session.get(SessionHeader, session_id)
             if header is None:
                 raise LogAgentError("session_not_found", "session 不存在")
@@ -271,7 +271,7 @@ class SessionStore(ArchiveDatabase):
 
     def session_ids(self) -> list[str]:
         """按创建时间降序列出 session ID，同一创建时间按 ID 排序。"""
-        with self._transaction() as session:
+        with self._transaction(immediate=False) as session:
             return list(
                 session.exec(
                     select(SessionHeader.session_id).order_by(
@@ -294,7 +294,7 @@ class SessionStore(ArchiveDatabase):
         return retention.expire(self, now, active=active, session_id=session_id)
 
     def archive_incomplete(self, sid):
-        with self._transaction():
+        with self._transaction(immediate=False):
             _, entries = self.entries(sid, include_body=False)
             keys = {entry["write_key"] for entry in entries}
             return any(
@@ -303,7 +303,7 @@ class SessionStore(ArchiveDatabase):
             )
 
     def provenance(self, sid, version):
-        with self._transaction() as session:
+        with self._transaction(immediate=False) as session:
             row = session.get(ResultProvenance, (sid, version))
             return self._expand_prompts(orjson.loads(row.details)) if row else None
 

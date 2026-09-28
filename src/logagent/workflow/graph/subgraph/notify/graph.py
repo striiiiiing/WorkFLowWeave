@@ -10,6 +10,7 @@ from logagent.workflow.execution.context import WorkflowContext
 from logagent.workflow.graph.state import ControlState, merge_items
 
 from .nodes.arrange import arrange
+from .nodes.barrier import wait_intent
 from .nodes.intent import intent
 from .nodes.receipt import receipt
 
@@ -66,9 +67,11 @@ def build_notify():
         context_schema=WorkflowContext,
     )
     branch.add_node("intent", intent)
+    branch.add_node("intent_barrier", wait_intent)
     branch.add_node("receipt", receipt)
     branch.add_edge(START, "intent")
-    branch.add_edge("intent", "receipt")
+    branch.add_edge("intent", "intent_barrier")
+    branch.add_edge("intent_barrier", "receipt")
     branch.add_edge("receipt", END)
     compiled = branch.compile(checkpointer=None)
 

@@ -113,6 +113,58 @@ class CheckpointArchive:
             for ident, body in values.get(channel, {}).items():
                 await self._item(sid, snapshot, epoch_values, stage, channel, ident, body, source)
 
+    async def running(self, sid, snapshot, values, *, stage, source, item_id=None,
+                      output_id=None, channel_id=None):
+        """Persist a committed-view placeholder for work that has just started.
+
+        Start events do not contain business results, so they use separate stable
+        keys and pending availability. The corresponding checkpoint fact later
+        replaces this projection in ``project_progress`` without mutating history.
+        """
+        epoch = values.get("execution_epoch")
+        if not epoch:
+            return
+        policy = snapshot.workflow.backup
+        if item_id is not None:
+            key = f"progress:{stage}:item:{item_id}:epoch:{epoch}"
+            scope = stage
+            summary = {
+                "execution_epoch": epoch,
+                "item_id": item_id,
+                "item_status": "running",
+            }
+        elif output_id is not None and channel_id is not None:
+            key = f"progress:delivery:{output_id}:{channel_id}:epoch:{epoch}"
+            scope = "notification"
+            summary = {
+                "execution_epoch": epoch,
+                "output_id": output_id,
+                "channel_id": channel_id,
+                "item_status": "running",
+            }
+        else:
+            key = f"phase:{stage}:start:epoch:{epoch}"
+            scope = "phase"
+            summary = {
+                "execution_epoch": epoch,
+                "stage": stage,
+                "status": "running",
+                "progress_status": "running",
+            }
+        await self._write(
+            sid,
+            key,
+            stage,
+            scope,
+            None,
+            policy,
+            summary,
+            None,
+            source,
+            availability="pending",
+            publish=True,
+        )
+
     async def _item(self, sid, snapshot, values, stage, channel, ident, body, source):
         epoch = values["execution_epoch"]
         policy = snapshot.workflow.backup
@@ -239,10 +291,24 @@ class CheckpointArchive:
         )
 
     async def _write(
-        self, sid, key, stage, scope, category, policy, summary, body, source, *, provenance=None
+        self,
+        sid,
+        key,
+        stage,
+        scope,
+        category,
+        policy,
+        summary,
+        body,
+        source,
+        *,
+        provenance=None,
+        availability=None,
+        publish=False,
     ):
         persist = category is None or policy.enabled and getattr(policy, category)
         before = await asyncio.to_thread(self.store.entry, sid, key)
+        entry_availability = availability or ("available" if persist else "not_saved")
         try:
             entry = await commit(
                 self.store.write,
@@ -253,7 +319,7 @@ class CheckpointArchive:
                 summary=summary,
                 body=body if persist else None,
                 category=category,
-                availability="available" if persist else "not_saved",
+                availability=entry_availability,
                 source=source,
                 provenance=provenance,
             )
@@ -291,7 +357,7 @@ class CheckpointArchive:
             and stage in {"aggregate", "finish"}
             or key.startswith("delivery:")
         )
-        if before is None and visible:
+        if before is None and (visible or publish):
             record = await self.view.get_session(sid)
             await self.publish(record)
         return entry
@@ -310,12 +376,15 @@ class CheckpointArchive:
 
 
 class CheckpointSubscription:
-    def __init__(self, archive, snapshot, values):
+    def __init__(self, archive, snapshot, values, context=None):
         self.archive = archive
         self.snapshot = snapshot
         self.values = values
+        self.context = context
+        self._running_keys = set()
 
     async def __call__(self, event):
+        await self._observe_start(event)
         # Only the root graph forwards the complete (namespace, mode, payload)
         # stream. Descendant Runnable callbacks also inherit business tags.
         if event["event"] != "on_chain_stream" or event["parent_ids"]:
@@ -346,3 +415,73 @@ class CheckpointSubscription:
             "task_id": "",
         }
         await self.archive.values(session_id, self.snapshot, self.values, values, source)
+        if self.context and source["namespace"].split(":", 1)[0] == "notify":
+            for key in values.get("intents", {}):
+                self.context.confirm_intent(values["execution_epoch"], key)
+
+    async def _observe_start(self, event):
+        if event.get("event") != "on_chain_start":
+            return
+        metadata = event.get("metadata") or {}
+        namespace = metadata.get("langgraph_checkpoint_ns", "")
+        node = metadata.get("langgraph_node")
+        if not node or not namespace:
+            return
+        session_id = event.get("metadata", {}).get("sessionID")
+        epoch = self.values.get("execution_epoch")
+        if not session_id or not epoch:
+            return
+        source = {
+            "checkpoint_id": metadata.get("langgraph_checkpoint_id", ""),
+            "namespace": namespace,
+            "task_id": event.get("run_id", ""),
+        }
+        if "|" not in namespace and node in {
+            "collect",
+            "analyze",
+            "aggregate",
+            "notify",
+            "finish",
+        }:
+            await self._mark_running(session_id, epoch, stage=node, source=source)
+            return
+        if node == "item":
+            payload = event.get("data", {}).get("input") or {}
+            item_id = payload.get("source_id") or payload.get("analysis_id")
+            stage = "collect" if item_id and "source_id" in payload else "analyze"
+            if item_id:
+                await self._mark_running(
+                    session_id, epoch, stage=stage, item_id=item_id, source=source
+                )
+        elif node == "delivery":
+            payload = event.get("data", {}).get("input") or {}
+            if payload.get("output_id") and payload.get("channel_id"):
+                await self._mark_running(
+                    session_id,
+                    epoch,
+                    stage="notify",
+                    output_id=payload["output_id"],
+                    channel_id=payload["channel_id"],
+                    source=source,
+                )
+
+    async def _mark_running(self, session_id, epoch, *, stage, source, item_id=None,
+                            output_id=None, channel_id=None):
+        identity = (epoch, stage, item_id, output_id, channel_id)
+        if identity in self._running_keys:
+            return
+        self._running_keys.add(identity)
+        try:
+            await self.archive.running(
+                session_id,
+                self.snapshot,
+                self.values,
+                stage=stage,
+                item_id=item_id,
+                output_id=output_id,
+                channel_id=channel_id,
+                source=source,
+            )
+        except BaseException:
+            self._running_keys.discard(identity)
+            raise
