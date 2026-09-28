@@ -33,9 +33,12 @@ def store_for(tmp_path, schedule=None):
     if not path.exists():
         path.write_bytes(orjson.dumps({
             "format_version": RESOURCE_FORMAT_VERSION,
-            "sources": {"source": {"id": "source", "collector": "mock"}},
+            "sources": {"source": {"id": "source", "call": {
+                "kind": "cli", "mode": "argv", "executable": "printf",
+                "argv": ["%s", "example"],
+            }}},
             "ai": {"ai": {"id": "ai", "provider": "mock", "models": {"model": {}}}},
-            "setters": {}, "channels": {},
+            "mcp_servers": {}, "channels": {},
             "workflows": {"demo": definition(schedule).model_dump(mode="json")},
         }))
     return ResourceStore(path)

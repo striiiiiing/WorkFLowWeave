@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { resourcesApi } from '@/api/resources'
-import { systemApi } from '@/api/system'
-import { useQuery } from '@/shared/async/useQuery'
 import {
   SourceEditorSession,
   type SourceConfig,
@@ -17,11 +15,6 @@ const props = defineProps<{
   linkedCount?: number
 }>()
 const emit = defineEmits<{ saved: [value: SourceConfig]; cancel: [] }>()
-// Removed with the old SourceStepCard in P3. New callers provide the page-owned catalog.
-const catalog = useQuery((signal) => systemApi.plugins(signal))
-const capabilities = computed(
-  () => catalog.data.value?.filter((item) => item.kind === 'collector') ?? [],
-)
 const target = computed<SourceSaveTarget>(() =>
   props.local
     ? { kind: 'workflow-draft', workflowId: '', sourceId: props.initial!.id }
@@ -46,8 +39,6 @@ const gateway = computed<SourceConfigEditorGateway>(() => {
     :override="override"
     :target="target"
     :gateway="gateway"
-    :capabilities="capabilities"
-    :protect="resourcesApi.protectCredential"
     @saved="emit('saved', $event)"
     @cancel="emit('cancel')"
   />

@@ -1,31 +1,27 @@
-"""Collector calls shared by Agent tools and the public HTTP/CLI boundary."""
+"""Public single-source collection using a captured resource snapshot."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from copy import deepcopy
-from pathlib import Path
+from collections.abc import Mapping
 from typing import Protocol
 
 from pydantic import Field, ValidationError
 
-from logagent.config.calls import normalize_call_options, resolve_source_call
+from logagent.config.calls import resolve_source_call
 from logagent.errors import LogAgentError, validation_error
 from logagent.models import (
-    CapabilityDescription,
     CollectionContext,
     CollectionResult,
     JSONObject,
+    MCPServerConfig,
     SourceConfig,
     SourceOverride,
     StrictModel,
 )
-from logagent.schema import call_options_schema
 
 
 class CollectionArguments(StrictModel):
-    options: JSONObject = Field(default_factory=dict)
-    setters: JSONObject = Field(default_factory=dict)
+    arguments: JSONObject = Field(default_factory=dict)
 
 
 class CollectionExecutor(Protocol):
@@ -42,53 +38,43 @@ class CollectorInvocation:
     def __init__(
         self,
         sources: Mapping[str, SourceConfig],
-        descriptions: Sequence[CapabilityDescription],
+        mcp_servers: Mapping[str, MCPServerConfig],
         *,
         executor: CollectionExecutor,
-        data_dir: Path,
     ):
         self.sources = sources
-        self.descriptions = {item.name: item for item in descriptions}
+        self.mcp_servers = mcp_servers
         self._executor = executor
-        self._data_dir = data_dir
 
-    def target(self, ident: str) -> tuple[SourceConfig, CapabilityDescription]:
+    def target(self, ident: str) -> SourceConfig:
         source = self.sources.get(ident)
         if source is None or not source.enabled:
             raise LogAgentError("target_unavailable", "目标未配置或未启用")
-        description = self.descriptions.get(source.collector)
-        if description is None:
-            raise LogAgentError("target_unavailable", "目标插件不可调用")
-        return source, description
+        return source
 
-    def schema(self, ident: str) -> JSONObject:
-        source, description = self.target(ident)
-        options = call_options_schema(description.options_schema, source.options)
-        # Each embedded schema needs its own local-reference base URI.
-        options["$id"] = "urn:logagent:call-options"
-        options["description"] = "Only explicit call overrides; saved values remain effective"
-        setters = deepcopy(description.setters_schema)
-        setters.setdefault("$id", "urn:logagent:call-setters")
-        setters["description"] = "Setter overrides; omitted keys retain the saved values"
+    async def schema(self, ident: str) -> JSONObject:
+        source = self.target(ident)
+        if source.call.kind != "mcp":
+            return {"type": "object", "properties": {}, "additionalProperties": False}
+        tool = await self._executor.mcp.describe(
+            self.mcp_servers, source.call.server, source.call.tool,
+        )
         return {
             "type": "object",
-            "properties": {"options": options, "setters": setters},
-            "required": ["options"] if options.get("required") else [],
+            "properties": {"arguments": tool["inputSchema"]},
             "additionalProperties": False,
         }
 
     async def invoke(
         self, ident: str, arguments: object, context: CollectionContext,
     ) -> CollectionResult:
-        source, description = self.target(ident)
+        source = self.target(ident)
         try:
             values = CollectionArguments.model_validate(arguments)
         except ValidationError as exc:
             raise validation_error(exc, code="invalid_argument") from None
-        options = normalize_call_options(
-            values.options, description.options_schema, data_dir=self._data_dir,
-        )
-        resolved = resolve_source_call(
-            source, {}, SourceOverride(options=options, setters=values.setters),
-        )
+        if source.call.kind == "cli" and values.arguments:
+            raise LogAgentError("invalid_argument", "CLI 来源不接受 MCP 参数覆盖")
+        override = SourceOverride(arguments=values.arguments) if values.arguments else None
+        resolved = resolve_source_call(source, {}, override)
         return await self._executor.collect(resolved, context)

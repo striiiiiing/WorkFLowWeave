@@ -18,7 +18,7 @@ export function useRunDetail(
   const active = computed(() =>
     session.data.value ? sessionStates[session.data.value.status].active : false,
   )
-  const selectedStage = ref<Exclude<WorkflowStage, 'finish'>>('collect')
+  const selectedStage = ref<NonNullable<ResumeOptions['stage']>>('collect')
   const stageRecoveryEnabled = ref(false)
   const recovery = useQuery(
     async (signal) => {

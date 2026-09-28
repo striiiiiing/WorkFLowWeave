@@ -18,6 +18,21 @@ class SessionView:
         """绑定业务存储，由调用方负责其生命周期。"""
         self._store = store
 
+    async def mcp_binding(self, session_id):
+        from logagent.models import WorkflowSnapshot
+        entry = await asyncio.to_thread(self._store.entry, session_id, "snapshot")
+        if not entry or entry["availability"] != "available" or not entry["body"]:
+            return {"error": "Workflow 配置快照未保存或不可用；无法恢复 MCP 范围"}
+        try:
+            snapshot = WorkflowSnapshot.model_validate(entry["body"]["snapshot"])
+        except ValueError:
+            return {"error": "原 Workflow 使用旧版来源配置，MCP 绑定不可恢复"}
+        return {
+            "servers": {key: value.model_dump(mode="json") for key, value in snapshot.mcp_servers.items()},
+            "sources": [{"source": source.id, "server": source.call.server, "tool": source.call.tool}
+                        for source in snapshot.sources.values() if source.call.kind == "mcp"],
+        }
+
     @staticmethod
     def _record(header: dict, entries: list[dict]) -> SessionRecord:
         """按业务版本顺序合并状态摘要与各阶段可用性。

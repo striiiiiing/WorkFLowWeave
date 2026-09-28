@@ -3,7 +3,7 @@ import json
 
 from langchain_core.messages import AIMessage
 
-from logagent.agent.builtin import plugin
+from logagent.agent.builtin import mcp, read
 from logagent.agent.config import AgentConfig
 from logagent.agent.service import AgentService
 from tests.agent.helpers import ScriptedModel
@@ -23,12 +23,12 @@ async def test_graph_uses_gateway_execution_and_persists_bounded_artifact(tmp_pa
             return {"status": "success", "text": "result " * 4000}
 
     models = [ScriptedModel(responses=[AIMessage(content="", tool_calls=[{
-        "id": "collector-1", "name": "plugin", "args": {"action": "call", "target": "sources:logs"},
+        "id": "collector-1", "name": "mcp", "args": {"action": "call", "server": "logs", "tool": "read"},
     }]), AIMessage(content="done")])]
     gateway = Gateway()
     service = AgentService(tmp_path / "workspace", tmp_path / "runtime",
                            config=AgentConfig(preview_tokens=200),
-                           model_provider=lambda _: models[0], declarations=[plugin.plugin])
+                           model_provider=lambda _: models[0], declarations=[mcp.plugin, read.plugin])
     # The gateway is injected directly for this isolated graph integration.
     original = service._capture_turn_resources
     from dataclasses import replace

@@ -9,7 +9,7 @@ from logagent.models import CollectionContext, WorkflowSnapshot
 from logagent.workflow.graph import GRAPH_REVISION
 from logagent.workflow.nodes import ArchiveRuntime
 
-STAGES = ("collect", "analyze", "aggregate", "notify")
+STAGES = ("collect", "process", "analyze", "aggregate", "notify")
 
 
 def compatible(values):
@@ -32,7 +32,7 @@ async def find_request(saver, session_id, request_id):
 
 async def prepare_recovery(service, session_id, *, stage=None, checkpoint_id=None):
     if stage is not None and stage not in STAGES:
-        raise LogAgentError("invalid_argument", "阶段必须是 collect、analyze、aggregate 或 notify")
+        raise LogAgentError("invalid_argument", "阶段必须是 collect、process、analyze、aggregate 或 notify")
     if stage is None and checkpoint_id is not None:
         raise LogAgentError("invalid_argument", "中断续跑不能指定历史 checkpoint")
     config = {"configurable": {"thread_id": session_id, "checkpoint_ns": ""}}
@@ -52,6 +52,7 @@ async def prepare_recovery(service, session_id, *, stage=None, checkpoint_id=Non
     graph = service._graph(runtime, snapshot, context)
     latest = await graph.aget_state(config, subgraphs=True)
     selected = latest
+    target_stage = "collect" if stage == "process" else stage
     if stage is not None:
         selected = None
         epoch = latest.values["execution_epoch"]
@@ -61,7 +62,7 @@ async def prepare_recovery(service, session_id, *, stage=None, checkpoint_id=Non
                 continue
             if checkpoint_id is None and candidate.values.get("execution_epoch") != epoch:
                 continue
-            if candidate.next == (stage,):
+            if candidate.next == (target_stage,):
                 compatible(candidate.values)
                 selected = candidate
                 break
@@ -70,7 +71,11 @@ async def prepare_recovery(service, session_id, *, stage=None, checkpoint_id=Non
         if selected is None:
             raise LogAgentError("stage_unavailable", "所选轮次没有匹配的父图阶段入口",
                                 {"stage": stage, "checkpoint_id": checkpoint_id})
-    await _check_inputs(service, runtime, snapshot, selected, stage)
+    if stage == "process":
+        epoch = selected.values.get("reuse_collection_epoch") or selected.values["execution_epoch"]
+        for ident in snapshot.workflow.sources:
+            await runtime.read(f"collect:item:{ident}:epoch:{epoch}")
+    await _check_inputs(service, runtime, snapshot, selected, target_stage)
     return snapshot, saved_path, graph, selected
 
 

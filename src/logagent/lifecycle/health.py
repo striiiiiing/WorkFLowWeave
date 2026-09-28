@@ -182,13 +182,13 @@ def _component_error(component: str, exc: Exception) -> ErrorInfo:
 
 def capability_diagnostics(services: ApplicationServices) -> list[ErrorInfo]:
     """按能力分组报告已保存资源的缺失插件引用，并排序以稳定诊断输出。"""
-    collectors = {item.name for item in services.collectors.describe()}
+    servers = {item.id for item in services.resources.list("mcp_servers") if item.enabled}
     channels = {item.name for item in services.channels.describe()}
     missing: dict[tuple[str, str], list[str]] = {}
     for value in services.resources.list("sources"):
         source = SourceConfig.model_validate(value)
-        if source.collector not in collectors:
-            missing.setdefault(("source", source.collector), []).append(source.id)
+        if source.call.kind == "mcp" and source.call.server not in servers:
+            missing.setdefault(("mcp_server", source.call.server), []).append(source.id)
     for value in services.resources.list("channels"):
         channel = ChannelConfig.model_validate(value)
         if channel.channel not in channels:

@@ -75,7 +75,7 @@ def _langchain_tool(declaration: ToolDeclaration, context: AgentToolContext) -> 
                         "name": declaration.name, "arguments": redact_data(arguments)}
             try:
                 execution = (context.gateway.execution(arguments)
-                             if declaration.name == "plugin" and context.gateway is not None
+                             if declaration.name == "mcp" and context.gateway is not None
                              else declaration.execution)
                 metadata["execution"] = execution
                 await context.event_log.append("tool.queued", tool_key=key, **metadata)
@@ -103,8 +103,9 @@ def _langchain_tool(declaration: ToolDeclaration, context: AgentToolContext) -> 
                             result, session_id=context.session_id, turn_id=context.turn_id,
                             tool_call_id=tool_call_id, config=context.config,
                             count_tokens=lambda text: count_tokens_approximately([HumanMessage(content=text)]),
-                            schema_output=declaration.name == "plugin" and arguments.get("action") == "schema",
+                            schema_output=declaration.name == "mcp" and arguments.get("action") == "describe",
                             read_enabled=context.read_enabled,
+                            preserve_full=declaration.name == "mcp",
                         )
                     result["duration_ms"] = round((monotonic() - began) * 1000)
                     await context.event_log.complete_tool(key, arguments, result)

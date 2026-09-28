@@ -75,7 +75,7 @@ function detach(id: string) {
       ...model.value,
       source_overrides: {
         ...model.value.source_overrides,
-        [id]: { source, options: {}, setters: {}, template: null },
+        [id]: { source, arguments: null, limits: { item_tokens: null, field_tokens: null } },
       },
     }
   })
@@ -112,7 +112,7 @@ function savedSource(source: SourceConfig) {
       ...model.value,
       source_overrides: {
         ...model.value.source_overrides,
-        [source.id]: { source, options: {}, setters: {}, template: null },
+        [source.id]: { source, arguments: null, limits: { item_tokens: null, field_tokens: null } },
       },
     }
   } else {
@@ -298,9 +298,6 @@ function savedSource(source: SourceConfig) {
           <p class="muted text-sm">
             用于拼接各来源的采集正文，默认空一行（两个换行）；不是采集文件的字段分隔符。
           </p>
-        </el-form-item>
-        <el-form-item v-if="advanced" label="包含采集数量">
-          <el-switch v-model="model.include_counts" />
         </el-form-item>
       </div>
     </SectionCard>
