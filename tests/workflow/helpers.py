@@ -1,7 +1,7 @@
 """Workflow 专属快照和采集、AI、通知替身。
 
 记录调用并支持分析失败/阻塞，供恢复和准入竞争测试控制业务边界；
-不访问网络，真实存储与 WorkflowService 由各测试自行装配。
+不访问网络，真实存储与 WorkflowRunner 由各测试自行装配。
 """
 
 import asyncio
@@ -70,7 +70,14 @@ class AI:
         self.requests.append((task_id, config.id, prompt, system_prompt, user_prompt))
         if task_id == self.block:
             self.started.set()
-            await asyncio.Future()
+            try:
+                await asyncio.Future()
+            except asyncio.CancelledError:
+                return AnalysisResult(
+                    task_id=task_id,
+                    status="cancelled",
+                    error=ErrorInfo(code="ai_cancelled", message="AI call cancelled"),
+                )
         if task_id in self.fail:
             return AnalysisResult(
                 task_id=task_id,
