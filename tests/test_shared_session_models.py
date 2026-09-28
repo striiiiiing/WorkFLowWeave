@@ -33,8 +33,8 @@ def test_workflow_defaults_keep_every_phase_and_snapshot_without_expiry():
     assert workflow.backup.enabled
     assert workflow.backup.snapshot
     assert workflow.backup.collection and workflow.backup.analysis and workflow.backup.final
-    assert workflow.backup.checkpoint_retention_days is None
-    assert workflow.backup.collection_retention_days is None
+    assert workflow.backup.checkpoint_retention_days == 7
+    assert workflow.backup.collection_retention_days == 30
     assert workflow.backup.analysis_retention_days is None
     assert workflow.backup.final_retention_days is None
     assert workflow.backup.on_failure == "stop"

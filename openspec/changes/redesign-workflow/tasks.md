@@ -160,13 +160,15 @@ aggregate 成功推送的后续补充见 [aggregate 推送任务](tasks/2026-09-
 - [x] 13.5 先验证当前库的 astream_events v2 元数据、tags 继承、父子图 chunk 和提交时序，再实现薄分发与 subscriptions；删除逐事件全扫和重复标记体系。
 - [x] 13.6 确定直接异步观察者或有界发布/订阅的进程内分发方式，记录依据；订阅共享单次执行，不引入外部 broker 或第二套持久事件日志。
 - [ ] 13.7 验证追加/去重、补存、快慢分支、恢复/通知、清理交接与分类期限；落实长期在线时的到期触发。（本次验收明确排除）
-- [ ] 13.8 外部 snapshot 已确认沿用现有协议，依据 [新增任务](tasks/2026-09-28-reuse-snapshot/task.md)完成新内部链路的首帧/版本、重连、心跳、终态关闭和离页回归及浏览器验收；不重写现有协议。（HTTP/SSE 与 Playwright 已通过；Tabbit 导航被 runtime 关闭）
-- [ ] 13.9 实施后按定向测试、静态检查、构建、烟测顺序验证，后端命令硬超时 60 秒；真实浏览器交 GPT-6 Luna max，最终交付统一代码审查。（自动化检查已通过，Tabbit runtime 阻塞浏览器项）
+- [ ] 13.8 外部 snapshot 已确认沿用现有协议，依据 [新增任务](tasks/2026-09-28-reuse-snapshot/task.md)完成新内部链路的首帧/版本、重连、心跳、终态关闭和离页回归及浏览器验收；不重写现有协议。（自动化 HTTP/SSE 与 Playwright 已通过；Windows Tabbit 两次导航在约 0.7–1.2 秒后复现 `Target page, context or browser has been closed`，未收到 snapshot，浏览器项不勾选）
+- [ ] 13.9 实施后按定向测试、静态检查、构建、烟测顺序验证，后端命令硬超时 60 秒；真实浏览器交 GPT-6 Luna max，最终交付统一代码审查。（自动化检查已通过；Windows Tabbit runtime 阻塞真实 run/SSE 浏览器证据）
 - [x] 13.10 完成本轮 OpenSpec 严格校验、链接/围栏/空白检查及文档差异审查，将实际结果写入本轮任务。
 
 ## 13 验收记录
 
 - 后端原生事件/图 API、并行通知、流进度、storage、HTTP/SSE、生命周期与清理/阶段恢复定向套件均通过；每条后端命令使用 60 秒硬超时。
 - 进程强退恢复四个场景逐项分批通过；完整批次曾超过 60 秒硬限，拆分后每个场景均在限时内通过。
-- 前端 Vitest 49 个文件、244 个测试通过；`npm run typecheck`、架构检查和 Vite 生产构建通过。隔离 Playwright E2E 17/17、现有服务链路 live smoke 1/1 通过；真实 Tabbit 导航在 runtime 层关闭上下文，浏览器验收未完成。
+- 前端 Vitest 49 个文件、244 个测试通过；`npm run typecheck`、架构检查和 Vite 生产构建通过。隔离 Playwright E2E 17/17、现有服务链路 live smoke 1/1 通过；GPT-6 Luna max 使用 Windows Tabbit 验证服务端 `/api/health`、`/api/workflows`、`/api/sessions` HTTP 200，但在 `/workflows` 页面导航后两次复现 runtime 关闭上下文，未能收到真实 run 的 SSE `snapshot` 首帧或终态关闭，13.8/13.9 保持未勾选。
+- 后端目录按 60 秒硬超时拆分复跑：Workflow 追加 44 项、interaction/lifecycle 119 项、agent 119 项、channel/collection 256 项、config 与根级测试 307 项均通过；根级两处过时断言已按 design §5.4 的 checkpoint 7 天/采集 30 天默认及既有 `WebChannelType` 内置声明修正。
+- AI 完整套件为 36 passed、16 skipped、16 errors；错误全部来自缺少 `.env` 凭据配置，未伪造凭据或将环境错误当作产品失败。
 - 过时的最小原生事件任务已由完整四部分任务取代并删除；其余任务文件仍承载当前设计依据或可追溯历史，未作无依据删除。
