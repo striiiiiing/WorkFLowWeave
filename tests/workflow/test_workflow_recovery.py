@@ -1,6 +1,6 @@
 """Workflow 原生 checkpoint 与业务存档恢复测试。
 
-注入可控采集/AI/通知替身，使用真实 SQLite 和 WorkflowService，验证阶段
+注入可控采集/AI/通知替身，使用真实 SQLite 和 WorkflowRunner，验证阶段
 顺序、fan-in、失败策略、取消、容量、关闭和旧快照恢复；在写入与回执边界
 注入故障，断言成功步骤不重复，材料缺失或损坏明确拒绝，投递不确定不重发。
 """
@@ -16,19 +16,24 @@ from sqlmodel import select
 from logagent.errors import LogAgentError
 from logagent.models import (
     AIConfig,
+    AnalysisResult,
     ChannelConfig,
     CollectionResult,
+    ErrorInfo,
     FanInConfig,
+    SourceConfig,
 )
-from logagent.workflow import SessionStore, WorkflowService
-from logagent.workflow.session_models import SessionEntry
+from logagent.workflow.execution.runner import WorkflowRunner
+from logagent.workflow.execution.tasks import RunCoordinator
+from logagent.workflow.storage.facts import SessionStore
+from logagent.workflow.storage.models import ReportBody, SessionEntry
 from tests.workflow.helpers import AI, Channel, Collector, archived, snapshot
 
 
 def service(path, *, ai=None, store_type=SessionStore):
     c, a, n = Collector(), ai or AI(), Channel()
     store = store_type(path)
-    return WorkflowService(c, a, n, session_store=store), store, c, a, n
+    return WorkflowRunner(c, a, n, session_store=store), store, c, a, n
 
 
 async def run(workflow, definition=None, sid="run"):
@@ -67,12 +72,10 @@ async def test_full_history_native_checkpoint_and_completed_recovery(tmp_path):
         checkpoint.config["configurable"]["checkpoint_ns"]
         async for checkpoint in w._checkpointer.alist(None)
     }
-    assert "" in namespaces
-    await w._cleanup.queue.join()
-    assert not await w._cleanup.storage.completed("run")
+    assert namespaces == {""}
     await close(w, store)
     new, reopened, c2, a2, n2 = service(path)
-    await new.recover("run")
+    await new.resume("run")
     assert await new.wait("run") == result
     assert not c2.calls and not a2.calls and not n2.calls
     await close(new, reopened)
@@ -104,15 +107,239 @@ async def test_cancel_resume_reuses_successful_branch_and_original_snapshot(tmp_
     assert first is not None and first["body"]["status"] == "success"
     assert await w.cancel("run")
     assert (await w.wait("run")).status == "cancelled"
+    namespaces = {
+        checkpoint.config["configurable"]["checkpoint_ns"]
+        async for checkpoint in w._checkpointer.alist(None)
+    }
+    assert any(namespace.startswith(("collect:", "analyze:")) for namespace in namespaces)
+    _, _, graph, _ = await w._recovery_material("run")
+    subgraphs = dict(graph.get_subgraphs())
+    assert {"collect", "analyze", "aggregate", "notify"} <= subgraphs.keys()
+    parent_state = await graph.aget_state({"configurable": {"thread_id": "run"}})
+    assert parent_state.next and parent_state.values["status"] == "running"
     snap.ai["ai"].models = {"changed": {}}
     await close(w, store)
     new, reopened, c, a, n = service(path)
-    await new.recover("run")
+    await new.resume("run")
     result = await new.wait("run")
     assert result.status == "completed"
     assert not c.calls and a.calls == [("second", "original data\n\nsource: success (1)", "offline")]
     assert len(n.calls) == 4
+    namespaces = {
+        checkpoint.config["configurable"]["checkpoint_ns"]
+        async for checkpoint in new._checkpointer.alist(None)
+    }
+    assert namespaces == {""}
     await close(new, reopened)
+
+
+async def test_runtime_context_isolated_for_concurrent_snapshots(tmp_path):
+    class ContextCollector:
+        def __init__(self):
+            self.sessions = set()
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+            self.calls = []
+
+        async def collect(self, config, context):
+            self.calls.append((context.session_id, context.workflow_id, config.id))
+            self.sessions.add(context.session_id)
+            if len(self.sessions) == 2:
+                self.started.set()
+            await self.release.wait()
+            return CollectionResult(
+                source_id=config.id,
+                status="success",
+                text=f"{context.session_id}:{context.workflow_id}",
+                count=1,
+            )
+
+    class ContextAI:
+        def __init__(self):
+            self.calls = []
+
+        async def execute(self, config, prompt, text, *, model, task_id, context,
+                          system_prompt=None, user_prompt=""):
+            self.calls.append((
+                context.session_id, context.workflow_id, config.id, model, text,
+            ))
+            return AnalysisResult(
+                task_id=task_id, status="success", text=f"{config.id}:{text}"
+            )
+
+    collector, ai = ContextCollector(), ContextAI()
+    store = SessionStore(tmp_path / "runs.sqlite3")
+    w = WorkflowRunner(collector, ai, Channel(), session_store=store)
+
+    def isolated_snapshot(workflow_id, source_id, ai_id, model):
+        definition = snapshot(tasks=("analysis",), channels=False)
+        definition.workflow.id = workflow_id
+        definition.workflow.sources = [source_id]
+        definition.workflow.analyses[0].ai = ai_id
+        definition.workflow.analyses[0].model = model
+        definition.sources = {
+            source_id: SourceConfig(id=source_id, collector="mock"),
+        }
+        definition.ai = {
+            ai_id: AIConfig(id=ai_id, provider="mock", models={model: {}}),
+        }
+        return definition
+
+    first = isolated_snapshot("workflow-one", "source-one", "ai-one", "model-one")
+    second = isolated_snapshot("workflow-two", "source-two", "ai-two", "model-two")
+    await w.trigger(first, session_id="session-one")
+    await w.trigger(second, session_id="session-two")
+    try:
+        async with asyncio.timeout(5):
+            await collector.started.wait()
+        collector.release.set()
+        first_result, second_result = await asyncio.gather(
+            w.wait("session-one"), w.wait("session-two"),
+        )
+        assert first_result.status == second_result.status == "completed"
+        assert sorted(collector.calls) == [
+            ("session-one", "workflow-one", "source-one"),
+            ("session-two", "workflow-two", "source-two"),
+        ]
+        assert sorted((sid, workflow_id, ai_id, model) for sid, workflow_id, ai_id, model, _ in ai.calls) == [
+            ("session-one", "workflow-one", "ai-one", "model-one"),
+            ("session-two", "workflow-two", "ai-two", "model-two"),
+        ]
+        assert all(f"{sid}:{workflow_id}" in text for sid, workflow_id, _, _, text in ai.calls)
+    finally:
+        collector.release.set()
+        await close(w, store)
+
+
+async def test_deferred_cleanup_failure_keeps_checkpoint_for_recovery(tmp_path):
+    path = tmp_path / "runs.sqlite3"
+    w, store, _, _, _ = service(path)
+    await w.start()
+    finalize = w._cleanup.finalize
+    attempts = 0
+
+    async def fail_once(session_id):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise OSError("injected deferred cleanup failure")
+        await finalize(session_id)
+
+    w._cleanup.finalize = fail_once
+    try:
+        await w.trigger(snapshot(tasks=("first",), channels=False), session_id="run")
+        with pytest.raises(OSError, match="injected deferred cleanup failure"):
+            await w.wait("run")
+        namespaces = {
+            checkpoint.config["configurable"]["checkpoint_ns"]
+            async for checkpoint in w._checkpointer.alist(None)
+        }
+        assert any(namespace.startswith("collect:") for namespace in namespaces)
+
+        await w.resume("run")
+        assert (await w.wait("run")).status == "completed"
+        namespaces = {
+            checkpoint.config["configurable"]["checkpoint_ns"]
+            async for checkpoint in w._checkpointer.alist(None)
+        }
+        assert namespaces == {""}
+        assert attempts == 2
+    finally:
+        await close(w, store)
+
+
+@pytest.mark.parametrize(
+    ("timeout_stage", "policy", "expected_status", "expected_analysis_calls"),
+    [
+        ("collect", "skip", "partial", ["first"]),
+        ("collect", "stop", "failed", []),
+        ("analyze", "continue", "partial", ["first", "second"]),
+        ("analyze", "stop", "failed", ["first", "second"]),
+    ],
+)
+async def test_business_timeouts_follow_workflow_stage_policy(
+    tmp_path, timeout_stage, policy, expected_status, expected_analysis_calls
+):
+    class ResultCollector:
+        async def collect(self, source, context):
+            if timeout_stage == "collect" and source.id == "slow":
+                return CollectionResult(
+                    source_id=source.id,
+                    status="timeout",
+                    error=ErrorInfo(code="collection_timeout", message="timed out"),
+                )
+            return CollectionResult(
+                source_id=source.id, status="success", text="available input", count=1
+            )
+
+    class ResultAI:
+        def __init__(self):
+            self.calls = []
+
+        async def execute(self, config, prompt, text, *, model, task_id, context,
+                          system_prompt=None, user_prompt=""):
+            self.calls.append(task_id)
+            if timeout_stage == "analyze" and task_id == "second":
+                return AnalysisResult(
+                    task_id=task_id,
+                    status="timeout",
+                    error=ErrorInfo(code="ai_timeout", message="timed out"),
+                )
+            return AnalysisResult(task_id=task_id, status="success", text=f"{task_id}({text})")
+
+    analysis_tasks = ("first", "second") if timeout_stage == "analyze" else ("first",)
+    definition = snapshot(
+        tasks=analysis_tasks,
+        channels=False,
+        analysis_failure=policy if timeout_stage == "analyze" else "continue",
+    )
+    definition.workflow.sources = ["slow", "source"]
+    definition.sources = {
+        "slow": SourceConfig(
+            id="slow", collector="mock", on_error=policy if timeout_stage == "collect" else "skip"
+        ),
+        "source": SourceConfig(id="source", collector="mock"),
+    }
+    collector, ai = ResultCollector(), ResultAI()
+    store = SessionStore(tmp_path / "runs.sqlite3")
+    w = WorkflowRunner(collector, ai, Channel(), session_store=store)
+    try:
+        result = await run(w, definition)
+        assert result.status == expected_status
+        assert ai.calls == expected_analysis_calls
+        if timeout_stage == "collect":
+            timeout_result = archived(store, "run", "collect:item:slow")
+            assert timeout_result["body"]["status"] == "timeout"
+        else:
+            timeout_result = archived(store, "run", "analyze:item:second")
+            assert timeout_result["body"]["status"] == "timeout"
+        if expected_status == "partial" and timeout_stage == "analyze":
+            assert result.outputs == {
+                "first": "first(available input\n\navailable input\n\nslow: success (1)\nsource: success (1))"
+            }
+    finally:
+        await close(w, store)
+
+
+async def test_cancelled_ai_result_without_task_cancellation_is_a_business_failure(tmp_path):
+    class CancelledAI:
+        async def execute(self, config, prompt, text, *, model, task_id, context,
+                          system_prompt=None, user_prompt=""):
+            if task_id == "second":
+                return AnalysisResult(
+                    task_id=task_id,
+                    status="cancelled",
+                    error=ErrorInfo(code="ai_cancelled", message="request cancelled"),
+                )
+            return AnalysisResult(task_id=task_id, status="success", text=f"{task_id}({text})")
+
+    w, store, _, _, _ = service(tmp_path / "runs.sqlite3", ai=CancelledAI())
+    result = await run(w, snapshot(channels=False))
+    assert result.status == "partial" and not result.cancelled
+    assert set(result.outputs) == {"first"}
+    cancelled = archived(store, "run", "analyze:item:second")
+    assert cancelled["body"]["status"] == "cancelled"
+    await close(w, store)
 
 
 async def test_checkpoint_fact_survives_archive_interruption_and_recovery(tmp_path):
@@ -125,12 +352,12 @@ async def test_checkpoint_fact_survives_archive_interruption_and_recovery(tmp_pa
 
     path = tmp_path / "runs.sqlite3"
     w, store, c, a, n = service(path, store_type=FailAfterArchive)
-    with pytest.raises(LogAgentError):
+    with pytest.raises(RuntimeError, match="process interruption after archive commit"):
         await run(w)
     assert c.calls == ["source"]
     await close(w, store)
     new, reopened, c, _, _ = service(path)
-    await new.recover("run")
+    await new.resume("run")
     assert (await new.wait("run")).status == "completed"
     assert not c.calls
     await close(new, reopened)
@@ -147,13 +374,13 @@ async def test_send_receipt_archive_failure_reuses_checkpoint_receipt(tmp_path):
 
     path = tmp_path / "runs.sqlite3"
     w, store, _, _, n = service(path, store_type=FailReceipt)
-    with pytest.raises(LogAgentError):
+    with pytest.raises(OperationalError, match="receipt disk failure"):
         await run(w, snapshot(tasks=("first",)))
     original_deliveries = [row[:2] for row in n.calls]
     assert original_deliveries.count(("first", "one")) == 1
     await close(w, store)
     new, reopened, c, a, n = service(path)
-    await new.recover("run")
+    await new.resume("run")
     result = await new.wait("run")
     assert result.status == "completed" and not c.calls and not a.calls
     assert ("first", "one") not in [row[:2] for row in n.calls]
@@ -177,7 +404,7 @@ async def test_intent_checkpoint_failure_prevents_send(tmp_path):
         if not w.coordinator.active:
             break
         await asyncio.sleep(0.001)
-    with pytest.raises(LogAgentError):
+    with pytest.raises(RuntimeError, match="intent checkpoint failure"):
         await w.wait("run")
     assert not channel.calls
     assert (await w.get_session("run")).status == "interrupted"
@@ -190,7 +417,7 @@ async def test_missing_checkpoint_is_not_reconstructed_from_business_history(tmp
     await run(w)
     await w._checkpointer.adelete_thread("run")
     with pytest.raises(LogAgentError) as caught:
-        await w.recover("run")
+        await w.resume("run")
     assert caught.value.code == "checkpoint_missing"
     assert (await w.get_session("run")).status == "completed"
     await close(w, store)
@@ -215,7 +442,7 @@ async def test_disabled_archive_does_not_disable_checkpoint_recovery(
     assert any("original data" in repr(item.checkpoint) + repr(item.pending_writes)
                for item in checkpoints)
     ai.block = None
-    await w.recover("run")
+    await w.resume("run")
     assert (await w.wait("run")).status == "completed"
     await close(w, store)
 
@@ -227,13 +454,13 @@ async def test_duplicate_capacity_and_shutdown(tmp_path):
     await w.trigger(snapshot(), session_id="run")
     await asyncio.wait_for(ai.started.wait(), 5)
     with pytest.raises(LogAgentError, match="同一 session"):
-        await w.recover("run")
+        await w.resume("run")
     with pytest.raises(LogAgentError, match="容量"):
         await w.trigger(snapshot(), session_id="other")
     await w.shutdown()
     assert (await w.wait("run")).status == "cancelled"
     with pytest.raises(LogAgentError, match="关闭"):
-        await w.recover("run")
+        await w.resume("run")
     store.close()
 
 
@@ -348,12 +575,10 @@ async def test_aggregate_failure_does_not_fallback_to_branch_delivery(tmp_path):
 
 def test_in_memory_database_is_rejected():
     with pytest.raises(LogAgentError):
-        WorkflowService(Collector(), AI(), Channel(), database=":memory:")
+        WorkflowRunner(Collector(), AI(), Channel(), database=":memory:")
 
 
 async def test_coordinator_completion_cache_is_bounded():
-    from logagent.workflow import RunCoordinator
-
     coordinator = RunCoordinator()
 
     async def value():
@@ -377,7 +602,7 @@ async def test_failed_work_requires_explicit_stage_rerun(tmp_path, failure):
     first = await run(w, definition)
     assert first.status == "failed" and not n.calls
     w.ai_service = AI()
-    await w.recover("run")
+    await w.resume("run")
     result = await w.wait("run")
     assert result.status == "failed"
     assert not w.ai_service.calls
@@ -403,7 +628,6 @@ async def test_archive_damage_does_not_replace_checkpoint_execution_authority(tm
         assert (await w.get_session("run")).status == "completed"
     else:
         with store._transaction() as db:
-            from logagent.workflow.session_models import ReportBody
             key = archived(store, "run", "output:first")["write_key"]
             entry = db.exec(select(SessionEntry).where(
                 SessionEntry.session_id == "run", SessionEntry.write_key == key,
@@ -416,7 +640,7 @@ async def test_archive_damage_does_not_replace_checkpoint_execution_authority(tm
                 db.add(body)
     assert (await w.recovery_availability("run")).available
     if damage == "expired":
-        await w.recover("run")
+        await w.resume("run")
         assert (await w.wait("run")).status == "completed"
     else:
         record = await w.get_session("run")
@@ -453,7 +677,7 @@ async def test_body_backup_failure_preserves_checkpoint_for_later_reconciliation
     assert archived(store, "run", "collect:item:source") is None
     assert c.calls == ["source"]
     store.failing = False
-    await w.recover("run")
+    await w.resume("run")
     assert (await w.wait("run")).status == "completed"
     assert c.calls == ["source"]
     _, history = store.entries("run")
@@ -498,7 +722,7 @@ async def test_created_session_cannot_be_reused_after_snapshot_write_failure(tmp
 
     w, store, c, a, n = service(tmp_path / "runs.sqlite3", store_type=BrokenSnapshot)
     await w.trigger(snapshot(), session_id="run")
-    with pytest.raises(LogAgentError):
+    with pytest.raises(RuntimeError, match="snapshot write interrupted"):
         await w.wait("run")
     assert (await w.get_session("run")).status == "interrupted"
     with pytest.raises(LogAgentError) as error:
@@ -519,11 +743,11 @@ async def test_final_archive_replay_reconciles_interrupted_summary(tmp_path):
             return value
 
     w, store, c, a, n = service(tmp_path / "runs.sqlite3", store_type=CrashAfterFinal)
-    with pytest.raises(LogAgentError):
+    with pytest.raises(RuntimeError, match="after final business commit"):
         await run(w)
     assert (await w.get_session("run")).status == "interrupted"
     calls = (list(c.calls), list(a.calls), list(n.calls))
-    await w.recover("run")
+    await w.resume("run")
     assert (await w.wait("run")).status == "completed"
     assert (await w.get_session("run")).status == "completed"
     assert calls == (c.calls, a.calls, n.calls)

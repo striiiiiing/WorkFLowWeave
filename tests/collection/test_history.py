@@ -15,8 +15,9 @@ from logagent.collection import CollectorManager, HistoryCollector, builtin_coll
 from logagent.config import PluginRegistry, ResourceStore
 from logagent.errors import LogAgentError
 from logagent.models import BackupPolicy, CollectionContext, SourceConfig, SystemConfig
-from logagent.workflow import SessionStore, SessionView
-from logagent.workflow.session_models import SessionEntry
+from logagent.workflow.storage.facts import SessionStore
+from logagent.workflow.storage.models import SessionEntry
+from logagent.workflow.storage.sessions import SessionView
 
 
 @pytest.fixture
@@ -107,7 +108,7 @@ async def test_empty_missing_expired_corrupt_are_distinct(store):
         row = session.exec(select(SessionEntry).where(
             SessionEntry.session_id == "broken", SessionEntry.write_key == "collect",
         )).one()
-        from logagent.workflow.session_models import CollectionBody
+        from logagent.workflow.storage.models import CollectionBody
         body = session.get(CollectionBody, (row.session_id, row.version))
         body.content = '{"text":"private-corrupt"}'
         session.add(body)
