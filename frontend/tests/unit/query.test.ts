@@ -5,9 +5,10 @@ import { effectScope, nextTick, ref } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { useQuery } from '@/shared/async/useQuery'
-import { useSession, POLL_INTERVAL_MS } from '@/modules/runs/composables/useSession'
+import { useSession } from '@/modules/runs/composables/useSession'
 import { runsApi } from '@/app/services'
 import type { SessionRecord } from '@/modules/runs/public'
+import { session } from '../helpers/runHarness'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -81,33 +82,36 @@ it('does not start new reads after its scope is disposed', async () => {
   await query.refresh()
   expect(fetcher).toHaveBeenCalledTimes(1)
 })
-describe('session polling', () => {
-  it('does not overlap slow requests and stops on interrupted status', async () => {
+describe('session snapshots without subscriptions', () => {
+  it('reads one snapshot and requires explicit synchronization', async () => {
     vi.useFakeTimers()
     const initial = deferred<SessionRecord>()
     const get = vi
       .spyOn(runsApi, 'get')
       .mockReturnValueOnce(initial.promise)
-      .mockResolvedValue({ status: 'interrupted' } as SessionRecord)
+      .mockResolvedValue(session({ session_id: 'run_1', status: 'interrupted' }))
     const scope = effectScope()
-    scope.run(() => useSession(ref('run_1'), runsApi))
-    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 4)
+    const query = scope.run(() => useSession(ref('run_1'), { get }))!
+    await vi.advanceTimersByTimeAsync(20_000)
     expect(get).toHaveBeenCalledTimes(1)
-    initial.resolve({ status: 'running' } as SessionRecord)
+    initial.resolve(session({ session_id: 'run_1' }))
     await flushPromises()
-    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS)
+    expect(query.connectionError.value).toContain('不支持进度订阅')
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(get).toHaveBeenCalledTimes(1)
+    await query.refresh()
     expect(get).toHaveBeenCalledTimes(2)
-    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3)
+    await vi.advanceTimersByTimeAsync(20_000)
     expect(get).toHaveBeenCalledTimes(2)
     scope.stop()
   })
-  it('surfaces polling failures and allows an explicit retry', async () => {
+  it('surfaces read failures and allows an explicit retry', async () => {
     vi.useFakeTimers()
     vi.spyOn(runsApi, 'get')
       .mockRejectedValueOnce(new Error('network unavailable'))
-      .mockResolvedValue({ status: 'completed' } as SessionRecord)
+      .mockResolvedValue(session({ session_id: 'run_1', status: 'completed' }))
     const scope = effectScope()
-    const query = scope.run(() => useSession(ref('run_1'), runsApi))!
+    const query = scope.run(() => useSession(ref('run_1'), { get: runsApi.get }))!
     await flushPromises()
     expect(query.error.value).toBe('network unavailable')
     await query.refresh()

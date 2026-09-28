@@ -1,4 +1,5 @@
 import { segment, type HttpClient } from '@/shared/api'
+import { createRunEventSource, type RunEventTransport } from './runEventSource'
 import type {
   PhaseContent,
   RecoveryAvailability,
@@ -15,8 +16,18 @@ export interface SessionQuery {
   after?: string
   before?: string
 }
-export function createRunsApi(http: HttpClient) {
+export interface ResumeOptions {
+  stage?: Exclude<WorkflowStage, 'finish'>
+  checkpoint_id?: string
+  request_id?: string
+}
+export type RecoveryQuery = Pick<ResumeOptions, 'stage' | 'checkpoint_id'>
+export function createRunsApi(
+  http: HttpClient,
+  subscribe: RunEventTransport = createRunEventSource(),
+) {
   return {
+    subscribe,
     list: (query: SessionQuery = {}, signal?: AbortSignal) =>
       http.request<SessionRecord[]>({
         url: '/sessions',
@@ -39,13 +50,24 @@ export function createRunsApi(http: HttpClient) {
         method: 'POST',
         signal,
       }),
-    recover: (id: string) =>
+    resume: (id: string, options: ResumeOptions = {}) =>
+      http.request<{ session_id: string }>({
+        url: `/sessions/${segment(id)}/resume`,
+        method: 'POST',
+        data: options,
+      }),
+    recover: (id: string, options: ResumeOptions = {}) =>
       http.request<{ session_id: string }>({
         url: `/sessions/${segment(id)}/recover`,
         method: 'POST',
+        data: options,
       }),
-    recovery: (id: string, signal?: AbortSignal) =>
-      http.request<RecoveryAvailability>({ url: `/sessions/${segment(id)}/recovery`, signal }),
+    recovery: (id: string, query: RecoveryQuery = {}, signal?: AbortSignal) =>
+      http.request<RecoveryAvailability>({
+        url: `/sessions/${segment(id)}/recovery`,
+        params: query,
+        signal,
+      }),
     cancel: (id: string) =>
       http.request<{ session_id: string; cancelled: boolean }>({
         url: `/sessions/${segment(id)}/cancel`,

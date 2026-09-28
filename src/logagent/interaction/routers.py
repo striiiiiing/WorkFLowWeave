@@ -8,7 +8,9 @@ from pathlib import Path as FilePath
 from typing import Annotated, Literal
 from uuid import uuid4
 
+import orjson
 from fastapi import APIRouter, Depends, Path, Query, Response, status
+from fastapi.responses import StreamingResponse
 
 from logagent.collection.invocation import CollectionArguments, CollectorInvocation
 from logagent.errors import LogAgentError
@@ -45,8 +47,10 @@ from .schemas import (
     CronPreviewResponse,
     PhaseQuery,
     ProtectCredentialRequest,
+    RecoveryQuery,
     ReloadQuery,
     ReloadResponse,
+    ResumeRequest,
     SessionListQuery,
     SessionQuery,
     TriggerRequest,
@@ -248,8 +252,12 @@ async def get_session(
 
 
 @router.get("/sessions/{session_id}/recovery", response_model=RecoveryAvailability)
-async def get_recovery_availability(session_id: ID, services: Services):
-    return await services.workflow.recovery_availability(session_id)
+async def get_recovery_availability(
+    session_id: ID, services: Services, query: Annotated[RecoveryQuery, Query()],
+):
+    return await services.workflow.recovery_availability(
+        session_id, **query.model_dump(exclude_none=True),
+    )
 
 
 @router.get("/sessions/{session_id}/phases/{stage}", response_model=PhaseContent)
@@ -278,8 +286,12 @@ async def get_phase_content(
     response_model=TriggerResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
-async def recover_session(session_id: ID, response: Response, services: Services):
-    recovered = await services.workflow.recover(session_id)
+async def recover_session(
+    session_id: ID, response: Response, services: Services, payload: ResumeRequest | None = None,
+):
+    recovered = await services.workflow.resume(
+        session_id, **(payload.model_dump(exclude_none=True) if payload else {}),
+    )
     response.headers["Location"] = f"/api/sessions/{recovered}"
     return TriggerResponse(session_id=recovered)
 
@@ -356,3 +368,36 @@ async def delete_resource(
 ):
     await asyncio.to_thread(services.resources.delete, kind, ident)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+_WORKFLOW_SSE_HEARTBEAT_SECONDS = 15
+_WORKFLOW_TERMINAL = {"completed", "partial", "failed", "cancelled", "interrupted"}
+
+
+@router.get("/sessions/{session_id}/events")
+async def workflow_events(session_id: ID, services: Services):
+    """只注册观察者；ready 后客户端查询同一投影以补齐连接窗口。"""
+    await services.session_view.get_session(session_id)
+
+    def encode(event, data):
+        return f"event: {event}\ndata: {orjson.dumps(data).decode()}\n\n"
+
+    async def stream():
+        async with services.workflow.progress_hub.subscribe(session_id) as queue:
+            yield encode("ready", {"session_id": session_id})
+            while True:
+                try:
+                    item = await asyncio.wait_for(queue.get(), _WORKFLOW_SSE_HEARTBEAT_SECONDS)
+                except TimeoutError:
+                    yield ": heartbeat\n\n"
+                    continue
+                if item is None:
+                    yield encode("resync", {"reason": "subscription_closed", "session_id": session_id})
+                    return
+                yield encode("progress", item.model_dump(mode="json"))
+                if item.event == "lifecycle" and item.status in _WORKFLOW_TERMINAL:
+                    return
+
+    return StreamingResponse(stream(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache", "X-Accel-Buffering": "no",
+    })
