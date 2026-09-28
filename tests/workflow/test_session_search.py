@@ -34,22 +34,20 @@ async def test_name_is_frozen_at_creation_and_survives_expiry_and_reopen(tmp_pat
         reopened.close()
 
 
-async def test_legacy_names_come_only_from_saved_snapshot_and_missing_names_are_explicit(tmp_path):
+async def test_name_is_saved_at_creation_and_survives_snapshot_expiry(tmp_path):
     store = SessionStore(tmp_path / "sessions.sqlite3")
     view = SessionView(store)
     try:
-        store.create("old", "demo", BackupPolicy(retention_days=1))
-        assert (await view.get_session("old")).workflow_name is None
+        store.create("named", "demo", BackupPolicy(retention_days=1), workflow_name="运行名称")
         store.write(
-            "old", "snapshot", stage=None, scope="parent", summary={},
-            body={"snapshot": snapshot(name="旧运行名称").model_dump(mode="json")},
+            "named", "snapshot", stage=None, scope="parent", summary={},
+            body={"snapshot": snapshot(name="快照名称").model_dump(mode="json")},
             category="snapshot",
         )
-        assert (await view.get_session("old")).workflow_name == "旧运行名称"
-        assert (await view.get_session("old", version=1)).workflow_name is None
-        store.write("old", "finish", stage="finish", scope="phase", summary={"status": "completed"})
+        store.write("named", "finish", stage="finish", scope="phase", summary={"status": "completed"})
         store.expire(datetime.now(UTC) + timedelta(days=2))
-        assert (await view.get_session("old")).workflow_name is None
+        assert (await view.get_session("named")).workflow_name == "运行名称"
+        assert (await view.get_session("named", version=1)).workflow_name == "运行名称"
         store.create("unnamed", "demo", BackupPolicy(), workflow_name="")
         assert (await view.get_session("unnamed")).workflow_name == ""
     finally:

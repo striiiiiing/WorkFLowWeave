@@ -89,3 +89,10 @@ class Channel:
         return DeliveryResult(
             channel_id=config.id, output_id=notification.output_id, status="success", attempts=1
         )
+
+
+def archived(store, session_id, base):
+    """按业务基础键读取最新轮次，仅供测试检查持久化事实。"""
+    _, entries = store.entries(session_id)
+    return next((entry for entry in reversed(entries)
+                 if entry["write_key"] == base or entry["write_key"].startswith(base + ":epoch:")), None)

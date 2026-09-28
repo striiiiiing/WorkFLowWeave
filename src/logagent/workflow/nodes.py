@@ -11,6 +11,25 @@ from sqlalchemy.exc import DBAPIError
 from logagent.errors import LogAgentError
 
 
+def safe_node(operation):
+    """基础设施失败中止图；业务错误应由调用节点转换为明确结果。"""
+    async def node(state):
+        try:
+            return await operation(state)
+        except LogAgentError:
+            raise
+        except Exception as exc:
+            from logagent.errors import exception_error
+            error = exception_error(exc, code="workflow_failed", message="Workflow 节点执行或存档失败")
+            raise LogAgentError(error.code, error.message, error.details) from None
+    return node
+
+
+def epoch_key(state, base):
+    """业务事实在同轮恢复中稳定，在主动阶段重跑时隔离。"""
+    return f"{base}:epoch:{state['execution_epoch']}"
+
+
 async def _commit(function, *args, **kwargs):
     """在线程中提交业务事务，取消时也等待提交结束后再传播取消。
 
@@ -102,7 +121,10 @@ def archive_node(
         if previous is None:
             body = await operation(state)
             previous = await runtime.save(
-                ident, stage=stage, scope=scope, summary=summarize(body),
+                ident, stage=stage, scope=scope, summary={**summarize(body), **(
+                    {"execution_epoch": state["execution_epoch"]}
+                    if state.get("execution_epoch") else {}
+                )},
                 body=body, category=category,
             )
         if previous["availability"] == "write_failed" and runtime.policy.on_failure == "stop":
