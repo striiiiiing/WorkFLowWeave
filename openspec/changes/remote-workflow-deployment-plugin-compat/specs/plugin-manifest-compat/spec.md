@@ -6,7 +6,7 @@
 
 ### Requirement: Plugin manifests are explicitly normalized
 
-The system SHALL accept the existing LogAgent v1 manifest and the approved QwenPaw-style manifest through an explicit normalization step. The normalized result SHALL contain a stable identifier, version, capability kind, relative Python entry, and source metadata. A conflicting `type`/`kind`, unsafe entry, unsupported capability kind, or malformed required field SHALL fail discovery with a diagnostic tied to the package; it SHALL NOT be silently guessed.
+The system SHALL accept the existing LogAgent v1 manifest and the approved QwenPaw-style manifest through an explicit normalization step. The normalized result SHALL contain a stable identifier, version, capability kind, relative Python entry, and source metadata. A conflicting `type`/`kind`, unsafe entry, unsupported capability kind, or malformed required field SHALL fail discovery with a diagnostic tied to the package; it SHALL NOT be silently guessed. The manifest ID, rather than the directory name, is the package owner identity so existing packages whose directory and ID differ remain compatible.
 
 #### Scenario: QwenPaw-style source manifest is accepted
 
