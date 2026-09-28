@@ -5,7 +5,7 @@
 | 决策 | 依据及理由 |
 | --- | --- |
 | 十个 source package 的清单 | 远端 `plugins/qwenpaw_sources/main.py` 当前注册的十个稳定 Collector 名称；一能力一目录才能验证独立停用/重载。`qwenpaw_notify` 与内置 `mock` 分开统计，避免把通知和测试能力混入来源数量。 |
-| 不称为 manifest v2 | `/mnt/d/code/QwenPaw` 固定版本清单使用 `type`、`entry`、`dependencies`、`qwenpaw_version`、`meta`，没有 `manifest_version` 或 `api_version=2`；因此只称 QwenPaw-style manifest。 |
+| 不称为 manifest v2 | `/mnt/d/code/QwenPaw` 固定版本清单使用 `type`、`entry`、`dependencies`、`qwenpaw_version`、`meta`，没有 `manifest_version` 或 `api_version=2`；因此只称 QwenPaw-style manifest。LogAgent v1 的目录名与 ID 不一致仍按既有 owner 规则兼容。 |
 | 远端先于指标和 MCP | 用户指定顺序为 merge → 本地验收 → 远端同步；AxonHub 与真实 Agent-MCP 只有远端部署后才有有效观测对象。 |
 | 15 分钟 SSE/运行观察预算 | 现有 SSE 使用 15 秒空闲心跳且普通 Workflow 运行可超过单次请求；测试只设置有界总超时并把未终态明确记为失败，不以长时间等待隐藏挂起。 |
 | token 节省不设预定百分比 | 直接 JSON 与清洗 JSON 的实际长度取决于十个来源内容；仅报告成对测量结果，不把历史约 36.4% 估算当成本轮证据。 |
@@ -13,8 +13,8 @@
 ## 1. OpenSpec 与测试先行
 
 - [x] 1.1 新建 proposal、四个 capability specs、design 和本任务清单；明确十个 source inventory、远端拓扑、指标口径和 Agent-MCP 绑定。
-- [ ] 1.2 为清单归一、十个来源 inventory、独立 reload/禁用、远端 HTTP/SSE、AxonHub 指标和 Agent-MCP 绑定补充测试；测试先于实现变更提交。
-- [ ] 1.3 运行 `openspec validate remote-workflow-deployment-plugin-compat --strict --no-interactive`、`git diff --check`，并在本任务记录真实结果。
+- [x] 1.2 为清单归一、十个来源 inventory、独立 reload/禁用、远端 HTTP/SSE、AxonHub 指标和 Agent-MCP 绑定补充测试；测试先于实现变更提交。初始缺口以收集错误暴露：四个契约模块尚不存在；补齐后新测试 22 项通过，现有配置/工具/启动回归 62 项通过（合计 84 passed，11.97s；60 秒硬超时）。
+- [x] 1.3 运行 `openspec validate remote-workflow-deployment-plugin-compat --strict --no-interactive`、`git diff --check`；均通过。Ruff 目标文件检查通过。
 
 ## 2. 本地 merge 前验收准备
 
