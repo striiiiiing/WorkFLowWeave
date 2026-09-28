@@ -107,9 +107,8 @@ export function useWorkflowEditor(options: WorkflowEditorOptions) {
     return apply(
       setSourceOverride(requireDraft(), sourceId, {
         source: structuredClone(value),
-        options: {},
-        setters: {},
-        template: null,
+        arguments: null,
+        limits: { item_tokens: null, field_tokens: null },
       }),
     )
   }

@@ -80,7 +80,7 @@ EnvironmentName = Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")]
 NonNegativeInt = Annotated[int, Field(strict=True, ge=0)]
 SessionVersion = Annotated[int, Field(gt=0)]
 
-ResourceKind = Literal["sources", "setters", "ai", "channels", "workflows"]
+ResourceKind = Literal["sources", "mcp_servers", "ai", "channels", "workflows"]
 PluginKind = Literal["collector", "channel", "tool"]
 SaveMode = Literal["create", "replace", "upsert"]
 SourcePolicy = Literal["stop","notice", "skip"]
@@ -129,20 +129,63 @@ class SystemConfig(StrictModel):
     master_key_file: str = "master.key"
 
 
+PositiveTokens = Annotated[int, Field(strict=True, gt=0)]
+
+
+class SourceLimits(StrictModel):
+    item_tokens: PositiveTokens | None = None
+    field_tokens: PositiveTokens | None = None
+
+
+class InputProcessing(SourceLimits):
+    format: Literal["none", "ison", "toon", "zon", "md", "csv"] = "none"
+    total_tokens: PositiveTokens | None = None
+
+
+class MCPCall(StrictModel):
+    kind: Literal["mcp"] = "mcp"
+    server: ID
+    tool: str = Field(min_length=1)
+    arguments: JSONObject = Field(default_factory=dict)
+
+
+class CLIArgv(StrictModel):
+    kind: Literal["cli"] = "cli"
+    mode: Literal["argv"]
+    executable: str = Field(min_length=1)
+    argv: list[str] = Field(default_factory=list)
+    cwd: str | None = None
+
+
+class CLIShell(StrictModel):
+    kind: Literal["cli"] = "cli"
+    mode: Literal["shell"]
+    command: str = Field(min_length=1)
+    cwd: str | None = None
+
+
+CLICall = Annotated[CLIArgv | CLIShell, Field(discriminator="mode")]
+SourceCall = Annotated[MCPCall | CLICall, Field(discriminator="kind")]
+
+
 class SourceConfig(StrictModel):
     id: ID
     display_name: str | None = None
     description: str = ""
-    collector: ID
+    call: SourceCall
     enabled: bool = True
-    options: JSONObject = Field(default_factory=dict)
-    setters: JSONObject = Field(default_factory=dict)
-    template: ID | None = None
+    limits: SourceLimits = Field(default_factory=SourceLimits)
     timeout: Seconds = 60.0
     on_error: SourcePolicy = "notice"
     on_missing: SourcePolicy = "notice"
     on_empty: SourcePolicy = "notice"
-    on_filtered_empty: SourcePolicy = "notice"
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_collectors(cls, value):
+        if isinstance(value, dict) and {"collector", "setters", "template"} & value.keys():
+            raise ValueError("旧 Collector/Setter 来源不兼容，请明确配置 MCP 工具或 CLI 指令")
+        return value
 
 
 class SetterTemplate(StrictModel):
@@ -164,6 +207,30 @@ class EncryptedCredential(StrictModel):
 
 
 Credential = Annotated[EnvironmentCredential | EncryptedCredential, Field(discriminator="kind")]
+
+
+class MCPServerConfig(StrictModel):
+    id: ID
+    transport: Literal["stdio", "streamable_http", "sse"]
+    enabled: bool = True
+    command: str | None = None
+    args: list[str] = Field(default_factory=list)
+    cwd: str | None = None
+    url: str | None = None
+    env: dict[EnvironmentName, Credential] = Field(default_factory=dict)
+    headers: dict[str, Credential] = Field(default_factory=dict)
+    timeout: Seconds = 60.0
+
+    @model_validator(mode="after")
+    def valid_transport(self) -> Self:
+        if self.transport == "stdio":
+            if not self.command or self.url is not None or self.headers:
+                raise ValueError("stdio requires command and forbids URL/headers")
+        elif not self.url or not self.url.startswith(("http://", "https://")):
+            raise ValueError("HTTP transport requires an HTTP(S) URL")
+        elif self.command is not None or self.args or self.cwd is not None or self.env:
+            raise ValueError("HTTP transport forbids process configuration")
+        return self
 
 
 ModelName = Annotated[str, Field(min_length=1, pattern=r"\S")]
@@ -241,17 +308,8 @@ class BackupPolicy(StrictModel):
 
 class SourceOverride(StrictModel):
     source: SourceConfig | None = None
-    options: JSONObject = Field(default_factory=dict)
-    setters: JSONObject = Field(default_factory=dict)
-    template: ID | None = None
-
-    @model_validator(mode="after")
-    def detached_source_has_no_template(self) -> Self:
-        if self.source is not None and (
-            self.source.template is not None or self.template is not None
-        ):
-            raise ValueError("Detached source snapshots cannot reference setter templates")
-        return self
+    arguments: JSONObject | None = None
+    limits: SourceLimits = Field(default_factory=SourceLimits)
 
 
 class ChannelOverride(StrictModel):
@@ -294,7 +352,7 @@ class WorkflowDefinition(StrictModel):
     source_overrides: dict[ID, SourceOverride] = Field(default_factory=dict)
     channel_overrides: dict[ID, ChannelOverride] = Field(default_factory=dict)
     input_separator: str = "\n\n"
-    include_counts: bool = True
+    input_processing: InputProcessing = Field(default_factory=InputProcessing)
     collection_concurrency: int = Field(default=4, ge=1)
     analysis_concurrency: int = Field(default=4, ge=1)
     on_all_empty: SourcePolicy = "stop"
@@ -332,10 +390,22 @@ class WorkflowSnapshot(StrictModel):
     ai: dict[ID, AIConfig]
     channels: dict[ID, ChannelConfig]
     created_at: UTCDateTime
+    mcp_servers: dict[ID, MCPServerConfig] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def exact_references(self) -> Self:
         # 验证引用完整性
+        expected_servers = {source.call.server for source in self.sources.values()
+                            if source.call.kind == "mcp"}
+        if set(self.mcp_servers) != expected_servers or any(
+            key != server.id for key, server in self.mcp_servers.items()
+        ):
+            raise ValueError("Snapshot MCP mappings must exactly cover source server bindings")
+        for source in self.sources.values():
+            source.limits = source.limits.model_copy(update={
+                name: getattr(source.limits, name) or getattr(self.workflow.input_processing, name)
+                for name in ("item_tokens", "field_tokens")
+            })
         ai_ids = {task.ai for task in self.workflow.analyses}
         if self.workflow.fan_in is not None and self.workflow.fan_in.ai is not None:
             ai_ids.add(self.workflow.fan_in.ai)
@@ -414,8 +484,21 @@ class CollectorOutput(StrictModel):
         return self
 
 
-class CollectionResult(CollectorOutput):
+class CollectionResult(StrictModel):
     source_id: ID
+    status: Literal["success", "empty", "missing", "failed", "timeout", "cancelled", "unknown"]
+    raw: JSONObject | None = None
+    error: ErrorInfo | None = None
+    metadata: JSONObject = Field(default_factory=dict)
+
+
+class InputView(StrictModel):
+    source_id: ID
+    status: Literal["success", "failed", "skipped"]
+    text: str = ""
+    truncated: bool = False
+    omitted: bool = False
+    error: ErrorInfo | None = None
 
 
 class AnalysisResult(StrictModel):
@@ -580,6 +663,7 @@ class CollectionContext:
     log_path: str | None = None
     credentials: CredentialResolver | None = None
     session_reader: SessionReader | None = None
+    mcp_servers: dict[str, MCPServerConfig] | None = None
 
     def __post_init__(self) -> None:
         try:

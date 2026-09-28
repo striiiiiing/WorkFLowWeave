@@ -11,7 +11,16 @@ export function filterSources(
   return sources.filter((source) => {
     if (
       query &&
-      ![sourceName(source), source.id, source.description ?? '', source.collector]
+      ![
+        sourceName(source),
+        source.id,
+        source.description ?? '',
+        source.call.kind === 'mcp'
+          ? `${source.call.server} ${source.call.tool}`
+          : source.call.mode === 'argv'
+            ? source.call.executable
+            : source.call.command,
+      ]
         .join(' ')
         .toLocaleLowerCase()
         .includes(query)

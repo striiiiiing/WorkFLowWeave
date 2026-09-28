@@ -8,6 +8,12 @@ const result = computed(() => props.row.event.data.result as Record<string, unkn
 const argumentsValue = computed(
   () => props.row.event.data.arguments as Record<string, unknown> | undefined,
 )
+const actualTool = computed(() => {
+  if (props.row.event.data.name !== 'mcp') return String(props.row.event.data.name ?? '工具')
+  const server = argumentsValue.value?.server
+  const tool = argumentsValue.value?.tool
+  return server && tool ? `MCP ${server} / ${tool}` : 'MCP'
+})
 const artifact = computed(() =>
   String(props.row.event.data.artifact_path ?? result.value?.artifact_path ?? ''),
 )
@@ -15,7 +21,7 @@ const artifact = computed(() =>
 <template>
   <details class="tool-call">
     <summary>
-      {{ row.event.data.name ?? '工具' }}
+      {{ actualTool }}
       <span v-if="argumentsValue?.target">· {{ argumentsValue.target }}</span>
       · {{ row.status }}
       <span v-if="row.event.data.execution === 'exclusive'">

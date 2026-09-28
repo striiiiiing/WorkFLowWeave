@@ -19,17 +19,17 @@ class ArtifactStore:
         self.workspace = workspace
 
     async def save(self, result, *, session_id, turn_id, tool_call_id,
-                   config, count_tokens, schema_output=False, read_enabled=True):
+                   config, count_tokens, schema_output=False, read_enabled=True, preserve_full=False):
         # This flag is owned by the gateway wrapper, not by arbitrary tool output.
         # Schema property names such as "token" are declarations, not credentials.
-        safe = result if schema_output else redact_data(result)
+        safe = result if schema_output or preserve_full else redact_data(result)
         text = json_text(safe)
         content = json.dumps(safe, ensure_ascii=False, allow_nan=False, indent=2).encode("utf-8")
-        exceeded = len(content) > config.output_bytes
+        exceeded = len(content) > config.output_bytes and not preserve_full
         key = hashlib.sha256(f"{turn_id}:{tool_call_id}".encode()).hexdigest()
         suffix = ".partial.txt" if exceeded else ".json"
         path = f"Artifacts/{session_id}/{key}{suffix}"
-        saved = content[:config.output_bytes].decode("utf-8", errors="ignore").encode("utf-8")
+        saved = content if preserve_full else content[:config.output_bytes].decode("utf-8", errors="ignore").encode("utf-8")
         await self.workspace.save_runtime(path, saved)
         envelope = {key: safe[key] for key in _RESULT_FIELDS if key in safe}
         envelope.update(artifact_path=path, truncated=False)
@@ -38,7 +38,7 @@ class ArtifactStore:
                             saved_bytes=len(saved),
                             error={"code": "output_limit_exceeded", "message": "完整输出超过单次预算，已保留部分输出"})
             text = ""
-        elif not schema_output:
+        elif not schema_output and not preserve_full:
             page = self._page(safe, envelope, config.preview_tokens, count_tokens)
             if page is not None:
                 return page
@@ -53,6 +53,8 @@ class ArtifactStore:
                                 error={"code": "output_budget_exceeded",
                                        "message": "Schema 超过预览预算且 read 已关闭；请启用 read 或提高预算"})
         else:
+            if preserve_full and not read_enabled:
+                raise LogAgentError("output_budget_exceeded", "完整 MCP 结果超过预览预算且 read 已关闭")
             low, high = 0, len(text)
             while low < high:
                 middle = (low + high + 1) // 2

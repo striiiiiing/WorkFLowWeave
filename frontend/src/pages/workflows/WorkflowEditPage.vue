@@ -53,7 +53,7 @@ const form = ref<FormInstance>()
 const advanced = ref(false)
 const channelEditor = ref<{ initial?: ChannelConfig }>()
 const draft = computed(() => editor.draft.value!)
-const catalogValue = computed(() => catalog.data.value!)
+const catalogValue = computed(() => catalog.data.value ?? { sources: [], channels: [], configs: [] })
 const gateway: SourceConfigEditorGateway = {
   resolve: resourcesApi.resolveSource,
   async save(target, value) {
@@ -148,7 +148,7 @@ onScopeDispose(() => window.removeEventListener('focus', refreshCatalog))
       show-icon
     />
     <el-button v-if="catalog.error.value" @click="catalog.refresh">重新加载资源目录</el-button>
-    <el-skeleton v-if="!editor.ready.value || !catalog.data.value" :rows="10" />
+    <el-skeleton v-if="!editor.ready.value" :rows="10" />
     <div v-else class="pipeline-main-column">
       <el-form ref="form" novalidate :model="draft" label-position="top" @submit.prevent="submit">
         <div class="flow-stack">
@@ -165,10 +165,6 @@ onScopeDispose(() => window.removeEventListener('focus', refreshCatalog))
             :workflows="workflowList.data.value ?? []"
             :usage="usage.references"
             :gateway="gateway"
-            :capabilities="
-              capabilities.data.value?.filter((item) => item.kind === 'collector') ?? []
-            "
-            :protect="resourcesApi.protectCredential"
             :advanced="advanced"
           />
           <FanOutTaskCard :editor="editor" :configs="catalogValue.configs" :advanced="advanced" />

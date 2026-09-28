@@ -34,25 +34,17 @@ def resolve_source_call(
     source: SourceConfig | None, templates: Mapping[str, SetterTemplate],
     override: SourceOverride | None = None,
 ) -> SourceConfig:
-    """Expand saved and call templates in order, preserving explicit empty values."""
-    override = copy_model(override) if override is not None else None
+    """Resolve call arguments and local limits once, before execution."""
     source = copy_model(select_source_call(source, override))
-    layers = [(source.template, source.setters)]
-    if override is not None:
-        layers.append((override.template, override.setters))
-        source.options = {**source.options, **deepcopy(override.options)}
-    setters = {}
-    for template_id, explicit in layers:
-        if template_id is not None:
-            template = templates.get(template_id)
-            if template is None:
-                raise LogAgentError("invalid_reference", "来源引用的 Setter 模板不存在")
-            if template.collector != source.collector:
-                raise LogAgentError("invalid_reference", "Setter 模板与来源的 Collector 不同")
-            setters.update(deepcopy(template.setters))
-        setters.update(deepcopy(explicit))
-    source.setters = setters
-    source.template = None
+    if override is None:
+        return source
+    if override.arguments is not None:
+        if source.call.kind != "mcp":
+            raise LogAgentError("invalid_config", "arguments 覆盖只适用于 MCP 来源")
+        source.call.arguments = {**source.call.arguments, **deepcopy(override.arguments)}
+    source.limits = source.limits.model_copy(update={
+        key: value for key, value in override.limits.model_dump().items() if value is not None
+    })
     return source
 
 

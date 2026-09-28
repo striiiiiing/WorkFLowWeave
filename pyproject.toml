@@ -30,6 +30,11 @@ dependencies = [
   "typer>=0.15,<1",
   "uvicorn>=0.34,<1",
   "websockets>=15,<17",
+  "mcp>=1.26,<2",
+  "ison-py==1.2.0",
+  "zon-format>=1.2.3",
+  "tiktoken>=0.12,<1",
+  "toon-format",
 ]
 
 [project.scripts]
@@ -37,6 +42,12 @@ logagent = "logagent.interaction.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8.3,<10", "pytest-asyncio>=0.25,<2", "ruff>=0.11"]
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+
+[tool.uv.sources]
+toon-format = { git = "https://github.com/toon-format/toon-python.git", rev = "e475c82e9da03dfaf88c0b277dee6b5d17100b13" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/logagent"]

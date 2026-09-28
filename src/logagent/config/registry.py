@@ -48,7 +48,7 @@ from logagent.protocols import ChannelType, Collector, Tool
 _Registration = _CollectorRegistration | _ChannelRegistration | _ToolRegistration
 BUILTIN_TOOLS = {
     "agent_" + name: "logagent.agent.builtin." + name
-    for name in ("plugin", "read", "write", "grep", "shell")
+    for name in ("mcp", "read", "write", "grep", "shell")
 }
 _IDENTIFIER = re.compile(r"[A-Za-z0-9_-]{1,80}\Z")
 _KNOWN_REASONS = frozenset(

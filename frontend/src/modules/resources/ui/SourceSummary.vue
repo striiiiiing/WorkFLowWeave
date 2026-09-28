@@ -5,20 +5,28 @@ defineProps<{ source: SourceConfig }>()
 <template>
   <dl class="source-summary">
     <div>
-      <dt>采集器</dt>
-      <dd>{{ source.collector }}</dd>
+      <dt>调用</dt>
+      <dd>
+        {{
+          source.call.kind === 'mcp'
+            ? `${source.call.server} / ${source.call.tool}`
+            : source.call.mode === 'argv'
+              ? source.call.executable
+              : source.call.command
+        }}
+      </dd>
     </div>
     <div>
       <dt>状态</dt>
       <dd>{{ source.enabled ? '已启用' : '已停用' }}</dd>
     </div>
-    <div v-if="source.options?.limit !== undefined">
-      <dt>读取上限</dt>
-      <dd>{{ source.options.limit }}</dd>
+    <div v-if="source.limits.item_tokens">
+      <dt>单项 token</dt>
+      <dd>{{ source.limits.item_tokens }}</dd>
     </div>
-    <div v-if="source.setters?.format">
-      <dt>输出格式</dt>
-      <dd>{{ source.setters.format }}</dd>
+    <div v-if="source.limits.field_tokens">
+      <dt>字段 token</dt>
+      <dd>{{ source.limits.field_tokens }}</dd>
     </div>
     <div>
       <dt>超时</dt>

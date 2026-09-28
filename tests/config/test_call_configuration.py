@@ -7,7 +7,6 @@ from logagent.errors import LogAgentError
 from logagent.models import (
     ChannelConfig,
     ChannelOverride,
-    SetterTemplate,
     SourceConfig,
     SourceOverride,
 )
@@ -40,17 +39,18 @@ def test_call_schema_projects_defaults_and_preserves_reference_types():
     assert "default" not in schema["properties"]["limit"]
 
 
-def test_call_resolution_keeps_empty_setters_and_replaces_whole_options():
-    source = SourceConfig(id="source", collector="mock", template="saved",
-                          setters={"values": ["instance"]}, options={"nested": {"a": 1}})
-    templates = {key: SetterTemplate(id=key, collector="mock", setters={"values": [key]})
-                 for key in ("saved", "call")}
-    effective = resolve_source_call(source, templates, SourceOverride(
-        template="call", setters={"values": []}, options={"nested": {"b": 2}},
+def test_call_resolution_keeps_empty_arguments_and_shallow_overrides():
+    source = SourceConfig(id="source", call={
+        "kind": "mcp", "server": "saved", "tool": "echo",
+        "arguments": {"values": ["instance"], "nested": {"a": 1}},
+    }, limits={"item_tokens": 20})
+    effective = resolve_source_call(source, {}, SourceOverride(
+        arguments={"values": [], "nested": {"b": 2}},
+        limits={"item_tokens": 5},
     ))
-    assert effective.setters == {"values": []}
-    assert effective.options == {"nested": {"b": 2}}
-    assert effective.template is None and source.template == "saved"
+    assert effective.call.arguments == {"values": [], "nested": {"b": 2}}
+    assert effective.limits.item_tokens == 5
+    assert source.call.arguments == {"values": ["instance"], "nested": {"a": 1}}
     channel = ChannelConfig(id="mail", channel="mock", options={"path": "/fixed", "to": "old"})
     result = resolve_channel_call(channel, ChannelOverride(options={"to": "new"}))
     assert result.options == {"path": "/fixed", "to": "new"}

@@ -3,7 +3,7 @@ export type { JsonValue, JsonObject, ErrorInfo } from '@/shared/types'
 export type {
   SourcePolicy,
   SourceConfig,
-  SetterTemplate,
+  MCPServerConfig,
   Credential,
   AIConfig,
   ChannelConfig,

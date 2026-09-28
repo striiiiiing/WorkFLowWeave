@@ -235,7 +235,10 @@ async function toggleTool(plugin: string, enabled: boolean) {
                 <span class="tool-tokens">约 {{ tool.definition_tokens }} Tokens</span>
               </div>
               <p class="tool-desc">{{ tool.description }}</p>
-              <small>插件 {{ tool.plugin }} · 代次 {{ tool.generation ?? '未注册' }}</small>
+              <small>
+                {{ tool.name === 'mcp' ? 'MCP 代理入口' : `插件 ${tool.plugin}` }} · 代次
+                {{ tool.generation ?? '未注册' }}
+              </small>
               <details v-if="tool.input_schema">
                 <summary>查看工具 Schema</summary>
                 <pre>{{ JSON.stringify(tool.input_schema, null, 2) }}</pre>
