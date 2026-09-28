@@ -6,7 +6,7 @@ import pytest
 
 from logagent.errors import LogAgentError
 from logagent.models import AnalysisResult, DeliveryResult, FanInConfig, WorkflowProgress
-from logagent.workflow.stream import ProgressHub, StreamConsumer
+from logagent.workflow.stream import ProgressHub
 from tests.workflow.helpers import AI, Channel, snapshot
 from tests.workflow.test_workflow_recovery import close, service
 
@@ -15,8 +15,13 @@ async def next_matching(queue, predicate):
     async with asyncio.timeout(5):
         while True:
             item = await queue.get()
-            if predicate(item):
-                return item
+            for progress in item.progress:
+                if progress.status != "pending" and predicate(progress):
+                    return progress
+            if item.status in {"completed", "partial", "failed", "cancelled", "interrupted"}:
+                lifecycle = WorkflowProgress(session_id=item.session_id, event="lifecycle", status=item.status, version=item.version)
+                if predicate(lifecycle):
+                    return lifecycle
 
 
 async def test_fast_items_and_report_are_visible_before_slow_siblings(tmp_path):
@@ -77,18 +82,16 @@ async def test_duplicate_stream_observation_does_not_write_another_version(tmp_p
         await w.trigger(snapshot(channels=False), session_id="run")
         await w.wait("run")
         before = await w.get_session("run")
-        report = next(item for item in before.progress if item.event == "aggregate")
+        assert any(item.event == "aggregate" for item in before.progress)
         events = []
 
         async def publish(event):
             events.append(event)
 
-        consumer = StreamConsumer(store, "run", publish, {("aggregate",): "workflow:aggregate"})
-        update = {"aggregate": {"phases": {"aggregate": report.result_ref}}}
-        await consumer.consume((), update)
-        await consumer.consume((), update)
-        await consumer.consume(("notify:any",), {"intent_0_0": {}})
-        assert len(events) == 1
+        w.archive.publish = publish
+        await w.archive.reconcile("run")
+        await w.archive.reconcile("run")
+        assert events == []
         assert (await w.get_session("run")).version == before.version
     finally:
         await close(w, store)
@@ -140,28 +143,30 @@ async def test_model_fan_in_publishes_one_aggregate_completion(tmp_path):
             events = []
             while not queue.empty():
                 events.append(queue.get_nowait())
-            reports = [e for e in events if e.event == "aggregate"]
+            reports = {p.version: p for e in events for p in e.progress if p.event == "aggregate" and p.status == "success"}
             assert len(reports) == 1
-            assert reports[0].status == "success" and reports[0].summary["fan_in"] is True
+            report = next(iter(reports.values()))
+            assert report.summary["fan_in"] is True
     finally:
         await close(w, store)
 
 
-async def test_missing_committed_reference_interrupts_execution(tmp_path, monkeypatch):
+async def test_archive_failure_interrupts_drive_and_keeps_source(tmp_path, monkeypatch):
     w, store, _, _, _ = service(tmp_path / "runs.sqlite3")
-    consume = StreamConsumer.consume
-
-    async def missing_reference(self, namespace, update):
-        if "aggregate" in update:
-            update = {"aggregate": {"phases": {"aggregate": "missing"}}}
-        await consume(self, namespace, update)
-
-    monkeypatch.setattr(StreamConsumer, "consume", missing_reference)
+    write = store.write
+    def fail(sid, key, **kwargs):
+        if key.startswith("output:"):
+            raise OSError("archive unavailable")
+        return write(sid, key, **kwargs)
+    monkeypatch.setattr(store, "write", fail)
     try:
         await w.trigger(snapshot(channels=False), session_id="run")
-        with pytest.raises(LogAgentError) as error:
+        with pytest.raises(LogAgentError):
             await w.wait("run")
-        assert error.value.code == "progress_unavailable"
         assert (await w.get_session("run")).status == "interrupted"
+        assert await w._checkpointer.aget_tuple({"configurable": {"thread_id": "run"}})
+        monkeypatch.setattr(store, "write", write)
+        await w.archive.reconcile("run")
+        assert any(e["scope"] == "output" for e in store.entries("run")[1])
     finally:
         await close(w, store)

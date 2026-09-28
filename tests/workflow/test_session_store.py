@@ -17,14 +17,14 @@ from sqlmodel import Session, create_engine, select, text
 from logagent.errors import LogAgentError
 from logagent.models import BackupPolicy
 from logagent.workflow import SessionStore, SessionView
-from logagent.workflow.nodes import ArchiveRuntime, archive_node
-from logagent.workflow.session_models import SessionEntry, SessionHeader
+from logagent.workflow.archive import CheckpointArchive, commit
+from logagent.workflow.session_models import CollectionBody, SessionEntry, SessionHeader
 
 
 @pytest.fixture
 def store(tmp_path):
     value = SessionStore(tmp_path / "sessions.sqlite3")
-    value.create("s", "w", BackupPolicy(retention_days=1))
+    value.create("s", "w", BackupPolicy(collection_retention_days=1))
     yield value
     value.close()
 
@@ -35,7 +35,7 @@ def _ddl(store, statement):
 
 
 def write(store, key="phase:collect", text="原始业务正文"):
-    return store.write("s", key, stage="collect", scope="phase", summary={"status": "running"},
+    return store.write("s", key, stage="collect", scope="phase", summary={"status": "running", "execution_epoch": "epoch"},
                        body={"text": text}, category="collection")
 
 
@@ -79,20 +79,20 @@ def test_failed_transaction_does_not_publish_a_version(store):
 def test_expiry_retains_idempotence_and_management_records(store):
     old = write(store)
     store.write("s", "delivery", stage="notify", scope="notification", summary={}, body={"accepted": True})
-    store.write("s", "finish", stage="finish", scope="phase", summary={"status": "completed"})
+    store.write("s", "finish", stage="finish", scope="phase", summary={"status": "completed", "execution_epoch": "epoch"})
     assert store.expire(datetime.now(UTC) + timedelta(days=2)) == 1
     replay = write(store)
     assert replay["version"] == old["version"]
     assert replay["body"] is None and replay["availability"] == "expired"
     assert store.entry("s", "delivery")["body"] == {"accepted": True}
-    assert len(store.entries("s")[1]) == 4
+    assert len(store.entries("s")[1]) == 5
 
 
 def test_corrupt_archives_are_reported_without_exposing_body(store):
     write(store)
     with store._transaction() as session:
-        for row in session.exec(select(SessionEntry)).all():
-            row.body = '{"text":"secret"}'
+        for row in session.exec(select(CollectionBody)).all():
+            row.content = '{"text":"secret"}'
             session.add(row)
     with pytest.raises(LogAgentError) as caught:
         store.entry("s", "phase:collect")
@@ -116,28 +116,30 @@ async def test_read_view_pins_version_and_never_uses_checkpoints(store):
     assert "checkpoints" not in tables
 
 
-async def test_one_node_factory_reuses_parent_and_child_writes(store):
-    runtime = ArchiveRuntime(store, "s", BackupPolicy())
-    calls = []
-    async def operation(state):
-        calls.append(state["item"])
-        return {"text": state["item"]}
+async def test_archive_reuses_parent_and_child_facts_without_publishing_twice(store):
+    published = []
+    async def publish(record):
+        published.append(record)
+    archive = CheckpointArchive(None, store, SessionView(store), publish)
     for scope in ("parent", "child"):
-        node = archive_node(runtime, scope=scope, stage="analyze", key=lambda state, scope=scope: f"{scope}:{state['item']}",
-                            operation=operation, category="analysis")
-        result = await node({"item": "one"})
-        assert await node({"item": "one"}) == result
-    assert calls == ["one", "one"]
+        args = ("s", f"{scope}:one", "analyze", scope, "analysis", BackupPolicy(),
+                {"item_status": "success", "item_id": "one"}, {"text": "one"}, None)
+        result = await archive._write(*args)
+        assert await archive._write(*args) == result
+    assert len(published) == 1
     assert len(store.entries("s")[1]) == 3
 
 
-async def test_disabled_bodies_only_survive_in_invocation_memory(store):
-    runtime = ArchiveRuntime(store, "s", BackupPolicy(enabled=False))
-    await runtime.save("body", stage="collect", scope="phase", summary={}, body={"text": "not-on-disk"}, category="collection")
-    assert await runtime.read("body") == {"text": "not-on-disk"}
+async def test_disabled_archive_bodies_are_explicitly_not_saved(store):
+    async def publish(record):
+        pass
+    archive = CheckpointArchive(None, store, SessionView(store), publish)
+    await archive._write("s", "body", "collect", "collect", "collection", BackupPolicy(enabled=False),
+                         {"item_status": "success", "item_id": "body"}, {"text": "not-on-disk"}, None)
     assert store.entry("s", "body")["body"] is None
-    with pytest.raises(LogAgentError):
-        await ArchiveRuntime(store, "s", BackupPolicy(enabled=False)).read("body")
+    assert store.entry("s", "body")["availability"] == "not_saved"
+    with store._transaction() as session:
+        assert session.exec(select(CollectionBody)).all() == []
 
 
 async def test_cancellation_waits_until_worker_transaction_finishes(store):
@@ -149,8 +151,7 @@ async def test_cancellation_waits_until_worker_transaction_finishes(store):
         release.wait(2)
         return original(*args, **kwargs)
     store.write = slow
-    runtime = ArchiveRuntime(store, "s", BackupPolicy())
-    task = asyncio.create_task(runtime.save("key", stage=None, scope="parent", summary={}))
+    task = asyncio.create_task(commit(store.write, "s", "key", stage=None, scope="parent", summary={}))
     await asyncio.to_thread(began.wait, 1)
     task.cancel()
     await asyncio.sleep(0)
@@ -167,16 +168,17 @@ async def test_created_session_is_immediately_queryable(store):
     assert record.snapshot_availability == "pending"
 
 
-async def test_failed_backup_cannot_be_replayed_past_stop_policy(store):
-    store.write("s", "failed", stage="analyze", scope="phase", summary={"backup_failed": True},
-                availability="write_failed", category="analysis")
-    async def operation(_):
-        pytest.fail("Failed saved content must not repeat external work")
-    node = archive_node(ArchiveRuntime(store, "s", BackupPolicy()), scope="phase", stage="analyze",
-                        key="failed", operation=operation, category="analysis")
+async def test_failed_archive_stop_preserves_error_without_fabricating_business_result(store):
+    _ddl(store, "CREATE TRIGGER fail_body BEFORE INSERT ON workflow_analysis_bodies BEGIN SELECT RAISE(ABORT,'fault'); END")
+    async def publish(record):
+        pass
+    archive = CheckpointArchive(None, store, SessionView(store), publish)
     with pytest.raises(LogAgentError) as caught:
-        await node({})
+        await archive._write("s", "failed", "analyze", "analyze", "analysis", BackupPolicy(),
+                             {"item_id": "one", "item_status": "success"}, {"text": "value"}, None)
     assert caught.value.code == "backup_failed"
+    assert store.entry("s", "failed") is None
+    assert store.entry("s", "archive_failed:failed")["scope"] == "archive_error"
 
 
 def test_legacy_database_is_not_silently_hidden(tmp_path):
@@ -201,29 +203,35 @@ def test_close_is_idempotent_and_use_after_close_is_explicit(store):
     assert caught.value.code == "storage_closed"
 
 
-async def test_backup_failure_continue_records_missing_body_and_retains_runtime_value(store):
-    _ddl(store, "CREATE TRIGGER fail_body BEFORE INSERT ON session_entries WHEN NEW.body IS NOT NULL BEGIN SELECT RAISE(ABORT,'fault'); END")
-    runtime = ArchiveRuntime(store, "s", BackupPolicy(on_failure="continue"))
-    saved = await runtime.save("key", stage="analyze", scope="phase", summary={"status": "running"},
-                               body={"text": "input"}, category="analysis")
-    assert saved["availability"] == "write_failed" and saved["summary"]["backup_failed"]
-    assert await runtime.read("key") == {"text": "input"}
-    content = await SessionView(store).get_phase_content("s", "analyze", version=saved["version"])
-    assert content.availability == "write_failed" and content.content is None
+async def test_backup_failure_continue_records_error_and_reconciliation_fills_one_result(store):
+    _ddl(store, "CREATE TRIGGER fail_body BEFORE INSERT ON workflow_analysis_bodies BEGIN SELECT RAISE(ABORT,'fault'); END")
+    async def publish(record):
+        pass
+    archive = CheckpointArchive(None, store, SessionView(store), publish)
+    args = ("s", "key", "analyze", "analyze", "analysis", BackupPolicy(on_failure="continue"),
+            {"item_id": "one", "item_status": "success"}, {"text": "input"}, None)
+    saved = await archive._write(*args)
+    assert saved["scope"] == "archive_error" and saved["summary"]["result_key"] == "key"
+    assert store.entry("s", "key") is None and store.archive_incomplete("s")
+    _ddl(store, "DROP TRIGGER fail_body")
+    result = await archive._write(*args)
+    assert result["body"] == {"text": "input"}
+    assert await archive._write(*args) == result
+    assert not store.archive_incomplete("s")
+    assert sum(entry["write_key"] == "key" for entry in store.entries("s")[1]) == 1
 
 
 async def test_management_write_failure_always_propagates(store):
     _ddl(store, "CREATE TRIGGER fail BEFORE INSERT ON session_entries BEGIN SELECT RAISE(ABORT,'fault'); END")
-    runtime = ArchiveRuntime(store, "s", BackupPolicy(on_failure="continue"))
     with pytest.raises(IntegrityError):
-        await runtime.save("intent", stage="notify", scope="notification", summary={}, body={"target": "mail"})
+        await commit(store.write, "s", "intent", stage="notify", scope="notification", summary={}, body={"target": "mail"})
     assert len(store.entries("s")[1]) == 1
 
 
 async def test_expiration_removes_all_historical_bodies_and_keeps_version(store):
     a = write(store, "phase:collect:1")
     b = write(store, "phase:collect:2", "new content")
-    store.write("s", "finished", stage="finish", scope="phase", summary={"status": "completed"})
+    store.write("s", "finished", stage="finish", scope="phase", summary={"status": "completed", "execution_epoch": "epoch"})
     store.expire(datetime.now(UTC) + timedelta(days=2))
     view = SessionView(store)
     for version in (a["version"], b["version"]):

@@ -93,3 +93,10 @@
 - 前端全量 `48` 个测试文件、`242` 个测试通过；`npm run typecheck`、`npm run architecture:check`、`npm run build`、Prettier 检查及 `git diff --check` 通过。这些结果来自本轮前端验证；后端验证详见后端日期化 task。删除兼容轮询后另复跑 `query`、`run-stream`、`run-detail`、`runs-actions`、`runs-api`、`runs-view`，6 文件/30 测试通过（42.14 秒）；typecheck、architecture:check（213 文件及 27 个规则夹具）、build 与全量 format:check 重新通过。OpenSpec 严格校验和 diff 空白检查通过。单元测试覆盖首屏和重连竞态、旧快照和旧轮次、缓冲上限、终态核对、阶段正文版本、订阅释放及恢复参数。
 - `runs-api` 现有测试主要覆盖列表查询，`runs-view` 覆盖运行列表而非运行详情；阶段重跑弹窗的全部可用性与失败交互尚无独立 UI 测试。因此 3.3 不以全量测试通过代替具体场景验收。真实浏览器中阻塞慢分支/慢渠道的端到端验收也尚无记录，3.6 与根任务 7.7 保持未完成。
 - 独立审查代理检查：第一个实例报告 `Antigravity OAuth adapter does not safely support input item type agent_message`；重试和另一个小范围只读实例持续未返回报告，已停止。不能声称独立审查通过或无偏离。主代理完成最终 diff 自审：前端使用同一后端查询投影，按业务身份/版本归并，轮次经查询确认，页面释放查询和订阅，断线不取消运行；删除上述轮询兼容分支后未发现其他已确认的设计偏离。阶段正文初始读取使用当前业务版本，后端 `active_phases` 已隔离被重跑清除的下游阶段，不需要另设前端恢复状态来源。
+
+## 合并记录（2026-09-28）
+
+- 用户授权将 `feat/redesign-workflow` 合并回原工作区 `refactor/frontend-architecture`。源实现提交 `7848bf0`，原分支合并前为 `8ab64a1`；采用保留两条历史的 merge，不重置原分支。原工作区合并前干净。
+- 原分支已归档历史设计并调整 AI 接口。本次文档 add/add 冲突保留 worktree 已授权的最新 design/spec/task；proposal 保留原分支的 archive 链接，根 task 中相应链接同步为归档位置。`interaction/schemas.py` 保留原分支删除 `AIModelTestRequest` 的决定，只加入 `ResumeRequest` 和 `RecoveryQuery`；routers 自动合并后核对了 AI 接口与 resume/recover/SSE 路由。
+- 合并后的 `test_interaction.py`、`test_workflow_events.py`、`test_provider_creation.py`：30 passed，16.73 秒，命令设 60 秒硬超时；仅第三方 anyio 弃用警告。前端 typecheck、architecture:check、build 通过；interaction 的 Ruff、OpenSpec 严格校验、11 份 Markdown 本地链接及 diff 空白检查通过。
+- 本地提交和合并使用现有 hook 的 `SKIP_WORKFLOW_PUSH=1`，因为用户此次授权本地合并，未要求远端推送。独立审查与浏览器端到端证据的限制仍按上节记录，不因合并而勾选未验证场景。

@@ -1,4 +1,5 @@
 export type * from './model/types'
+export * from './model/backup'
 export * from './model/defaults'
 export * from './model/actions'
 export * from './model/validation'

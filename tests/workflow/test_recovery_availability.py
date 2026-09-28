@@ -7,14 +7,15 @@ from tests.workflow.helpers import AI, snapshot
 from tests.workflow.test_workflow_recovery import close, run, service
 
 
-async def test_query_and_recover_agree_on_missing_material_without_changing_history(tmp_path):
+async def test_query_and_recover_agree_on_missing_checkpoint_without_changing_history(tmp_path):
     workflow, store, _, _, _ = service(tmp_path / "runs.sqlite3")
     try:
         await run(workflow, snapshot(backup=BackupPolicy(snapshot=False)))
+        await workflow._checkpointer.adelete_thread("run")
         before = await workflow.history("run")
         eligibility = await workflow.recovery_availability("run")
         assert not eligibility.available
-        assert eligibility.reason.code == "recovery_unavailable"
+        assert eligibility.reason.code == "checkpoint_missing"
         assert await workflow.history("run") == before
         with pytest.raises(LogAgentError) as caught:
             await workflow.recover("run")

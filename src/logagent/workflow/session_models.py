@@ -30,3 +30,55 @@ class SessionEntry(SQLModel, table=True):
     category: str | None = Field(default=None, sa_type=Text)
     digest: str = Field(sa_type=Text)
     created_at: str = Field(sa_type=Text)
+
+
+class CheckpointSource(SQLModel, table=True):
+    __tablename__ = "workflow_checkpoint_sources"
+    session_id: str = Field(primary_key=True)
+    write_key: str = Field(primary_key=True)
+    checkpoint_id: str = Field(primary_key=True)
+    namespace: str = Field(primary_key=True)
+    task_id: str = Field(primary_key=True)
+
+
+class CollectionBody(SQLModel, table=True):
+    __tablename__ = "workflow_collection_bodies"
+    session_id: str = Field(primary_key=True)
+    version: int = Field(primary_key=True)
+    content: str = Field(sa_type=Text)
+
+
+class AnalysisBody(SQLModel, table=True):
+    __tablename__ = "workflow_analysis_bodies"
+    session_id: str = Field(primary_key=True)
+    version: int = Field(primary_key=True)
+    content: str = Field(sa_type=Text)
+
+
+class ReportBody(SQLModel, table=True):
+    __tablename__ = "workflow_report_bodies"
+    session_id: str = Field(primary_key=True)
+    version: int = Field(primary_key=True)
+    content: str = Field(sa_type=Text)
+
+
+class PromptVersion(SQLModel, table=True):
+    __tablename__ = "workflow_prompt_versions"
+    digest: str = Field(primary_key=True)
+    format_version: int = 1
+    content: str = Field(sa_type=Text)
+
+
+class ResultProvenance(SQLModel, table=True):
+    __tablename__ = "workflow_result_provenance"
+    session_id: str = Field(primary_key=True)
+    version: int = Field(primary_key=True)
+    details: str = Field(sa_type=Text)
+
+
+class EpochRetention(SQLModel, table=True):
+    __tablename__ = "workflow_epoch_retention"
+    session_id: str = Field(primary_key=True)
+    execution_epoch: str = Field(primary_key=True)
+    policy: str = Field(sa_type=Text)
+    anchor: str | None = Field(default=None, sa_type=Text)

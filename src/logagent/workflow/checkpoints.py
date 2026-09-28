@@ -11,9 +11,39 @@ logger = logging.getLogger("logagent.workflow.checkpoints")
 # 合并每个 session 的请求；容量由运行准入上限传入，不增加独立并发默认。
 
 
+async def finish_write(operation):
+    """SQLite's worker keeps executing SQL after coroutine cancellation.
+
+    Keep the saver lock until its commit has finished, then propagate cancellation.
+    This prevents an abandoned transaction from blocking the archive connection.
+    """
+    task = asyncio.create_task(operation)
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                continue
+        task.result()
+        raise
+
+
+class WorkflowSqliteSaver(AsyncSqliteSaver):
+    async def aput(self, config, checkpoint, metadata, new_versions):
+        return await finish_write(super().aput(config, checkpoint, metadata, new_versions))
+
+    async def aput_writes(self, config, writes, task_id, task_path=""):
+        return await finish_write(super().aput_writes(config, writes, task_id, task_path))
+
+    async def adelete_thread(self, thread_id):
+        return await finish_write(super().adelete_thread(thread_id))
+
+
 class CheckpointNamespaces:
-    def __init__(self, saver: AsyncSqliteSaver):
-        self.saver = saver
+    def __init__(self, saver: AsyncSqliteSaver, store=None):
+        self.saver, self.store = saver, store
 
     async def completed(self, session_id):
         """只返回父图 loop 后继已提交相同结果引用的真实 invocation namespace。"""
@@ -44,13 +74,17 @@ class CheckpointNamespaces:
             if stage not in {"collect", "analyze", "notify"} or "|" in namespace:
                 continue
             values = item.checkpoint.get("channel_values", {})
-            ref = values.get("phases", {}).get(stage)
+            ref = values.get("phase", {})
+            if ref.get("stage") != stage:
+                continue
             origin = item.metadata.get("parents", {}).get("")
             if ref and any(
                 parent.get("execution_epoch") == values.get("execution_epoch")
-                and parent.get("phases", {}).get(stage) == ref
+                and parent.get("phase") == ref
                 for parent in successors.get(origin, ())
             ):
+                if self.store is not None and not await asyncio.to_thread(self.store.namespace_archived, session_id, namespace, saved):
+                    continue
                 candidates.add(namespace)
         # 嵌套归属由 saver 提供的 parents 映射证明；不拼接或模糊匹配 namespace。
         changed = True
@@ -94,15 +128,19 @@ class CheckpointNamespaces:
 class CheckpointCleanup:
     """一个生命周期任务，按 session 合并请求，失败保留数据供下次补扫。"""
 
-    def __init__(self, saver, admission_lock, *, capacity):
-        self.storage = CheckpointNamespaces(saver)
-        self.lock = admission_lock
+    def __init__(self, saver, session_lock, *, capacity, archive, store, active, publish):
+        self.storage = CheckpointNamespaces(saver, store)
+        self.session_lock = session_lock
+        self.archive, self.store, self.active, self.publish = archive, store, active, publish
         self.queue = asyncio.Queue(maxsize=capacity)
         self.pending = set()
+        self.completions = {}
         self.accepting = True
         self.task = asyncio.create_task(self._run(), name="workflow-checkpoint-cleanup")
 
-    async def request(self, session_id):
+    async def request(self, session_id, *, completion=None):
+        if completion is not None:
+            self.completions[session_id] = completion
         if not self.accepting or session_id in self.pending:
             return
         self.pending.add(session_id)
@@ -119,9 +157,27 @@ class CheckpointCleanup:
                 if session_id is None:
                     return
                 self.pending.discard(session_id)
-                async with self.lock:
+                completion = self.completions.pop(session_id, None)
+                if completion is not None:
+                    await asyncio.wait({completion})
+                async with self.session_lock(session_id):
+                    # Resume admission uses this same per-session lock. Active tasks own dependencies.
+                    if self.active(session_id):
+                        continue
+                    await self.archive.reconcile(session_id)
                     namespaces = await self.storage.completed(session_id)
                     await self.storage.delete(session_id, namespaces)
+                    from datetime import UTC, datetime
+                    config = {"configurable": {"thread_id": session_id}}
+                    saved = [item async for item in self.storage.saver.alist(config)]
+                    epochs = {item.checkpoint.get("channel_values", {}).get("execution_epoch") for item in saved}
+                    deadlines = [await asyncio.to_thread(self.store.checkpoint_deadline, session_id, epoch) for epoch in epochs if epoch]
+                    incomplete = await asyncio.to_thread(self.store.archive_incomplete, session_id)
+                    if not incomplete and deadlines and all(deadline is not None and deadline <= datetime.now(UTC) for deadline in deadlines):
+                        # Public full-thread deletion retains no fragile partial parent dependency graph.
+                        await self.storage.saver.adelete_thread(session_id)
+                    if await asyncio.to_thread(self.store.expire, session_id=session_id):
+                        await self.publish(await self.archive.view.get_session(session_id))
             except Exception:
                 logger.exception("子图 checkpoint 清理失败，保留数据等待再次核对",
                                  extra={"session_id": session_id})

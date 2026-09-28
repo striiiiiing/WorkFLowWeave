@@ -1,12 +1,13 @@
 """SQLite namespace 删除以父图提交为屏障，不把 stream chunk 当作提交。"""
 
 import asyncio
+import time
 
 import pytest
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from logagent.workflow import WorkflowService
-from logagent.workflow.checkpoints import CheckpointNamespaces
+from logagent.workflow.checkpoints import CheckpointNamespaces, WorkflowSqliteSaver
 from tests.workflow.helpers import AI, Channel, Collector, snapshot
 
 
@@ -23,7 +24,7 @@ async def test_cleanup_waits_for_parent_commit_and_preserves_parent_replay(tmp_p
 
         async def put(config, checkpoint, metadata, new_versions):
             if (not config["configurable"].get("checkpoint_ns")
-                    and checkpoint["channel_values"].get("phases", {}).get("collect")
+                    and checkpoint["channel_values"].get("phase", {}).get("stage") == "collect"
                     and not blocked.is_set()):
                 blocked.set()
                 await release.wait()
@@ -57,6 +58,16 @@ async def test_startup_sweep_keeps_interrupted_invocation(tmp_path):
     w = WorkflowService(Collector(), ai, Channel(), database=path)
     await w.trigger(snapshot(channels=False, analysis_concurrency=1), session_id="run")
     await asyncio.wait_for(ai.started.wait(), 5)
+    # Wait for the durable archive fact; entering the next coroutine is not a barrier.
+    def first_archived():
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            _, entries = w.session_store.entries("run")
+            if any(entry["write_key"].startswith("analyze:item:first:epoch:") for entry in entries):
+                return True
+            time.sleep(0.001)
+        return False
+    assert await asyncio.to_thread(first_archived)
     await w.cancel("run")
     await w.wait("run")
     await w.shutdown()
@@ -106,6 +117,49 @@ async def test_namespace_delete_is_atomic_and_does_not_delete_parent_or_neighbor
             assert {row[0] for row in rows} == {"", "collect:one_other"}
         with pytest.raises(ValueError, match="parent"):
             await adapter.delete("run", {""})
+
+
+async def test_saver_aput_writes_cancel_waits_for_commit_and_preserves_transaction(tmp_path):
+    path = str(tmp_path / "workflow.sqlite3")
+    async with WorkflowSqliteSaver.from_conn_string(path) as saver:
+        await saver.setup()
+        config = {"configurable": {
+            "thread_id": "run", "checkpoint_ns": "", "checkpoint_id": "checkpoint-1",
+        }}
+        async with saver.lock:
+            await saver.conn.execute(
+                "INSERT INTO checkpoints(thread_id,checkpoint_ns,checkpoint_id) VALUES (?,?,?)",
+                ("run", "", "checkpoint-1"),
+            )
+            await saver.conn.commit()
+
+        commit_started = asyncio.Event()
+        release_commit = asyncio.Event()
+        original_commit = saver.conn.commit
+
+        async def blocked_commit():
+            commit_started.set()
+            await release_commit.wait()
+            return await original_commit()
+
+        saver.conn.commit = blocked_commit
+        pending = asyncio.create_task(
+            saver.aput_writes(config, [("result", {"ok": True})], "task-1")
+        )
+        await asyncio.wait_for(commit_started.wait(), 5)
+        pending.cancel()
+        await asyncio.sleep(0)
+        assert not pending.done()
+        release_commit.set()
+        with pytest.raises(asyncio.CancelledError):
+            await pending
+
+        saver.conn.commit = original_commit
+        rows = await saver.conn.execute_fetchall(
+            "SELECT task_id,channel FROM writes WHERE thread_id=?", ("run",)
+        )
+        assert [(row[0], row[1]) for row in rows] == [("task-1", "result")]
+        await saver.aput_writes(config, [("second", {"ok": True})], "task-2")
 
 
 @pytest.mark.parametrize("restart", [False, True])
