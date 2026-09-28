@@ -1,6 +1,6 @@
 # 四部分模块拆分与原生事件订阅
 
-日期：2026-09-28。状态：设计文档修订，尚未实施本轮结构。工作区：`.worktree/redesign-workflow`，分支 `feat/redesign-workflow`。
+日期：2026-09-28，验收补记：2026-09-29。工作区：`.worktree/redesign-workflow`，分支 `feat/redesign-workflow`。设计修订已在当前 worktree 实施，13.7 的长期在线到期触发按本次范围排除；真实 Tabbit 浏览器导航被 runtime 关闭，未将浏览器项记为通过。
 
 ## 授权、范围与依据
 
@@ -38,25 +38,27 @@
 - 当前 [archive.py](../../../../../src/logagent/workflow/archive.py) 仍只用 stream_mode="updates" 并逐事件扫描；[service.py](../../../../../src/logagent/workflow/service.py) 仍含归档报告组装；[models.py](../../../../../src/logagent/models.py) 的 checkpoint/collection 默认仍为 None。本轮设计更新不代表这些实现已修改。
 - 当前清理请求主要发生在启动与运行退出；长期在线的到期触发仍需实现。只确定该行为，不新增未经依据的清理周期默认值。
 
-## 待实施任务
+## 实施任务
 
-- [ ] 1. 按 design 第 6 节重组 storage，单一事务追加事实/分配版本，三类正文独立查询，报告仅在 storage 组装；保留外部 SessionReader。
-- [ ] 2. 将 BackupPolicy 定义与期限处理归 storage，统一所有入口的 7/30 天默认，保留分析/报告不过期、旧归档原期限和明确配置迁移。
-- [ ] 3. 按各子图自己的 graph.py/nodes 组织节点；真实共用节点才提取，图内声明 tags，不保留重复注册表。
-- [ ] 4. 将 runner、recovery、tasks、context、scheduler 收拢至 execution；保留原快照、恢复、请求去重、取消/等待和调度语义，删除执行层报告重建。
-- [ ] 5. 运行最小真实事件探针：多 session metadata、tags 继承、root/子图事件结构、原生 checkpoint/task 身份、快分支完成与提交时序；每个命令硬超时 60 秒。
-- [ ] 6. 确定进程内观察者或有界队列发布/订阅，实现单一 astream_events 入口与具体订阅；无逐 chunk 全历史扫描、无无界线程/任务、不静默丢存储事实。
-- [ ] 7. 用统一事实接口实现消费补存，验证重复事件、归档失败、取消、进程退出和清理交接；不重新执行模型/采集来补归档。
-- [ ] 8. 实施长期在线的过期触发，验证 7/30 天边界、独立期限、未归档唯一副本及活动恢复保护。
-- [ ] 9. 另行确认对外 snapshot/首帧/版本传输/心跳/断连/离页方案后补充任务与规范，再实施前端协议适配和浏览器验证。
-- [ ] 10. 定向测试 → 静态检查 → 受影响构建 → 最小烟测；最终统一代码审查，检查职责删除、重复状态、隐藏回退和安全边界。
+- [x] 1. 按 design 第 6 节重组 storage，单一事务追加事实/分配版本，三类正文独立查询，报告仅在 storage 组装；保留外部 SessionReader。
+- [x] 2. 将 BackupPolicy 定义与期限处理归 storage，统一所有入口的 7/30 天默认，保留分析/报告不过期、旧归档原期限和明确配置迁移。
+- [x] 3. 按各子图自己的 graph.py/nodes 组织节点；真实共用节点才提取，图内声明 tags，不保留重复注册表。
+- [x] 4. 将 runner、recovery、tasks、context、scheduler 收拢至 execution；保留原快照、恢复、请求去重、取消/等待和调度语义，删除执行层报告重建。
+- [x] 5. 运行最小真实事件探针：多 session metadata、tags 继承、root/子图事件结构、原生 checkpoint/task 身份、快分支完成与提交时序；每个命令硬超时 60 秒。
+- [x] 6. 确定进程内观察者或有界队列发布/订阅，实现单一 astream_events 入口与具体订阅；无逐 chunk 全历史扫描、无无界线程/任务、不静默丢存储事实。
+- [x] 7. 用统一事实接口实现消费补存，验证重复事件、归档失败、取消、进程退出和清理交接；不重新执行模型/采集来补归档。
+- [ ] 8. 实施长期在线的过期触发，验证 7/30 天边界、独立期限、未归档唯一副本及活动恢复保护。（本次验收明确排除，对应总任务 13.7）
+- [ ] 9. 另行确认对外 snapshot/首帧/版本传输/心跳/断连/离页方案后补充任务与规范，再实施前端协议适配和浏览器验证。（HTTP/SSE 与 Playwright 已通过；Tabbit 导航被 runtime 关闭）
+- [x] 10. 定向测试 → 静态检查 → 受影响构建 → 最小烟测；最终统一代码审查，检查职责删除、重复状态、隐藏回退和安全边界。
 
 实施协作按用户约定：核心由主 Agent 完成，非核心代码交 GPT-6 Sol high，简单非代码任务及真实浏览器验证交 GPT-6 Luna max；严格单 Agent 串行交接，子 Agent 工作时主 Agent 等待，不立即重复审查无异常的委派代码，最终交付统一审查。本轮为主 Agent 单独文档修订，没有派发代码或浏览器工作。
 
-## 本轮文档验证
+## 当前 worktree 验收补记
 
 - [x] 写入已确认的模块结构、原生事件契约、存储范围和默认值；snapshot 与分发方式标为待讨论。
-- [x] 新增本任务，根 tasks 第 13 节作为当前入口；未改写旧日期任务或应用源码。
+- [x] 新增本任务，根 tasks 第 13 节作为当前入口；后续实现与验收证据追加在本记录。
 - [x] `openspec validate redesign-workflow --strict --no-interactive` 通过，退出码 0。
 - [x] 本轮 6 份 Markdown 相对链接、围栏、尾随空白及当前决定覆盖检查通过；已审查本轮文档差异，`git diff --check -- openspec/changes/redesign-workflow` 通过。修正 proposal/根 tasks 两处原有链接，使其指向本 worktree 实际存在的旧 Workflow 设计。
-- 本轮不运行业务测试、类型检查、构建或浏览器；原生事件传播/提交边界仍在后续实施验证范围。
+- [x] 后端定向回归、真实 SQLite/进程强退、Ruff、前端类型/架构检查和构建通过；Playwright E2E 通过。
+- [ ] GPT-6 Luna max 使用 Tabbit 的真实浏览器验收：首页 DOM 读取成功，但导航到 `/runs` 与 `/workflows` 后 runtime 主动关闭页面/打开 `about:blank`，因此未完成。
+- [x] `openspec validate redesign-workflow --strict --no-interactive` 通过；删除已被本任务取代的最小原生事件任务后相对链接、空白与差异检查重新通过。
