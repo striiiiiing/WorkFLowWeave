@@ -8,6 +8,7 @@ export type ArtifactAvailability =
   'available' | 'pending' | 'not_saved' | 'expired' | 'missing' | 'corrupt' | 'write_failed'
 export interface ArtifactInfo {
   stage: WorkflowStage
+  content_version: number | null
   availability: ArtifactAvailability
   size_bytes: number | null
   error: ErrorInfo | null
@@ -27,6 +28,7 @@ export interface WorkflowProgress {
   output_id: string | null
   channel_id: string | null
   label: string | null
+  order: number
   result_ref: string | null
   version: number | null
   availability: ArtifactAvailability

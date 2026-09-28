@@ -1,10 +1,9 @@
-import { computed, nextTick, readonly, ref, shallowRef, watch, type Ref } from 'vue'
+import { computed, nextTick, readonly, ref, watch, type Ref } from 'vue'
 import { useQuery } from '@/shared/async/useQuery'
 import { useRunsApi } from '../api/dependencies'
 import type { ResumeOptions, RunsApi } from '../api/runsApi'
 import type { WorkflowStage } from '../model/types'
 import { sessionStates, stages } from '../model/session'
-import { isTerminalStatus } from '../model/progress'
 import { useSession } from './useSession'
 import { usePhaseReport } from './usePhaseReport'
 import { useCancelAction, useRecoveryAction } from './useRunActions'
@@ -34,53 +33,18 @@ export function useRunDetail(
     },
     [id, () => session.data.value?.execution_epoch, active, selectedStage, stageRecoveryEnabled],
   )
-  const phaseVersions = shallowRef<Partial<Record<WorkflowStage, number>>>({})
-  let phaseIdentity: { sessionId: string; epoch: string | null } | undefined
-  watch([id, () => session.data.value?.execution_epoch], () => {
-    phaseVersions.value = {}
-    phaseIdentity = undefined
-  })
-  watch(
-    () => session.data.value,
-    (record) => {
-      if (!record || record.session_id !== id.value) return
-      const identityChanged =
-        phaseIdentity?.sessionId !== record.session_id ||
-        phaseIdentity.epoch !== record.execution_epoch
-      const versions = identityChanged
-        ? (Object.fromEntries(stages.map(({ key }) => [key, record.version])) as Partial<
-            Record<WorkflowStage, number>
-          >)
-        : { ...phaseVersions.value }
-      phaseIdentity = { sessionId: record.session_id, epoch: record.execution_epoch }
-      const setVersion = (stage: WorkflowStage, version: number) => {
-        if ((versions[stage] ?? -1) < version) versions[stage] = version
-      }
-      for (const item of record.progress) {
-        if (item.version === null) continue
-        if (item.stage === 'analyze' && item.event === 'item') setVersion('collect', item.version)
-        if (item.event === 'aggregate') {
-          setVersion('collect', item.version)
-          setVersion('analyze', item.version)
-          setVersion('aggregate', item.version)
-        }
-      }
-      if (isTerminalStatus(record.status)) {
-        for (const { key } of stages) setVersion(key, record.version)
-      }
-      phaseVersions.value = versions
-    },
-    { immediate: true },
-  )
   const phases = Object.fromEntries(
     stages.map((stage) => [
       stage.key,
       usePhaseReport(
         computed(() => {
           const record = session.data.value
-          const version =
-            record?.session_id === id.value ? phaseVersions.value[stage.key] : undefined
-          return version !== undefined ? { id: id.value, version, stage: stage.key } : undefined
+          const artifact = record?.session_id === id.value
+            ? record.artifacts.find((item) => item.stage === stage.key)
+            : undefined
+          return artifact?.availability === 'available' && artifact.content_version !== null
+            ? { id: id.value, version: artifact.content_version, stage: stage.key }
+            : undefined
         }),
         api,
       ),

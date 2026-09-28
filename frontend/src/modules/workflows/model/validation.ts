@@ -1,4 +1,5 @@
 import type { WorkflowDefinition } from './types'
+import { hasLegacyRetention, retentionFields } from './backup'
 
 export const workflowIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/
 
@@ -29,5 +30,17 @@ export function validateWorkflow(workflow: WorkflowDefinition): string[] {
     const error = validateAnalysisId(workflow, index, task.id)
     if (error) errors.push(error)
   })
+  errors.push(...validateBackupPolicy(workflow.backup))
+  return errors
+}
+
+export function validateBackupPolicy(backup: WorkflowDefinition['backup']): string[] {
+  const errors: string[] = []
+  if (hasLegacyRetention(backup)) errors.push('旧保留天数需要重新选择分类保留策略')
+  for (const { key, label } of retentionFields) {
+    const days = backup[key]
+    if (days !== null && (!Number.isSafeInteger(days) || days <= 0))
+      errors.push(`${label}必须是大于 0 的整数或留空`)
+  }
   return errors
 }

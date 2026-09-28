@@ -6,8 +6,8 @@ import pytest
 
 from logagent.errors import LogAgentError
 from logagent.models import AnalysisResult, DeliveryResult, FanInConfig, WorkflowProgress
-from logagent.workflow.stream import ProgressHub, StreamConsumer
-from tests.workflow.helpers import AI, Channel, snapshot
+from logagent.workflow.stream.subscriptions.progress import ProgressHub
+from tests.workflow.helpers import AI, Channel, archived, snapshot
 from tests.workflow.test_workflow_recovery import close, service
 
 
@@ -15,8 +15,27 @@ async def next_matching(queue, predicate):
     async with asyncio.timeout(5):
         while True:
             item = await queue.get()
-            if predicate(item):
-                return item
+            for progress in item.progress:
+                if progress.status not in {"pending", "running"} and predicate(progress):
+                    return progress
+            if item.status in {"completed", "partial", "failed", "cancelled", "interrupted"}:
+                lifecycle = WorkflowProgress(
+                    session_id=item.session_id,
+                    event="lifecycle",
+                    status=item.status,
+                    version=item.version,
+                )
+                if predicate(lifecycle):
+                    return lifecycle
+
+
+async def wait_for_record(workflow, predicate):
+    async with asyncio.timeout(5):
+        while True:
+            record = await workflow.get_session("run")
+            if predicate(record):
+                return record
+            await asyncio.sleep(0.01)
 
 
 async def test_fast_items_and_report_are_visible_before_slow_siblings(tmp_path):
@@ -34,8 +53,9 @@ async def test_fast_items_and_report_are_visible_before_slow_siblings(tmp_path):
             if config.id == "two":
                 slow_send_started.set()
                 await release_send.wait()
-            return DeliveryResult(channel_id=config.id, output_id=notification.output_id,
-                                  status="success", attempts=1)
+            return DeliveryResult(
+                channel_id=config.id, output_id=notification.output_id, status="success", attempts=1
+            )
 
     w, store, _, _, _ = service(tmp_path / "runs.sqlite3", ai=SlowAI())
     w.channel_manager = SlowChannel()
@@ -46,28 +66,98 @@ async def test_fast_items_and_report_are_visible_before_slow_siblings(tmp_path):
             before = await w.get_session("run")
             assert first.status == "success" and first.version <= before.version
             items = {p.item_id: p for p in before.progress if p.stage == "analyze"}
-            assert items["first"].status == "success" and items["second"].status == "pending"
+            assert before.stage == "analyze"
+            assert items["first"].status == "success" and items["second"].status == "running"
             assert first.result_ref == items["first"].result_ref
             assert "report first" not in first.model_dump_json()
             release_analysis.set()
             report = await next_matching(queue, lambda e: e.event == "aggregate")
             assert report.status == "success" and report.summary["fan_in"] is False
-            content = await w.session_view.get_phase_content("run", "aggregate", version=report.version)
-            assert content.content["outputs"] == {"first": "report first", "second": "report second"}
-            delivered = await next_matching(queue, lambda e: e.event == "delivery" and e.channel_id == "one")
+            content = await w.session_view.get_phase_content(
+                "run", "aggregate", version=report.version
+            )
+            assert content.content["outputs"] == {
+                "first": "report first",
+                "second": "report second",
+            }
+            delivered = await next_matching(
+                queue, lambda e: e.event == "delivery" and e.channel_id == "one"
+            )
             await slow_send_started.wait()
             assert delivered.status == "success" and w.coordinator.contains("run")
-            record = await w.get_session("run")
+            record = await wait_for_record(
+                w,
+                lambda value: any(
+                    p.event == "delivery"
+                    and p.channel_id == "two"
+                    and p.status == "running"
+                    for p in value.progress
+                ),
+            )
             assert record.status == "running"
-            assert all(p.status == "pending" for p in record.progress
-                       if p.event == "delivery" and p.channel_id == "two")
+            assert all(
+                p.status == "running"
+                for p in record.progress
+                if p.event == "delivery" and p.channel_id == "two"
+            )
             release_send.set()
             assert (await w.wait("run")).status == "completed"
-            terminal = await next_matching(queue, lambda e: e.event == "lifecycle" and e.status == "completed")
+            terminal = await next_matching(
+                queue, lambda e: e.event == "lifecycle" and e.status == "completed"
+            )
             assert terminal.version <= (await w.get_session("run")).version
     finally:
         release_analysis.set()
         release_send.set()
+        await close(w, store)
+
+
+async def test_live_checkpoint_archiving_does_not_scan_history(tmp_path):
+    release_second = asyncio.Event()
+    second_started = asyncio.Event()
+
+    class SlowAI(AI):
+        async def execute(self, config, prompt, text, *, task_id, **kwargs):
+            if task_id == "second":
+                second_started.set()
+                await release_second.wait()
+            return await super().execute(config, prompt, text, task_id=task_id, **kwargs)
+
+    w, store, _, _, _ = service(tmp_path / "runs.sqlite3", ai=SlowAI())
+    await w.start()
+    scans = 0
+    alist = w._checkpointer.alist
+
+    async def count_scans(config=None):
+        nonlocal scans
+        scans += 1
+        async for checkpoint in alist(config):
+            yield checkpoint
+
+    w._checkpointer.alist = count_scans
+    try:
+        await w.trigger(snapshot(channels=False, analysis_concurrency=1), session_id="run")
+        await asyncio.wait_for(second_started.wait(), 5)
+        first = None
+        async with asyncio.timeout(5):
+            while first is None:
+                first = await asyncio.to_thread(archived, store, "run", "analyze:item:first")
+                if first is None:
+                    await asyncio.sleep(0.01)
+        assert first is not None and first["body"]["status"] == "success"
+        assert archived(store, "run", "analyze:item:second") is None
+        # The only scan so far is the execution-start recovery sweep. Live
+        # checkpoint events archive directly while the sibling remains active.
+        assert scans == 1
+        release_second.set()
+        assert (await w.wait("run")).status == "completed"
+        # Defer handoff, settlement, and retention maintenance may reconcile;
+        # live result events must not add a history scan for each checkpoint.
+        assert scans <= 4
+        second = archived(store, "run", "analyze:item:second")
+        assert second is not None and second["body"]["status"] == "success"
+    finally:
+        release_second.set()
         await close(w, store)
 
 
@@ -77,18 +167,16 @@ async def test_duplicate_stream_observation_does_not_write_another_version(tmp_p
         await w.trigger(snapshot(channels=False), session_id="run")
         await w.wait("run")
         before = await w.get_session("run")
-        report = next(item for item in before.progress if item.event == "aggregate")
+        assert any(item.event == "aggregate" for item in before.progress)
         events = []
 
         async def publish(event):
             events.append(event)
 
-        consumer = StreamConsumer(store, "run", publish, {("aggregate",): "workflow:aggregate"})
-        update = {"aggregate": {"phases": {"aggregate": report.result_ref}}}
-        await consumer.consume((), update)
-        await consumer.consume((), update)
-        await consumer.consume(("notify:any",), {"intent_0_0": {}})
-        assert len(events) == 1
+        w.archive.publish = publish
+        await w.archive.reconcile("run")
+        await w.archive.reconcile("run")
+        assert events == []
         assert (await w.get_session("run")).version == before.version
     finally:
         await close(w, store)
@@ -118,11 +206,17 @@ async def test_stage_rerun_projection_resets_downstream_and_keeps_fixed_history(
         w.ai_service = ai
         await w.resume("run", stage="analyze")
         await ai.started.wait()
-        record = await w.get_session("run")
+        record = await wait_for_record(
+            w,
+            lambda value: any(
+                p.item_id == "first" and p.status == "running" for p in value.progress
+            ),
+        )
         assert record.execution_epoch != before.execution_epoch
         collected = next(p for p in record.progress if p.stage == "collect")
         assert collected.status == "success" and collected.execution_epoch == record.execution_epoch
-        assert next(p for p in record.progress if p.item_id == "first").status == "pending"
+        assert record.stage == "analyze"
+        assert next(p for p in record.progress if p.item_id == "first").status == "running"
         assert next(p for p in record.progress if p.event == "aggregate").result_ref is None
         assert await w.get_session("run", version=before.version) == before
         await w.cancel("run")
@@ -140,28 +234,37 @@ async def test_model_fan_in_publishes_one_aggregate_completion(tmp_path):
             events = []
             while not queue.empty():
                 events.append(queue.get_nowait())
-            reports = [e for e in events if e.event == "aggregate"]
+            reports = {
+                p.version: p
+                for e in events
+                for p in e.progress
+                if p.event == "aggregate" and p.status == "success"
+            }
             assert len(reports) == 1
-            assert reports[0].status == "success" and reports[0].summary["fan_in"] is True
+            report = next(iter(reports.values()))
+            assert report.summary["fan_in"] is True
     finally:
         await close(w, store)
 
 
-async def test_missing_committed_reference_interrupts_execution(tmp_path, monkeypatch):
+async def test_archive_failure_interrupts_drive_and_keeps_source(tmp_path, monkeypatch):
     w, store, _, _, _ = service(tmp_path / "runs.sqlite3")
-    consume = StreamConsumer.consume
+    write = store.write
 
-    async def missing_reference(self, namespace, update):
-        if "aggregate" in update:
-            update = {"aggregate": {"phases": {"aggregate": "missing"}}}
-        await consume(self, namespace, update)
+    def fail(sid, key, **kwargs):
+        if key.startswith("output:"):
+            raise OSError("archive unavailable")
+        return write(sid, key, **kwargs)
 
-    monkeypatch.setattr(StreamConsumer, "consume", missing_reference)
+    monkeypatch.setattr(store, "write", fail)
     try:
         await w.trigger(snapshot(channels=False), session_id="run")
-        with pytest.raises(LogAgentError) as error:
+        with pytest.raises(LogAgentError):
             await w.wait("run")
-        assert error.value.code == "progress_unavailable"
         assert (await w.get_session("run")).status == "interrupted"
+        assert await w._checkpointer.aget_tuple({"configurable": {"thread_id": "run"}})
+        monkeypatch.setattr(store, "write", write)
+        await w.archive.reconcile("run")
+        assert any(e["scope"] == "output" for e in store.entries("run")[1])
     finally:
         await close(w, store)

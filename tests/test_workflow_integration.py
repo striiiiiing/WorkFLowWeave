@@ -6,6 +6,7 @@
 """
 
 import asyncio
+import time
 from contextlib import asynccontextmanager
 
 from sqlalchemy import URL, inspect
@@ -26,8 +27,8 @@ from logagent.models import (
     SystemConfig,
     WorkflowDefinition,
 )
-from logagent.workflow import WorkflowService
-from logagent.workflow.session_models import SessionHeader
+from logagent.workflow.execution.runner import WorkflowRunner
+from logagent.workflow.storage.models import SessionHeader
 from tests.workflow.helpers import archived
 from tests.workflow_ai_helpers import TestChannelFactory
 
@@ -42,7 +43,7 @@ async def _application(tmp_path, *, provider=None):
     resources = ResourceStore(tmp_path / "resources.json", collector_register=registry.collectorRegister, channel_register=registry.channelRegister)
     ai = AIService(channel_factories={"mock": provider or TestChannelFactory()})
     channels = ChannelManager(registry.channelRegister)
-    service = WorkflowService(
+    service = WorkflowRunner(
         CollectorManager(registry.collectorRegister),
         ai,
         channels,
@@ -130,6 +131,15 @@ async def test_real_modules_recovery_preserves_original_output(tmp_path):
         history = await service.history("original-run")
         completed = {row["stage"]: row["body"] for row in history if row["scope"] == "phase"}
         assert list(completed) == ["collect", "analyze", "aggregate", "notify", "finish"]
+        for body in completed.values():
+            assert not {"collection", "analyses", "outputs", "deliveries"} & body.keys()
+        record = await service.get_session("original-run")
+        completed = {
+            stage: (await service.session_view.get_phase_content(
+                "original-run", stage, version=record.version
+            )).content
+            for stage in completed
+        }
         assert completed["collect"]["collection"][0]["items"] == [{"message": "original"}]
         assert completed["analyze"]["analyses"][0]["text"] == original.analyses[0].text
         assert completed["aggregate"]["outputs"] == original.outputs
@@ -140,7 +150,7 @@ async def test_real_modules_recovery_preserves_original_output(tmp_path):
     # Reopen every concrete service and SQLite connection, using current resources.
     async with _application(tmp_path) as (_, resources, service):
         assert resources.get("sources", "source").options["records"][0]["message"] == "changed"
-        await service.recover("original-run")
+        await service.resume("original-run")
         recovered = await service.wait("original-run")
         assert recovered == original
         assert _notifications(original_path) == notifications
@@ -190,11 +200,16 @@ async def test_real_ai_cancellation_resumes_saved_snapshot_after_resource_change
         _save_resources(registry, resources, original_path, "original")
         await service.trigger("demo", session_id="interrupted")
         await asyncio.wait_for(second_started.wait(), 5)
-        first = (
-            await asyncio.to_thread(
+        deadline = time.monotonic() + 5
+        first_entry = None
+        while first_entry is None and time.monotonic() < deadline:
+            first_entry = await asyncio.to_thread(
                 archived, service.session_store, "interrupted", "analyze:item:first"
             )
-        )["body"]
+            if first_entry is None:
+                await asyncio.sleep(0)
+        assert first_entry is not None
+        first = first_entry["body"]
         assert first["status"] == "success"
         assert await service.cancel("interrupted")
         assert (await asyncio.wait_for(service.wait("interrupted"), 5)).status == "cancelled"
@@ -202,7 +217,7 @@ async def test_real_ai_cancellation_resumes_saved_snapshot_after_resource_change
         _save_resources(registry, resources, changed_path, "changed")
 
     async with _application(tmp_path) as (_, _, service):
-        await service.recover("interrupted")
+        await service.resume("interrupted")
         recovered = await service.wait("interrupted")
         assert recovered.status == "completed"
         assert recovered.shared_input == '{"message":"original"}\n\nsource: success (1)'
@@ -216,6 +231,6 @@ async def test_real_ai_cancellation_resumes_saved_snapshot_after_resource_change
         history = await service.history("interrupted")
         assert sum(row["write_key"].startswith("collect:item:source:epoch:") for row in history) == 1
         assert sum(row["write_key"].startswith("analyze:item:first:epoch:") for row in history) == 1
-        await service.recover("interrupted")
+        await service.resume("interrupted")
         assert await service.wait("interrupted") == recovered
         assert _notifications(original_path) == notes

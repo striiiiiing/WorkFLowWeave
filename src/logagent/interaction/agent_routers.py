@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
+from fastapi import APIRouter, Depends, Header, Query, Response, status
 from pydantic import Field
 
 from logagent.agent.config import AgentConfig as AgentRuntimeConfig
@@ -149,11 +149,11 @@ def build_agent_router():
         )))["result"]
 
     @router.get("/sessions/{session_id}/events")
-    async def agent_events(session_id: ID, request: Request,
+    async def agent_events(session_id: ID,
                            services: Services, after: int = Query(0, ge=0),
                            last_event_id: str | None = Header(None)):
         return await stream_agent_events(
-            services.channels.web_channel, session_id, request,
+            services.channels.web_channel, session_id,
             after=after, last_event_id=last_event_id,
         )
 

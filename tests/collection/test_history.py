@@ -11,12 +11,13 @@ import orjson
 import pytest
 from sqlmodel import select
 
-from logagent.collection import HistoryCollector, builtin_collectors
-from logagent.config import PluginRegistry
+from logagent.collection import CollectorManager, HistoryCollector, builtin_collectors
+from logagent.config import PluginRegistry, ResourceStore
 from logagent.errors import LogAgentError
-from logagent.models import BackupPolicy, CollectionContext, SystemConfig
-from logagent.workflow import SessionStore, SessionView
-from logagent.workflow.session_models import SessionEntry
+from logagent.models import BackupPolicy, CollectionContext, SourceConfig, SystemConfig
+from logagent.workflow.storage.facts import SessionStore
+from logagent.workflow.storage.models import SessionEntry
+from logagent.workflow.storage.sessions import SessionView
 
 
 @pytest.fixture
@@ -27,11 +28,11 @@ def store(tmp_path):
 
 
 def save(store, sid="old", workflow="w", text="已保存正文", enabled=True):
-    store.create(sid, workflow, BackupPolicy(enabled=enabled, retention_days=1))
-    store.write(sid, "collect", stage="collect", scope="phase", summary={"status": "running"},
+    store.create(sid, workflow, BackupPolicy(enabled=enabled, collection_retention_days=1))
+    store.write(sid, "collect", stage="collect", scope="phase", summary={"status": "running", "execution_epoch": "epoch"},
                 body={"text": text} if enabled else None,
                 availability="available" if enabled else "not_saved", category="collection")
-    store.write(sid, "finish", stage="finish", scope="parent", summary={"status": "completed"})
+    store.write(sid, "finish", stage="finish", scope="parent", summary={"status": "completed", "execution_epoch": "epoch"})
 
 
 def context(store, sid="current", reader=None):
@@ -47,9 +48,12 @@ async def test_real_view_registration_and_content_agree_without_recollection(sto
         "history", "logs", "mock",
     }
     assert {x.name for x in report.registered if x.kind == "tool"} == {
-        "mcp", "read", "write", "grep", "shell",
+        "plugin", "read", "write", "grep", "shell",
     }
-    result = await HistoryCollector().collect({}, {}, context(store))
+    manager = CollectorManager(registry.collectorRegister)
+    resources = ResourceStore(tmp_path / "resources.json", collector_register=registry.collectorRegister)
+    source = resources.save("sources", SourceConfig(id="past", collector="history"))
+    result = await manager.collect(resources.resolve(source), context(store))
     record = await SessionView(store).get_session("old")
     phase = await SessionView(store).get_phase_content("old", "collect", version=record.version)
     assert result.status == "success" and result.count == 1
@@ -104,8 +108,10 @@ async def test_empty_missing_expired_corrupt_are_distinct(store):
         row = session.exec(select(SessionEntry).where(
             SessionEntry.session_id == "broken", SessionEntry.write_key == "collect",
         )).one()
-        row.body = '{"text":"private-corrupt"}'
-        session.add(row)
+        from logagent.workflow.storage.models import CollectionBody
+        body = session.get(CollectionBody, (row.session_id, row.version))
+        body.content = '{"text":"private-corrupt"}'
+        session.add(body)
     result = await collector.collect({"session_id": "broken"}, {}, context(store))
     assert result.status == "failed" and "private-corrupt" not in result.model_dump_json()
     missing = await collector.collect({}, {}, CollectionContext("w", "current"))

@@ -1,14 +1,24 @@
 # 实施任务
 
-状态：前后端代码已实施；真实浏览器的慢分支/慢渠道端到端验收尚未记录。后端依据和验证见 [后端节点图实施](tasks/2026-09-28-backend-implementation/task.md)，前端实现与自动化结果见 [前后端联动任务](tasks/2026-09-28-frontend-live-workflow/task.md)。复选框只按实际交付勾选。
+最新协议决定：[沿用现有 Snapshot](tasks/2026-09-28-reuse-snapshot/task.md)。用户确认保留完整 SessionRecord 首帧/版本替换、15 秒心跳、500–5000ms 重连、终态关闭和离页只停止观察；外部协议已确定，新内部链路的回归与浏览器验收仍待完成。
+
+最新追加：[父图恢复查询与直接编译子图](tasks/2026-09-28-parent-state-compile/task.md)，依据用户最新明确要求移除嵌套状态展开和 stream_channels 覆盖；[业务超时与重试边界](tasks/2026-09-28-business-timeout/task.md)继续有效。原生 defer 清理结论已并入当前 design/spec，不再保留过时的独立任务入口。
+
+最新实施入口：[构图与运行解耦](tasks/2026-09-28-runtime-context/task.md)，依据用户批准的 design §1.1；原生编译图输出配置继续采用，能力依赖迁入 Runtime Context。
+
+当前状态：**四部分完整重构已完成当前 worktree 的定向自动化验收，旧版保存在基线 `880ebb4`。** 当前实施入口为第 13 节及 [原生事件流与模块拆分任务](tasks/2026-09-28-native-events-layout/task.md)：storage/graph/execution/stream、每个子图独立 nodes、图内 tags、metadata.sessionID、单次 astream_events、checkpoint 7 天/采集 30 天。外部 snapshot 已按用户决定沿用现有协议；内部分发机制单独处理。第 13.7（长期在线到期触发等）按本次验收要求明确排除。真实 Tabbit 浏览器导航在 runtime 层被关闭，未将其误记为通过。
+
+2026-09-29 验收追加记录见 [intent checkpoint 提交屏障任务](tasks/2026-09-29-intent-receipt-barrier/task.md)。本轮发现并修复了 intent checkpoint 已由 LangGraph 同步提交、但唯一 `astream_events` 消费者尚未将 intent 事实追加到 `SessionStore` 时，receipt 仍提前执行的竞态；修复还记录了同步节点线程没有 event loop 的线程适配边界。13.2–13.6 已依据当前 worktree 的定向复跑验收；13.8–13.9 的自动化部分通过，但真实 Tabbit 浏览器被 runtime 阻塞，不能仅凭旧日期任务中的通过记录勾选。
+
+第 1–12 节及既有日期任务保留历史和既有实现证据；其中 astream 主入口、逐事件全扫描确认和默认期限待定被本轮决定取代；外部完整 snapshot 曾重新讨论，最新用户决定恢复采用现有协议。已勾选不代表通过新结构验收，未勾选也不代表当前 worktree 完全没有对应代码。代码行数下降不再是验收要求。不得修改旧日期任务来覆盖其历史结论。
 
 2026-09-28 checkpoint 设计修订另记于 [resume 与清理任务](tasks/2026-09-28-checkpoint-resume/task.md)。下列第 1–5 节保留首轮任务记录；与新设计冲突的“单项业务重试、fork 待定、Agent 读取方式待定”以新任务及当前 design 为准。
 
-本轮目标、推送粒度和正文引用的最终决定见 [精简与实时业务进度任务](tasks/2026-09-28-stream-progress/task.md)，取代下列历史记录中的“正文全面迁入 checkpoint 仍待定”；此前任务记录保留。
+上一轮目标、推送粒度和当时的正文引用决定见 [精简与实时业务进度任务](tasks/2026-09-28-stream-progress/task.md)；正文引用决定已由本轮内容 state 契约取代，此前任务记录保留。
 
 aggregate 成功推送的后续补充见 [aggregate 推送任务](tasks/2026-09-28-aggregate-progress/task.md)，旧实时进度任务中的三类推送点扩展为包含 aggregate。
 
-前端 Workflow 实时执行视图的实施与验证见 [前后端联动任务](tasks/2026-09-28-frontend-live-workflow/task.md)，包含替换运行页固定轮询、订阅与查询同步、逐项展示和阶段重跑；浏览器验收仍待完成。
+前端 Workflow 实时执行视图的实施与验证见 [前后端联动任务](tasks/2026-09-28-frontend-live-workflow/task.md)，包含替换运行页固定轮询、订阅与查询同步、逐项展示和阶段重跑；本轮已完成自动化前端构建与 E2E，真实 Tabbit 浏览器导航被 runtime 阻塞。
 
 ## 1. 设计与草图隔离
 
@@ -82,9 +92,82 @@ aggregate 成功推送的后续补充见 [aggregate 推送任务](tasks/2026-09-
 - [x] 7.4 在 runs 模块统一维护订阅、条目归并与连接状态，替换运行详情固定轮询；处理重复/乱序事件、旧查询晚到、轮次切换和作用域释放。
 - [ ] 7.5 更新 Workflow 运行详情普通模式的逐项进度与最终报告可用性，保留配置顺序和错误状态；验证 Workflow 列表触发后进入该视图。
 - [x] 7.6 适配中断续跑和阶段重跑动作、恢复可用性、再次发送说明与新轮次展示，保留原 session、历史版本及 Agent 主动读取语义。
-- [ ] 7.7 按本轮任务完成定向测试、类型/架构检查、构建、真实 SSE 和浏览器烟测；在慢分支/慢渠道结束前验证快项和 aggregate 已可见。
 - [x] 7.8 完成 OpenSpec 严格校验、相对链接/空白检查及文档差异审查，将真实结果写入本轮任务。
+
+> 7.7 已从活动清单移除：其自动化与浏览器验收由 13.8–13.9 统一承接；原日期任务保留为历史证据。
 
 ## 后端实施补记
 
-此前仅要求后端且明确不保留旧版历史兼容；现在前端实现与自动化验证已完成，分别以 [后端记录](tasks/2026-09-28-backend-implementation/task.md) 和 [前端记录](tasks/2026-09-28-frontend-live-workflow/task.md) 为准。不把真实 HTTP/SSE 测试算作浏览器验收。
+此前仅要求后端且明确不保留旧版历史兼容；现在前端实现和自动化验证已完成，真实浏览器验收因 Tabbit runtime 导航关闭而未完成，分别以 [后端记录](tasks/2026-09-28-backend-implementation/task.md) 和 [前端记录](tasks/2026-09-28-frontend-live-workflow/task.md) 为准。真实 HTTP/SSE 证据与浏览器交互证据分别记录，不相互替代。
+
+## 8. 内容 state 与流式归档重新设计
+
+- [x] 8.1 按用户授权修改 proposal/design 和三项能力契约，明确 checkpoint 执行权威、最小内容 state、长期归档和清理交接；另建日期任务，保留历史。
+- [x] 8.2 静态核对基线与当前行数，分析前端 +717 行的功能来源、协议冗余和版本风险，记录证据及简化契约。
+- [x] 8.8 完成本轮 OpenSpec 严格校验、文档链接/空白与 diff 审查，将真实结果写入日期任务。
+
+> 8.3–8.7 已从活动清单移除：内容 state、astream 归档、resume/清理和 GET/SSE 方案已被第 13 节取代；日期任务保留为历史依据，未把取代误记为实现完成。
+
+## 9. 前端共用 SSE 连接层
+
+本次用户同意复用 Agent 连接机制，设计补充与依据另记于 [前端 SSE 复用任务](tasks/2026-09-28-shared-sse/task.md)，不改写此前实施任务。
+
+- [x] 9.1 在 design 第 4.3 节明确共用连接层、两种消费协议与退避默认依据；保留 Agent 的现有行为和存储边界。
+- [x] 9.2 从 Agent 抽取轻量 SSE 连接函数，两个模块使用薄适配器，删除被替代实现；游标与快照版本保留在各自消费层。源码核对确认 `frontend/src/shared/api/eventSource.ts` 被 Agent/Workflow 两适配器使用。
+- [x] 9.3 实施后验证两类协议的重连、关闭、旧连接隔离、解析错误与终态；目标单元、Playwright 与 HTTP/SSE smoke 已通过，真实 Tabbit 浏览器阻塞证据转由 13.8–13.9 保留。
+- [x] 9.4 完成此次 OpenSpec 和文档检查，记录实际结果；本轮不运行应用测试。
+
+## 10. 后端共用 SSE 发送层
+
+用户进一步要求检查后端 SSE 共用情况；现有两条路由分别实现发送，新增设计与依据见 [后端 SSE 复用任务](tasks/2026-09-28-backend-shared-sse/task.md)。
+
+- [x] 10.1 核对两条路由，补充 design 第 4.4 节的共用帧编码、响应、心跳与资源清理边界，保留各自数据源和重连语义。
+- [x] 10.2 在 interaction/sse.py 实施小型共用发送函数，两条路由调用并删除重复实现；不新增业务事件存储或广播层。源码核对确认 `encode_sse`/`sse_response` 为两条路由共用。
+- [x] 10.3 实施后验证 Agent 游标/尾部补发和 Workflow 首帧/快照，检查心跳、断连、异常与资源释放；自动化 HTTP/SSE 通过，真实浏览器证据仍归 13.8–13.9。
+- [x] 10.4 完成本轮 OpenSpec、文档及 diff 检查，记录结果；本轮不运行应用测试。
+
+## 11. 分类归档、提示词索引与独立保留期
+
+用户要求三类正文分别存储、共用提示词索引，并明确期限顺序只是通常用法，不得强制校验。依据及默认值见 [分类归档任务](tasks/2026-09-28-tiered-archive/task.md)。本节取代旧任务中的统一 retention_days 和未设期限的父图入口保留决定。
+
+- [x] 11.1 更新设计、proposal 和相关规范：三类独立正文、不可变提示词版本、各类独立期限，分析/报告默认不过期；删除期限大小约束与冲突拒绝场景。
+- [ ] 11.2 实施同一 SessionStore 内的分类正文及共用索引，保持归档事务、固定版本与内容 state 边界，去掉重复提示词和全量报告副本。
+- [ ] 11.3 明确 checkpoint/采集的默认时长后实施分类过期、恢复截止与配置迁移；不校验类别间期限顺序，不复活过期数据。
+- [ ] 11.4 实施后验证分类独立清理、共享提示词追溯、任意合法期限组合和恢复期限；复核职责边界及新增功能的必要复杂度，不要求代码净减少。
+- [x] 11.5 完成本轮文档检查并记录；本轮未运行应用测试。
+
+## 12. 审核澄清：已落地范围、逐项发布和统一保留策略
+
+依据用户本轮审核及 [新增任务](tasks/2026-09-28-review-clarifications/task.md)。本节取代旧日期任务中的强制净减行数要求及中间列表固定排序要求；已实现能力以源码核对为准，不将待适配等同于尚未实现。
+
+- [x] 12.1 核对图、astream、通知、resume、清理及前端源码，区分已有能力与待替换契约。
+- [x] 12.2 撤销现行 proposal/design/specs 和活动待办中的代码净减少门槛，保留职责与功能验收。
+- [x] 12.3 明确先完成项先保存和发布，中间数组顺序可变，前端使用稳定 ID 与简单排序/插入。
+- [x] 12.4 按用户确认扩展 BackupPolicy 设计，覆盖 checkpoint、配置/提示词、三类正文及必要关联记录。
+- [x] 12.6 完成本轮 OpenSpec 严格校验、7 份文档链接/围栏/空白检查及 diff 审查，结果见新增任务。
+
+> 12.5 已从活动清单移除：逐项可见性、稳定排序和保留策略验收已分解到第 13 节及日期化前端任务；未把清单整理当作新增实现。
+
+## 13. 四部分拆分与原生 astream_events
+
+当前依据：[design](design.md) 第 1、3、4、5、6、7 节及 [本轮任务](tasks/2026-09-28-native-events-layout/task.md)。本节优先于前述历史实现选择；仅文档项可在本轮勾选。
+
+- [x] 13.1 按用户授权更新四部分职责、子图独立 nodes、原生事件身份、存储范围与 7/30 天默认；新增任务保留决策依据。
+- [x] 13.2 按目标目录重组 storage，统一事实追加/版本、三类查询、报告组装、BackupPolicy 与过期删除，保留 SessionReader 和历史查询。
+- [x] 13.3 按 graph/subgraph/<阶段>/nodes 构图，图内 tags 分类，共用节点放 subgraph/nodes；保留原阶段行为，不复制教程省略逻辑。
+- [x] 13.4 收拢 execution 的触发、恢复、任务生命周期与 scheduler，注入一致的 metadata.sessionID/thread_id；删除重复图调度/结果拼装。
+- [x] 13.5 先验证当前库的 astream_events v2 元数据、tags 继承、父子图 chunk 和提交时序，再实现薄分发与 subscriptions；删除逐事件全扫和重复标记体系。
+- [x] 13.6 确定直接异步观察者或有界发布/订阅的进程内分发方式，记录依据；订阅共享单次执行，不引入外部 broker 或第二套持久事件日志。
+- [ ] 13.7 验证追加/去重、补存、快慢分支、恢复/通知、清理交接与分类期限；落实长期在线时的到期触发。（本次验收明确排除）
+- [ ] 13.8 外部 snapshot 已确认沿用现有协议，依据 [新增任务](tasks/2026-09-28-reuse-snapshot/task.md)完成新内部链路的首帧/版本、重连、心跳、终态关闭和离页回归及浏览器验收；不重写现有协议。（自动化 HTTP/SSE 与 Playwright 已通过；Windows Tabbit 两次导航在约 0.7–1.2 秒后复现 `Target page, context or browser has been closed`，未收到 snapshot，浏览器项不勾选）
+- [ ] 13.9 实施后按定向测试、静态检查、构建、烟测顺序验证，后端命令硬超时 60 秒；真实浏览器交 GPT-6 Luna max，最终交付统一代码审查。（自动化检查已通过；Windows Tabbit runtime 阻塞真实 run/SSE 浏览器证据）
+- [x] 13.10 完成本轮 OpenSpec 严格校验、链接/围栏/空白检查及文档差异审查，将实际结果写入本轮任务。
+
+## 13 验收记录
+
+- 后端原生事件/图 API、并行通知、流进度、storage、HTTP/SSE、生命周期与清理/阶段恢复定向套件均通过；每条后端命令使用 60 秒硬超时。
+- 进程强退恢复四个场景逐项分批通过；完整批次曾超过 60 秒硬限，拆分后每个场景均在限时内通过。
+- 前端 Vitest 49 个文件、244 个测试通过；`npm run typecheck`、架构检查和 Vite 生产构建通过。隔离 Playwright E2E 17/17、现有服务链路 live smoke 1/1 通过；GPT-6 Luna max 使用 Windows Tabbit 验证服务端 `/api/health`、`/api/workflows`、`/api/sessions` HTTP 200，但在 `/workflows` 页面导航后两次复现 runtime 关闭上下文，未能收到真实 run 的 SSE `snapshot` 首帧或终态关闭，13.8/13.9 保持未勾选。
+- 后端目录按 60 秒硬超时拆分复跑：Workflow 追加 44 项、interaction/lifecycle 119 项、agent 119 项、channel/collection 256 项、config 与根级测试 307 项均通过；根级两处过时断言已按 design §5.4 的 checkpoint 7 天/采集 30 天默认及既有 `WebChannelType` 内置声明修正。
+- AI 完整套件为 36 passed、16 skipped、16 errors；错误全部来自缺少 `.env` 凭据配置，未伪造凭据或将环境错误当作产品失败。
+- 过时的最小原生事件任务已由完整四部分任务取代并删除；其余任务文件仍承载当前设计依据或可追溯历史，未作无依据删除。

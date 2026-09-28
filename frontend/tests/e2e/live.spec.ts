@@ -13,7 +13,7 @@ test('existing frontend receives real API data and saves a resource', async ({ p
   expect(health.accepting_runs).toBe(true)
 
   await page.goto('/')
-  await expect(page.getByText('组件健康状态', { exact: true })).toBeVisible()
+  await expect(page.getByText('系统状态', { exact: true })).toBeVisible()
   await expect(page.locator('.el-alert--error')).toHaveCount(0)
   for (const kind of ['sources', 'setters', 'ai', 'channels', 'workflows', 'sessions', 'plugins']) {
     const response = await request.get(`/api/${kind}`)

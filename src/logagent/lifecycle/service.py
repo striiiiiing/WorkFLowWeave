@@ -34,7 +34,10 @@ from logagent.models import (
     HealthReport,
     SystemConfig,
 )
-from logagent.workflow import SessionStore, SessionView, WorkflowScheduler, WorkflowService
+from logagent.workflow.execution.runner import WorkflowRunner
+from logagent.workflow.execution.scheduler import WorkflowScheduler
+from logagent.workflow.storage.facts import SessionStore
+from logagent.workflow.storage.sessions import SessionView
 
 from .defaults import starter_resources
 from .health import capability_diagnostics, component_health, health_components, plugin_health
@@ -91,7 +94,7 @@ class ApplicationLifecycle:
         self._ai: AIService | None = None
         self._agent: AgentService | None = None
         self._channels: ChannelManager | None = None
-        self._workflow: WorkflowService | None = None
+        self._workflow: WorkflowRunner | None = None
         self._intervals: WorkflowScheduler | None = None
         self._plugin_report = DiscoveryReport()
         self._reload_diagnostic: ErrorInfo | None = None
@@ -230,7 +233,7 @@ class ApplicationLifecycle:
 
                 stage = "workflow"
                 session_view = SessionView(session_store)
-                workflow = WorkflowService(
+                workflow = WorkflowRunner(
                     collectors,
                     ai,
                     channels,
