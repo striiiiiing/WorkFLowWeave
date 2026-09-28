@@ -29,7 +29,7 @@ from logagent.models import (
     WorkflowDefinition,
 )
 from logagent.schema import resource_options_schema, validate_instance, validate_schema
-from logagent.workflow import WorkflowService
+from logagent.workflow.execution.runner import WorkflowRunner
 from tests.workflow_ai_helpers import TestChannelFactory
 
 
@@ -327,7 +327,7 @@ async def test_real_workflows_persist_distinct_inputs_and_recover_original_bindi
     store.save("channels", ChannelConfig(id="file", channel="mock", options={"path": str(output)}))
     ai = AIService(channel_factories={"test": TestChannelFactory()})
     channels = ChannelManager(registry.channelRegister)
-    service = WorkflowService(CollectorManager(registry.collectorRegister), ai, channels, store,
+    service = WorkflowRunner(CollectorManager(registry.collectorRegister), ai, channels, store,
                               database=tmp_path / "sessions.sqlite3")
     try:
         for name in ("first", "second"):
@@ -348,7 +348,7 @@ async def test_real_workflows_persist_distinct_inputs_and_recover_original_bindi
         changed = store.get("workflows", "first")
         changed.source_overrides["source"].options["records"] = [{"message": "changed"}]
         store.save("workflows", changed)
-        await service.recover("first")
+        await service.resume("first")
         recovered = await service.wait("first")
         assert recovered.shared_input == '{"message":"first"}\n\nsource: success (1)'
         assert output.read_text() == written

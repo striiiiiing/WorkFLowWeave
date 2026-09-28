@@ -18,6 +18,7 @@ def test_recovery_query_is_read_only_and_returns_material_reason():
         response = client.get("/api/sessions/session-1/recovery")
     assert response.status_code == 200
     assert response.json() == {
+        "checkpoint_expires_at": None,
         "available": False,
         "reason": {"code": "recovery_unavailable", "message": "原配置快照不可用", "details": {}},
     }

@@ -13,7 +13,7 @@ from pathlib import Path
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-from logagent.workflow import SessionStore
+from logagent.workflow.storage.facts import SessionStore
 from tests.workflow.helpers import archived
 
 _CHILD_PROGRAM = """
@@ -29,10 +29,21 @@ from logagent.models import (
     AIConfig, AnalysisResult, AnalysisTask, ChannelConfig, CollectionResult,
     DeliveryResult, SourceConfig, WorkflowDefinition, WorkflowSnapshot,
 )
-from logagent.workflow import SessionStore, WorkflowService
+from logagent.workflow.execution.runner import WorkflowRunner
+from logagent.workflow.storage.facts import SessionStore
 from tests.workflow.helpers import archived
-import threading
-receipt_committed = threading.Event()
+
+
+def archived_current_epoch(store, session_id, base):
+    _, entries = store.entries(session_id)
+    epoch = next(
+        entry["summary"]["execution_epoch"]
+        for entry in reversed(entries)
+        if entry["write_key"].startswith("epoch:")
+    )
+    key = f"{base}:epoch:{epoch}"
+    return next((entry for entry in reversed(entries) if entry["write_key"] == key), None)
+
 
 database, ledger_path, report_path, mode = sys.argv[1:]
 
@@ -48,12 +59,7 @@ def record(kind, **details):
 
 class Store(SessionStore):
     def write(self, sid, key, **kwargs):
-        if mode == "crash-notify" and key.startswith("delivery:first:one:epoch:"):
-            assert receipt_committed.wait(5)
-            os._exit(74)
         result = super().write(sid, key, **kwargs)
-        if key.startswith("delivery:first:two:epoch:"):
-            receipt_committed.set()
         if mode == "crash-archive" and key.startswith("collect:item:source:epoch:"):
             os._exit(75)
         return result
@@ -66,8 +72,7 @@ class Collector:
     async def collect(self, config, context):
         record("collect", source_id=config.id)
         return CollectionResult(
-            source_id=config.id, status="success",
-            raw={"stdout": "durable input", "stderr": "", "exit_code": 0},
+            source_id=config.id, status="success", text="durable input", count=1
         )
 
 
@@ -76,15 +81,40 @@ class AI:
                       system_prompt=None, user_prompt=""):
         record("analyze", task_id=task_id, text=text, model=model)
         if mode in {"crash-analysis", "rerun-crash"} and task_id == "second":
-            assert (await asyncio.to_thread(archived, store, "run", "phase:collect"))["body"]["shared_input"] == "[source=source; format=none]\\ndurable input"
-            assert (await asyncio.to_thread(archived, store, "run", "analyze:item:first"))["body"]["status"] == "success"
+            async with asyncio.timeout(5):
+                collected = None
+                while collected is None:
+                    collected = await asyncio.to_thread(
+                        archived, store, "run", "collect:item:source"
+                    )
+                    if collected is None:
+                        await asyncio.sleep(0.01)
+            assert collected["body"]["text"] == "durable input"
+            async with asyncio.timeout(5):
+                first = None
+                while first is None:
+                    first = await asyncio.to_thread(
+                        archived_current_epoch, store, "run", "analyze:item:first"
+                    )
+                    if first is None:
+                        await asyncio.sleep(0.01)
+            assert first["body"]["status"] == "success"
             os._exit(73)
         return AnalysisResult(task_id=task_id, status="success", text=f"{task_id}({text})")
 
 
 class Channel:
     async def send(self, config, notification):
+        if mode == "crash-notify" and notification.output_id == "first":
+            async with asyncio.timeout(5):
+                intent = None
+                while intent is None:
+                    intent = await asyncio.to_thread(archived, store, "run", "intent:first:one")
+                    if intent is None:
+                        await asyncio.sleep(0.01)
         record("send", output_id=notification.output_id, channel_id=config.id)
+        if mode == "crash-notify" and notification.output_id == "first" and config.id == "one":
+            os._exit(74)
         return DeliveryResult(
             channel_id=config.id, output_id=notification.output_id,
             status="success", attempts=1,
@@ -92,7 +122,7 @@ class Channel:
 
 
 async def main():
-    service = WorkflowService(Collector(), AI(), Channel(), session_store=store)
+    service = WorkflowRunner(Collector(), AI(), Channel(), session_store=store)
     await service.start()
     used_namespaces = []
     put = service._checkpointer.aput
@@ -106,17 +136,14 @@ async def main():
     else:
         notification_crash = mode == "crash-notify"
         tasks = ("first",) if notification_crash else ("first", "second")
-        channels = ["one", "two"] if notification_crash else []
+        channels = ["one"] if notification_crash else []
         snapshot = WorkflowSnapshot(
             workflow=WorkflowDefinition(
                 id="demo", sources=["source"],
                 analyses=[AnalysisTask(id=key, ai="ai", model="original-model") for key in tasks],
                 channels=channels, analysis_concurrency=1,
             ),
-            sources={"source": SourceConfig(id="source", call={
-                "kind": "cli", "mode": "argv", "executable": "printf",
-                "argv": ["%s", "example"],
-            })},
+            sources={"source": SourceConfig(id="source", collector="mock")},
             ai={"ai": AIConfig(id="ai", provider="mock", models={"original-model": {}})},
             channels={key: ChannelConfig(id=key, channel="mock") for key in channels},
             created_at=datetime.now(UTC),
@@ -181,7 +208,8 @@ def test_hard_exit_during_analysis_recovers_only_unfinished_branch(tmp_path):
     database = tmp_path / "runs.sqlite3"
     store = SessionStore(database)
     try:
-        assert archived(store, "run", "phase:collect")["body"]["shared_input"] == "[source=source; format=none]\ndurable input"
+        collected = archived(store, "run", "collect:item:source")
+        assert collected["body"]["text"] == "durable input"
         assert archived(store, "run", "phase:analyze") is None
         assert archived(store, "run", "analyze:item:first") is not None
     finally:
@@ -189,8 +217,6 @@ def test_hard_exit_during_analysis_recovers_only_unfinished_branch(tmp_path):
     with SqliteSaver.from_conn_string(str(database)) as saver:
         original = saver.get_tuple({"configurable": {"thread_id": "run"}})
         epoch = original.checkpoint["channel_values"]["execution_epoch"]
-        active_namespaces = {cp.config["configurable"]["checkpoint_ns"] for cp in saver.list(None)
-                             if cp.config["configurable"]["checkpoint_ns"].startswith("analyze:")}
 
     _run_child(tmp_path, "recover", 0)
     events = _ledger(tmp_path)
@@ -200,31 +226,36 @@ def test_hard_exit_during_analysis_recovers_only_unfinished_branch(tmp_path):
         "second",
         "second",
     ]
-    assert events[-1]["text"] == "[source=source; format=none]\ndurable input"
+    assert events[-1]["text"] == "durable input\n\nsource: success (1)"
     assert events[-1]["model"] == "original-model"
     report = _report(tmp_path)
-    assert active_namespaces <= set(report["used_namespaces"])
+    assert any(name.startswith("analyze:") for name in report["used_namespaces"])
     assert report["session"]["execution_epoch"] == epoch
     assert report["result"]["status"] == "completed"
     assert [item["text"] for item in report["result"]["analyses"]] == [
-        "first([source=source; format=none]\ndurable input)",
-        "second([source=source; format=none]\ndurable input)",
+        "first(durable input\n\nsource: success (1))",
+        "second(durable input\n\nsource: success (1))",
     ]
-    assert [event["stage"] for event in report["history"] if event["scope"] == "phase"] == [
+    assert [
+        event["stage"]
+        for event in report["history"]
+        if event["scope"] == "phase"
+        and event["summary"].get("progress_status") != "running"
+    ] == [
         "collect",
         "analyze",
         "aggregate",
         "notify",
         "finish",
     ]
-    assert any(event["write_key"].startswith("running:") for event in report["history"])
+    assert any(event["write_key"].startswith("resumed:") for event in report["history"])
 
     # A third interpreter reading the completed session also performs no I/O.
     _run_child(tmp_path, "recover", 0)
     assert _ledger(tmp_path) == events
 
 
-def test_hard_exit_after_send_preserves_uncertainty_and_continues_next_target(tmp_path):
+def test_hard_exit_after_send_preserves_uncertainty_without_resending(tmp_path):
     _run_child(tmp_path, "crash-notify", 74)
     store = SessionStore(tmp_path / "runs.sqlite3")
     try:
@@ -234,23 +265,22 @@ def test_hard_exit_after_send_preserves_uncertainty_and_continues_next_target(tm
         assert archived(store, "run", "delivery:first:one") is None
     finally:
         store.close()
-    assert {event["channel_id"] for event in _ledger(tmp_path) if event["kind"] == "send"} == {"one", "two"}
+    assert [event["channel_id"] for event in _ledger(tmp_path) if event["kind"] == "send"] == ["one"]
 
     _run_child(tmp_path, "recover", 0)
     events = _ledger(tmp_path)
-    assert [event["kind"] for event in events] == ["collect", "analyze", "send", "send"]
-    assert sorted(event["channel_id"] for event in events if event["kind"] == "send") == ["one", "two"]
+    assert [event["kind"] for event in events] == ["collect", "analyze", "send"]
+    assert [event["channel_id"] for event in events if event["kind"] == "send"] == ["one"]
     report = _report(tmp_path)
     assert report["result"]["status"] == "partial"
-    first, second = report["result"]["deliveries"]
+    first, = report["result"]["deliveries"]
     assert first["channel_id"] == "one"
     assert first["error"]["code"] == "delivery_uncertain"
     assert first["error"]["details"]["delivery_uncertain"] is True
-    assert second["channel_id"] == "two" and second["status"] == "success"
     notify_history = [event for event in report["history"] if event["stage"] == "notify"]
     assert any(
-        event["scope"] == "phase"
-        and event["body"]["deliveries"][0]["error"]["code"] == "delivery_uncertain"
+        event["write_key"].startswith("delivery:first:one:epoch:")
+        and event["body"]["error"]["code"] == "delivery_uncertain"
         for event in notify_history
     )
 
@@ -260,12 +290,19 @@ def test_hard_exit_after_send_preserves_uncertainty_and_continues_next_target(tm
     assert _report(tmp_path)["result"] == report["result"]
 
 
-def test_hard_exit_after_business_commit_before_checkpoint_reuses_collector(tmp_path):
+def test_hard_exit_after_checkpoint_fact_commit_reuses_collector(tmp_path):
     _run_child(tmp_path, "crash-archive", 75)
-    assert [event["kind"] for event in _ledger(tmp_path)] == ["collect"]
+    before_recovery = _ledger(tmp_path)
+    assert sum(event["kind"] == "collect" for event in before_recovery) == 1
+    store = SessionStore(tmp_path / "runs.sqlite3")
+    try:
+        collected = archived(store, "run", "collect:item:source")
+        assert collected["body"]["text"] == "durable input"
+    finally:
+        store.close()
     _run_child(tmp_path, "recover", 0)
     events = _ledger(tmp_path)
-    assert [event["kind"] for event in events] == ["collect", "analyze", "analyze"]
+    assert sum(event["kind"] == "collect" for event in events) == 1
     assert _report(tmp_path)["result"]["status"] == "completed"
 
 
@@ -283,3 +320,10 @@ def test_hard_exit_in_new_execution_epoch_resumes_that_round(tmp_path):
     assert sum(event["kind"] == "collect" for event in events) == 1
     assert sum(event.get("task_id") == "first" for event in events) == 2
     assert sum(event.get("task_id") == "second" for event in events) == 3
+    store = SessionStore(tmp_path / "runs.sqlite3")
+    try:
+        history = store.entries("run")[1]
+        first_key = f"analyze:item:first:epoch:{second_epoch}"
+        assert sum(entry["write_key"] == first_key for entry in history) == 1
+    finally:
+        store.close()

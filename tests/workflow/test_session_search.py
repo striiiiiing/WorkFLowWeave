@@ -5,16 +5,19 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from logagent.models import BackupPolicy
-from logagent.workflow import SessionStore, SessionView, WorkflowService
+from logagent.workflow.execution.runner import WorkflowRunner
+from logagent.workflow.storage.facts import SessionStore
+from logagent.workflow.storage.sessions import SessionView
 from tests.workflow.helpers import AI, Channel, Collector, snapshot
 
 
 @pytest.mark.parametrize("backup_enabled", [True, False])
 async def test_name_is_frozen_at_creation_and_survives_expiry_and_reopen(tmp_path, backup_enabled):
     path = tmp_path / "sessions.sqlite3"
-    workflow = WorkflowService(Collector(), AI(), Channel(), database=path)
+    workflow = WorkflowRunner(Collector(), AI(), Channel(), database=path)
     config = snapshot(
-        name="每日运行", backup=BackupPolicy(enabled=backup_enabled, retention_days=1),
+        name="每日运行", backup=BackupPolicy(enabled=backup_enabled, collection_retention_days=1,
+                                           analysis_retention_days=1, final_retention_days=1),
     )
     try:
         await workflow.trigger(config, session_id="named")
@@ -34,11 +37,11 @@ async def test_name_is_frozen_at_creation_and_survives_expiry_and_reopen(tmp_pat
         reopened.close()
 
 
-async def test_name_is_saved_at_creation_and_survives_snapshot_expiry(tmp_path):
+async def test_name_is_saved_at_creation_and_independent_of_snapshot_content(tmp_path):
     store = SessionStore(tmp_path / "sessions.sqlite3")
     view = SessionView(store)
     try:
-        store.create("named", "demo", BackupPolicy(retention_days=1), workflow_name="运行名称")
+        store.create("named", "demo", BackupPolicy(), workflow_name="运行名称")
         store.write(
             "named", "snapshot", stage=None, scope="parent", summary={},
             body={"snapshot": snapshot(name="快照名称").model_dump(mode="json")},
