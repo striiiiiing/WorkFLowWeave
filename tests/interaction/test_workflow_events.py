@@ -55,10 +55,16 @@ async def test_real_sse_snapshot_and_reconnect_do_not_execute_again(tmp_path):
                 lines = response.aiter_lines()
                 kind, record = await event(lines)
                 assert kind == "snapshot"
-                while next(p for p in record["progress"] if p["item_id"] == "first")["status"] != "success":
+                first = next(
+                    (p for p in record["progress"] if p["item_id"] == "first"), None
+                )
+                while first is None or first["status"] != "success":
                     kind, record = await event(lines)
+                    first = next(
+                        (p for p in record["progress"] if p["item_id"] == "first"), None
+                    )
                 assert record["execution_epoch"]
-                assert next(p for p in record["progress"] if p["item_id"] == "first")["status"] == "success"
+                assert first["status"] == "success"
             # EOF/disconnect only releases the observer; the blocked run survives.
             assert w.coordinator.contains("run")
             calls = len(collector.calls), len(ai.calls), len(channel.calls)

@@ -9,10 +9,10 @@ from logagent.channel import ChannelManager
 from logagent.collection import CollectorManager
 from logagent.config import CredentialManager, PluginRegistry, ResourceStore
 from logagent.models import SystemConfig
+from logagent.workflow.execution.runner import WorkflowRunner
+from logagent.workflow.execution.scheduler import WorkflowScheduler
 from logagent.workflow.storage.facts import SessionStore
 from logagent.workflow.storage.sessions import SessionView
-from logagent.workflow.execution.scheduler import WorkflowScheduler
-from logagent.workflow.execution.runner import WorkflowRunner
 
 
 @dataclass(frozen=True, slots=True)

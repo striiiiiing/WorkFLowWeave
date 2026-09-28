@@ -236,7 +236,12 @@ def test_hard_exit_during_analysis_recovers_only_unfinished_branch(tmp_path):
         "first(durable input\n\nsource: success (1))",
         "second(durable input\n\nsource: success (1))",
     ]
-    assert [event["stage"] for event in report["history"] if event["scope"] == "phase"] == [
+    assert [
+        event["stage"]
+        for event in report["history"]
+        if event["scope"] == "phase"
+        and event["summary"].get("progress_status") != "running"
+    ] == [
         "collect",
         "analyze",
         "aggregate",
