@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import AsyncIterator
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Query, Request
+from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import StreamingResponse
 
 from logagent.channel.agent import AgentCommand
@@ -16,6 +15,7 @@ from logagent.lifecycle import ApplicationServices
 from logagent.models import ID
 
 from .dependencies import get_services
+from .sse import HEARTBEAT, SSEItem, SSEMessage, sse_response
 
 Services = Annotated[ApplicationServices, Depends(get_services)]
 
@@ -45,13 +45,12 @@ def build_channel_router() -> APIRouter:
     @router.get("/sessions/{session_id}/events")
     async def events(
         session_id: ID,
-        request: Request,
         services: Services,
         after: int = Query(0, ge=0),
         last_event_id: str | None = Header(None),
     ):
         return await stream_agent_events(
-            services.channels.web_channel, session_id, request,
+            services.channels.web_channel, session_id,
             after=after, last_event_id=last_event_id,
         )
 
@@ -61,7 +60,6 @@ def build_channel_router() -> APIRouter:
 async def stream_agent_events(
     channel: WebChannel,
     session_id: str,
-    request: Request,
     *,
     after: int = 0,
     last_event_id: str | None = None,
@@ -70,29 +68,23 @@ async def stream_agent_events(
     await channel.get_session(session_id)
     await channel.events(session_id, after=cursor)
 
-    async def stream() -> AsyncIterator[str]:
+    async def stream() -> AsyncIterator[SSEItem]:
         nonlocal cursor
         while True:
             batch = await channel.wait_events(session_id, after=cursor, wait_seconds=0.5)
             for event in batch:
                 cursor = event["id"]
-                yield f"id: {cursor}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
+                yield SSEMessage(data=event, id=str(cursor))
             session = await channel.get_session(session_id)
             if session["status"] in {"completed", "failed", "cancelled", "interrupted"}:
                 for event in await channel.events(session_id, after=cursor):
                     if event["id"] > cursor:
                         cursor = event["id"]
-                        yield f"id: {cursor}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
+                        yield SSEMessage(data=event, id=str(cursor))
                 break
-            if await request.is_disconnected():
-                return
-            yield ": heartbeat\n\n"
+            yield HEARTBEAT
 
-    return StreamingResponse(
-        stream(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+    return sse_response(stream())
 
 
 channel_router = build_channel_router()

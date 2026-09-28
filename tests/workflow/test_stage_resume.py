@@ -112,21 +112,19 @@ async def test_request_replay_continues_epoch_committed_before_task_submission(t
     try:
         await run(w, snapshot(channels=False))
         original = await w.get_session("run")
-        event = w._event
+        event = w.archive.reconcile
 
-        async def fail_epoch(runtime, key, *args, **kwargs):
-            if key.startswith("epoch:"):
-                raise OSError("lost response before task submission")
-            return await event(runtime, key, *args, **kwargs)
+        async def fail_epoch(*args, **kwargs):
+            raise OSError("lost response before task submission")
 
-        monkeypatch.setattr(w, "_event", fail_epoch)
+        monkeypatch.setattr(w.archive, "reconcile", fail_epoch)
         with pytest.raises(OSError, match="lost response"):
             await w.resume("run", stage="analyze", request_id="accepted")
         saved = await w._checkpointer.aget_tuple({"configurable": {"thread_id": "run"}})
         accepted_epoch = saved.checkpoint["channel_values"]["execution_epoch"]
         assert accepted_epoch != original.execution_epoch
         assert not w.coordinator.contains("run")
-        monkeypatch.setattr(w, "_event", event)
+        monkeypatch.setattr(w.archive, "reconcile", event)
         await w.resume("run", stage="analyze", request_id="accepted")
         assert (await w.wait("run")).status == "completed"
         assert (await w.get_session("run")).execution_epoch == accepted_epoch
@@ -162,7 +160,7 @@ async def test_explicit_historical_parent_entry_and_foreign_checkpoint_rejection
         await close(w, store)
 
 
-@pytest.mark.parametrize("missing_stage, available", [("aggregate", True), ("collect", False)])
+@pytest.mark.parametrize("missing_stage, available", [("aggregate", True), ("collect", True)])
 async def test_stage_resume_requires_only_retained_upstream_material(tmp_path, missing_stage, available):
     w, store, collector, _, _ = service(tmp_path / "runs.sqlite3")
     try:

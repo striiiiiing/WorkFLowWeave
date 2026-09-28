@@ -8,9 +8,7 @@ from pathlib import Path as FilePath
 from typing import Annotated, Literal
 from uuid import uuid4
 
-import orjson
 from fastapi import APIRouter, Depends, Path, Query, Response, status
-from fastapi.responses import StreamingResponse
 
 from logagent.collection.invocation import CollectionArguments, CollectorInvocation
 from logagent.errors import LogAgentError
@@ -58,6 +56,7 @@ from .schemas import (
     TriggerRequest,
     TriggerResponse,
 )
+from .sse import HEARTBEAT, SSEMessage, sse_response
 
 router = APIRouter()
 Services = Annotated[ApplicationServices, Depends(get_services)]
@@ -392,27 +391,31 @@ _WORKFLOW_TERMINAL = {"completed", "partial", "failed", "cancelled", "interrupte
 @router.get("/sessions/{session_id}/events")
 async def workflow_events(session_id: ID, services: Services):
     """只注册观察者；ready 后客户端查询同一投影以补齐连接窗口。"""
-    await services.session_view.get_session(session_id)
-
-    def encode(event, data):
-        return f"event: {event}\ndata: {orjson.dumps(data).decode()}\n\n"
+    subscription = services.workflow.progress_hub.subscribe(session_id)
+    queue = await subscription.__aenter__()
+    try:
+        initial = await services.session_view.get_session(session_id)
+    except BaseException:
+        await subscription.__aexit__(None, None, None)
+        raise
 
     async def stream():
-        async with services.workflow.progress_hub.subscribe(session_id) as queue:
-            yield encode("ready", {"session_id": session_id})
-            while True:
+        try:
+            current = initial
+            yield SSEMessage(data=current.model_dump(mode="json"), event="snapshot")
+            while current.status not in _WORKFLOW_TERMINAL:
                 try:
                     item = await asyncio.wait_for(queue.get(), _WORKFLOW_SSE_HEARTBEAT_SECONDS)
                 except TimeoutError:
-                    yield ": heartbeat\n\n"
+                    yield HEARTBEAT
                     continue
                 if item is None:
-                    yield encode("resync", {"reason": "subscription_closed", "session_id": session_id})
                     return
-                yield encode("progress", item.model_dump(mode="json"))
-                if item.event == "lifecycle" and item.status in _WORKFLOW_TERMINAL:
-                    return
+                if item.version <= current.version:
+                    continue
+                current = item
+                yield SSEMessage(data=current.model_dump(mode="json"), event="snapshot")
+        finally:
+            await subscription.__aexit__(None, None, None)
 
-    return StreamingResponse(stream(), media_type="text/event-stream", headers={
-        "Cache-Control": "no-cache", "X-Accel-Buffering": "no",
-    })
+    return sse_response(stream())
