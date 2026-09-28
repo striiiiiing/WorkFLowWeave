@@ -27,9 +27,9 @@
 - [x] 核对当前前后端协议、来源常量、终态与离页行为，将用户决定写入 design/specs/root tasks。
 - [x] 按新内部执行链路回归真实 HTTP/SSE：首帧竞态、重复旧版本、断线期间终态、快项先可见和正文固定版本读取。
 - [x] 回归共用连接、慢观察者满队列、坏帧、终态停止重连、阶段重跑刷新和路由/旧回调隔离；确认观察不会重复执行业务。
-- [ ] 真实浏览器验收离页后台继续、返回最新首帧、断网重连与阶段重跑；由 GPT-6 Luna max 使用 Tabbit 执行，不以历史通过记录代替本轮证据。（Tabbit 首页可读，导航后 runtime 关闭上下文）
+- [ ] 真实浏览器验收离页后台继续、返回最新首帧、断网重连与阶段重跑；由 GPT-6 Luna max 使用 Windows Tabbit 执行，不以历史通过记录代替本轮证据。（两次导航到当前 worktree `/workflows` 后约 0.7–1.2 秒复现 `Target page, context or browser has been closed`，未收到 SSE snapshot；Windows curl 对 13000/14300 的 HTTP 健康检查均为 200）
 - [x] 执行 OpenSpec 严格校验、限定文件空白及文档差异审查，记录本轮结果。
 
 ## 当前 worktree 验收补记
 
-后端 interaction/SSE 与 Workflow progress 定向套件通过；前端 Vitest 49 个文件、244 个测试通过，类型检查、架构检查、Vite 构建和 Playwright E2E 通过。Tabbit 仅成功读取首页 DOM；导航到运行记录/工作流后 runtime 关闭上下文，不能据此宣称真实浏览器首帧、重连、离页和阶段重跑已验收。`live.spec.ts` 中一条过时的“组件健康状态”断言已改为当前页面的“系统状态”。
+后端 interaction/SSE 与 Workflow progress 定向套件通过；前端 Vitest 49 个文件、244 个测试通过，类型检查、架构检查、Vite 构建和 Playwright E2E 通过。Windows Tabbit 对当前 worktree 的 `/workflows` 导航两次复现 runtime 关闭上下文，未能宣称真实浏览器首帧、终态、重连、离页和阶段重跑已验收。Windows 侧健康检查仍确认 13000/14300 HTTP 200；`live.spec.ts` 中一条过时的“组件健康状态”断言已改为当前页面的“系统状态”。

@@ -1,6 +1,6 @@
 # 四部分模块拆分与原生事件订阅
 
-日期：2026-09-28，验收补记：2026-09-29。工作区：`.worktree/redesign-workflow`，分支 `feat/redesign-workflow`。设计修订已在当前 worktree 实施，13.7 的长期在线到期触发按本次范围排除；真实 Tabbit 浏览器导航被 runtime 关闭，未将浏览器项记为通过。
+日期：2026-09-28，验收补记：2026-09-29。工作区：`.worktree/redesign-workflow`，分支 `feat/redesign-workflow`。设计修订已在当前 worktree 实施，13.7 的长期在线到期触发按本次范围排除；Windows Tabbit 两次导航在约 0.7–1.2 秒后复现 runtime 关闭上下文，未将浏览器项记为通过。
 
 ## 授权、范围与依据
 
@@ -48,7 +48,7 @@
 - [x] 6. 确定进程内观察者或有界队列发布/订阅，实现单一 astream_events 入口与具体订阅；无逐 chunk 全历史扫描、无无界线程/任务、不静默丢存储事实。
 - [x] 7. 用统一事实接口实现消费补存，验证重复事件、归档失败、取消、进程退出和清理交接；不重新执行模型/采集来补归档。
 - [ ] 8. 实施长期在线的过期触发，验证 7/30 天边界、独立期限、未归档唯一副本及活动恢复保护。（本次验收明确排除，对应总任务 13.7）
-- [ ] 9. 另行确认对外 snapshot/首帧/版本传输/心跳/断连/离页方案后补充任务与规范，再实施前端协议适配和浏览器验证。（HTTP/SSE 与 Playwright 已通过；Tabbit 导航被 runtime 关闭）
+- [ ] 9. 另行确认对外 snapshot/首帧/版本传输/心跳/断连/离页方案后补充任务与规范，再实施前端协议适配和浏览器验证。（自动化 HTTP/SSE 与 Playwright 已通过；Windows Tabbit 导航两次复现 `Target page, context or browser has been closed`）
 - [x] 10. 定向测试 → 静态检查 → 受影响构建 → 最小烟测；最终统一代码审查，检查职责删除、重复状态、隐藏回退和安全边界。
 
 实施协作按用户约定：核心由主 Agent 完成，非核心代码交 GPT-6 Sol high，简单非代码任务及真实浏览器验证交 GPT-6 Luna max；严格单 Agent 串行交接，子 Agent 工作时主 Agent 等待，不立即重复审查无异常的委派代码，最终交付统一审查。本轮为主 Agent 单独文档修订，没有派发代码或浏览器工作。
@@ -60,5 +60,5 @@
 - [x] `openspec validate redesign-workflow --strict --no-interactive` 通过，退出码 0。
 - [x] 本轮 6 份 Markdown 相对链接、围栏、尾随空白及当前决定覆盖检查通过；已审查本轮文档差异，`git diff --check -- openspec/changes/redesign-workflow` 通过。修正 proposal/根 tasks 两处原有链接，使其指向本 worktree 实际存在的旧 Workflow 设计。
 - [x] 后端定向回归、真实 SQLite/进程强退、Ruff、前端类型/架构检查和构建通过；Playwright E2E 通过。
-- [ ] GPT-6 Luna max 使用 Tabbit 的真实浏览器验收：首页 DOM 读取成功，但导航到 `/runs` 与 `/workflows` 后 runtime 主动关闭页面/打开 `about:blank`，因此未完成。
+- [ ] GPT-6 Luna max 使用 Windows Tabbit 的真实浏览器验收：服务端健康检查 HTTP 200，但导航到当前 worktree `/workflows` 后两次在等待期间主动关闭页面，receipt 报 `Target page, context or browser has been closed`，因此未完成。
 - [x] `openspec validate redesign-workflow --strict --no-interactive` 通过；删除已被本任务取代的最小原生事件任务后相对链接、空白与差异检查重新通过。
