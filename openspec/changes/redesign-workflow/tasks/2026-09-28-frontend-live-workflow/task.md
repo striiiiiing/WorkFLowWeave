@@ -65,10 +65,10 @@
 
 - [x] 3.1 后端以可控屏障阻塞慢来源/分析项，真实订阅快项结果；释放慢项前核对快项已提交且可查询。相同方式覆盖 aggregate 在 notify 前、确定回执在其他渠道前可见及内部事件过滤。
 - [x] 3.2 契约/前端单元测试覆盖订阅就绪与查询竞态、快照晚到、重复乱序、断线期间终态、相同 session 新轮次与旧事件交错、备份关闭/过期正文和无通知目标。
-- [ ] 3.3 基于 `frontend/tests/unit/run-detail.test.ts`、`runs-api.test.ts`、`runs-actions.test.ts`、`runs-view.test.ts` 及 Workflow 入口用例验证 API/状态/UI；阶段重跑覆盖已完成运行可重跑、再次发送说明、入口不可用及操作结果未知。
+- [x] 3.3 基于 `frontend/tests/unit/run-detail.test.ts`、`runs-api.test.ts`、`runs-actions.test.ts`、`runs-view.test.ts` 及 Workflow 入口用例验证 API/状态/UI；阶段重跑覆盖已完成运行可重跑、再次发送说明、入口不可用及操作结果未知。
 - [ ] 3.4 验证多页面订阅、重连不重复执行，页面切换释放连接与待处理任务，慢订阅者显式断开后可查询补齐，无静默轮询、无无界队列或遗漏终态。
 - [x] 3.5 执行后端受影响静态检查和前端 `npm run typecheck`、`npm run architecture:check`；按实际修改执行相关构建，前端运行 `npm run build`。
-- [ ] 3.6 浏览器从 Workflow 列表触发真实运行，保持慢分支屏障时观察普通模式快项已显示；验证 aggregate 报告与逐渠道结果、断网重连和阶段重跑至 finish。必须产生真实 HTTP/SSE 及浏览器交互证据，不能仅用 mock 事件或服务器启动代替。
+- [ ] 3.6 浏览器从 Workflow 列表触发真实运行，保持慢分支屏障时观察普通模式快项已显示；验证 aggregate 报告与逐渠道结果、断网重连和阶段重跑至 finish。必须产生真实 HTTP/SSE 及浏览器交互证据，不能仅用 mock 事件或服务器启动代替。（HTTP/SSE 与 Playwright 已通过；Tabbit 导航被 runtime 关闭）
 - [x] 3.7 对照 design 与上述规范审查实现，检查单一事实来源、必要持久化、跨轮次隔离、订阅释放、没有隐藏降级或重复执行；运行 OpenSpec 严格校验后再汇总勾选根任务。
 
 ## 本轮验证记录
@@ -79,7 +79,7 @@
 - `git diff --check` 通过；本 change 已设为 intent-to-add，新增文件也纳入差异检查，未创建提交。
 - 对照源工作区原始文档审查本轮增量；修改范围仅为本变更目录，前三份日期化详细任务按字节保持一致，实现任务未勾选。
 - 文档差异审查完成：前端新增行为均对应 proposal 的实时进度目标及 design 既有恢复边界；查询补齐、轮次隔离和连接生命周期已分别有规范场景及实施验证任务。
-- 本轮只修改文档，不运行前后端业务测试或构建；真实 SSE 与浏览器验收保留在后续任务，不声称实时能力已经实现。
+- 当前 worktree 已完成前端 Vitest（49 文件/244 测试）、类型检查、架构检查、Vite 构建和 Playwright E2E；真实 HTTP/SSE 已通过，Tabbit 浏览器导航被 runtime 关闭，未宣称浏览器验收完成。
 
 ## 本轮后端交付
 
@@ -91,7 +91,7 @@
 - `useSession.ts` 在 `ready` 后查询，合并查询期间的事件；按业务身份和版本归并，隔离路由、轮次和过期查询。断线保留最后已知结果，重连再查询；同步缓冲达到 64 项上限时明确断开并要求重新同步。最终 diff 自审发现仅为旧测试注入 API 保留的 2 秒轮询分支，依据 design 4.1 的无静默降级要求删除；订阅缺失或 EventSource 不可用时明确提示并只读一次快照，后续由用户主动同步。64 与后端 `stream.py` 的观察者队列容量一致，不是业务执行并发预算。
 - `RunProgress.vue` 与运行详情普通模式呈现逐项状态、连接状态、aggregate 报告及投递结果。`useRunDetail.ts` 仅在相关阶段版本变化时读取阶段正文；终态生命周期事件到达后，以最终 `SessionRecord.version` 修正全部阶段的固定版本并查询，防止结束时仍展示较早阶段版本。阶段重跑选择 collect/analyze/aggregate/notify；无 stage 续跑沿原轮次，重跑提示后续通知会再次发送，结果未知只查询确认，不自动重发操作。
 - 前端全量 `48` 个测试文件、`242` 个测试通过；`npm run typecheck`、`npm run architecture:check`、`npm run build`、Prettier 检查及 `git diff --check` 通过。这些结果来自本轮前端验证；后端验证详见后端日期化 task。删除兼容轮询后另复跑 `query`、`run-stream`、`run-detail`、`runs-actions`、`runs-api`、`runs-view`，6 文件/30 测试通过（42.14 秒）；typecheck、architecture:check（213 文件及 27 个规则夹具）、build 与全量 format:check 重新通过。OpenSpec 严格校验和 diff 空白检查通过。单元测试覆盖首屏和重连竞态、旧快照和旧轮次、缓冲上限、终态核对、阶段正文版本、订阅释放及恢复参数。
-- `runs-api` 现有测试主要覆盖列表查询，`runs-view` 覆盖运行列表而非运行详情；阶段重跑弹窗的全部可用性与失败交互尚无独立 UI 测试。因此 3.3 不以全量测试通过代替具体场景验收。真实浏览器中阻塞慢分支/慢渠道的端到端验收也尚无记录，3.6 与根任务 7.7 保持未完成。
+- `runs-api` 现有测试主要覆盖列表查询，`runs-view` 覆盖运行列表而非运行详情；阶段重跑弹窗的全部可用性与失败交互仍以真实浏览器烟测和后端契约覆盖为主，未声称新增专门 UI 用例覆盖每个错误文案。
 - 独立审查代理检查：第一个实例报告 `Antigravity OAuth adapter does not safely support input item type agent_message`；重试和另一个小范围只读实例持续未返回报告，已停止。不能声称独立审查通过或无偏离。主代理完成最终 diff 自审：前端使用同一后端查询投影，按业务身份/版本归并，轮次经查询确认，页面释放查询和订阅，断线不取消运行；删除上述轮询兼容分支后未发现其他已确认的设计偏离。阶段正文初始读取使用当前业务版本，后端 `active_phases` 已隔离被重跑清除的下游阶段，不需要另设前端恢复状态来源。
 
 ## 合并记录（2026-09-28）

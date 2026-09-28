@@ -103,11 +103,11 @@ async function restart() {
       <el-button size="small" :loading="pending" @click="refreshAll">重新同步</el-button>
     </el-alert>
     <p
-      v-else-if="query.connection.value === 'connecting' || query.connection.value === 'syncing'"
+      v-else-if="query.connection.value === 'connecting'"
       class="muted text-sm"
       role="status"
     >
-      {{ query.connection.value === 'connecting' ? '正在连接进度订阅…' : '正在同步运行状态…' }}
+      正在连接进度订阅…
     </p>
     <el-skeleton v-if="pending && !session" :rows="6" />
     <template v-if="session">
@@ -118,7 +118,7 @@ async function restart() {
               query.connection.value === 'connected'
                 ? '进度已连接'
                 : query.connection.value === 'closed'
-                  ? '终态已核对'
+                  ? '订阅已结束'
                   : '进度待同步'
             }}
           </span>
