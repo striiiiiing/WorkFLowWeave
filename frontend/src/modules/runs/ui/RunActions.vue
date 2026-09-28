@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 defineProps<{
   pending: boolean
   active: boolean
@@ -9,7 +10,11 @@ defineProps<{
 const emit = defineEmits<{ refresh: []; cancel: []; recover: []; continue: [] }>()
 </script>
 <template>
-  <el-button :loading="pending" @click="emit('refresh')">刷新</el-button>
+  <el-tooltip content="重新同步运行状态">
+    <el-button :loading="pending" aria-label="重新同步运行状态" @click="emit('refresh')">
+      <AppIcon name="rotate" size="sm" />
+    </el-button>
+  </el-tooltip>
   <slot v-if="canContinue" name="continuation">
     <el-button @click="emit('continue')">继续讨论</el-button>
   </slot>
@@ -19,6 +24,6 @@ const emit = defineEmits<{ refresh: []; cancel: []; recover: []; continue: [] }>
     </template>
   </el-popconfirm>
   <el-button v-if="canRecover" type="primary" :loading="actionPending" @click="emit('recover')">
-    恢复执行
+    继续中断运行
   </el-button>
 </template>

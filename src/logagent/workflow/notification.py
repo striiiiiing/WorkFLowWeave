@@ -8,12 +8,13 @@ from collections.abc import Callable
 from langgraph.graph import END, START, StateGraph
 
 from logagent.models import DeliveryResult, copy_model
-from logagent.workflow.nodes import ArchiveRuntime, archive_node
+from logagent.workflow.nodes import ArchiveRuntime, archive_node, epoch_key
+from logagent.workflow.stream import tagged_node
 
 
 def build_notification_graph(*, runtime: ArchiveRuntime, snapshot, state_schema,
-                             result_reader: Callable, phase_node_factory: Callable,
-                             channel_manager, safe_node: Callable, uncertain: Callable):
+                             result_reader: Callable, arrange: Callable,
+                             channel_manager, safe_node: Callable, uncertain: Callable, registry):
     """构造通知子图：每个输出/渠道都有独立的 intent 和 receipt 节点。
 
     ``intent -> receipt`` 是显式边。intent 事务提交后才允许 receipt 节点调用
@@ -23,7 +24,7 @@ def build_notification_graph(*, runtime: ArchiveRuntime, snapshot, state_schema,
     wf = snapshot.workflow
     output_ids = ["final"] if wf.fan_in else [task.id for task in wf.analyses]
     fresh_intents = set()
-    previous = START
+    receipts = []
     for output_index, output_id in enumerate(output_ids):
         for channel_index, cid in enumerate(wf.channels):
             intent_key = f"intent:{output_id}:{cid}"
@@ -31,14 +32,14 @@ def build_notification_graph(*, runtime: ArchiveRuntime, snapshot, state_schema,
 
             async def intention(state, oid=output_id, cid=cid, key=intent_key):
                 """记录本次新建意图身份，返回不含通知正文的管理事实。"""
-                fresh_intents.add(key)
+                fresh_intents.add(epoch_key(state, key))
                 return {"output_id": oid, "channel_id": cid}
 
             intent_archive = archive_node(
                 runtime,
                 scope="notification",
                 stage="notify",
-                key=intent_key,
+                key=lambda state, key=intent_key: epoch_key(state, key),
                 category=None,
                 operation=intention,
                 publish=lambda key, summary: {},
@@ -64,7 +65,7 @@ def build_notification_graph(*, runtime: ArchiveRuntime, snapshot, state_schema,
                     receipt = DeliveryResult(
                         channel_id=cid, output_id=oid, status="skipped", attempts=0
                     )
-                elif ikey not in fresh_intents:
+                elif epoch_key(state, ikey) not in fresh_intents:
                     receipt = uncertain(cid, oid)
                 else:
                     try:
@@ -92,10 +93,16 @@ def build_notification_graph(*, runtime: ArchiveRuntime, snapshot, state_schema,
                 runtime,
                 scope="notification",
                 stage="notify",
-                key=receipt_key,
+                key=lambda state, key=receipt_key: epoch_key(state, key),
                 category=None,
                 operation=delivery,
-                publish=lambda key, summary: {},
+                summarize=lambda body: {
+                    "item_status": body["status"], "error": body.get("error"),
+                    "output_id": body["output_id"], "channel_id": body["channel_id"],
+                },
+                publish=lambda key, summary, oid=output_id, cid=cid: {
+                    "deliveries": {f"{oid}:{cid}": key},
+                },
             )
 
             async def receipt_node(state, oid=output_id, archived=receipt_archive):
@@ -110,11 +117,16 @@ def build_notification_graph(*, runtime: ArchiveRuntime, snapshot, state_schema,
                 f"receipt_{output_index}_{channel_index}",
             )
             graph.add_node(intent_name, safe_node(intent_node))
-            graph.add_node(receipt_name, safe_node(receipt_node))
-            graph.add_edge(previous, intent_name)
+            graph.add_node(receipt_name, tagged_node(
+                registry, ("notify", receipt_name), safe_node(receipt_node), "workflow:delivery",
+            ))
+            graph.add_edge(START, intent_name)
             graph.add_edge(intent_name, receipt_name)
-            previous = receipt_name
-    graph.add_node("arrange", phase_node_factory("notify"))
-    graph.add_edge(previous, "arrange")
+            receipts.append(receipt_name)
+    graph.add_node("arrange", arrange)
+    if receipts:
+        graph.add_edge(receipts, "arrange")
+    else:
+        graph.add_edge(START, "arrange")
     graph.add_edge("arrange", END)
-    return graph.compile()
+    return graph.compile(checkpointer=None)

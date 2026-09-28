@@ -9,6 +9,7 @@ import orjson
 
 from logagent.errors import LogAgentError
 from logagent.models import ArtifactInfo, PhaseContent, SessionRecord, SessionStatus, WorkflowStage
+from logagent.workflow.stream import active_phases, project_progress
 
 
 class SessionView:
@@ -26,7 +27,6 @@ class SessionView:
         """
         state = {"status": "created", "stage": None, "error": None}
         workflow_name = None
-        phases = {}
         snapshot = "pending"
         finished_at = None
         for entry in entries:
@@ -49,20 +49,18 @@ class SessionView:
                     finished_at = None
             if entry["write_key"] == "snapshot":
                 snapshot = entry["availability"]
-                # 旧存档尚无创建事件名称时，只读取该次运行已有的快照。
-                if workflow_name is None and entry["body"] is not None:
-                    workflow_name = entry["body"]["snapshot"]["workflow"]["name"]
-            if entry["scope"] == "phase":
-                phases[entry["stage"]] = ArtifactInfo(
-                    stage=entry["stage"], availability=entry["availability"],
-                    size_bytes=len(orjson.dumps(entry["body"])) if entry["body"] is not None else None,
-                )
+        artifacts = [ArtifactInfo(
+            stage=entry["stage"], availability=entry["availability"],
+            size_bytes=len(orjson.dumps(entry["body"])) if entry["body"] is not None else None,
+        ) for entry in active_phases(entries).values()]
+        epoch, progress = project_progress(header["session_id"], entries)
         return SessionRecord(
             session_id=header["session_id"], workflow_id=header["workflow_id"],
             workflow_name=workflow_name,
             version=entries[-1]["version"], created_at=header["created_at"],
             updated_at=entries[-1]["created_at"], finished_at=finished_at,
-            snapshot_availability=snapshot, artifacts=list(phases.values()), **state,
+            snapshot_availability=snapshot, artifacts=artifacts,
+            execution_epoch=epoch, progress=progress, **state,
         )
 
     async def get_session(self, session_id: str, *, version: int | None = None) -> SessionRecord:
@@ -128,9 +126,7 @@ class SessionView:
         if stage not in {"collect", "analyze", "aggregate", "notify", "finish"}:
             raise LogAgentError("invalid_argument", "阶段无效")
         _, entries = await asyncio.to_thread(self._store.entries, session_id, version)
-        selected = next(
-            (e for e in reversed(entries) if e["scope"] == "phase" and e["stage"] == stage), None
-        )
+        selected = active_phases(entries).get(stage)
         return PhaseContent(
             session_id=session_id, version=version, stage=stage,
             availability=selected["availability"] if selected else "pending",

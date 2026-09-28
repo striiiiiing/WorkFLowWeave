@@ -6,7 +6,6 @@
 """
 
 import asyncio
-from copy import deepcopy
 from datetime import UTC, datetime
 
 import pytest
@@ -22,7 +21,7 @@ from logagent.models import (
 )
 from logagent.workflow import SessionStore, WorkflowService
 from logagent.workflow.session_models import SessionEntry
-from tests.workflow.helpers import AI, Channel, Collector, snapshot
+from tests.workflow.helpers import AI, Channel, Collector, archived, snapshot
 
 
 def service(path, *, ai=None, store_type=SessionStore):
@@ -46,7 +45,7 @@ async def test_full_history_native_checkpoint_and_completed_recovery(tmp_path):
     w, store, c, a, n = service(path)
     result = await run(w)
     assert result.status == "completed" and result.shared_input == "original data\n\nsource: success (1)"
-    assert [row[:2] for row in n.calls] == [
+    assert sorted(row[:2] for row in n.calls) == [
         ("first", "one"),
         ("first", "two"),
         ("second", "one"),
@@ -67,9 +66,9 @@ async def test_full_history_native_checkpoint_and_completed_recovery(tmp_path):
         checkpoint.config["configurable"]["checkpoint_ns"]
         async for checkpoint in w._checkpointer.alist(None)
     }
-    assert "" in namespaces and any(ns.startswith("collect:") for ns in namespaces)
-    assert any(ns.startswith("analyze:") for ns in namespaces)
-    assert any(ns.startswith("notify:") for ns in namespaces)
+    assert "" in namespaces
+    await w._cleanup.queue.join()
+    assert not await w._cleanup.storage.completed("run")
     await close(w, store)
     new, reopened, c2, a2, n2 = service(path)
     await new.recover("run")
@@ -95,7 +94,7 @@ async def test_cancel_resume_reuses_successful_branch_and_original_snapshot(tmp_
     snap = snapshot(analysis_concurrency=1)
     await w.trigger(snap, session_id="run")
     await asyncio.wait_for(ai.started.wait(), 5)
-    assert (await asyncio.to_thread(store.entry, "run", "analyze:item:first"))["body"][
+    assert (await asyncio.to_thread(archived, store, "run", "analyze:item:first"))["body"][
         "status"
     ] == "success"
     assert await w.cancel("run")
@@ -111,51 +110,11 @@ async def test_cancel_resume_reuses_successful_branch_and_original_snapshot(tmp_
     await close(new, reopened)
 
 
-async def test_recovery_reads_legacy_prompt_snapshot_without_rewriting_archive(tmp_path):
-    class LegacySnapshotStore(SessionStore):
-        def write(self, sid, key, **kwargs):
-            if key == "snapshot":
-                body = deepcopy(kwargs["body"])
-                workflow = body["snapshot"]["workflow"]
-                del workflow["system_prompt"], workflow["input_prompt"]
-                task = workflow["analyses"][0]
-                task["prompt"] = "legacy task"
-                del task["system_prompt"], task["input_prompt"], task["user_prompt"]
-                kwargs["body"] = body
-            return super().write(sid, key, **kwargs)
-
-    path = tmp_path / "runs.sqlite3"
-    blocked = AI(block="first")
-    original, store, _, _, _ = service(path, ai=blocked, store_type=LegacySnapshotStore)
-    snap = snapshot(channels=False, tasks=("first",), system_prompt="legacy system")
-    snap.workflow.analyses[0].input_prompt = "legacy task\n\n{input}"
-    snap.ai["ai"].system_prompt = "legacy system"
-    await original.trigger(snap, session_id="run")
-    await asyncio.wait_for(blocked.started.wait(), 5)
-    assert await original.cancel("run")
-    assert (await original.wait("run")).status == "cancelled"
-    await close(original, store)
-
-    recovered, archive, _, ai, _ = service(path)
-    assert (await asyncio.to_thread(archive.entry, "run", "snapshot"))["body"][
-        "snapshot"
-    ]["workflow"]["analyses"][0]["prompt"] == "legacy task"
-    await recovered.recover("run")
-    assert (await recovered.wait("run")).status == "completed"
-    assert ai.requests == [
-        ("first", "ai", "legacy task\n\n{input}", "legacy system", "")
-    ]
-    assert (await asyncio.to_thread(archive.entry, "run", "snapshot"))["body"][
-        "snapshot"
-    ]["workflow"]["analyses"][0]["prompt"] == "legacy task"
-    await close(recovered, archive)
-
-
 async def test_business_commit_before_checkpoint_replays_without_external_call(tmp_path):
     class FailAfterArchive(SessionStore):
         def write(self, sid, key, **kwargs):
             entry = super().write(sid, key, **kwargs)
-            if key == "collect:item:source":
+            if key.startswith("collect:item:source:epoch:"):
                 raise RuntimeError("process interruption after archive commit")
             return entry
 
@@ -175,7 +134,7 @@ async def test_business_commit_before_checkpoint_replays_without_external_call(t
 async def test_send_receipt_failure_preserves_uncertainty_and_next_target(tmp_path):
     class FailReceipt(SessionStore):
         def write(self, sid, key, **kwargs):
-            if key == "delivery:first:one":
+            if key.startswith("delivery:first:one:epoch:"):
                 raise RuntimeError("receipt disk failure")
             return super().write(sid, key, **kwargs)
 
@@ -183,13 +142,13 @@ async def test_send_receipt_failure_preserves_uncertainty_and_next_target(tmp_pa
     w, store, _, _, n = service(path, store_type=FailReceipt)
     with pytest.raises(LogAgentError):
         await run(w, snapshot(tasks=("first",)))
-    assert [row[:2] for row in n.calls] == [("first", "one")]
+    assert {row[:2] for row in n.calls} == {("first", "one"), ("first", "two")}
     await close(w, store)
     new, reopened, c, a, n = service(path)
     await new.recover("run")
     result = await new.wait("run")
     assert result.status == "partial" and not c.calls and not a.calls
-    assert [row[:2] for row in n.calls] == [("first", "two")]
+    assert not n.calls
     assert result.deliveries[0].error.code == "delivery_uncertain"
     assert result.deliveries[1].status == "success"
     await close(new, reopened)
@@ -400,7 +359,7 @@ async def test_coordinator_completion_cache_is_bounded():
 
 
 @pytest.mark.parametrize("failure", ["second", "final"])
-async def test_failed_work_recovery_reuses_successful_branches(tmp_path, failure):
+async def test_failed_work_requires_explicit_stage_rerun(tmp_path, failure):
     w, store, c, _, n = service(tmp_path / "runs.sqlite3", ai=AI(fail={failure}))
     definition = snapshot(
         analysis_failure="stop", fan_in=FanInConfig(
@@ -412,8 +371,11 @@ async def test_failed_work_recovery_reuses_successful_branches(tmp_path, failure
     w.ai_service = AI()
     await w.recover("run")
     result = await w.wait("run")
-    assert result.status == "completed"
-    assert [row[0] for row in w.ai_service.calls] == [failure]
+    assert result.status == "failed"
+    assert not w.ai_service.calls
+    await w.resume("run", stage="aggregate" if failure == "final" else "analyze")
+    assert (await w.wait("run")).status == "completed"
+    assert {row[0] for row in w.ai_service.calls} == ({"final"} if failure == "final" else {"first", "second"})
     assert c.calls == ["source"]
     await close(w, store)
 
@@ -433,7 +395,7 @@ async def test_recovery_refuses_missing_corrupt_or_expired_archives(tmp_path, da
         assert (await w.get_session("run")).status == "completed"
     else:
         with store._transaction() as db:
-            key = "analyze:item:first" if damage == "missing" else "phase:aggregate"
+            key = archived(store, "run", "phase:aggregate")["write_key"]
             entry = db.exec(select(SessionEntry).where(
                 SessionEntry.session_id == "run", SessionEntry.write_key == key,
             )).one()
@@ -456,7 +418,7 @@ async def test_body_backup_failure_is_recorded_and_stop_cannot_replay_past_it(tm
 
     class BodyFailure(SessionStore):
         def write(self, sid, key, **kwargs):
-            if key == "collect:item:source" and kwargs.get("body") is not None:
+            if key.startswith("collect:item:source:epoch:") and kwargs.get("body") is not None:
                 raise OperationalError(None, None, RuntimeError("body unavailable"))
             return super().write(sid, key, **kwargs)
 
@@ -471,7 +433,7 @@ async def test_body_backup_failure_is_recorded_and_stop_cannot_replay_past_it(tm
     else:
         result = await run(w, definition)
         assert result.status == "partial" and n.calls
-    entry = await asyncio.to_thread(store.entry, "run", "collect:item:source")
+    entry = await asyncio.to_thread(archived, store, "run", "collect:item:source")
     assert entry["availability"] == "write_failed" and entry["body"] is None
     await close(w, store)
 
@@ -499,7 +461,7 @@ async def test_notification_node_names_do_not_collide_for_underscored_ids(tmp_pa
     }
     result = await run(w, definition)
     assert result.status == "completed"
-    assert [row[:2] for row in n.calls] == [("a_b", "c"), ("a_b", "b_c"), ("a", "c"), ("a", "b_c")]
+    assert {(row[0], row[1]) for row in n.calls} == {("a_b", "c"), ("a_b", "b_c"), ("a", "c"), ("a", "b_c")}
     await close(w, store)
 
 
@@ -526,7 +488,7 @@ async def test_final_archive_replay_reconciles_interrupted_summary(tmp_path):
 
         def write(self, sid, key, **kwargs):
             value = super().write(sid, key, **kwargs)
-            if key == "phase:finish" and not self.failed:
+            if key.startswith("phase:finish:epoch:") and not self.failed:
                 self.failed = True
                 raise RuntimeError("after final business commit")
             return value
@@ -569,26 +531,3 @@ async def test_collector_cannot_swallow_cancellation_and_start_analysis(tmp_path
     assert (await w.wait("run")).status == "cancelled"
     assert not a.calls and not n.calls
     await close(w, store)
-
-
-async def test_recovery_reads_legacy_schedule_in_persisted_snapshot(tmp_path):
-    class LegacySnapshots(SessionStore):
-        def write(self, sid, key, **kwargs):
-            if key == "snapshot":
-                saved = kwargs["body"]["snapshot"]["workflow"]
-                saved.pop("schedule")
-                saved.update(interval_seconds=None, cron="0 9 * * 1", cron_timezone="UTC")
-            return super().write(sid, key, **kwargs)
-
-    path = tmp_path / "legacy.sqlite3"
-    workflow, store, _, _, _ = service(path, store_type=LegacySnapshots)
-    result = await run(workflow)
-    await close(workflow, store)
-    restored, reopened, collector, ai, channel = service(path)
-    try:
-        assert (await restored.recovery_availability("run")).available
-        await restored.recover("run")
-        assert await restored.wait("run") == result
-        assert not collector.calls and not ai.calls and not channel.calls
-    finally:
-        await close(restored, reopened)

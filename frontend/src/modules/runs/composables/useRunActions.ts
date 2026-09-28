@@ -1,7 +1,7 @@
 import { ApiError } from '@/shared/api/errors'
 import { useAsyncTask, type AsyncTaskResult } from '@/shared/async/useAsyncTask'
 import { useRunsApi } from '../api/dependencies'
-import type { RunsApi } from '../api/runsApi'
+import type { ResumeOptions, RunsApi } from '../api/runsApi'
 
 export type RunActionResult<T> =
   | { status: 'success'; value: T }
@@ -58,13 +58,20 @@ export function useRunActions(api: Pick<RunsApi, 'trigger' | 'cancel'> = useRuns
   }
 }
 
-export function useRecoveryAction(api: Pick<RunsApi, 'recover'> = useRunsApi()) {
+type RecoveryApi = Partial<Pick<RunsApi, 'resume' | 'recover'>>
+export function useRecoveryAction(api: RecoveryApi = useRunsApi()) {
   const task = useAsyncTask()
   return {
     pending: task.pending,
     error: task.error,
-    async recover(id: string) {
-      return classify(await task.run(() => api.recover(id)))
+    async resume(id: string, options: ResumeOptions = {}) {
+      return classify(
+        await task.run(() => {
+          const resume = api.resume ?? api.recover
+          if (!resume) throw new Error('恢复接口未装配')
+          return resume(id, options)
+        }),
+      )
     },
   }
 }

@@ -127,4 +127,39 @@ describe('fixed report ownership', () => {
     expect(backend.get).toHaveBeenCalledTimes(2)
     scope.stop()
   })
+
+  it('checks stage recovery only while enabled and preserves an explicit request ID', async () => {
+    const backend = api()
+    const scope = effectScope()
+    const detail = scope.run(() => useRunDetail(ref('one'), backend))!
+    await flushPromises()
+    expect(backend.recovery).toHaveBeenCalledTimes(1)
+    expect(backend.recovery).toHaveBeenCalledWith('one', {}, expect.any(AbortSignal))
+
+    detail.stageRecoveryEnabled.value = true
+    await flushPromises()
+    expect(backend.recovery).toHaveBeenLastCalledWith(
+      'one',
+      { stage: 'collect' },
+      expect.any(AbortSignal),
+    )
+    detail.selectedStage.value = 'notify'
+    await flushPromises()
+    expect(backend.recovery).toHaveBeenLastCalledWith(
+      'one',
+      { stage: 'notify' },
+      expect.any(AbortSignal),
+    )
+    detail.stageRecoveryEnabled.value = false
+    await flushPromises()
+    expect(backend.recovery).toHaveBeenCalledTimes(3)
+
+    await detail.resume({ stage: 'notify', checkpoint_id: 'checkpoint', request_id: 'stable' })
+    expect(backend.recover).toHaveBeenCalledWith('one', {
+      stage: 'notify',
+      checkpoint_id: 'checkpoint',
+      request_id: 'stable',
+    })
+    scope.stop()
+  })
 })

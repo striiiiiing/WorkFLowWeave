@@ -28,6 +28,7 @@ from logagent.models import (
 )
 from logagent.workflow import WorkflowService
 from logagent.workflow.session_models import SessionHeader
+from tests.workflow.helpers import archived
 from tests.workflow_ai_helpers import TestChannelFactory
 
 
@@ -191,7 +192,7 @@ async def test_real_ai_cancellation_resumes_saved_snapshot_after_resource_change
         await asyncio.wait_for(second_started.wait(), 5)
         first = (
             await asyncio.to_thread(
-                service.session_store.entry, "interrupted", "analyze:item:first"
+                archived, service.session_store, "interrupted", "analyze:item:first"
             )
         )["body"]
         assert first["status"] == "success"
@@ -213,8 +214,8 @@ async def test_real_ai_cancellation_resumes_saved_snapshot_after_resource_change
         assert recovered.outputs["final"] in notes
         assert not changed_path.exists()
         history = await service.history("interrupted")
-        assert sum(row["write_key"] == "collect:item:source" for row in history) == 1
-        assert sum(row["write_key"] == "analyze:item:first" for row in history) == 1
+        assert sum(row["write_key"].startswith("collect:item:source:epoch:") for row in history) == 1
+        assert sum(row["write_key"].startswith("analyze:item:first:epoch:") for row in history) == 1
         await service.recover("interrupted")
         assert await service.wait("interrupted") == recovered
         assert _notifications(original_path) == notes

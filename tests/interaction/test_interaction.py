@@ -74,7 +74,7 @@ class Workflow:
         self.triggered.append(workflow)
         return "session-1"
 
-    async def recover(self, session_id: str):
+    async def resume(self, session_id: str):
         self.recovered.append(session_id)
         return session_id
 
