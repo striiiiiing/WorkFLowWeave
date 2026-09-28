@@ -16,9 +16,10 @@ const groups = computed(() =>
   progressStages.map((key) => ({
     key,
     title: stages.find((stage) => stage.key === key)!.label,
-    items: props.session.progress.filter(
-      (item) => item.stage === key && item.event !== 'lifecycle',
-    ),
+    items: props.session.progress
+      .filter((item) => item.stage === key && item.event !== 'lifecycle')
+      .sort((left, right) => left.order - right.order ||
+        progressIdentity(left).localeCompare(progressIdentity(right))),
   })),
 )
 </script>

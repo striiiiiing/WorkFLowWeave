@@ -47,7 +47,10 @@ export function createWorkflow(): WorkflowDefinition {
       analysis: true,
       final: true,
       on_failure: 'stop',
-      retention_days: null,
+      checkpoint_retention_days: null,
+      collection_retention_days: null,
+      analysis_retention_days: null,
+      final_retention_days: null,
     },
   }
 }

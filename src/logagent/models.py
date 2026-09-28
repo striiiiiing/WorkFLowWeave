@@ -236,7 +236,10 @@ class BackupPolicy(StrictModel):
     analysis: bool = True
     final: bool = True
     on_failure: ContinuePolicy = "stop"
-    retention_days: int | None = Field(default=None, gt=0)
+    checkpoint_retention_days: int | None = Field(default=None, gt=0)
+    collection_retention_days: int | None = Field(default=None, gt=0)
+    analysis_retention_days: int | None = Field(default=None, gt=0)
+    final_retention_days: int | None = Field(default=None, gt=0)
 
 
 class SourceOverride(StrictModel):
@@ -463,6 +466,7 @@ class DeliveryResult(StrictModel):
 
 
 class ArtifactInfo(StrictModel):
+    content_version: SessionVersion | None = None
     stage: WorkflowStage
     availability: ArtifactAvailability
     size_bytes: NonNegativeInt | None = None
@@ -484,6 +488,7 @@ class PhaseContent(ArtifactInfo):
 
 
 class RecoveryAvailability(StrictModel):
+    checkpoint_expires_at: UTCDateTime | None = None
     available: bool
     reason: ErrorInfo | None = None
 
@@ -500,6 +505,7 @@ class WorkflowProgress(StrictModel):
     output_id: ID | None = None
     channel_id: ID | None = None
     label: str | None = None
+    order: NonNegativeInt = 0
     result_ref: str | None = None
     version: SessionVersion | None = None
     availability: ArtifactAvailability = "pending"

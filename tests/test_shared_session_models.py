@@ -33,7 +33,10 @@ def test_workflow_defaults_keep_every_phase_and_snapshot_without_expiry():
     assert workflow.backup.enabled
     assert workflow.backup.snapshot
     assert workflow.backup.collection and workflow.backup.analysis and workflow.backup.final
-    assert workflow.backup.retention_days is None
+    assert workflow.backup.checkpoint_retention_days is None
+    assert workflow.backup.collection_retention_days is None
+    assert workflow.backup.analysis_retention_days is None
+    assert workflow.backup.final_retention_days is None
     assert workflow.backup.on_failure == "stop"
     copied = WorkflowDefinition.model_validate_json(workflow.model_dump_json())
     assert copied == workflow
@@ -43,19 +46,22 @@ def test_workflow_defaults_keep_every_phase_and_snapshot_without_expiry():
 
 
 @pytest.mark.parametrize("days", [0, -1, 1.5, "invalid"])
-def test_backup_rejects_invalid_retention(days):
+@pytest.mark.parametrize("field", ["checkpoint", "collection", "analysis", "final"])
+def test_backup_rejects_invalid_retention(days, field):
     with pytest.raises(ValidationError):
-        BackupPolicy(retention_days=days)
+        BackupPolicy(**{f"{field}_retention_days": days})
 
 
 def test_new_configuration_preserves_coercion_and_rejects_unknown_fields():
-    assert BackupPolicy(retention_days="7").retention_days == 7
+    assert BackupPolicy(collection_retention_days="7").collection_retention_days == 7
+    assert BackupPolicy(checkpoint_retention_days=30, collection_retention_days=1,
+                        analysis_retention_days=7, final_retention_days=2)
     assert SystemConfig().max_concurrent_runs == 4
     assert SystemConfig(max_concurrent_runs="2").max_concurrent_runs == 2
     for data in ({"max_concurrent_runs": 0}, {"unknown": True}):
         with pytest.raises(ValidationError):
             SystemConfig(**data)
-    for data in ({"on_failure": "bogus"}, {"extra": 1}):
+    for data in ({"on_failure": "bogus"}, {"extra": 1}, {"retention_days": 7}):
         with pytest.raises(ValidationError):
             BackupPolicy(**data)
 

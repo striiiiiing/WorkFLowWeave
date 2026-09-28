@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 
 from logagent.errors import LogAgentError
 from logagent.models import CollectionContext, WorkflowSnapshot
 from logagent.workflow.graph import GRAPH_REVISION
-from logagent.workflow.nodes import ArchiveRuntime
 
 STAGES = ("collect", "analyze", "aggregate", "notify")
 
@@ -38,18 +38,17 @@ async def prepare_recovery(service, session_id, *, stage=None, checkpoint_id=Non
     config = {"configurable": {"thread_id": session_id, "checkpoint_ns": ""}}
     current = await service._checkpointer.aget_tuple(config)
     if current is None:
+        record = await service.session_view.get_session(session_id)
+        deadline = await asyncio.to_thread(service.session_store.checkpoint_deadline, session_id, record.execution_epoch)
+        if deadline is not None and deadline <= datetime.now(UTC):
+            raise LogAgentError("checkpoint_expired", "执行恢复保留期已到期", {"checkpoint_expires_at": deadline.isoformat()})
         raise LogAgentError("checkpoint_missing", "缺少原 checkpoint，无法从业务存档猜测进度")
     compatible(current.checkpoint.get("channel_values", {}))
-    entry = await asyncio.to_thread(service.session_store.entry, session_id, "snapshot")
-    if entry is None or entry["availability"] != "available" or entry["body"] is None:
-        raise LogAgentError("recovery_unavailable", "原配置快照不可用")
-    snapshot = WorkflowSnapshot.model_validate(entry["body"]["snapshot"])
-    saved_path = entry["body"].get("log_path")
-    runtime = ArchiveRuntime(service.session_store, session_id, snapshot.workflow.backup)
-    context = CollectionContext(
-        snapshot.workflow.id, session_id, saved_path, service.credentials, service.session_view,
-    )
-    graph = service._graph(runtime, snapshot, context)
+    values = current.checkpoint["channel_values"]
+    snapshot = WorkflowSnapshot.model_validate(values["snapshot"])
+    saved_path = values.get("log_path")
+    context = CollectionContext(snapshot.workflow.id, session_id, saved_path, service.credentials, service.session_view)
+    graph = service._graph(snapshot, context)
     latest = await graph.aget_state(config, subgraphs=True)
     selected = latest
     if stage is not None:
@@ -70,55 +69,7 @@ async def prepare_recovery(service, session_id, *, stage=None, checkpoint_id=Non
         if selected is None:
             raise LogAgentError("stage_unavailable", "所选轮次没有匹配的父图阶段入口",
                                 {"stage": stage, "checkpoint_id": checkpoint_id})
-    await _check_inputs(service, runtime, snapshot, selected, stage)
+    deadline = await asyncio.to_thread(service.session_store.checkpoint_deadline, session_id, selected.values["execution_epoch"])
+    if deadline is not None and deadline <= datetime.now(UTC):
+        raise LogAgentError("checkpoint_expired", "执行恢复保留期已到期", {"checkpoint_expires_at": deadline.isoformat()})
     return snapshot, saved_path, graph, selected
-
-
-async def _check_inputs(service, runtime, snapshot, selected, stage):
-    """只要求本次执行会读取的上游或未完成分支正文，不检查废弃下游历史。"""
-    phases = selected.values.get("phases", {})
-    target = stage
-    if target is None:
-        target = selected.next[0] if selected.next else "finish"
-    required = {
-        "collect": (), "analyze": ("collect",), "aggregate": ("analyze",),
-        "notify": ("aggregate",), "finish": ("aggregate",) if phases.get("aggregate") else (),
-    }.get(target, ())
-    if target == "aggregate" and snapshot.workflow.fan_in and "$input" in snapshot.workflow.fan_in.ordered_inputs(snapshot.workflow.analyses):
-        required = ("collect", "analyze")
-    for name in required:
-        key = phases.get(name)
-        if not key:
-            raise LogAgentError("recovery_unavailable", "恢复入口缺少上游结果引用", {"stage": name})
-        await runtime.read(key)
-    if stage is not None:
-        return
-    if target in {"collect", "analyze"}:
-        _, entries = await asyncio.to_thread(service.session_store.entries, runtime.session_id)
-        for entry in entries:
-            if (entry["scope"] == target
-                    and entry["summary"].get("execution_epoch") == selected.values["execution_epoch"]):
-                await runtime.read(entry["write_key"])
-    # Pending branch writes can be newer than the child checkpoint. Inspect the
-    # latest tuple of each active invocation, never historical/discarded rounds.
-    async def check_task(task):
-        child = getattr(task, "state", None)
-        if child is None:
-            return
-        child_config = child.config if hasattr(child, "config") else child
-        if not isinstance(child_config, dict):
-            return
-        saved = await service._checkpointer.aget_tuple(child_config)
-        if saved:
-            values = saved.checkpoint.get("channel_values", {})
-            refs = list(values.get("items", {}).values())
-            for _, channel, value in saved.pending_writes or ():
-                if channel == "items" and isinstance(value, dict):
-                    refs.extend(value.values())
-            for ref in set(refs):
-                if ref:
-                    await runtime.read(ref)
-        for nested in getattr(child, "tasks", ()):
-            await check_task(nested)
-    for task in selected.tasks:
-        await check_task(task)

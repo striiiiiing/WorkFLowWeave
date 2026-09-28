@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onScopeDispose, ref } from 'vue'
+import { computed, onMounted, onScopeDispose, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance } from 'element-plus'
 import PageHeader from '@/shared/ui/PageHeader.vue'
@@ -23,6 +23,7 @@ import {
   FanInCard,
   NotificationCard,
   BackupMatrix,
+  hasLegacyRetention,
   WorkflowBasicInfo,
 } from '@/modules/workflows/public'
 const route = useRoute()
@@ -51,6 +52,9 @@ const save = useAsyncTask()
 const resourceSavePending = ref(false)
 const form = ref<FormInstance>()
 const advanced = ref(false)
+watch(() => editor.draft.value?.backup, (backup) => {
+  if (backup && hasLegacyRetention(backup)) advanced.value = true
+}, { immediate: true })
 const channelEditor = ref<{ initial?: ChannelConfig }>()
 const draft = computed(() => editor.draft.value!)
 const catalogValue = computed(() => catalog.data.value!)

@@ -27,7 +27,12 @@ export interface BackupPolicy {
   analysis: boolean
   final: boolean
   on_failure: ContinuePolicy
-  retention_days: number | null
+  checkpoint_retention_days: number | null
+  collection_retention_days: number | null
+  analysis_retention_days: number | null
+  final_retention_days: number | null
+  /** Present only in configurations saved before classified retention. */
+  retention_days?: number | null
 }
 export type WorkflowSchedule =
   | { type: 'at'; at: string }

@@ -20,13 +20,22 @@ const session = (id = 'one', version = 1): SessionRecord => ({
   updated_at: '',
   finished_at: '',
   error: null,
-  artifacts: [],
+  artifacts: ['collect', 'analyze', 'aggregate', 'notify', 'finish'].map((stage) => ({
+    stage: stage as SessionRecord['artifacts'][number]['stage'],
+    content_version: version,
+    availability: 'available' as const,
+    size_bytes: null,
+    error: null,
+  })),
   snapshot_availability: 'available',
+  execution_epoch: 'epoch-one',
+  progress: [],
 })
 const phase = (id = 'one', version = 1): PhaseContent => ({
   session_id: id,
   version,
   stage: 'aggregate',
+  content_version: version,
   availability: 'available',
   size_bytes: null,
   error: null,

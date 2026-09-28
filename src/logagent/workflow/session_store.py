@@ -17,10 +17,21 @@ from sqlmodel import Session, SQLModel, create_engine, func, select
 from logagent.errors import LogAgentError
 from logagent.models import ID, BackupPolicy, JSONObject
 
-from .session_models import SessionEntry, SessionHeader
+from .session_models import (
+    AnalysisBody,
+    CheckpointSource,
+    CollectionBody,
+    EpochRetention,
+    PromptVersion,
+    ReportBody,
+    ResultProvenance,
+    SessionEntry,
+    SessionHeader,
+)
 
 _JSON = TypeAdapter(JSONObject)
 _ID = TypeAdapter(ID)
+_BODY_TABLES = {"collection": CollectionBody, "analysis": AnalysisBody, "final": ReportBody}
 _TERMINAL = {"completed", "partial", "failed", "cancelled", "interrupted"}
 
 
@@ -80,7 +91,7 @@ class SessionStore:
             if "run_sessions" in inspect(self._engine).get_table_names():
                 raise LogAgentError("storage_version", "旧 Workflow 数据库需要显式迁移，不能隐去原 session")
             SQLModel.metadata.create_all(
-                self._engine, tables=[SessionHeader.__table__, SessionEntry.__table__]
+                self._engine, tables=[model.__table__ for model in (SessionHeader, SessionEntry, CheckpointSource, CollectionBody, AnalysisBody, ReportBody, PromptVersion, ResultProvenance, EpochRetention)]
             )
         except BaseException:
             self._engine.dispose()
@@ -144,6 +155,7 @@ class SessionStore:
     def write(
         self, session_id: str, key: str, *, stage: str | None, scope: str,
         summary: dict, body: dict | None = None, availability: str = "available", category: str | None = None,
+        source: dict | None = None, provenance: dict | None = None,
     ) -> dict:
         """追加业务条目并返回存档内容，同一 session 内版本递增。
 
@@ -151,7 +163,6 @@ class SessionStore:
         新版本、摘要、正文及可用性在同一事务内发布。
         """
         encoded_summary = _json(summary)
-        encoded_body = _json(body) if body is not None else None
         digest = _hash(_json({
             "stage": stage, "scope": scope, "summary": summary,
             "body": body, "availability": availability, "category": category,
@@ -163,34 +174,68 @@ class SessionStore:
             if previous:
                 if previous.digest != digest:
                     raise LogAgentError("storage_conflict", "幂等键对应的 session 内容不同")
+                if source:
+                    self.record_source(session_id, key, source)
                 return self._entry(previous)
             if session.get(SessionHeader, session_id) is None:
                 raise LogAgentError("session_not_found", "session 不存在")
             latest = session.exec(select(func.max(SessionEntry.version)).where(
                 SessionEntry.session_id == session_id,
             )).one()
+            provenance = self._prompts(session, provenance) if provenance is not None else None
+            body = self._prompts(session, body) if category == "snapshot" and body is not None else body
+            stored_body = _json(body) if body is not None else None
             row = SessionEntry(
                 session_id=session_id, version=(latest or 0) + 1, write_key=key,
-                stage=stage, scope=scope, summary=encoded_summary, body=encoded_body,
+                stage=stage, scope=scope, summary=encoded_summary, body=None if category in _BODY_TABLES else stored_body,
                 availability=availability, category=category, digest=digest,
                 created_at=datetime.now(UTC).isoformat(),
             )
             session.add(row)
             session.flush()
+            deadline = self._deadline(session, row)
+            if deadline is not None and datetime.now(UTC) >= deadline and availability == "available":
+                row.availability, row.body = "expired", None
+                session.add(row)
+            elif category in _BODY_TABLES and stored_body is not None:
+                session.add(_BODY_TABLES[category](session_id=session_id, version=row.version, content=stored_body))
+            if provenance is not None:
+                session.add(ResultProvenance(session_id=session_id, version=row.version, details=_json(provenance)))
+            if source:
+                self.record_source(session_id, key, source)
+            epoch = summary.get("execution_epoch")
+            if epoch:
+                retained = session.get(EpochRetention, (session_id, epoch))
+                if retained is None:
+                    retained = EpochRetention(session_id=session_id, execution_epoch=epoch, policy=session.get(SessionHeader, session_id).policy)
+                if summary.get("status") in _TERMINAL and retained.anchor is None:
+                    retained.anchor = row.created_at
+                session.add(retained)
+            session.flush()
             return self._entry(row)
 
-    @staticmethod
-    def _entry(row: SessionEntry) -> dict:
+    def _entry(self, row: SessionEntry, *, include_body=True) -> dict:
         """解码数据库条目并检查内容摘要；非法数据转换为 storage_corrupt。
 
         expired 条目正文已清除，保留的是清理前摘要，因此不再按当前正文验算。
         """
         value = row.model_dump()
+        if not include_body:
+            value["summary"] = orjson.loads(value["summary"])
+            value["body"] = None
+            return value
+        if row.category in _BODY_TABLES and row.availability == "available":
+            body_row = self._session.get(_BODY_TABLES[row.category], (row.session_id, row.version))
+            if body_row is not None:
+                value["body"] = body_row.content
+            # Old archives retain their original body and expiry until explicit migration.
         try:
             value["summary"] = _JSON.validate_python(orjson.loads(value["summary"]))
             value["body"] = (
                 _JSON.validate_python(orjson.loads(value["body"])) if value["body"] else None
             )
+            if value["category"] == "snapshot" and value["body"] is not None:
+                value["body"] = self._expand_prompts(value["body"])
             if value["availability"] != "expired":
                 expected = _hash(_json({
                     "stage": value["stage"], "scope": value["scope"],
@@ -211,7 +256,7 @@ class SessionStore:
             )).first()
             return self._entry(row) if row else None
 
-    def entries(self, session_id: str, version: int | None = None) -> tuple[dict, list[dict]]:
+    def entries(self, session_id: str, version: int | None = None, *, include_body=True) -> tuple[dict, list[dict]]:
         """一致读取 session 头及截至指定版本的全部条目，按版本升序返回。"""
         with self._transaction() as session:
             header = session.get(SessionHeader, session_id)
@@ -225,7 +270,7 @@ class SessionStore:
             rows = session.exec(statement.order_by(SessionEntry.version)).all()
             if not rows or (version is not None and rows[-1].version != version):
                 raise LogAgentError("version_not_found", "session 业务版本不存在")
-            return header.model_dump(), [self._entry(row) for row in rows]
+            return header.model_dump(), [self._entry(row, include_body=include_body) for row in rows]
 
     def session_ids(self) -> list[str]:
         """按创建时间降序列出 session ID，同一创建时间按 ID 排序。"""
@@ -234,36 +279,151 @@ class SessionStore:
                 SessionHeader.created_at.desc(), SessionHeader.session_id,
             )).all())
 
-    def expire(self, now: datetime | None = None) -> int:
-        """按终态事件时间和保留天数清除到期业务正文，返回更新条目数。
+    def retention(self, sid, epoch):
+        with self._transaction() as session:
+            row = session.get(EpochRetention, (sid, epoch))
+            return row.model_dump() if row else None
 
-        仅清理 category 非空的正文，保留管理事实、摘要、幂等键及 expired 原因；
-        没有期限或最新状态未终结时不清理。调用方负责触发此操作。
-        """
+    def checkpoint_deadline(self, sid, epoch):
+        retention = self.retention(sid, epoch)
+        if not retention or not retention["anchor"]:
+            return None
+        days = orjson.loads(retention["policy"]).get("checkpoint_retention_days")
+        return datetime.fromisoformat(retention["anchor"]) + timedelta(days=days) if days is not None else None
+
+    def _deadline(self, session, row):
+        if row.category is None:
+            return None
+        header = session.get(SessionHeader, row.session_id)
+        policy = orjson.loads(header.policy)
+        if "retention_days" in policy:
+            # Existing archives keep the old deadline; never map it onto new policy fields.
+            days = policy["retention_days"]
+            states = session.exec(select(SessionEntry).where(SessionEntry.session_id == row.session_id)
+                                  .order_by(SessionEntry.version)).all()
+            states = [entry for entry in states if entry.scope in {"parent", "phase"}
+                      and "status" in orjson.loads(entry.summary)]
+            anchor = states[-1].created_at if states and orjson.loads(states[-1].summary)["status"] in _TERMINAL else None
+        else:
+            if row.category not in _BODY_TABLES:
+                return None
+            epoch = orjson.loads(row.summary).get("execution_epoch")
+            retained = session.get(EpochRetention, (row.session_id, epoch)) if epoch else None
+            anchor = retained.anchor if retained else None
+            days = orjson.loads(retained.policy).get(f"{row.category}_retention_days") if retained else None
+        return datetime.fromisoformat(anchor) + timedelta(days=days) if anchor and days is not None else None
+
+    def expire(self, now=None, *, active=(), session_id=None):
         now = now or datetime.now(UTC)
         changed = 0
         with self._transaction() as session:
-            for sid in self.session_ids():
-                header, entries = self.entries(sid)
-                policy = BackupPolicy.model_validate_json(header["policy"])
-                states = [e for e in entries if "status" in e["summary"] and e["scope"] in {"parent", "phase"}]
-                if not states or policy.retention_days is None:
+            statement = select(SessionEntry).where(SessionEntry.availability == "available",
+                                                    SessionEntry.category.is_not(None))
+            if session_id is not None:
+                statement = statement.where(SessionEntry.session_id == session_id)
+            expired = {}
+            for row in session.exec(statement).all():
+                if row.session_id in active:
                     continue
-                last = states[-1]
-                if last["summary"]["status"] not in _TERMINAL:
+                deadline = self._deadline(session, row)
+                if deadline is None or now < deadline:
                     continue
-                if now < datetime.fromisoformat(last["created_at"]) + timedelta(days=policy.retention_days):
-                    continue
-                rows = session.exec(select(SessionEntry).where(
-                    SessionEntry.session_id == sid,
-                    SessionEntry.body.is_not(None), SessionEntry.category.is_not(None),
-                )).all()
-                for row in rows:
-                    row.body = None
-                    row.availability = "expired"
-                    session.add(row)
-                changed += len(rows)
+                if row.category in _BODY_TABLES:
+                    body = session.get(_BODY_TABLES[row.category], (row.session_id, row.version))
+                    if body:
+                        session.delete(body)
+                row.body, row.availability = None, "expired"
+                session.add(row)
+                expired.setdefault(row.session_id, []).append(row.version)
+                changed += 1
+            session.flush()
+            for sid, versions in expired.items():
+                self.write(sid, "expired:" + ",".join(map(str, versions)), stage=None,
+                           scope="availability", summary={"expired_versions": versions})
+            self._prune_prompts(session)
         return changed
+
+    def archive_incomplete(self, sid):
+        with self._transaction():
+            _, entries = self.entries(sid, include_body=False)
+            keys = {entry["write_key"] for entry in entries}
+            return any(entry["scope"] == "archive_error" and entry["summary"]["result_key"] not in keys
+                       for entry in entries)
+
+    def provenance(self, sid, version):
+        with self._transaction() as session:
+            row = session.get(ResultProvenance, (sid, version))
+            return self._expand_prompts(orjson.loads(row.details)) if row else None
+
+    @staticmethod
+    def _prune_prompts(session):
+        # Provenance survives body expiry, so upstream identities and static prompts
+        # remain readable while any retained trace still references them.
+        def references(value):
+            if isinstance(value, list):
+                return set().union(*(references(item) for item in value))
+            if not isinstance(value, dict):
+                return set()
+            if set(value) == {"prompt_version"}:
+                return {value["prompt_version"]}
+            return set().union(*(references(item) for item in value.values()))
+        used = set()
+        for details in session.exec(select(ResultProvenance.details)).all():
+            used.update(references(orjson.loads(details)))
+        for body in session.exec(select(SessionEntry.body).where(SessionEntry.category == "snapshot",
+                                                                 SessionEntry.body.is_not(None))).all():
+            used.update(references(orjson.loads(body)))
+        for row in session.exec(select(PromptVersion)).all():
+            if row.digest not in used:
+                session.delete(row)
+
+    def _prompts(self, session, value):
+        if isinstance(value, list):
+            return [self._prompts(session, item) for item in value]
+        if not isinstance(value, dict):
+            return value
+        result = {}
+        for key, item in value.items():
+            if key in {"system_prompt", "input_prompt", "user_prompt"} and isinstance(item, str):
+                digest = _hash(_json({"format_version": 1, "content": item}))
+                if session.get(PromptVersion, digest) is None:
+                    session.add(PromptVersion(digest=digest, content=item))
+                    session.flush()
+                result[key] = {"prompt_version": digest}
+            else:
+                result[key] = self._prompts(session, item)
+        return result
+
+    def _expand_prompts(self, value):
+        if isinstance(value, list):
+            return [self._expand_prompts(item) for item in value]
+        if not isinstance(value, dict):
+            return value
+        if set(value) == {"prompt_version"}:
+            row = self._session.get(PromptVersion, value["prompt_version"])
+            if row is None:
+                raise LogAgentError("storage_corrupt", "提示词版本缺失")
+            return row.content
+        return {key: self._expand_prompts(item) for key, item in value.items()}
+
+    def namespace_archived(self, sid, namespace, saved):
+        with self._transaction() as session:
+            sources = {(row.checkpoint_id, row.task_id) for row in session.exec(select(CheckpointSource).where(
+                CheckpointSource.session_id == sid, CheckpointSource.namespace == namespace)).all()}
+            for item in saved:
+                if item.config["configurable"].get("checkpoint_ns") != namespace:
+                    continue
+                for task, channel, value in item.pending_writes or ():
+                    if channel in {"collection_items", "analysis_items", "intents", "deliveries"} and value:
+                        if (item.config["configurable"]["checkpoint_id"], task) not in sources:
+                            return False
+            return True
+
+    def record_source(self, sid, key, source):
+        with self._transaction() as session:
+            identity = (sid, key, source["checkpoint_id"], source["namespace"], source["task_id"])
+            if session.get(CheckpointSource, identity) is None:
+                session.add(CheckpointSource(session_id=sid, write_key=key, **source))
 
     def close(self) -> None:
         """在实例锁内关闭连接；重复关闭不重复操作。"""

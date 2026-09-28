@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 
-from logagent.errors import LogAgentError
 from logagent.models import WorkflowProgress
 
 # 每个观察者只保留有限业务更新；满队列显式要求重连，不丢事件后假装同步。
@@ -23,7 +22,7 @@ def progress_layout(snapshot):
     items += [dict(stage="notify", event="delivery", output_id=oid, channel_id=cid,
                    label=cid)
               for oid in outputs for cid in wf.channels]
-    return items
+    return [{**item, "order": order} for order, item in enumerate(items)]
 
 
 def identity(item):
@@ -64,8 +63,7 @@ def active_phases(entries):
     indexed, phases = {}, {}
     for entry in entries:
         if entry["write_key"].startswith("epoch:"):
-            phases = {stage: indexed[ref]
-                      for stage, ref in entry["summary"]["retained_phases"].items()}
+            phases = {stage: indexed[ref] for stage, ref in entry["summary"].get("retained_phases", {}).items() if ref in indexed}
         if entry["scope"] == "phase":
             phases[entry["stage"]] = entry
         indexed[entry["write_key"]] = entry
@@ -96,6 +94,7 @@ def project_progress(session_id, entries):
         key = identity(event)
         if key in items:
             event.label = items[key].label
+            event.order = items[key].order
         items[key] = event
     for item in items.values():
         item.execution_epoch = epoch
@@ -141,33 +140,6 @@ class ProgressHub:
                     queue.get_nowait()
                 queue.put_nowait(None)
         self.subscribers.clear()
-
-
-class StreamConsumer:
-    """公开 updates chunk 不携带 tags；注册节点分类与引用共同确定身份。"""
-
-    def __init__(self, store, session_id, publish, registry):
-        self.store, self.session_id, self.publish = store, session_id, publish
-        self.registry = registry
-        self.seen = set()
-
-    async def consume(self, namespace, update):
-        path = tuple(part.split(":", 1)[0] for part in namespace)
-        for node, changes in update.items():
-            tag = self.registry.get((*path, node))
-            if not tag or not isinstance(changes, dict):
-                continue
-            channel = "items" if tag.endswith(":item") else "deliveries" if tag == "workflow:delivery" else "phases"
-            for ref in changes.get(channel, {}).values():
-                if not ref or ref in self.seen:
-                    continue
-                entry = await asyncio.to_thread(self.store.entry, self.session_id, ref)
-                if entry is None:
-                    raise LogAgentError("progress_unavailable", "流更新引用的业务结果尚未提交")
-                event = entry_progress(entry)
-                if event is not None:
-                    await self.publish(event)
-                    self.seen.add(ref)
 
 
 def tagged_node(registry, path, operation, tag):

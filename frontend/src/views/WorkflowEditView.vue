@@ -15,6 +15,8 @@ import FanOutTaskCard from '@/components/workflow/FanOutTaskCard.vue'
 import FanInCard from '@/components/workflow/FanInCard.vue'
 import NotificationCard from '@/components/workflow/NotificationCard.vue'
 import BackupMatrix from '@/components/workflow/BackupMatrix.vue'
+import { validateBackupPolicy } from '@/modules/workflows/model/validation'
+import { hasLegacyRetention } from '@/modules/workflows/model/backup'
 import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 const route = useRoute()
 const router = useRouter()
@@ -50,7 +52,10 @@ const { data, pending, error, refresh } = useQuery(
   [id],
 )
 watch(data, (value) => {
-  if (value) workflow.value = structuredClone(value)
+  if (value) {
+    workflow.value = structuredClone(value)
+    if (hasLegacyRetention(value.backup)) advanced.value = true
+  }
 })
 const stages = computed(
   () =>
@@ -91,6 +96,12 @@ onMounted(() => window.addEventListener('focus', refreshCatalog))
 onScopeDispose(() => window.removeEventListener('focus', refreshCatalog))
 function submit() {
   if (!form.value) return
+  const backupErrors = validateBackupPolicy(workflow.value.backup)
+  if (backupErrors.length) {
+    advanced.value = true
+    ElMessage.error(backupErrors.join('；'))
+    return
+  }
   const editorForm = form.value
   void save.run(async () => {
     if (!(await editorForm.validate(() => {}))) {

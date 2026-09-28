@@ -27,11 +27,11 @@ def store(tmp_path):
 
 
 def save(store, sid="old", workflow="w", text="已保存正文", enabled=True):
-    store.create(sid, workflow, BackupPolicy(enabled=enabled, retention_days=1))
-    store.write(sid, "collect", stage="collect", scope="phase", summary={"status": "running"},
+    store.create(sid, workflow, BackupPolicy(enabled=enabled, collection_retention_days=1))
+    store.write(sid, "collect", stage="collect", scope="phase", summary={"status": "running", "execution_epoch": "epoch"},
                 body={"text": text} if enabled else None,
                 availability="available" if enabled else "not_saved", category="collection")
-    store.write(sid, "finish", stage="finish", scope="parent", summary={"status": "completed"})
+    store.write(sid, "finish", stage="finish", scope="parent", summary={"status": "completed", "execution_epoch": "epoch"})
 
 
 def context(store, sid="current", reader=None):
@@ -107,8 +107,10 @@ async def test_empty_missing_expired_corrupt_are_distinct(store):
         row = session.exec(select(SessionEntry).where(
             SessionEntry.session_id == "broken", SessionEntry.write_key == "collect",
         )).one()
-        row.body = '{"text":"private-corrupt"}'
-        session.add(row)
+        from logagent.workflow.session_models import CollectionBody
+        body = session.get(CollectionBody, (row.session_id, row.version))
+        body.content = '{"text":"private-corrupt"}'
+        session.add(body)
     result = await collector.collect({"session_id": "broken"}, {}, context(store))
     assert result.status == "failed" and "private-corrupt" not in result.model_dump_json()
     missing = await collector.collect({}, {}, CollectionContext("w", "current"))

@@ -12,6 +12,7 @@ export function progress(overrides: Partial<WorkflowProgress> = {}): WorkflowPro
     output_id: null,
     channel_id: null,
     label: '快速来源',
+    order: 0,
     result_ref: null,
     version: null,
     availability: 'pending',

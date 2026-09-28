@@ -26,7 +26,7 @@ async def event(lines):
     raise AssertionError("SSE ended before event")
 
 
-async def test_real_sse_ready_query_progress_and_reconnect_do_not_execute_again(tmp_path):
+async def test_real_sse_snapshot_and_reconnect_do_not_execute_again(tmp_path):
     ai = AI(block="second")
     w, store, collector, _, channel = service(tmp_path / "runs.sqlite3", ai=ai)
     app = FastAPI()
@@ -53,8 +53,10 @@ async def test_real_sse_ready_query_progress_and_reconnect_do_not_execute_again(
             async with client.stream("GET", "/api/sessions/run/events") as response:
                 assert response.status_code == 200
                 lines = response.aiter_lines()
-                assert await event(lines) == ("ready", {"session_id": "run"})
-                record = (await client.get("/api/sessions/run")).json()
+                kind, record = await event(lines)
+                assert kind == "snapshot"
+                while next(p for p in record["progress"] if p["item_id"] == "first")["status"] != "success":
+                    kind, record = await event(lines)
                 assert record["execution_epoch"]
                 assert next(p for p in record["progress"] if p["item_id"] == "first")["status"] == "success"
             # EOF/disconnect only releases the observer; the blocked run survives.
@@ -62,12 +64,14 @@ async def test_real_sse_ready_query_progress_and_reconnect_do_not_execute_again(
             calls = len(collector.calls), len(ai.calls), len(channel.calls)
             async with client.stream("GET", "/api/sessions/run/events") as response:
                 lines = response.aiter_lines()
-                assert (await event(lines))[0] == "ready"
+                assert (await event(lines))[0] == "snapshot"
                 assert calls == (len(collector.calls), len(ai.calls), len(channel.calls))
                 cancelled = await client.post("/api/sessions/run/cancel")
                 assert cancelled.json()["cancelled"] is True
                 kind, final = await event(lines)
-                assert kind == "progress" and final["status"] == "cancelled"
+                while final["status"] != "cancelled":
+                    kind, final = await event(lines)
+                assert kind == "snapshot"
                 assert (await w.wait("run")).status == "cancelled"
             ai.block = None
             result = await client.post("/api/sessions/run/resume", json={

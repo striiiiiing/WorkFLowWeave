@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-
-import orjson
+from types import SimpleNamespace
 
 from logagent.errors import LogAgentError
 from logagent.models import ArtifactInfo, PhaseContent, SessionRecord, SessionStatus, WorkflowStage
+from logagent.workflow.result import collection_input
 from logagent.workflow.stream import active_phases, project_progress
 
 
@@ -25,6 +25,7 @@ class SessionView:
         只有 parent/phase 作用域推进 session 状态；子项不会覆盖父级状态。
         终态事件设置结束时间，后续 running 事件清除结束时间。
         """
+        entries = SessionView._project_errors(entries)
         state = {"status": "created", "stage": None, "error": None}
         workflow_name = None
         snapshot = "pending"
@@ -49,11 +50,20 @@ class SessionView:
                     finished_at = None
             if entry["write_key"] == "snapshot":
                 snapshot = entry["availability"]
-        artifacts = [ArtifactInfo(
-            stage=entry["stage"], availability=entry["availability"],
-            size_bytes=len(orjson.dumps(entry["body"])) if entry["body"] is not None else None,
-        ) for entry in active_phases(entries).values()]
+        phases = active_phases(entries)
+        artifacts = []
+        for stage, entry in phases.items():
+            related = SessionView._bodies(entries, entry) or ([entry] if entry["category"] else [])
+            availability = SessionView._availability(related) if stage in {"collect", "analyze", "aggregate"} else entry["availability"]
+            artifacts.append(ArtifactInfo(stage=stage, availability=availability,
+                content_version=max([entry["version"], *(item["version"] for item in related)]) if availability == "available" else None))
         epoch, progress = project_progress(header["session_id"], entries)
+        failures = [entry for entry in entries if entry["availability"] == "write_failed" and entry["scope"] != "archive_error"
+                    and entry["summary"].get("execution_epoch") == epoch]
+        if failures:
+            state["error"] = failures[-1]["summary"].get("error")
+            if state["status"] == "completed":
+                state["status"] = "partial"
         return SessionRecord(
             session_id=header["session_id"], workflow_id=header["workflow_id"],
             workflow_name=workflow_name,
@@ -65,7 +75,7 @@ class SessionView:
 
     async def get_session(self, session_id: str, *, version: int | None = None) -> SessionRecord:
         """在线程中读取最新或指定版本的条目，返回该版本的 session 摘要。"""
-        header, entries = await asyncio.to_thread(self._store.entries, session_id, version)
+        header, entries = await asyncio.to_thread(self._store.entries, session_id, version, include_body=False)
         return self._record(header, entries)
 
     async def list_sessions(
@@ -126,9 +136,60 @@ class SessionView:
         if stage not in {"collect", "analyze", "aggregate", "notify", "finish"}:
             raise LogAgentError("invalid_argument", "阶段无效")
         _, entries = await asyncio.to_thread(self._store.entries, session_id, version)
+        entries = self._project_errors(entries)
         selected = active_phases(entries).get(stage)
-        return PhaseContent(
-            session_id=session_id, version=version, stage=stage,
-            availability=selected["availability"] if selected else "pending",
-            content=selected["body"] if selected else None,
-        )
+        related = self._bodies(entries, selected) if selected else []
+        legacy = selected is not None and selected["category"] is not None
+        if legacy:
+            related = [selected]
+        availability = self._availability(related) if selected and stage in {"collect", "analyze", "aggregate"} else selected["availability"] if selected else "pending"
+        content = None
+        if availability == "available":
+            content = dict(selected["body"] or {})
+            bodies = [entry["body"] for entry in related if entry["availability"] == "available"]
+            if legacy:
+                pass
+            elif stage == "collect":
+                content["collection"] = bodies
+                if "input_format" in content:
+                    content["shared_input"] = collection_input(SimpleNamespace(**content.pop("input_format")), bodies)
+            elif stage == "analyze":
+                content["analyses"] = bodies
+            elif stage == "aggregate":
+                content["outputs"] = {entry["summary"]["output_id"]: entry["body"]["text"] for entry in related if entry["availability"] == "available"}
+                metadata = content.pop("aggregate_meta", None)
+                content["aggregate"] = {**metadata, "text": content["outputs"].get("final", "")} if metadata else None
+            elif stage == "notify":
+                content["deliveries"] = bodies
+        return PhaseContent(session_id=session_id, version=version, stage=stage,
+                            content_version=max([selected["version"], *(item["version"] for item in related)]) if selected and availability == "available" else None,
+                            availability=availability, content=content)
+
+    @staticmethod
+    def _project_errors(entries):
+        """Unresolved archive errors occupy the missing result's projection only."""
+        keys = {entry["write_key"] for entry in entries}
+        return [({**entry, "scope": entry["summary"]["result_scope"],
+                  "category": entry["summary"]["result_category"],
+                  "write_key": entry["summary"]["result_key"]}
+                 if entry["scope"] == "archive_error" and entry["summary"]["result_key"] not in keys
+                 else entry) for entry in entries]
+
+    @staticmethod
+    def _bodies(entries, phase):
+        stage = phase["stage"]
+        epoch = phase["summary"].get("execution_epoch")
+        scope = {"collect": "collect", "analyze": "analyze", "aggregate": "output", "notify": "notification"}.get(stage)
+        selected = [entry for entry in entries if entry["scope"] == scope
+                    and entry["summary"].get("execution_epoch") == epoch
+                    and (stage != "notify" or entry["write_key"].startswith("delivery:"))]
+        layout = next((e["summary"].get("layout", []) for e in entries if e["write_key"] == "snapshot"), [])
+        order = {(i.get("stage"), i.get("item_id"), i.get("output_id"), i.get("channel_id")): n for n, i in enumerate(layout)}
+        return sorted(selected, key=lambda e: order.get((stage, e["summary"].get("item_id"), e["summary"].get("output_id"), e["summary"].get("channel_id")), 0))
+
+    @staticmethod
+    def _availability(entries):
+        for status in ("expired", "write_failed", "not_saved"):
+            if any(entry["availability"] == status for entry in entries):
+                return status
+        return "available"
