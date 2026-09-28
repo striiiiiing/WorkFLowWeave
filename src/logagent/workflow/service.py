@@ -2,7 +2,7 @@
 
 LangGraph checkpoint 管理控制进度，SessionStore 保存独立可读的业务存档；
 两者通过稳定引用衔接，不假设跨存储事务。阅读顺序可从 trigger、_execute、
-_graph 进入各阶段，再检查 recover 与通知意图/回执的恢复边界。
+_graph 进入各节点，再检查 resume 与通知意图/回执的恢复边界。
 """
 
 from __future__ import annotations
@@ -19,7 +19,6 @@ from typing import Literal
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from pydantic import Field, TypeAdapter
 
-from logagent.config.migrations import migrate_legacy_snapshot
 from logagent.errors import LogAgentError, exception_error
 from logagent.models import (
     ID,
@@ -34,9 +33,10 @@ from logagent.models import (
     WorkflowSnapshot,
     copy_model,
 )
-from logagent.workflow.nodes import ArchiveRuntime, archive_node
+from logagent.workflow.nodes import ArchiveRuntime
 from logagent.workflow.session_store import SessionStore
 from logagent.workflow.session_view import SessionView
+from logagent.workflow.stream import ProgressHub, StreamConsumer, entry_progress, progress_layout
 
 logger = logging.getLogger("logagent.workflow")
 _STAGES = ("collect", "analyze", "aggregate", "notify", "finish")
@@ -84,18 +84,6 @@ async def _call(fn: Callable, *args, **kwargs):
     return await value if inspect.isawaitable(value) else value
 
 
-
-def _archive_references(value):
-    """递归提取 checkpoint 或待提交写入中的 items、phases 存档引用。"""
-    if isinstance(value, dict):
-        for key, child in value.items():
-            if key in {"items", "phases"} and isinstance(child, dict):
-                yield from (ref for ref in child.values() if isinstance(ref, str) and ref)
-            else:
-                yield from _archive_references(child)
-    elif isinstance(value, (list, tuple)):
-        for child in value:
-            yield from _archive_references(child)
 
 
 class RunCoordinator:
@@ -231,6 +219,8 @@ class WorkflowService:
         self._checkpointer, self._saver_context = checkpointer, None
         self._start_lock = asyncio.Lock()
         self._admission_lock = asyncio.Lock()
+        self.progress_hub = ProgressHub()
+        self._cleanup = None
         self._shutdown = False
         self._shutdown_task: asyncio.Task | None = None
 
@@ -248,6 +238,14 @@ class WorkflowService:
                     await self._saver_context.__aexit__(None, None, None)
                     self._checkpointer, self._saver_context = None, None
                     raise
+            if self._cleanup is None:
+                from logagent.workflow.checkpoints import CheckpointCleanup
+
+                self._cleanup = CheckpointCleanup(
+                    self._checkpointer, self._admission_lock, capacity=self.coordinator._max,
+                )
+                for session_id in await asyncio.to_thread(self.session_store.session_ids):
+                    await self._cleanup.request(session_id)
 
     async def pause_admission(self):
         """关闭准入并等待已进入准入区的请求提交或失败，返回活动运行数。"""
@@ -323,68 +321,25 @@ class WorkflowService:
             ctx = context or CollectionContext(
                 snapshot.workflow.id, sid, self.log_path, self.credentials, self.session_view
             )
-            await self._snapshot_node(runtime, snapshot, ctx)({})
-            self.coordinator.submit(sid, lambda: self._execute(sid, snapshot, ctx, resume=False))
+            execution_epoch = uuid.uuid4().hex
+            await runtime.save(
+                "snapshot", stage=None, scope="parent", category="snapshot",
+                summary={"status": "created", "execution_epoch": execution_epoch,
+                         "layout": progress_layout(snapshot)},
+                body={"snapshot": snapshot.model_dump(mode="json"), "log_path": ctx.log_path},
+            )
+            self.coordinator.submit(sid, lambda: self._execute(
+                sid, snapshot, ctx, resume=False, execution_epoch=execution_epoch,
+            ))
         return sid
 
-    async def _recovery_material(self, session_id):
-        """One material check shared by eligibility queries and actual recovery."""
-        config = {"configurable": {"thread_id": session_id}}
-        checkpoint = await self._checkpointer.aget_tuple(config)
-        if checkpoint is None:
-            raise LogAgentError(
-                "checkpoint_missing", "缺少原 checkpoint，无法从业务存档猜测进度"
-            )
-        entry = await asyncio.to_thread(self.session_store.entry, session_id, "snapshot")
-        if entry is None or entry["body"] is None:
-            raise LogAgentError("recovery_unavailable", "原配置快照不可用")
-        snapshot = WorkflowSnapshot.model_validate(
-            migrate_legacy_snapshot(entry["body"]["snapshot"])
-        )
-        _, archives = await asyncio.to_thread(self.session_store.entries, session_id)
-        existing = {entry["write_key"] for entry in archives}
-        async for saved in self._checkpointer.alist(config):
-            refs = set(_archive_references(saved.checkpoint.get("channel_values", {})))
-            for _, channel, value in saved.pending_writes or []:
-                refs.update(_archive_references({channel: value}))
-            missing = refs - existing
-            if missing:
-                raise LogAgentError(
-                    "recovery_unavailable",
-                    "checkpoint 引用的业务内容缺失",
-                    {"keys": sorted(missing)},
-                )
-        frozen = next(
-            (
-                e
-                for e in reversed(archives)
-                if e["scope"] == "phase"
-                and e["stage"] == "aggregate"
-                and not e["summary"].get("stopped")
-            ),
-            None,
-        )
-        needed = (
-            [frozen]
-            if frozen
-            else [e for e in archives if e["category"] in {"collection", "analysis"}]
-        )
-        unavailable = [e for e in needed if e["availability"] != "available"]
-        if unavailable:
-            raise LogAgentError(
-                "recovery_unavailable",
-                "恢复所需的原阶段内容不可用",
-                {
-                    "content": [
-                        {"key": e["write_key"], "reason": e["availability"]}
-                        for e in unavailable
-                    ]
-                },
-            )
-        return snapshot, entry["body"].get("log_path")
+    async def _recovery_material(self, session_id, *, stage=None, checkpoint_id=None):
+        from logagent.workflow.recovery import prepare_recovery
 
-    async def recovery_availability(self, session_id):
-        """Read current recovery eligibility without submitting or modifying a run."""
+        return await prepare_recovery(self, session_id, stage=stage, checkpoint_id=checkpoint_id)
+
+    async def recovery_availability(self, session_id, *, stage=None, checkpoint_id=None):
+        """使用与实际 resume 相同的入口和材料检查，不写入历史。"""
         from logagent.models import RecoveryAvailability
 
         _ID.validate_python(session_id)
@@ -393,38 +348,81 @@ class WorkflowService:
         async with self._admission_lock:
             try:
                 self.coordinator.check(session_id)
-                await self._recovery_material(session_id)
+                await self._recovery_material(session_id, stage=stage, checkpoint_id=checkpoint_id)
             except LogAgentError as exc:
                 return RecoveryAvailability(available=False, reason=exc.info)
         return RecoveryAvailability(available=True)
 
-    async def recover(self, session_id, *, context=None):
-        """验证恢复材料后，在原 session 对应的 LangGraph thread 上继续运行。
+    async def resume(self, session_id, *, stage=None, checkpoint_id=None, request_id=None,
+                     context=None):
+        """原 thread 中断续跑，或由父图入口重做阶段及后续流程。"""
+        from langgraph.types import Overwrite
 
-        必须具备原 checkpoint、快照和引用条目；输出冻结后要求冻结正文可用，
-        否则检查已存采集及分析正文。缺失材料时报错，不通过重新采集补齐。
-        恢复沿用原日志路径，提交后返回原 session_id。
-        """
+        from logagent.workflow.graph import PREDECESSORS
+        from logagent.workflow.recovery import find_request
+
         _ID.validate_python(session_id)
+        if request_id is not None:
+            _ID.validate_python(request_id)
         await self.start()
         async with self._admission_lock:
+            previous = None
+            if request_id is not None:
+                previous = await find_request(self._checkpointer, session_id, request_id)
+                if previous:
+                    if previous.get("resume_stage") != stage or previous.get("resume_checkpoint") != checkpoint_id:
+                        raise LogAgentError("request_conflict", "同一请求标识已用于不同的恢复参数")
+                    if self.coordinator.contains(session_id):
+                        return session_id
+                    latest = await self._checkpointer.aget_tuple(
+                        {"configurable": {"thread_id": session_id, "checkpoint_ns": ""}},
+                    )
+                    if latest.checkpoint["channel_values"]["execution_epoch"] != previous["execution_epoch"]:
+                        return session_id
+                    # checkpoint 已受理但任务提交前可能强退；仅续接原轮次。
+                    stage, checkpoint_id = None, None
             self.coordinator.check(session_id)
-            snapshot, saved_path = await self._recovery_material(session_id)
+            snapshot, saved_path, graph, saved = await self._recovery_material(
+                session_id, stage=stage, checkpoint_id=checkpoint_id,
+            )
+            if previous and not saved.next:
+                return session_id
             if context and (
-                context.log_path != saved_path
-                or context.session_id != session_id
+                context.log_path != saved_path or context.session_id != session_id
                 or context.workflow_id != snapshot.workflow.id
             ):
-                raise LogAgentError("invalid_argument", "恢复不能替换原日志路径")
+                raise LogAgentError("invalid_argument", "恢复不能替换原运行上下文")
             context = context or CollectionContext(
-                snapshot.workflow.id, session_id, saved_path, self.credentials, self.session_view
+                snapshot.workflow.id, session_id, saved_path, self.credentials, self.session_view,
             )
+            config = {"configurable": {"thread_id": session_id}}
+            if stage is not None:
+                execution_epoch = uuid.uuid4().hex
+                kept = _STAGES[:_STAGES.index(stage)]
+                retained_phases = {k: v for k, v in saved.values.get("phases", {}).items() if k in kept}
+                config = await graph.aupdate_state(
+                    saved.config,
+                    {
+                        "phases": Overwrite(retained_phases),
+                        "deliveries": Overwrite({}),
+                        "execution_epoch": execution_epoch,
+                        "stopped": False, "status": "running",
+                        "resume_request_id": request_id,
+                        "resume_stage": stage, "resume_checkpoint": checkpoint_id,
+                    },
+                    as_node=PREDECESSORS[stage],
+                )
+                runtime = ArchiveRuntime(self.session_store, session_id, snapshot.workflow.backup)
+                await self._event(runtime, f"epoch:{execution_epoch}", stage, "running",
+                                  execution_epoch=execution_epoch, retained_phases=retained_phases)
             self.coordinator.submit(
-                session_id, lambda: self._execute(session_id, snapshot, context, resume=True)
+                session_id, lambda: self._execute(
+                    session_id, snapshot, context, resume=True, config=config,
+                ),
             )
         return session_id
 
-    resume = recover
+    recover = resume
 
     async def wait(self, session_id):
         """通过协调器等待运行结果或抛出运行错误，不查询持久历史。"""
@@ -454,6 +452,7 @@ class WorkflowService:
         """
         from logagent.models import BackupPolicy
 
+        await self.start()
         offset = 0
         while records := await self.list_sessions(limit=1000, offset=offset):
             for record in records:
@@ -468,7 +467,8 @@ class WorkflowService:
                     BackupPolicy.model_validate_json(header["policy"]),
                 )
                 await self._event(
-                    runtime, f"interrupted:{record.version}", record.stage, "interrupted"
+                    runtime, f"interrupted:{record.version}", record.stage, "interrupted",
+                    execution_epoch=record.execution_epoch
                 )
             offset += len(records)
 
@@ -486,138 +486,117 @@ class WorkflowService:
             await self.pause_admission()
             self._shutdown = True
         await self.coordinator.shutdown()
+        if self._cleanup is not None:
+            await self._cleanup.close()
+        await self.progress_hub.close()
         if self._saver_context is not None:
             await self._saver_context.__aexit__(None, None, None)
             self._saver_context = None
         if self._owns_store:
             await asyncio.to_thread(self.session_store.close)
 
-    async def _event(self, runtime, key, stage, status, error=None):
-        """复用存档节点写入具有稳定事件键的状态或错误管理记录。"""
-        async def value(state):
-            """生成事件正文，将业务错误转换为可序列化数据。"""
-            return {"status": status, "error": error.model_dump(mode="json") if error else None}
-
-        node = archive_node(
-            runtime,
-            scope="parent",
-            stage=stage,
-            key=key,
-            category=None,
-            operation=value,
-            summarize=lambda body: body,
-        )
-        await node({})
+    async def _event(self, runtime, key, stage, status, error=None, *, execution_epoch=None,
+                     retained_phases=None):
+        """运行事件直接提交，避免为非图操作再建立节点包装。"""
+        summary = {"status": status, "error": error.model_dump(mode="json") if error else None}
+        if execution_epoch:
+            summary["execution_epoch"] = execution_epoch
+        if retained_phases is not None:
+            summary["retained_phases"] = retained_phases
+        entry = await runtime.save(key, stage=stage, scope="parent", summary=summary, body=summary)
+        await self.progress_hub.publish(entry_progress(entry))
+        return entry
 
     async def _final_result(self, runtime, snapshot, state):
         """读取最终结果，并在终态存档与可读状态不一致时追加收敛事件。"""
         result = await self._result(runtime, snapshot, state)
         record = await self.get_session(runtime.session_id)
         if result.status in {"completed", "partial", "failed"} and record.status != result.status:
-            await self._event(runtime, f"settled:{record.version}", result.stage, result.status)
+            await self._event(runtime, f"settled:{record.version}", result.stage, result.status,
+                              execution_epoch=state["execution_epoch"])
         return result
 
 
-    async def _execute(self, sid, snapshot, context, *, resume):
-        """执行首次运行或恢复，并记录运行、取消和中断事件。
+    async def _execute(self, sid, snapshot, context, *, resume, config=None, execution_epoch=None):
+        """一次后台执行只有一个 astream；消费者观察结果，不参与调度。"""
+        from logagent.workflow.graph import GRAPH_REVISION
 
-        恢复已结束的失败图时，依据原 checkpoint 的 retry_stage 开启新代次；
-        已结束且无重试边界的图直接返回结果。图调用使用同步持久化边界。
-        取消返回 cancelled 结果；执行或存档异常记录 interrupted 后抛出错误。
-        """
         runtime = ArchiveRuntime(self.session_store, sid, snapshot.workflow.backup)
         ctx = context or CollectionContext(
-            snapshot.workflow.id, sid, self.log_path, self.credentials, self.session_view
+            snapshot.workflow.id, sid, self.log_path, self.credentials, self.session_view,
         )
-        config = {"configurable": {"thread_id": sid}}
-        graph = self._graph(runtime, snapshot, ctx)
+        config = config or {"configurable": {"thread_id": sid}}
+        registry = {}
+        graph = self._graph(runtime, snapshot, ctx, registry=registry)
+        consumer = StreamConsumer(self.session_store, sid, self.progress_hub.publish, registry)
         state = {
-            "session_id": sid,
-            "phases": {},
-            "stopped": False,
-            "status": "running",
-            "generation": 0,
-            "retry_stage": None,
+            "session_id": sid, "phases": {}, "deliveries": {},
+            "stopped": False, "status": "running",
+            "graph_revision": GRAPH_REVISION, "execution_epoch": execution_epoch,
+            "snapshot_ref": "snapshot",
         }
         try:
             if resume:
                 saved = await graph.aget_state(config, subgraphs=True)
                 state = saved.values
+                if state.get("resume_stage"):
+                    key = f"epoch:{state['execution_epoch']}"
+                    if await asyncio.to_thread(self.session_store.entry, sid, key) is None:
+                        await self._event(runtime, key, state["resume_stage"], "running",
+                                          execution_epoch=state["execution_epoch"],
+                                          retained_phases={k: v for k, v in state["phases"].items()
+                                                           if _STAGES.index(k) < _STAGES.index(state["resume_stage"])})
                 if not saved.next and not saved.tasks:
-                    retry_stage = state.get("retry_stage")
-                    if state.get("status") != "failed" or retry_stage is None:
-                        return await self._final_result(runtime, snapshot, state)
-                    record = await self.get_session(sid)
-                    clear = {stage: "" for stage in _STAGES[_STAGES.index(retry_stage) :]}
-                    await graph.aupdate_state(
-                        config,
-                        {
-                            "phases": clear,
-                            "stopped": False,
-                            "status": "running",
-                            "retry_stage": None,
-                            "generation": record.version,
-                        },
-                        as_node=f"start_{retry_stage}",
-                    )
+                    return await self._final_result(runtime, snapshot, state)
             record = await self.get_session(sid)
-            epoch = record.version
-            await self._event(runtime, f"running:{epoch}", record.stage, "running")
-            state = await graph.ainvoke(None if resume else state, config, durability="sync")
-            return await self._final_result(runtime, snapshot, state)
+            await self._event(runtime, f"running:{record.version}", record.stage, "running",
+                              execution_epoch=state["execution_epoch"])
+            async for namespace, update in graph.astream(
+                None if resume else state, config, durability="sync",
+                subgraphs=True, stream_mode="updates",
+            ):
+                await consumer.consume(namespace, update)
+                if not namespace:
+                    await self._cleanup.request(sid)
+            saved = await graph.aget_state({"configurable": {"thread_id": sid}})
+            return await self._final_result(runtime, snapshot, saved.values)
         except asyncio.CancelledError:
-            saved = await graph.aget_state(config)
+            saved = await graph.aget_state({"configurable": {"thread_id": sid}})
             state = saved.values or state
             result = await self._result(runtime, snapshot, state)
             result.status, result.cancelled = "cancelled", True
             record = await self.get_session(sid)
-            await self._event(runtime, f"cancelled:{record.version}", result.stage, "cancelled")
+            await self._event(runtime, f"cancelled:{record.version}", result.stage, "cancelled",
+                              execution_epoch=state["execution_epoch"])
             return result
         except Exception as exc:
-            error = (
-                exc.info
-                if isinstance(exc, LogAgentError)
-                else exception_error(exc, code="workflow_failed", message="Workflow 执行或存档失败")
-            )
+            error = (exc.info if isinstance(exc, LogAgentError) else exception_error(
+                exc, code="workflow_failed", message="Workflow 执行或存档失败",
+            ))
             try:
                 record = await self.get_session(sid)
-                await self._event(
-                    runtime, f"failed:{record.version}", record.stage, "interrupted", error
-                )
+                await self._event(runtime, f"failed:{record.version}", record.stage, "interrupted",
+                                  error, execution_epoch=state["execution_epoch"])
             except Exception:
                 logger.exception("Unable to persist interrupted session", extra={"session_id": sid})
             raise LogAgentError(error.code, error.message, error.details) from None
+        finally:
+            await self._cleanup.request(sid)
 
+    def _graph(self, runtime, snapshot, ctx, *, registry=None):
+        from logagent.workflow.graph import build_workflow
 
-    def _graph(self, runtime, snapshot, ctx):
-        """创建本次运行的 LangGraph；图节点实现位于 workflow.graph。"""
-        from logagent.workflow.graph import WorkflowGraph
+        return build_workflow(
+            runtime=runtime, snapshot=snapshot, context=ctx, checkpointer=self._checkpointer,
+            collector_manager=self.collector_manager, ai_service=self.ai_service,
+            channel_manager=self.channel_manager, registry=registry,
+        )
 
-        return WorkflowGraph(
-            runtime=runtime, snapshot=snapshot, context=ctx,
-            checkpointer=self._checkpointer,
-            collector_manager=self.collector_manager,
-            ai_service=self.ai_service, channel_manager=self.channel_manager,
-        ).compile()
+    def _operations(self, runtime, snapshot, context=None):
+        from logagent.workflow.stages import WorkflowOperations
 
-    def _snapshot_node(self, runtime, snapshot, ctx):
-        """返回快照存档节点；快照节点与执行图共用图组件。"""
-        from logagent.workflow.graph import WorkflowGraph
-
-        return WorkflowGraph(
-            runtime=runtime, snapshot=snapshot, context=ctx,
-            checkpointer=self._checkpointer,
-            collector_manager=self.collector_manager,
-            ai_service=self.ai_service, channel_manager=self.channel_manager,
-        ).snapshot_node()
+        return WorkflowOperations(runtime, snapshot, self.collector_manager, self.ai_service,
+                          self.channel_manager, context)
 
     async def _result(self, runtime, snapshot, state, *, required=()):
-        """从图组件读取阶段存档并组装对外结果。"""
-        from logagent.workflow.graph import WorkflowGraph
-
-        return await WorkflowGraph(
-            runtime=runtime, snapshot=snapshot, context=None,
-            checkpointer=self._checkpointer,
-            collector_manager=self.collector_manager,
-            ai_service=self.ai_service, channel_manager=self.channel_manager,
-        ).result(state, required=required)
+        return await self._operations(runtime, snapshot).result(state, required=required)

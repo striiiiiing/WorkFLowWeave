@@ -16,25 +16,14 @@ from logagent.models import (
     WorkflowSnapshot,
     copy_model,
 )
-from logagent.workflow.nodes import ArchiveRuntime, archive_node
+from logagent.workflow.nodes import ArchiveRuntime, archive_node, epoch_key, safe_node
 
 _STAGES = ("collect", "analyze", "aggregate", "notify", "finish")
 
 
-def _safe_node(operation):
-    async def node(state):
-        try:
-            return await operation(state)
-        except LogAgentError:
-            raise
-        except Exception as exc:
-            error = exception_error(exc, code="workflow_failed", message="Workflow 节点执行或存档失败")
-            raise LogAgentError(error.code, error.message, error.details) from None
-    return node
-
 
 @dataclass(slots=True)
-class StageNodes:
+class WorkflowOperations:
     runtime: ArchiveRuntime
     snapshot: WorkflowSnapshot
     collector_manager: object
@@ -42,8 +31,7 @@ class StageNodes:
     channel_manager: object
     context: object | None = None
 
-    async def _result(self, *args, required=()):
-        state = args[-1]
+    async def result(self, state, *, required=()):
         from logagent.workflow.service import WorkflowResult
         result = WorkflowResult(session_id=self.runtime.session_id, workflow_id=self.snapshot.workflow.id)
         for stage in _STAGES:
@@ -63,91 +51,74 @@ class StageNodes:
             })
         return result
 
-    def snapshot_node(self):
-        async def body(_):
-            return {"snapshot": self.snapshot.model_dump(mode="json"),
-                    "log_path": self.context.log_path if self.context else None}
-        return archive_node(
-            self.runtime, scope="parent", stage=None, key="snapshot",
-            category="snapshot", operation=body, summarize=lambda _: {"status": "created"},
-            publish=lambda key, summary: {},
-        )
-
-    def _phase_node(self, stage, runtime, snapshot):
-        """构造阶段汇合节点，将业务结果存档后发布引用和路由摘要。
-
-        采集、分析和汇总失败时发布 retry_stage，供显式恢复定位重试边界。
-        """
-        async def operation(state):
-            """读取必要前置正文，按声明顺序组装条目并调用对应阶段编排方法。"""
-            required = {
-                "analyze": ("collect",),
-                "aggregate": ("analyze",),
-                "notify": ("aggregate",),
-            }.get(stage, ())
-            incoming = await self._result(runtime, snapshot, state, required=required)
-            if (
-                stage == "aggregate"
-                and snapshot.workflow.fan_in
-                and "$input" in snapshot.workflow.fan_in.ordered_inputs(snapshot.workflow.analyses)
-            ):
-                incoming = await self._result(
-                    runtime, snapshot, state, required=("collect", "analyze")
-                )
-            incoming.stage = stage
-            if stage == "collect":
-                incoming.collection = [
-                    CollectionResult.model_validate(await runtime.read(state["items"][ident]))
-                    for ident in snapshot.workflow.sources
-                ]
-                return self._arrange_collection(incoming, snapshot)
-            if stage == "analyze":
-                incoming.analyses = [
-                    AnalysisResult.model_validate(await runtime.read(state["items"][task.id]))
-                    for task in snapshot.workflow.analyses
-                ]
-                return self._arrange_analysis(incoming, snapshot)
-            if stage == "aggregate":
-                return await self._aggregate(incoming, snapshot)
-            if stage == "notify":
-                return await self._notify(incoming, snapshot, runtime)
-            return await self._finish(incoming, runtime)
-
+    def _saved_result(self, stage, operation):
+        """结果引用提交是图节点的共同边界，不承担阶段分派。"""
         categories = {"collect": "collection", "analyze": "analysis", "aggregate": "final"}
 
         def summarize(body):
-            """从阶段正文提取停止、状态及降级摘要，供图控制状态使用。"""
             return {
                 "stopped": body.get("stopped", False),
                 "status": body.get("status", "running"),
-                "degraded": body.get("degraded", False),
+                "error": (body.get("errors") or [None])[-1],
+                **({"outputs_available": bool(body.get("outputs")),
+                    "fan_in": self.snapshot.workflow.fan_in is not None}
+                   if stage == "aggregate" else {}),
             }
 
-        return _safe_node(
-            archive_node(
-                runtime,
-                scope="phase",
-                stage=stage,
-                key=lambda state: (
-                    f"phase:{stage}"
-                    + (f":attempt:{state['generation']}" if state.get("generation") else "")
-                ),
-                operation=operation,
-                category=categories.get(stage),
-                summarize=summarize,
-                publish=lambda key, summary: {
-                    "phases": {stage: key},
-                    "stopped": summary["stopped"],
-                    "status": summary["status"],
-                    **(
-                        {"retry_stage": stage}
-                        if summary["status"] == "failed"
-                        and stage in {"collect", "analyze", "aggregate"}
-                        else {}
-                    ),
-                },
-            )
-        )
+        return safe_node(archive_node(
+            self.runtime, scope="phase", stage=stage,
+            key=lambda state: epoch_key(state, f"phase:{stage}"), operation=operation,
+            category=categories.get(stage), summarize=summarize,
+            publish=lambda key, summary: {
+                "phases": {stage: key}, "stopped": summary["stopped"],
+                "status": summary["status"],
+            },
+        ))
+
+    def collection_result_node(self):
+        async def arrange(state):
+            from logagent.workflow.service import WorkflowResult
+            incoming = WorkflowResult(session_id=self.runtime.session_id,
+                                      workflow_id=self.snapshot.workflow.id)
+            incoming.collection = [
+                CollectionResult.model_validate(await self.runtime.read(state["items"][ident]))
+                for ident in self.snapshot.workflow.sources
+            ]
+            return self._arrange_collection(incoming, self.snapshot)
+        return self._saved_result("collect", arrange)
+
+    def analysis_result_node(self):
+        async def arrange(state):
+            incoming = await self.result(state, required=("collect",))
+            incoming.analyses = [
+                AnalysisResult.model_validate(await self.runtime.read(state["items"][task.id]))
+                for task in self.snapshot.workflow.analyses
+            ]
+            return self._arrange_analysis(incoming, self.snapshot)
+        return self._saved_result("analyze", arrange)
+
+    def aggregate_node(self):
+        async def aggregate(state):
+            fan_in = self.snapshot.workflow.fan_in
+            required = ("analyze",)
+            if fan_in and "$input" in fan_in.ordered_inputs(self.snapshot.workflow.analyses):
+                required = ("collect", "analyze")
+            incoming = await self.result(state, required=required)
+            incoming.stage = "aggregate"
+            return await self._aggregate(incoming, self.snapshot)
+        return self._saved_result("aggregate", aggregate)
+
+    def notification_result_node(self):
+        async def arrange(state):
+            incoming = await self.result(state, required=("aggregate",))
+            return await self._notify(incoming, self.snapshot, self.runtime, state)
+        return self._saved_result("notify", arrange)
+
+    def finish_node(self):
+        async def finish(state):
+            incoming = await self.result(state)
+            return await self._finish(incoming, self.runtime, state)
+        return self._saved_result("finish", finish)
 
     @staticmethod
     def _halt(result, code, message):
@@ -311,21 +282,31 @@ class StageNodes:
             ),
         )
 
-    async def _notify(self, result, snapshot, runtime):
+    async def _notify(self, result, snapshot, runtime, state):
         """按通知与渠道顺序读取已存回执，形成通知阶段正文，不执行发送。"""
         receipts = []
         for note in result.notifications:
             for cid in snapshot.workflow.channels:
-                receipts.append(await runtime.read(f"delivery:{note.output_id}:{cid}"))
+                receipts.append(await runtime.read(
+                    state["deliveries"][f"{note.output_id}:{cid}"]
+                ))
         return {"deliveries": receipts}
 
-    async def _finish(self, result, runtime):
+    async def _finish(self, result, runtime, state):
         """汇总最终状态：策略失败优先，否则按局部失败或备份降级判定 partial。
 
         合法空结果、禁用渠道跳过和主动关闭正文备份本身不构成降级。
         """
         _, entries = await asyncio.to_thread(runtime.store.entries, runtime.session_id)
-        degraded = any(e["summary"].get("backup_failed") for e in entries)
+        phases = set(state["phases"].values())
+        retained = {(entry["stage"], entry["summary"].get("execution_epoch"))
+                    for entry in entries if entry["write_key"] in phases}
+        degraded = any(
+            entry["summary"].get("backup_failed") and (
+                entry["summary"].get("execution_epoch") == state["execution_epoch"]
+                or (entry["stage"], entry["summary"].get("execution_epoch")) in retained
+            ) for entry in entries
+        )
         degraded |= any(
             item.status in {"failed", "missing", "timeout"} for item in result.collection
         )
