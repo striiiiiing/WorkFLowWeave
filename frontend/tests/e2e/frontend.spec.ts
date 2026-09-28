@@ -356,7 +356,7 @@ test('workflow create, reload, run, and versioned phase reading', async ({ page,
   await expect(page).toHaveURL(/\/runs\/[^/]+$/)
   await expect(page.getByRole('heading', { name: '最终报告', exact: true })).toBeVisible()
   await expect(page.getByText('通知状态', { exact: true })).toBeVisible()
-  await page.getByText('数据采集与共享输入', { exact: true }).click()
+  await page.locator('summary').filter({ hasText: '数据采集与共享输入' }).click()
   await expect(page.getByText('没有采集到内容', { exact: false }).first()).toBeVisible()
   await expect(page.getByText('原始 JSON', { exact: false })).toHaveCount(0)
   await page.getByRole('switch', { name: '高级模式', exact: true }).locator('..').click()
@@ -561,7 +561,15 @@ test('readable report, plugin sections, advanced data and mobile layout', async 
     updated_at: '2026-09-21T01:02:00Z',
     finished_at: '2026-09-21T01:02:00Z',
     error: null,
-    artifacts: [],
+    execution_epoch: null,
+    progress: [],
+    artifacts: ['collect', 'analyze', 'aggregate', 'notify', 'finish'].map((stage) => ({
+      stage,
+      content_version: 12,
+      availability: 'available',
+      size_bytes: null,
+      error: null,
+    })),
     snapshot_availability: 'available',
   }
   const content: Record<string, object> = {
@@ -623,6 +631,14 @@ test('readable report, plugin sections, advanced data and mobile layout', async 
   }
   await page.route('**/api/sessions/report_preview**', async (route) => {
     const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/events')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        body: `event: snapshot\ndata: ${JSON.stringify(record)}\n\n`,
+      })
+      return
+    }
     const stage = url.pathname.split('/phases/')[1]
     if (stage) {
       expect(url.searchParams.get('version')).toBe('12')
@@ -668,7 +684,7 @@ test('readable report, plugin sections, advanced data and mobile layout', async 
     }
   }
   await checkProcessTargets()
-  await page.getByText('数据采集与共享输入', { exact: true }).click()
+  await page.locator('summary').filter({ hasText: '数据采集与共享输入' }).click()
   await expect(page.getByRole('table', { name: '告警明细' })).toBeVisible()
   await page.screenshot({
     path: 'test-results/readable-report-desktop.png',
