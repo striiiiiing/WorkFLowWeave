@@ -240,6 +240,8 @@ class CheckpointArchive:
             key: writes[key] for key in ("status", "stopped", "error", "degraded") if key in writes
         }
         if stage == "collect":
+            body["shared_input"] = writes.get("shared_input", "")
+            body["input_views"] = writes.get("input_views", [])
             body["input_format"] = {
                 "input_separator": snapshot.workflow.input_separator,
                 "include_counts": snapshot.workflow.include_counts,
@@ -309,6 +311,33 @@ class CheckpointArchive:
         persist = category is None or policy.enabled and getattr(policy, category)
         before = await asyncio.to_thread(self.store.entry, sid, key)
         entry_availability = availability or ("available" if persist else "not_saved")
+        if before is not None:
+            # The storage transaction may have committed immediately before a
+            # worker/process interruption was reported.  Stable business keys
+            # make that immutable fact the recovery authority; replay must not
+            # call the wrapped writer again (a failure injector or a dead
+            # process can otherwise turn a committed fact into a second
+            # failure).  ``entry`` already validates the digest and body.
+            checked = await asyncio.to_thread(
+                self.store.existing_write,
+                sid,
+                key,
+                stage=stage,
+                scope=scope,
+                summary=summary,
+                body=body if persist else None,
+                availability=entry_availability,
+                category=category,
+            )
+            if checked is None:
+                # The entry disappeared between the inexpensive existence
+                # probe and the digest-checked read; let the normal write path
+                # establish it again rather than returning a stale projection.
+                before = None
+            else:
+                if source:
+                    await asyncio.to_thread(self.store.record_source, sid, key, source)
+                return checked
         try:
             entry = await commit(
                 self.store.write,

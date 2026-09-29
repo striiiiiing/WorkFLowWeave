@@ -318,9 +318,9 @@ async def test_business_timeouts_follow_workflow_stage_policy(
             timeout_result = archived(store, "run", "analyze:item:second")
             assert timeout_result["body"]["status"] == "timeout"
         if expected_status == "partial" and timeout_stage == "analyze":
-            assert result.outputs == {
-                "first": "first(available input\n\navailable input\n\nslow: success (1)\nsource: success (1))"
-            }
+                assert result.outputs == {
+                    "first": "first([source=slow; format=none]\navailable input\n\n[source=source; format=none]\navailable input)"
+                }
     finally:
         await close(w, store)
 

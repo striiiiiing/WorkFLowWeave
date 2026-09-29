@@ -22,7 +22,7 @@ from logagent.config.calls import (
     select_source_call,
 )
 from logagent.config.migrations import RESOURCE_FORMAT_VERSION, migrate_resources
-from logagent.config.normalize import normalize_options
+from logagent.config.normalize import normalize_options, validate_effective_source
 from logagent.config.reader import read_json
 from logagent.errors import LogAgentError, validation_error
 from logagent.models import (
@@ -32,6 +32,7 @@ from logagent.models import (
     MCPServerConfig,
     ResourceKind,
     SaveMode,
+    SetterTemplate,
     SourceConfig,
     SourceOverride,
     StrictModel,
@@ -47,7 +48,7 @@ from logagent.schema import (
 )
 
 _MODELS = {
-    "sources": SourceConfig, "mcp_servers": MCPServerConfig, "ai": AIConfig,
+    "sources": SourceConfig, "setters": SetterTemplate, "mcp_servers": MCPServerConfig, "ai": AIConfig,
     "channels": ChannelConfig, "workflows": WorkflowDefinition,
 }
 Validator = Callable[[StrictModel], None]
@@ -56,6 +57,7 @@ Validator = Callable[[StrictModel], None]
 class _Resources(StrictModel):
     format_version: int = Field(ge=RESOURCE_FORMAT_VERSION, le=RESOURCE_FORMAT_VERSION)
     sources: dict[str, SourceConfig]
+    setters: dict[str, SetterTemplate] = Field(default_factory=dict)
     mcp_servers: dict[str, MCPServerConfig]
     ai: dict[str, AIConfig]
     channels: dict[str, ChannelConfig]
@@ -162,8 +164,8 @@ class ResourceStore:
             self._validators = dict(validators)
 
     def _capability(self, kind, value, changed):
-        registry = self._channels
-        name = value.channel
+        registry = self._collectors if kind in ("sources", "setters") else self._channels
+        name = value.collector if kind in ("sources", "setters") else value.channel
         capability = registry.get(name) if registry is not None else None
         if capability is None and changed:
             raise LogAgentError("capability_missing", "新资源引用的插件能力不可用", {"name": name})
@@ -203,26 +205,24 @@ class ResourceStore:
                 for key in enabled_sources
                 if key in workflow.source_overrides
             }
+            effective_sources = {
+                key: resolve_source_call(
+                    candidate.sources.get(key),
+                    candidate.setters,
+                    workflow.source_overrides.get(key),
+                )
+                for key in enabled_sources
+            }
+            server_ids = {
+                source.call.server for source in effective_sources.values()
+                if source.call is not None and source.call.kind == "mcp"
+            }
             snapshot = WorkflowSnapshot(
                 workflow=snapshot_workflow,
-                sources={
-                    key: resolve_source_call(
-                        candidate.sources.get(key),
-                        {},
-                        workflow.source_overrides.get(key),
-                    )
-                    for key in enabled_sources
-                },
+                sources=effective_sources,
                 ai={key: copy_model(candidate.ai[key]) for key in ai_ids},
                 channels=channels,
-                mcp_servers={
-                    server: copy_model(candidate.mcp_servers[server])
-                    for server in {
-                        select_source_call(candidate.sources.get(key), workflow.source_overrides.get(key)).call.server
-                        for key in enabled_sources
-                        if select_source_call(candidate.sources.get(key), workflow.source_overrides.get(key)).call.kind == "mcp"
-                    }
-                },
+                mcp_servers={server: copy_model(candidate.mcp_servers[server]) for server in server_ids},
                 created_at=datetime.now(UTC),
             )
             return snapshot
@@ -235,35 +235,82 @@ class ResourceStore:
         # Validate all saved bindings, including disabled ones; only execution filters them.
         snapshot = self._snapshot(workflow, candidate, for_execution=False)
         for kind, resources, overrides, registry in (
+            ("sources", snapshot.sources, workflow.source_overrides, self._collectors),
             ("channels", snapshot.channels, workflow.channel_overrides, self._channels),
         ):
             for ident, effective in resources.items():
-                name = effective.channel
+                # MCP/CLI calls are fully described by SourceConfig.call and do
+                # not have a Collector plugin capability to validate here.
+                if kind == "sources" and effective.call is not None:
+                    continue
+                name = effective.collector if kind == "sources" else effective.channel
                 capability = registry.get(name) if registry is not None else None
                 if capability is None:
                     if changed and ident in overrides:
                         raise LogAgentError("capability_missing", "调用覆盖引用的插件能力不可用")
                     continue
                 override = overrides.get(ident)
-                if override is not None:
+                if override is not None and kind == "sources" and effective.call is None:
                     override.options = normalize_call_options(
                         override.options, capability.options_schema,
                         data_dir=self._data_dir,
                     )
                     effective.options.update(deepcopy(override.options))
-                validate_instance(effective.options, capability.options_schema, path=["options"])
+                elif override is not None:
+                    override.options = normalize_call_options(
+                        override.options, capability.options_schema,
+                        data_dir=self._data_dir,
+                    )
+                    effective.options.update(deepcopy(override.options))
+                if kind == "sources":
+                    validate_effective_source(effective, capability)
+                else:
+                    validate_instance(effective.options, capability.options_schema, path=["options"])
                 validator = self._validators.get(kind)
                 if validator is not None:
                     _call_validator(validator, effective)
 
     def _validate(self, candidate: _Resources, *, changed: set, normalize: bool) -> None:
-        for kind in ("mcp_servers", "sources", "channels", "ai", "workflows"):
+        for kind in ("setters", "mcp_servers", "sources", "channels", "ai", "workflows"):
             for ident, value in getattr(candidate, kind).items():
                 is_changed = (kind, ident) in changed
                 effective = value
-                if kind == "sources" and value.call.kind == "mcp":
+                if kind == "sources" and value.call is not None and value.call.kind == "mcp":
                     if value.call.server not in candidate.mcp_servers:
                         raise LogAgentError("invalid_reference", "来源引用的 MCP 服务不存在")
+                if kind == "setters":
+                    registry, capability = self._capability(kind, value, is_changed)
+                    if capability is None:
+                        continue
+                    validate_instance(value.setters, capability.setters_schema, partial=True)
+                    continue
+                if kind == "sources" and value.call is None:
+                    registry, capability = self._capability(kind, value, is_changed)
+                    if capability is None:
+                        continue
+                    effective = resolve_source_call(value, candidate.setters)
+                    normalized = normalize_options(
+                        effective.options, capability.options_schema,
+                        data_dir=self._data_dir, apply_defaults=normalize and is_changed,
+                    )
+                    effective.options = normalized
+                    validate_instance(
+                        normalized,
+                        resource_options_schema(capability.options_schema),
+                        path=["options"],
+                    )
+                    value.options = normalized
+                    if not options_complete(effective.options, capability.options_schema):
+                        continue
+                    validate_effective_source(effective, capability)
+                    # Keep the persisted template reference and explicit Setter
+                    # layer.  The resolved copy is only for validation and
+                    # normalized option defaults; flattening it here would make
+                    # later template edits silently stop affecting linked
+                    # sources and would collapse the two supported config
+                    # representations into a second source of truth.
+                    value.options = effective.options
+                    continue
                 if kind == "channels":
                     registry, capability = self._capability(kind, value, is_changed)
                     if capability is None:
@@ -290,7 +337,10 @@ class ResourceStore:
         temporary = None
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            payload = orjson.dumps(candidate.model_dump(mode="json"), option=orjson.OPT_INDENT_2)
+            serialized = candidate.model_dump(mode="json")
+            if not serialized.get("setters"):
+                serialized.pop("setters", None)
+            payload = orjson.dumps(serialized, option=orjson.OPT_INDENT_2)
             with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".resources-", delete=False) as stream:
                 temporary = Path(stream.name)
                 stream.write(payload)
@@ -417,7 +467,7 @@ class ResourceStore:
                     )
             if source.id != ident:
                 raise LogAgentError("invalid_reference", "数据源快照与资源绑定不匹配")
-            return resolve_source_call(source, {}, override)
+            return resolve_source_call(source, self._view.setters, override)
 
     def snapshot(self, workflow_id: str) -> WorkflowSnapshot:
         with self._lock:
@@ -431,7 +481,7 @@ class ResourceStore:
         with self._lock:
             return {
                 "sources": {
-                    key: resolve_source_call(value, {})
+                    key: resolve_source_call(value, self._view.setters)
                     for key, value in self._view.sources.items() if value.enabled
                 },
                 "mcp_servers": {key: copy_model(value) for key, value in self._view.mcp_servers.items()},

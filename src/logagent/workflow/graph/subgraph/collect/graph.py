@@ -29,11 +29,13 @@ class ItemState(ItemInput, ItemOutput):
 
 class State(ControlState):
     shared_input: str
+    input_views: list
     collection_items: Annotated[dict, merge_items]
 
 
 class Output(ControlState):
     shared_input: str
+    input_views: list
 
 
 def dispatch(state, runtime: Runtime[WorkflowContext]):

@@ -114,13 +114,13 @@ async def test_real_modules_recovery_preserves_original_output(tmp_path):
         await service.trigger("demo", session_id="original-run")
         original = await service.wait("original-run")
         assert original.status == "completed"
-        assert original.shared_input == '{"message":"original"}\n\nsource: success (1)'
+        assert original.shared_input == '[source=source; format=none]\n{"message":"original"}'
         assert original.collection[0].items == [{"message": "original"}]
-        assert original.collection[0].count == 1
+        assert "count" not in original.collection[0].model_dump()
         assert original.aggregate.text == (
-            'original-summary: original-second: {"message":"original"}\n\nsource: success (1)'
-            '\n--\n{"message":"original"}\n\nsource: success (1)'
-            '\n--\noriginal-first: {"message":"original"}\n\nsource: success (1)'
+            'original-summary: original-second: [source=source; format=none]\n{"message":"original"}'
+            '\n--\n[source=source; format=none]\n{"message":"original"}'
+            '\n--\noriginal-first: [source=source; format=none]\n{"message":"original"}'
         )
         assert original.outputs == {"final": original.aggregate.text}
         assert original.deliveries[0].status == "success"
@@ -164,7 +164,7 @@ async def test_real_modules_recovery_preserves_original_output(tmp_path):
         await service.trigger("demo", session_id="changed-run")
         changed = await service.wait("changed-run")
         assert changed.status == "completed"
-        assert changed.shared_input == '{"message":"changed"}\n\nsource: success (1)'
+        assert changed.shared_input == '[source=source; format=none]\n{"message":"changed"}'
         assert changed.aggregate.text.startswith("changed-summary: changed-second:")
         assert _notifications(original_path) == notifications
         changed_notes = _notifications(changed_path)
@@ -220,9 +220,9 @@ async def test_real_ai_cancellation_resumes_saved_snapshot_after_resource_change
         await service.resume("interrupted")
         recovered = await service.wait("interrupted")
         assert recovered.status == "completed"
-        assert recovered.shared_input == '{"message":"original"}\n\nsource: success (1)'
+        assert recovered.shared_input == '[source=source; format=none]\n{"message":"original"}'
         assert recovered.analyses[0].model_dump(mode="json") == first
-        assert recovered.analyses[1].text == 'original-second: {"message":"original"}\n\nsource: success (1)'
+        assert recovered.analyses[1].text == 'original-second: [source=source; format=none]\n{"message":"original"}'
         assert recovered.aggregate.text.startswith("original-summary:")
         notes = _notifications(original_path)
         assert notes.startswith("Report original\n")
