@@ -4,19 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from pathlib import Path
 from typing import Annotated, Any
 
 import httpx
 import typer
-import uvicorn
 from pydantic import TypeAdapter, ValidationError
 
 from logagent.errors import validation_error
-from logagent.lifecycle import ApplicationLifecycle
 from logagent.models import ID, ErrorInfo, ErrorResponse, SystemConfig
-
-from .app import create_app
 
 app = typer.Typer(no_args_is_help=True, help="LogAgent service and API client.")
 resource_app = typer.Typer(no_args_is_help=True, help="Manage saved resources.")
@@ -66,6 +63,14 @@ def _request(
 
 
 async def _serve(config_path: Path) -> None:
+    print("[后端启动] 正在加载运行时模块...", file=sys.stderr, flush=True)
+    import uvicorn
+
+    from logagent.lifecycle import ApplicationLifecycle
+
+    from .app import create_app
+
+    print("[后端启动] 运行时模块加载完成，正在读取配置并装配后端...", file=sys.stderr, flush=True)
     lifecycle = await ApplicationLifecycle.from_file(config_path)
     config = uvicorn.Config(
         create_app(lifecycle),

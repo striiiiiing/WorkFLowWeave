@@ -1,12 +1,29 @@
 """The CLI validates local input and reports a single HTTP outcome."""
 
 import json
+import subprocess
+import sys
 
 import httpx
 import pytest
 from typer.testing import CliRunner
 
 from logagent.interaction import cli
+
+
+def test_cli_import_does_not_load_lifecycle_runtime() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import logagent.interaction.cli; "
+            "print('logagent.lifecycle.service' in sys.modules)",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert result.stdout.strip() == "False"
 
 
 @pytest.mark.parametrize("body", ["[]", "null", "not-json", '{"secret":'])

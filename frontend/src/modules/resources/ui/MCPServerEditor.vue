@@ -37,8 +37,9 @@ function toggleJsonMode() {
     try {
       const config = parseCursorMcpConfig(jsonText.value)
       const entries = Object.entries(config.servers)
-      if (entries.length !== 1) throw new Error('切回字段模式时 JSON 必须只包含一个 MCP 服务。')
-      syncFieldDraft(cursorServerToResource(entries[0][0], entries[0][1]))
+      if (entries.length === 1) {
+        syncFieldDraft(cursorServerToResource(entries[0][0], entries[0][1]))
+      }
       jsonMode.value = false
     } catch (cause) {
       error.value = String(cause)
@@ -109,7 +110,6 @@ async function save() {
       <el-form-item label="Cursor MCP 配置 JSON">
         <el-input v-model="jsonText" type="textarea" :rows="14" />
       </el-form-item>
-      <p class="muted text-sm">服务名称来自 servers 对象的键名，例如 qqmusic-mcp。</p>
     </template>
     <template v-else>
       <el-form-item label="服务名称">

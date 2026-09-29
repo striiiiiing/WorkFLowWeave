@@ -60,3 +60,12 @@
 - 默认 mock/history/logs 来源沿用各自 schema 默认参数；文件通知使用 mock 类型和 data_dir 下 notifications.txt，避免虚构邮件账号或 AI 凭据。logs 使用既有 CollectionContext.log_path，需配置 log_file。
 - 当前空资源目录通过已有 save(create) 接口补齐；未修改 proposal/design。
 - 验证新增 API 启动/默认资源/删除后重启测试；浏览器 workflow 测试补充删除与列表复核。
+
+### 2026-09-30 启动耗时剖析与终端提示决策
+依据：用户要求先找出启动中最耗时的部分，再决定是否增加终端提示；本次只更新实现任务记录，不修改 proposal/design。
+
+- 实测临时空数据、复制当前 `data/` 的 Lifecycle 装配均约 `0.30–0.44s`；Lifecycle 内最慢阶段是插件发现，约 `0.18–0.19s`，其余阶段更短，不足以证明逐阶段终端提示有价值。
+- CLI 冷启动的主要等待发生在 `import logagent.lifecycle.service`，约 `13.2s`；其中 `logagent.mcp` 约 `4.2s`、Workflow runner 约 `5.9s`。这段等待发生在进入 `ApplicationLifecycle.start()` 之前，因此在 lifecycle 阶段内打印不能覆盖用户感知的卡顿。
+- [x] 将运行时导入移至 `start` 命令执行点，并在导入前通过 stderr flush 输出“正在加载运行时模块”；导入完成后提示即将读取配置并装配后端。
+- [x] 不在 Lifecycle 的亚秒阶段逐个输出终端消息；服务就绪继续由 Uvicorn 的 `Application startup complete` 报告，避免重复输出。
+- [x] CLI 导入回归测试确认导入命令模块不会提前加载生命周期运行时，保持非 `start` 命令的轻量路径。
