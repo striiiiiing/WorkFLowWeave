@@ -7,7 +7,7 @@ import sys
 
 def main() -> None:
     arguments = sys.argv[1:]
-    if "start" in arguments and "--help" not in arguments and "-h" not in arguments:
+    if arguments[:1] == ["start"] and "--help" not in arguments and "-h" not in arguments:
         print("[后端启动] 正在加载命令行模块...", file=sys.stderr, flush=True)
     from .cli import main as cli_main
 
