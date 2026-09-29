@@ -24,14 +24,15 @@ async def assemble_result(view, sid, snapshot, state):
         content = await view.get_phase_content(sid, stage, version=record.version)
         if content.content:
             body = content.content
-            for key in ("collection", "analyses", "aggregate", "outputs", "deliveries"):
+            for key in ("collection", "shared_input", "input_views", "analyses", "aggregate", "outputs", "deliveries"):
                 if key in body:
                     result = WorkflowResult.model_validate(
                         {**result.model_dump(mode="json"), key: body[key]}
                     )
-    result.shared_input = collection_input(
-        snapshot.workflow, [item.model_dump(mode="json") for item in result.collection]
-    )
+    if not result.shared_input:
+        result.shared_input = collection_input(
+            snapshot.workflow, [item.model_dump(mode="json") for item in result.collection]
+        )
     if state.get("error"):
         result.errors = [ErrorInfo.model_validate(state["error"])]
     if record.error and record.error.code == "backup_failed":
@@ -86,7 +87,7 @@ async def read_phase(
             pass
         elif stage == "collect":
             content["collection"] = bodies
-            if "input_format" in content:
+            if "shared_input" not in content and "input_format" in content:
                 content["shared_input"] = collection_input(
                     SimpleNamespace(**content.pop("input_format")), bodies
                 )

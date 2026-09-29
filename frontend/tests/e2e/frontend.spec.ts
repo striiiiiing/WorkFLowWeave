@@ -12,8 +12,7 @@ test('run history displays frozen workflow names and searches selected fields', 
   for (const [kind, data] of Object.entries({
     sources: {
       id: 'search_source',
-      collector: 'mock',
-      options: { mode: 'empty' },
+      call: { kind: 'cli', mode: 'shell', command: 'true', cwd: null },
       on_empty: 'skip',
     },
     ai: {
@@ -126,121 +125,74 @@ test('run history displays frozen workflow names and searches selected fields', 
   expect(errors).toEqual([])
 })
 
-test('resource arrays keep repeated entries and ordered selections after saving', async ({
+test('resource editor saves CLI calls and advanced settings through the real API', async ({
   page,
   request,
 }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
-  const record = { message: 'repeatable record', level: 'INFO' }
   const created = await request.post('/api/sources', {
-    data: { id: 'array_editor_source', collector: 'mock', options: { records: [record] } },
+    data: {
+      id: 'cli_editor_source',
+      call: { kind: 'cli', mode: 'shell', command: 'printf initial', cwd: null },
+      timeout: 60,
+    },
   })
   expect(created.ok(), await created.text()).toBe(true)
   await page.goto('/resources')
   const card = page
     .locator('.el-card .el-card')
-    .filter({ has: page.getByRole('heading', { name: 'array_editor_source' }) })
+    .filter({ has: page.getByRole('heading', { name: 'cli_editor_source' }) })
   await card.getByRole('button', { name: '编辑', exact: true }).click()
-  await expect(page.locator('textarea[aria-label="records"]')).toHaveCount(0)
-  await page.getByRole('button', { name: '重复添加 records 第 1 项', exact: true }).click()
+  await expect(page.getByLabel('命令', { exact: true })).toHaveValue('printf initial')
+  await page.getByLabel('命令', { exact: true }).fill('printf updated')
+  await page.locator('summary').filter({ hasText: '高级配置' }).click()
+  await page.getByRole('spinbutton', { name: '超时 / 秒', exact: true }).fill('25')
   await page.getByRole('button', { name: '保存资源', exact: true }).click()
   await expect(page.getByRole('dialog')).toBeHidden()
-  expect(
-    (await (await request.get('/api/sources/array_editor_source')).json()).options.records,
-  ).toEqual([record, record])
-  await card.getByRole('button', { name: '编辑', exact: true }).click()
-  await expect(
-    page.getByRole('region', { name: 'records 列表', exact: true }).getByRole('textbox'),
-  ).toHaveCount(2)
-  await page.getByRole('button', { name: '删除 records 第 1 项', exact: true }).click()
-  await page.getByRole('button', { name: '保存资源', exact: true }).click()
-  await expect(page.getByRole('dialog')).toBeHidden()
-  expect(
-    (await (await request.get('/api/sources/array_editor_source')).json()).options.records,
-  ).toEqual([record])
+  expect(await (await request.get('/api/sources/cli_editor_source')).json()).toMatchObject({
+    call: { kind: 'cli', mode: 'shell', command: 'printf updated', cwd: null },
+    timeout: 25,
+  })
 
   await page.getByRole('button', { name: '添加数据源', exact: true }).click()
-  await page.getByLabel('采集器', { exact: true }).click()
-  await page.getByRole('option', { name: 'history', exact: true }).click()
-  await page.getByRole('switch', { name: '设置 limit', exact: true }).locator('..').click()
-  await expect(page.getByText('limit（数字）', { exact: true })).toBeVisible()
-  await expect(page.getByRole('combobox', { name: 'limit 类型', exact: true })).toHaveCount(0)
-  const limit = page.getByRole('textbox', { name: 'limit', exact: true })
-  await limit.fill('12a')
+  await page.getByLabel('资源编号', { exact: true }).fill('cli_editor_created')
+  await page.locator('.el-radio-button__inner').filter({ hasText: /^CLI$/ }).click()
+  await page.locator('.el-radio-button__inner').filter({ hasText: /^Shell 命令$/ }).click()
+  const command = page.getByLabel('命令', { exact: true })
+  await command.fill('printf created')
   await page.getByRole('button', { name: '保存资源', exact: true }).click()
-  await expect(page.getByRole('dialog')).toBeVisible()
-  await expect(limit).toHaveValue('12a')
-  await expect(page.getByRole('dialog')).toContainText('请输入有效整数，例如 10，不能混入文字。')
-  await expect(page.getByRole('dialog')).not.toContainText('Unexpected')
-  await limit.fill('3')
-  await page.getByRole('switch', { name: '设置 stages', exact: true }).locator('..').click()
-  const stages = page.getByRole('region', { name: 'stages 列表', exact: true })
-  await page.getByRole('button', { name: '添加 stages 项目', exact: true }).click()
-  await stages.locator('.el-select').nth(1).click()
-  await page.getByRole('option', { name: 'aggregate', exact: true }).click()
-  await page.getByRole('button', { name: '上移 stages 第 2 项', exact: true }).click()
-  const savedResponse = page.waitForResponse(
-    (response) => response.url().endsWith('/api/sources') && response.request().method() === 'POST',
-  )
-  await page.getByRole('button', { name: '保存资源', exact: true }).click()
-  const response = await savedResponse
-  expect(response.ok(), await response.text()).toBe(true)
-  const saved = await response.json()
-  expect(response.request().postDataJSON().options).toEqual({
-    limit: 3,
-    stages: ['aggregate', 'collect'],
-  })
-  expect(saved.options).toMatchObject({ limit: 3, stages: ['aggregate', 'collect'] })
   await expect(page.getByRole('dialog')).toBeHidden()
-  await page
-    .locator('.el-card .el-card')
-    .filter({ has: page.getByRole('heading', { name: saved.id }) })
-    .getByRole('button', { name: '编辑', exact: true })
-    .click()
-  await expect(stages.locator('.el-select').nth(0)).toContainText('aggregate')
-  await expect(stages.locator('.el-select').nth(1)).toContainText('collect')
-  await stages.screenshot({
-    path: 'test-results/resource-array-editor.png',
-    animations: 'disabled',
+  expect(await (await request.get('/api/sources/cli_editor_created')).json()).toMatchObject({
+    call: { kind: 'cli', mode: 'shell', command: 'printf created', cwd: null },
   })
-  await page.getByRole('button', { name: '取消', exact: true }).click()
-  expect((await request.delete(`/api/sources/${saved.id}`)).ok()).toBe(true)
-  expect((await request.delete('/api/sources/array_editor_source')).ok()).toBe(true)
+  expect((await request.delete('/api/sources/cli_editor_created')).ok()).toBe(true)
+  expect((await request.delete('/api/sources/cli_editor_source')).ok()).toBe(true)
   expect(errors).toEqual([])
 })
 
-test('resource JSON validation, create and edit use the real API', async ({ page, request }) => {
+test('CLI source validation, create and edit use the real API', async ({ page, request }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.goto('/resources')
   await page.getByRole('button', { name: '添加数据源' }).click()
-  await page.locator('summary').filter({ hasText: '高级配置' }).click()
   await page.getByLabel('资源编号', { exact: true }).fill('browser_source')
-  await page.getByLabel('采集器', { exact: true }).click()
-  await page.getByRole('option', { name: 'mock', exact: true }).click()
-  await page
-    .getByRole('region', { name: '数据源共用配置 (options)', exact: true })
-    .getByRole('button', { name: '编辑 JSON', exact: true })
-    .click()
-  const setters = page.getByRole('region', { name: '处理规则 (setters)', exact: true })
-  await setters.getByRole('switch', { name: '设置 sort_by', exact: true }).locator('..').click()
-  await setters.getByRole('textbox', { name: 'sort_by', exact: true }).fill('message')
-  await setters.getByRole('switch', { name: '设置 descending', exact: true }).locator('..').click()
-  await setters.getByRole('switch', { name: 'descending', exact: true }).locator('..').click()
-  const options = page.getByRole('textbox', { name: '数据源共用配置 (options)', exact: true })
-  await options.fill('{invalid')
+  await page.locator('.el-radio-button__inner').filter({ hasText: /^CLI$/ }).click()
+  await page.locator('.el-radio-button__inner').filter({ hasText: /^Shell 命令$/ }).click()
+  const command = page.getByLabel('命令', { exact: true })
   await page.getByRole('button', { name: '保存资源' }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
-  await expect(page.locator('.el-form-item__error')).toBeVisible()
+  await expect(page.getByRole('dialog')).toContainText('请检查表单中的错误')
   expect((await request.get('/api/sources/browser_source')).status()).toBe(409)
-  await options.fill('{}')
+  await command.fill('printf browser')
+  await page.locator('summary').filter({ hasText: '高级配置' }).click()
+  await page.getByRole('spinbutton', { name: '超时 / 秒', exact: true }).fill('15')
   await page.getByRole('button', { name: '保存资源' }).click()
   await expect(page.getByRole('dialog')).toBeHidden()
   await expect(page.getByRole('heading', { name: 'browser_source' })).toBeVisible()
-  expect((await (await request.get('/api/sources/browser_source')).json()).setters).toEqual({
-    sort_by: 'message',
-    descending: true,
+  expect(await (await request.get('/api/sources/browser_source')).json()).toMatchObject({
+    call: { kind: 'cli', mode: 'shell', command: 'printf browser', cwd: null },
+    timeout: 15,
   })
   await page
     .locator('.el-card .el-card')
@@ -259,7 +211,11 @@ test('workflow create, reload, run, and versioned phase reading', async ({ page,
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   for (const [kind, value] of Object.entries({
-    sources: { id: 'offline_source', collector: 'mock', options: {}, on_empty: 'stop' },
+    sources: {
+      id: 'offline_source',
+      call: { kind: 'cli', mode: 'shell', command: 'true', cwd: null },
+      on_empty: 'stop',
+    },
     ai: {
       id: 'offline_ai',
       provider: 'http',
@@ -276,8 +232,7 @@ test('workflow create, reload, run, and versioned phase reading', async ({ page,
       await request.post('/api/sources', {
         data: {
           id: 'second_source',
-          collector: 'mock',
-          options: { mode: 'empty' },
+          call: { kind: 'cli', mode: 'shell', command: 'true', cwd: null },
           on_empty: 'stop',
         },
       })
@@ -287,7 +242,8 @@ test('workflow create, reload, run, and versioned phase reading', async ({ page,
   await expect(page.getByText('采集并发数', { exact: true })).toHaveCount(0)
   await expect(page.getByText('允许发送部分成功的结果', { exact: true })).toHaveCount(0)
   await page.getByRole('switch', { name: '高级模式', exact: true }).locator('..').click()
-  await expect(page.getByText('包含采集数量', { exact: true })).toBeVisible()
+  await expect(page.getByText('采集并发数', { exact: true })).toBeVisible()
+  await expect(page.getByText('包含采集数量', { exact: true })).toHaveCount(0)
   await page.getByLabel('工作流 ID', { exact: true }).fill('browser_workflow')
   await page.getByLabel('显示名称', { exact: true }).fill('浏览器验证工作流')
   await expect(
@@ -341,9 +297,16 @@ test('workflow create, reload, run, and versioned phase reading', async ({ page,
   expect(saved.cron).toBeUndefined()
   expect(saved.cron_timezone).toBeUndefined()
   expect(saved.description).toBeUndefined()
-  // The built-in offline collector exits before AI, so this smoke test never calls a model service.
+  // The CLI source exits before AI, so this smoke test never calls a model service.
   saved.source_overrides = {
-    offline_source: { source: null, options: { mode: 'empty' }, setters: {}, template: null },
+    offline_source: {
+      source: null,
+      options: {},
+      setters: {},
+      template: null,
+      arguments: null,
+      limits: { item_tokens: null, field_tokens: null },
+    },
   }
   expect((await request.put('/api/workflows/browser_workflow', { data: saved })).ok()).toBe(true)
   await page.getByRole('button', { name: '编辑', exact: true }).click()
@@ -362,6 +325,14 @@ test('workflow create, reload, run, and versioned phase reading', async ({ page,
   await page.getByRole('switch', { name: '高级模式', exact: true }).locator('..').click()
   await page.getByText('原始 JSON', { exact: false }).first().click()
   await expect(page.locator('pre').first()).toContainText('collection')
+  const sessionId = page.url().split('/').pop()!
+  const session = await (await request.get(`/api/sessions/${sessionId}`)).json()
+  const collectPhase = await request.get(
+    `/api/sessions/${sessionId}/phases/collect?version=${session.version}`,
+  )
+  expect(collectPhase.ok(), await collectPhase.text()).toBe(true)
+  const collectContent = (await collectPhase.json()).content
+  expect(collectContent.collection[0].raw).not.toHaveProperty('count')
   await page.goto('/workflows')
   await page.getByRole('button', { name: '删除', exact: true }).click()
   await page.getByRole('button', { name: '确定', exact: true }).click()
@@ -488,7 +459,10 @@ test('provider models are configured in the channel and selected by workflows', 
   await page.getByRole('button', { name: '关闭', exact: true }).click()
 
   const source = await request.post('/api/sources', {
-    data: { id: 'model_flow_source', collector: 'mock', options: {} },
+    data: {
+      id: 'model_flow_source',
+      call: { kind: 'cli', mode: 'shell', command: 'true', cwd: null },
+    },
   })
   expect(source.ok(), await source.text()).toBe(true)
   await page.goto('/workflows/new')
@@ -585,29 +559,16 @@ test('readable report, plugin sections, advanced data and mobile layout', async 
         {
           source_id: '系统日志',
           status: 'success',
-          text: '本次采集记录',
-          count: 128,
-          report: {
-            sections: [
-              {
-                kind: 'metrics',
-                title: '采集概况',
-                items: [
-                  { label: '记录数量', value: 128, unit: '条' },
-                  { label: '告警数量', value: 2, unit: '项' },
-                ],
-              },
-              {
-                kind: 'table',
-                title: '告警明细',
-                columns: ['类别', '情况'],
-                rows: [
-                  ['磁盘', '使用率 82%'],
-                  ['网络', '3 次请求超时'],
-                ],
-              },
-            ],
-          },
+          raw: { stdout: '本次采集记录', stderr: '采集诊断', exit_code: 0 },
+        },
+      ],
+      input_views: [
+        {
+          source_id: '系统日志',
+          status: 'success',
+          text: '提供给分析的采集记录',
+          truncated: true,
+          omitted: false,
         },
       ],
     },
@@ -685,7 +646,10 @@ test('readable report, plugin sections, advanced data and mobile layout', async 
   }
   await checkProcessTargets()
   await page.locator('summary').filter({ hasText: '数据采集与共享输入' }).click()
-  await expect(page.getByRole('table', { name: '告警明细' })).toBeVisible()
+  await expect(page.getByText('本次采集记录', { exact: true })).toBeVisible()
+  await expect(page.getByText(/退出码 0/)).toBeVisible()
+  await expect(page.getByText(/内容已截取/)).toBeVisible()
+  await expect(page.getByText('查看提供给分析的正文', { exact: true })).toBeVisible()
   await page.screenshot({
     path: 'test-results/readable-report-desktop.png',
     fullPage: true,
@@ -724,7 +688,7 @@ test('workflow designer persists independent sources and the resource center onl
         id: sourceId,
         display_name: '共享巡检数据',
         description: '用于设计器验收',
-        collector: 'mock',
+        call: { kind: 'cli', mode: 'shell', command: 'true', cwd: null },
         timeout: 60,
       },
       ai: {

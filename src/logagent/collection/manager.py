@@ -12,7 +12,10 @@ from logagent.models import CollectionResult, ErrorInfo, SourceConfig, copy_mode
 
 class CollectorManager:
     def __init__(self, mcp_runtime):
-        self.mcp = mcp_runtime
+        # The merged runtime keeps the old registry argument for lifecycle
+        # wiring, but MCP/CLI sources are the only workflow execution form.
+        self.mcp = mcp_runtime if hasattr(mcp_runtime, "call") else None
+        self._legacy = mcp_runtime if self.mcp is None else None
 
     def validate(self, source):
         copy_model(source)
@@ -26,6 +29,8 @@ class CollectorManager:
     async def collect(self, source: SourceConfig, context):
         source = copy_model(source)
         try:
+            if source.call is None:
+                return await self._collect_legacy(source, context)
             if source.call.kind == "cli":
                 return await self._cli(source)
             call = source.call
@@ -59,6 +64,27 @@ class CollectorManager:
                                     status="missing" if exc.code in {
                                         "mcp_out_of_scope", "mcp_tool_missing", "mcp_disabled",
                                     } else "failed", error=exc.info)
+
+    async def _collect_legacy(self, source, context):
+        """Compatibility boundary for un-migrated history/test resources.
+
+        New persisted workflows must use ``call``; this narrow adapter keeps
+        the read-only History Collector and explicit legacy fixtures usable
+        while the MCP/CLI execution path remains the sole new contract.
+        """
+        register = self._legacy
+        collector = register.get(source.collector) if register is not None else None
+        if collector is None:
+            return CollectionResult(
+                source_id=source.id, status="missing",
+                error=ErrorInfo(code="collector_missing", message="来源插件不可用"),
+            )
+        try:
+            raw = await collector.collect(source.options, source.setters, context)
+            data = raw.model_dump(mode="json") if hasattr(raw, "model_dump") else raw
+            return CollectionResult(source_id=source.id, **data)
+        except LogAgentError as exc:
+            return CollectionResult(source_id=source.id, status="failed", error=exc.info)
 
     async def _cli(self, source):
         call = source.call
