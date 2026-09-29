@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useResourcesApi } from '../api/dependencies'
+import { useResourceTransport } from '../composables/useResourceTransport'
 import type { Credential, MCPServerConfig } from '../model/types'
 import { createResource } from '../model/resources'
 
 const props = defineProps<{ initial?: MCPServerConfig }>()
 const emit = defineEmits<{ saved: []; cancel: [] }>()
-const api = useResourcesApi()
+const api = useResourceTransport()
 const draft = ref<MCPServerConfig>(
   structuredClone(props.initial ?? (createResource('mcp_servers') as MCPServerConfig)),
 )

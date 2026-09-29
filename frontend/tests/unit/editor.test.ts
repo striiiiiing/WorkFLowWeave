@@ -12,7 +12,24 @@ import { resourcesApi } from '@/app/services'
 import { systemApi } from '@/app/services'
 
 vi.mock('@/app/services', () => ({
-  resourcesApi: { create: vi.fn(), replace: vi.fn(), protectCredential: vi.fn() },
+  resourcesApi: {
+    create: vi.fn(),
+    replace: vi.fn(),
+    protectCredential: vi.fn(),
+    list: vi.fn().mockResolvedValue([]),
+    mcpCatalog: vi.fn().mockResolvedValue({
+      entries: [{ server: 'server', tool: 'read', description: 'test tool' }],
+      next_cursor: null,
+      incomplete: false,
+      load_servers: [],
+      servers: [],
+    }),
+    describeMcpTool: vi.fn().mockResolvedValue({
+      name: 'read',
+      inputSchema: { type: 'object', properties: {} },
+    }),
+    loadMcpCatalog: vi.fn(),
+  },
   systemApi: { plugins: vi.fn().mockResolvedValue([]) },
 }))
 const global = { plugins: [ElementPlus] }
@@ -25,39 +42,46 @@ describe('editor task regressions', () => {
     expect(ai.base_url).toBeNull()
   })
 
-  it('generates distinct UUID resource IDs and includes counts for new workflows', () => {
+  it('generates distinct UUID resource IDs without automatic business counts', () => {
     const values = ['sources', 'ai', 'channels'].map((kind) => createResource(kind as 'sources'))
     values.push(createResource('sources'))
     expect(new Set(values.map((item) => item.id)).size).toBe(4)
     for (const item of values) expect(item.id).toMatch(/^[0-9a-f-]{36}$/)
-    expect(createWorkflow().include_counts).toBe(true)
+    expect('include_counts' in createWorkflow()).toBe(false)
   })
 
-  it('shows the resource ID normally and saves a generated ID with schema-selected collector', async () => {
-    vi.mocked(systemApi.plugins).mockResolvedValueOnce([
+  it('shows the resource ID normally and saves a generated ID with an MCP call', async () => {
+    vi.mocked(resourcesApi.list).mockResolvedValueOnce([
       {
-        kind: 'collector',
-        name: 'mock',
-        description: 'test collector',
-        plugin: 'builtin',
-        capabilities: [],
-        options_schema: { type: 'object', properties: {} },
-        setters_schema: null,
-        fields: [],
-        count_unit: 'records',
+        id: 'server',
+        transport: 'stdio',
+        enabled: true,
+        command: 'server',
+        args: [],
+        cwd: null,
+        url: null,
+        env: {},
+        headers: {},
+        timeout: 60,
       },
     ])
     const wrapper = mount(ResourceEditor, { props: { kind: 'sources' }, global })
     await flushPromises()
     expect(wrapper.text()).toContain('资源编号')
-    expect(wrapper.get('input[placeholder="可自行填写；留空则自动生成"]').isVisible()).toBe(true)
-    wrapper.findComponent(ElSelect).vm.$emit('update:modelValue', 'mock')
+    expect(wrapper.get('input').isVisible()).toBe(true)
+    const selects = wrapper.findAllComponents(ElSelect)
+    expect(selects.length).toBeGreaterThanOrEqual(2)
+    selects[0].vm.$emit('update:modelValue', 'server')
     await flushPromises()
+    selects[1].vm.$emit('update:modelValue', 'read')
     await wrapper.find('form').trigger('submit')
     await flushPromises()
     expect(resourcesApi.create).toHaveBeenCalledWith(
       'sources',
-      expect.objectContaining({ collector: 'mock', id: expect.stringMatching(/^[0-9a-f-]{36}$/) }),
+      expect.objectContaining({
+        id: expect.stringMatching(/^[0-9a-f-]{36}$/),
+        call: { kind: 'mcp', server: 'server', tool: 'read', arguments: {} },
+      }),
     )
     wrapper.unmount()
   })

@@ -56,6 +56,37 @@ class WorkflowContext:
             self, "analysis_slots", asyncio.Semaphore(self.snapshot.workflow.analysis_concurrency)
         )
 
+    def input_token_counters(self):
+        """Return the counters required by every model consuming shared input."""
+        processing = self.snapshot.workflow.input_processing
+        limited = processing.total_tokens is not None or any(
+            source.limits.item_tokens is not None or source.limits.field_tokens is not None
+            for source in self.snapshot.sources.values()
+        )
+        if not limited:
+            return ()
+        factory = getattr(self.ai_service, "input_counter", None)
+        if not callable(factory):
+            raise LogAgentError("tokenizer_unavailable", "消费输入的 AI 服务未提供 tokenizer")
+        models = []
+        seen = set()
+        for task in self.snapshot.workflow.analyses:
+            key = (task.ai, task.model)
+            if key not in seen:
+                seen.add(key)
+                models.append(key)
+        fan = self.snapshot.workflow.fan_in
+        if fan is not None and "$input" in fan.ordered_inputs(self.snapshot.workflow.analyses):
+            if fan.ai is not None:
+                key = (fan.ai, fan.model)
+            else:
+                reused = fan.reused_task(self.snapshot.workflow.analyses)
+                key = (reused.ai, reused.model) if reused is not None else None
+            if key is not None and key not in seen:
+                seen.add(key)
+                models.append(key)
+        return tuple(factory(self.snapshot.ai[ai_id], model) for ai_id, model in models)
+
     def register_intent(self, execution_epoch: str, key: str) -> None:
         """Register a fresh intent before its checkpoint is emitted."""
         identity = (execution_epoch, key)

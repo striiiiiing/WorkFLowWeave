@@ -30,7 +30,8 @@ class SessionView:
         return {
             "servers": {key: value.model_dump(mode="json") for key, value in snapshot.mcp_servers.items()},
             "sources": [{"source": source.id, "server": source.call.server, "tool": source.call.tool}
-                        for source in snapshot.sources.values() if source.call.kind == "mcp"],
+                        for source in snapshot.sources.values()
+                        if source.call is not None and source.call.kind == "mcp"],
         }
 
     @staticmethod

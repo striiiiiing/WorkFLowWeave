@@ -72,6 +72,21 @@ async def test_two_workflows_share_source_but_keep_call_options_and_old_snapshot
     assert store.snapshot("first").sources["source"].options["records"] == []
 
 
+async def test_cli_source_workflow_limits_override_skips_collector_capability_check(bindings):
+    store, _ = bindings
+    store.save("sources", SourceConfig(
+        id="source",
+        call={"kind": "cli", "mode": "shell", "command": "true", "cwd": None},
+    ))
+    store.save("workflows", workflow(source_overrides={
+        "source": {"arguments": None, "limits": {"item_tokens": 5}},
+    }))
+
+    snapshot = store.snapshot("workflow")
+    assert snapshot.sources["source"].call.command == "true"
+    assert snapshot.sources["source"].limits.item_tokens == 5
+
+
 async def test_workflow_template_precedence_empty_override_and_reference_integrity(bindings):
     store, _ = bindings
     for name, fields in (("base", ["id"]), ("call", ["level"])):
@@ -338,7 +353,7 @@ async def test_real_workflows_persist_distinct_inputs_and_recover_original_bindi
             await service.trigger(name, session_id=name)
             result = await service.wait(name)
             assert result.status == "completed"
-            assert result.shared_input == '{"message":"' + name + '"}\n\nsource: success (1)'
+            assert result.shared_input == '[source=source; format=none]\n{"message":"' + name + '"}'
         written = output.read_text()
         assert "first" in written and "second" in written
         saved = await asyncio.to_thread(service.session_store.entry, "first", "snapshot")
@@ -350,7 +365,7 @@ async def test_real_workflows_persist_distinct_inputs_and_recover_original_bindi
         store.save("workflows", changed)
         await service.resume("first")
         recovered = await service.wait("first")
-        assert recovered.shared_input == '{"message":"first"}\n\nsource: success (1)'
+        assert recovered.shared_input == '[source=source; format=none]\n{"message":"first"}'
         assert output.read_text() == written
     finally:
         await service.shutdown()

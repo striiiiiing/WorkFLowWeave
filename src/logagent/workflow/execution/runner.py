@@ -312,6 +312,7 @@ class WorkflowRunner:
                     "phase": {},
                     "outputs": {},
                     "aggregate_meta": None,
+                    "input_views": [],
                 }
                 if stage == "notify":
                     reset["outputs"] = saved.values["outputs"]
@@ -446,6 +447,7 @@ class WorkflowRunner:
             "error": None,
             "phase": {},
             "shared_input": "",
+            "input_views": [],
             "analysis_items": {},
             "outputs": {},
             "intents": {},

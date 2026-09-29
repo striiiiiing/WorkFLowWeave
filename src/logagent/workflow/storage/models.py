@@ -13,6 +13,7 @@ from logagent.models import (
     CollectionResult,
     DeliveryResult,
     ErrorInfo,
+    InputView,
     Notification,
 )
 
@@ -114,6 +115,7 @@ class WorkflowResult(StrictModel):
     )
     collection: list[CollectionResult] = ModelField(default_factory=list)
     shared_input: str = ""
+    input_views: list[InputView] = ModelField(default_factory=list)
     analyses: list[AnalysisResult] = ModelField(default_factory=list)
     aggregate: AnalysisResult | None = None
     outputs: dict[str, str] = ModelField(default_factory=dict)

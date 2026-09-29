@@ -1,5 +1,5 @@
 /**
- * 已有前后端服务的浏览器烟测：读取真实健康与资源 API，通过界面保存带唯一 ID 的 mock 采集源，并在 finally 删除测试资源。使用现有服务数据，不启动隔离后端，也不触发模型分析或通知。
+ * 已有前后端服务的浏览器烟测：读取真实健康与资源 API，通过界面保存带唯一 ID 的 CLI 数据源，并在 finally 删除测试资源。使用现有服务数据，不启动隔离后端，也不触发模型分析或通知。
  */
 import { test, expect } from '@playwright/test'
 
@@ -26,8 +26,9 @@ test('existing frontend receives real API data and saves a resource', async ({ p
     await page.goto('/resources')
     await page.getByRole('button', { name: '添加数据源' }).click()
     await page.getByLabel('资源编号', { exact: true }).fill(id)
-    await page.getByLabel('采集器', { exact: true }).click()
-    await page.getByRole('option', { name: 'mock', exact: true }).click()
+    await page.locator('.el-radio-button__inner').filter({ hasText: /^CLI$/ }).click()
+    await page.locator('.el-radio-button__inner').filter({ hasText: /^Shell 命令$/ }).click()
+    await page.getByLabel('命令', { exact: true }).fill('true')
     await page.getByRole('button', { name: '保存资源' }).click()
     await expect(page.getByRole('dialog')).toBeHidden()
     await expect(page.getByRole('heading', { name: id, exact: true })).toBeVisible()

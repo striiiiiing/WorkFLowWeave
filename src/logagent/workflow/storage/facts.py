@@ -106,17 +106,13 @@ class SessionStore(ArchiveDatabase):
         新版本、摘要、正文及可用性在同一事务内发布。
         """
         encoded_summary = _json(summary)
-        digest = _hash(
-            _json(
-                {
-                    "stage": stage,
-                    "scope": scope,
-                    "summary": summary,
-                    "body": body,
-                    "availability": availability,
-                    "category": category,
-                }
-            )
+        digest = self.write_digest(
+            stage=stage,
+            scope=scope,
+            summary=summary,
+            body=body,
+            availability=availability,
+            category=category,
         )
         with self._transaction() as session:
             previous = session.exec(
@@ -195,6 +191,61 @@ class SessionStore(ArchiveDatabase):
                     retained.anchor = row.created_at
                 session.add(retained)
             session.flush()
+            return self._entry(row)
+
+    @staticmethod
+    def write_digest(*, stage, scope, summary, body, availability, category):
+        """Return the immutable digest used by a business-key write."""
+        return _hash(
+            _json(
+                {
+                    "stage": stage,
+                    "scope": scope,
+                    "summary": summary,
+                    "body": body,
+                    "availability": availability,
+                    "category": category,
+                }
+            )
+        )
+
+    def existing_write(
+        self,
+        session_id: str,
+        key: str,
+        *,
+        stage: str | None,
+        scope: str,
+        summary: dict,
+        body: dict | None = None,
+        availability: str = "available",
+        category: str | None = None,
+    ) -> dict | None:
+        """Validate and return an already committed immutable business fact.
+
+        Recovery can use this read-only preflight to avoid invoking a wrapped
+        writer after a transaction committed but its caller was interrupted.
+        A different payload under the same stable key remains a conflict.
+        """
+        digest = self.write_digest(
+            stage=stage,
+            scope=scope,
+            summary=summary,
+            body=body,
+            availability=availability,
+            category=category,
+        )
+        with self._transaction(immediate=False) as session:
+            row = session.exec(
+                select(SessionEntry).where(
+                    SessionEntry.session_id == session_id,
+                    SessionEntry.write_key == key,
+                )
+            ).first()
+            if row is None:
+                return None
+            if row.digest != digest:
+                raise LogAgentError("storage_conflict", "幂等键对应的 session 内容不同")
             return self._entry(row)
 
     def _entry(self, row: SessionEntry, *, include_body=True) -> dict:

@@ -131,6 +131,21 @@ async def test_archive_reuses_parent_and_child_facts_without_publishing_twice(st
     assert len(store.entries("s")[1]) == 3
 
 
+def test_existing_write_rejects_conflicting_recovery_payload(store):
+    saved = write(store)
+    assert store.existing_write(
+        "s", "phase:collect", stage="collect", scope="phase",
+        summary={"status": "running", "execution_epoch": "epoch"},
+        body={"text": "原始业务正文"}, category="collection",
+    ) == saved
+    with pytest.raises(LogAgentError, match="幂等键"):
+        store.existing_write(
+            "s", "phase:collect", stage="collect", scope="phase",
+            summary={"status": "running", "execution_epoch": "epoch"},
+            body={"text": "changed"}, category="collection",
+        )
+
+
 async def test_disabled_archive_bodies_are_explicitly_not_saved(store):
     async def publish(record):
         pass
@@ -167,6 +182,25 @@ async def test_created_session_is_immediately_queryable(store):
     record = await SessionView(store).get_session("s")
     assert record.status == "created" and record.version == 1
     assert record.snapshot_availability == "pending"
+
+
+async def test_mcp_binding_ignores_legacy_collector_sources(store):
+    from logagent.models import AIConfig, SourceConfig, WorkflowDefinition, WorkflowSnapshot
+
+    legacy = WorkflowSnapshot(
+        workflow=WorkflowDefinition(
+            id="legacy-workflow", sources=["legacy"],
+            analyses=[{"id": "analysis", "ai": "ai", "model": "model"}],
+        ),
+        sources={"legacy": SourceConfig(id="legacy", collector="mock")},
+        ai={"ai": AIConfig(id="ai", provider="mock", models={"model": {}})},
+        channels={}, created_at=datetime.now(UTC),
+    )
+    store.write(
+        "s", "snapshot", stage=None, scope="configuration", summary={},
+        body={"snapshot": legacy.model_dump(mode="json")}, category="snapshot",
+    )
+    assert await SessionView(store).mcp_binding("s") == {"servers": {}, "sources": []}
 
 
 async def test_failed_archive_stop_preserves_error_without_fabricating_business_result(store):

@@ -21,3 +21,4 @@ export {
   AIProviderEditor,
   ChannelEditor,
 } from './ui/entries'
+export { default as MCPServerEditor } from './ui/MCPServerEditor.vue'

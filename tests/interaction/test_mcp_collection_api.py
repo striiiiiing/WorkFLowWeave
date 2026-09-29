@@ -53,3 +53,15 @@ async def test_cli_rejects_mcp_arguments_and_exposes_no_call_schema():
     with pytest.raises(LogAgentError, match="CLI 来源不接受 MCP 参数覆盖"):
         await entry.invoke("cli", {"arguments": {"limit": 3}}, context)
     assert executor.received is None
+
+
+async def test_legacy_collector_exposes_no_call_contract():
+    executor = Executor()
+    entry = CollectorInvocation(
+        {"legacy": SourceConfig(id="legacy", collector="mock")}, {}, executor=executor,
+    )
+    context = CollectionContext("collection", "session")
+    assert (await entry.schema("legacy"))["properties"] == {}
+    with pytest.raises(LogAgentError, match="历史 Collector"):
+        await entry.invoke("legacy", {}, context)
+    assert executor.received is None

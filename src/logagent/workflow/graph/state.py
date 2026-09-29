@@ -33,6 +33,7 @@ class GraphState(ControlState):
     log_path: str | None
     graph_revision: str
     shared_input: str
+    input_views: list
     analysis_items: dict
     outputs: dict
     aggregate_meta: dict | None

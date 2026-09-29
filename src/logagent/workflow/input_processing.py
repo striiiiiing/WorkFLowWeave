@@ -17,6 +17,8 @@ class Part:
 def extract(raw, kind):
     if raw is None:
         raise LogAgentError("raw_unavailable", "原始获取结果不可用，不能隐式重新采集")
+    if kind == "text":
+        return [Part(False, raw, raw)]
     if kind == "cli":
         text = raw["stdout"]
         valid, value = strict_json(text)
@@ -163,7 +165,9 @@ def process_input(snapshot, results, counters=()):
             views[source.id] = InputView(source_id=source.id, status="skipped")
             continue
         try:
-            parts = extract(result.raw, source.call.kind)
+            raw = result.raw if result.raw is not None else result.text
+            kind = source.call.kind if source.call is not None else "text"
+            parts = extract(raw, kind)
             filtered = [Part(p.structured, fields(p.value, source.limits.field_tokens, counters), p.original)
                         if p.structured else p for p in parts]
             changed = any(not equal_json(a.value, b.value) for a, b in zip(parts, filtered, strict=True))

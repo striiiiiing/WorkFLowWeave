@@ -226,15 +226,15 @@ def test_hard_exit_during_analysis_recovers_only_unfinished_branch(tmp_path):
         "second",
         "second",
     ]
-    assert events[-1]["text"] == "durable input\n\nsource: success (1)"
+    assert events[-1]["text"] == "[source=source; format=none]\ndurable input"
     assert events[-1]["model"] == "original-model"
     report = _report(tmp_path)
     assert any(name.startswith("analyze:") for name in report["used_namespaces"])
     assert report["session"]["execution_epoch"] == epoch
     assert report["result"]["status"] == "completed"
     assert [item["text"] for item in report["result"]["analyses"]] == [
-        "first(durable input\n\nsource: success (1))",
-        "second(durable input\n\nsource: success (1))",
+        "first([source=source; format=none]\ndurable input)",
+        "second([source=source; format=none]\ndurable input)",
     ]
     assert [
         event["stage"]

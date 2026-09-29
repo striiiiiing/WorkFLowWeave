@@ -22,9 +22,9 @@ import {
   type MCPServerConfig,
   type SourceFilter,
   type SourceConfigEditorGateway,
+  MCPServerEditor,
 } from '@/modules/resources/public'
 import PageHeader from '@/shared/ui/PageHeader.vue'
-import MCPServerEditor from '@/modules/resources/ui/MCPServerEditor.vue'
 const route = useRoute()
 const router = useRouter()
 const kind = computed<EditableKind>({

@@ -611,7 +611,10 @@ async def test_workflow_notification_uses_manager_and_test_channel_one_way_send(
             analyses=[AnalysisTask(id="analysis", ai="ai", model="offline")],
             channels=["test"],
         ),
-        sources={"source": SourceConfig(id="source", collector="mock")},
+            sources={"source": SourceConfig(id="source", call={
+                "kind": "cli", "mode": "argv", "executable": "echo",
+                "argv": ["workflow input"],
+            })},
         ai={"ai": AIConfig(id="ai", provider="offline", models={"offline": {}})},
         channels={
             "test": ChannelConfig(
