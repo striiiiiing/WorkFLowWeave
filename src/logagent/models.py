@@ -81,7 +81,7 @@ EnvironmentName = Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")]
 NonNegativeInt = Annotated[int, Field(strict=True, ge=0)]
 SessionVersion = Annotated[int, Field(gt=0)]
 
-ResourceKind = Literal["sources", "setters", "ai", "channels", "workflows"]
+ResourceKind = Literal["sources", "setters", "mcp_servers", "ai", "channels", "workflows"]
 PluginKind = Literal["collector", "channel", "tool"]
 SaveMode = Literal["create", "replace", "upsert"]
 SourcePolicy = Literal["stop","notice", "skip"]
@@ -124,20 +124,72 @@ class SystemConfig(StrictModel):
     master_key_file: str = "master.key"
 
 
+PositiveTokens = Annotated[int, Field(strict=True, gt=0)]
+
+
+class SourceLimits(StrictModel):
+    item_tokens: PositiveTokens | None = None
+    field_tokens: PositiveTokens | None = None
+
+
+class InputProcessing(SourceLimits):
+    format: Literal["none", "ison", "toon", "zon", "md", "csv"] = "none"
+    total_tokens: PositiveTokens | None = None
+
+
+class MCPCall(StrictModel):
+    kind: Literal["mcp"] = "mcp"
+    server: ID
+    tool: str = Field(min_length=1)
+    arguments: JSONObject = Field(default_factory=dict)
+
+
+class CLIArgv(StrictModel):
+    kind: Literal["cli"] = "cli"
+    mode: Literal["argv"]
+    executable: str = Field(min_length=1)
+    argv: list[str] = Field(default_factory=list)
+    cwd: str | None = None
+
+
+class CLIShell(StrictModel):
+    kind: Literal["cli"] = "cli"
+    mode: Literal["shell"]
+    command: str = Field(min_length=1)
+    cwd: str | None = None
+
+
+CLICall = Annotated[CLIArgv | CLIShell, Field(discriminator="mode")]
+SourceCall = Annotated[MCPCall | CLICall, Field(discriminator="kind")]
+
+
 class SourceConfig(StrictModel):
     id: ID
     display_name: str | None = None
     description: str = ""
-    collector: ID
+    # A source may be provided by a local Collector plugin or by the
+    # MCP/CLI call form introduced by collect-from-mcp-and-cli.  Exactly one
+    # execution form is required at runtime; keeping both here allows the
+    # merged configuration boundary to validate old and new persisted data in
+    # one place while callers still resolve one effective source.
+    collector: ID | None = None
+    call: SourceCall | None = None
     enabled: bool = True
     options: JSONObject = Field(default_factory=dict)
     setters: JSONObject = Field(default_factory=dict)
+    limits: SourceLimits = Field(default_factory=SourceLimits)
     template: ID | None = None
     timeout: Seconds = 60.0
     on_error: SourcePolicy = "notice"
     on_missing: SourcePolicy = "notice"
     on_empty: SourcePolicy = "notice"
     on_filtered_empty: SourcePolicy = "notice"
+
+    @model_validator(mode="after")
+    def one_execution_form(self) -> Self:
+        if (self.collector is None) == (self.call is None):
+            raise ValueError("Source must define exactly one collector or call")
+        return self
 
 
 class SetterTemplate(StrictModel):
@@ -159,6 +211,30 @@ class EncryptedCredential(StrictModel):
 
 
 Credential = Annotated[EnvironmentCredential | EncryptedCredential, Field(discriminator="kind")]
+
+
+class MCPServerConfig(StrictModel):
+    id: ID
+    transport: Literal["stdio", "streamable_http", "sse"]
+    enabled: bool = True
+    command: str | None = None
+    args: list[str] = Field(default_factory=list)
+    cwd: str | None = None
+    url: str | None = None
+    env: dict[EnvironmentName, Credential] = Field(default_factory=dict)
+    headers: dict[str, Credential] = Field(default_factory=dict)
+    timeout: Seconds = 60.0
+
+    @model_validator(mode="after")
+    def valid_transport(self) -> Self:
+        if self.transport == "stdio":
+            if not self.command or self.url is not None or self.headers:
+                raise ValueError("stdio requires command and forbids URL/headers")
+        elif not self.url or not self.url.startswith(("http://", "https://")):
+            raise ValueError("HTTP transport requires an HTTP(S) URL")
+        elif self.command is not None or self.args or self.cwd is not None or self.env:
+            raise ValueError("HTTP transport forbids process configuration")
+        return self
 
 
 ModelName = Annotated[str, Field(min_length=1, pattern=r"\S")]
@@ -227,6 +303,8 @@ class SourceOverride(StrictModel):
     options: JSONObject = Field(default_factory=dict)
     setters: JSONObject = Field(default_factory=dict)
     template: ID | None = None
+    arguments: JSONObject | None = None
+    limits: SourceLimits = Field(default_factory=SourceLimits)
 
     @model_validator(mode="after")
     def detached_source_has_no_template(self) -> Self:
@@ -278,6 +356,7 @@ class WorkflowDefinition(StrictModel):
     channel_overrides: dict[ID, ChannelOverride] = Field(default_factory=dict)
     input_separator: str = "\n\n"
     include_counts: bool = True
+    input_processing: InputProcessing = Field(default_factory=InputProcessing)
     collection_concurrency: int = Field(default=4, ge=1)
     analysis_concurrency: int = Field(default=4, ge=1)
     on_all_empty: SourcePolicy = "stop"
@@ -315,9 +394,24 @@ class WorkflowSnapshot(StrictModel):
     ai: dict[ID, AIConfig]
     channels: dict[ID, ChannelConfig]
     created_at: UTCDateTime
+    mcp_servers: dict[ID, MCPServerConfig] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def exact_references(self) -> Self:
+        expected_servers = {
+            source.call.server
+            for source in self.sources.values()
+            if source.call is not None and source.call.kind == "mcp"
+        }
+        if set(self.mcp_servers) != expected_servers or any(
+            key != server.id for key, server in self.mcp_servers.items()
+        ):
+            raise ValueError("Snapshot MCP mappings must exactly cover source server bindings")
+        for source in self.sources.values():
+            source.limits = source.limits.model_copy(update={
+                name: getattr(source.limits, name) or getattr(self.workflow.input_processing, name)
+                for name in ("item_tokens", "field_tokens")
+            })
         # 验证引用完整性
         ai_ids = {task.ai for task in self.workflow.analyses}
         if self.workflow.fan_in is not None and self.workflow.fan_in.ai is not None:
@@ -397,8 +491,53 @@ class CollectorOutput(StrictModel):
         return self
 
 
-class CollectionResult(CollectorOutput):
+class CollectionResult(StrictModel):
+    """Acquisition fact shared by legacy collectors and MCP/CLI calls.
+
+    ``CollectorOutput`` is the plugin-facing normalized result.  The workflow
+    boundary additionally stores raw transport data, so it must not inherit
+    the plugin validator which requires a non-empty text/count pair.
+    """
+
     source_id: ID
+    status: CollectionStatus
+    raw: JSONObject | None = None
+    items: list[JSONObject] = Field(default_factory=list)
+    text: str = ""
+    # Legacy Collector adapters may still carry a plugin-provided count while
+    # this transitional model is validated.  Counts are not a Workflow
+    # acquisition fact and must never cross the raw-result/archive boundary.
+    count: NonNegativeInt = Field(default=0, exclude=True)
+    error: ErrorInfo | None = None
+    metadata: JSONObject = Field(default_factory=dict)
+    report: ResultReport | None = None
+
+    @model_validator(mode="after")
+    def coherent_raw_result(self) -> Self:
+        """Validate transport facts without collapsing raw JSON false/empty values."""
+        if self.status == "success":
+            if self.error is not None or not (self.raw is not None or self.text or self.items):
+                raise ValueError("Successful collection requires raw or consumable content")
+        elif self.status in {"empty", "filtered_empty"}:
+            # Empty is still a transport fact: callers may need the original
+            # empty payload to distinguish an observed empty result from a
+            # missing/failed invocation.  It must not expose normalized
+            # consumable fields or an error, however.
+            if self.error is not None or self.text or self.items or self.count:
+                raise ValueError("Empty collection cannot expose consumable content or an error")
+        elif self.status in {"missing", "failed", "timeout"}:
+            if self.error is None:
+                raise ValueError("Unsuccessful collection requires an error")
+        return self
+
+
+class InputView(StrictModel):
+    source_id: ID
+    status: Literal["success", "failed", "skipped"]
+    text: str = ""
+    truncated: bool = False
+    omitted: bool = False
+    error: ErrorInfo | None = None
 
 
 class AnalysisResult(StrictModel):
@@ -566,6 +705,7 @@ class CollectionContext:
     log_path: str | None = None
     credentials: CredentialResolver | None = None
     session_reader: SessionReader | None = None
+    mcp_servers: dict[str, MCPServerConfig] | None = None
 
     def __post_init__(self) -> None:
         try:

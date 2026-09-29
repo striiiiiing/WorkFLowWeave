@@ -7,6 +7,7 @@ import FanOutTaskCard from '@/modules/workflows/ui/FanOutTaskCard.vue'
 import NotificationCard from '@/modules/workflows/ui/NotificationCard.vue'
 import SourceStepCard from '@/modules/workflows/ui/SourceStepCard.vue'
 import { createFanIn, createWorkflow, useWorkflowEditor } from '@/modules/workflows/public'
+import { createResource, type SourceConfig } from '@/modules/resources/public'
 import type { CapabilityDescription } from '@/shared/types'
 
 const plugins = vi.hoisted(() => ({ list: vi.fn() }))
@@ -146,7 +147,14 @@ describe('workflow bindings', () => {
         template:
           '<el-form :model="editor.draft"><SourceStepCard :editor="editor" :sources="sources" :gateway="gateway" :capabilities="[]" :protect="protect" /><NotificationCard :editor="editor" :channels="channels" :capabilities="capabilities" /></el-form>',
         data: () => ({
-          sources: [{ id: 'disabled-source', collector: 'mock', enabled: false }],
+          sources: [
+            {
+              ...(createResource('sources') as SourceConfig),
+              id: 'disabled-source',
+              enabled: false,
+              call: { kind: 'mcp', server: 'server', tool: 'read', arguments: {} },
+            },
+          ],
           channels: [{ id: 'disabled-channel', channel: 'email', enabled: false }],
           capabilities: [capability('channel', 'email')],
         }),

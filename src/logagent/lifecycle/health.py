@@ -187,7 +187,7 @@ def capability_diagnostics(services: ApplicationServices) -> list[ErrorInfo]:
     missing: dict[tuple[str, str], list[str]] = {}
     for value in services.resources.list("sources"):
         source = SourceConfig.model_validate(value)
-        if source.call.kind == "mcp" and source.call.server not in servers:
+        if source.call is not None and source.call.kind == "mcp" and source.call.server not in servers:
             missing.setdefault(("mcp_server", source.call.server), []).append(source.id)
     for value in services.resources.list("channels"):
         channel = ChannelConfig.model_validate(value)

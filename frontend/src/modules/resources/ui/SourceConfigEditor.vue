@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import ParameterField from '@/shared/schema/ParameterField.vue'
-import { useResourcesApi } from '../api/dependencies'
+import {
+  useResourceTransport,
+  type MCPToolCatalog,
+  type MCPToolDescription,
+} from '../composables/useResourceTransport'
 import type { MCPServerConfig, SourceCall, SourceConfig, SourceSaveTarget } from '../model/types'
-import type { MCPToolCatalog, MCPToolDescription } from '../api/resourcesApi'
 import type { SourceEditorController } from '../composables/useSourceEditor'
 import SourceAdvancedFields from './SourceAdvancedFields.vue'
 
@@ -13,7 +16,7 @@ const props = defineProps<{
   initial: boolean
 }>()
 const emit = defineEmits<{ saved: [value: SourceConfig]; cancel: [] }>()
-const api = useResourcesApi()
+const api = useResourceTransport()
 const value = computed(() => props.editor.value.value)
 const servers = ref<MCPServerConfig[]>([])
 const catalog = ref<MCPToolCatalog>()

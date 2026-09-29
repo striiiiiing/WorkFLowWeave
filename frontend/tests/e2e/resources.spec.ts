@@ -14,10 +14,9 @@ test('resource editor shares catalogs and saves a retained draft at 375px', asyn
   const response = await request.post('/api/sources', {
     data: {
       id,
-      collector: 'mock',
+      call: { kind: 'cli', mode: 'shell', command: 'true', cwd: null },
       display_name: '窄屏数据源',
       enabled: false,
-      options: { mode: 'empty' },
     },
   })
   expect(response.ok(), await response.text()).toBe(true)
