@@ -19,6 +19,7 @@ from logagent.models import (
     ChannelConfig,
     CollectionContext,
     CollectionResult,
+    CursorMCPConfig,
     DiscoveryReport,
     EncryptedCredential,
     HealthReport,
@@ -137,6 +138,19 @@ async def collect_source(ident: ID, payload: CollectionArguments, services: Serv
 @router.post("/mcp_servers", response_model=MCPServerConfig, status_code=status.HTTP_201_CREATED)
 async def create_mcp_server(payload: MCPServerConfig, services: Services):
     return await _save_resource(services, "mcp_servers", payload, mode="create")
+
+
+@router.post(
+    "/mcp_servers/import",
+    response_model=list[MCPServerConfig],
+    status_code=status.HTTP_201_CREATED,
+)
+async def import_mcp_servers(payload: CursorMCPConfig, services: Services):
+    values = payload.to_resources()
+    if not values:
+        raise LogAgentError("invalid_argument", "Cursor 配置至少需要一个 MCP 服务")
+    await asyncio.to_thread(services.resources.save_many, {"mcp_servers": values}, mode="create")
+    return values
 
 
 @router.put("/mcp_servers/{ident}", response_model=MCPServerConfig)

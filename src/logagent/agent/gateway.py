@@ -15,7 +15,7 @@ class MCPGateway:
         self.error = binding.get("error")
 
     def execution(self, arguments):
-        return "exclusive" if arguments.get("action") == "call" else "read"
+        return "read"
 
     async def catalog(self, workspace, *, revision):
         path = f"Catalog/{revision}/index.json"

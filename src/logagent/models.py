@@ -237,6 +237,58 @@ class MCPServerConfig(StrictModel):
         return self
 
 
+class CursorMCPServerConfig(StrictModel):
+    """One server entry from a Cursor-compatible configuration envelope."""
+
+    type: Literal["stdio", "streamable_http", "sse", "http"] = "stdio"
+    enabled: bool = True
+    command: str | None = None
+    args: list[str] = Field(default_factory=list)
+    cwd: str | None = None
+    url: str | None = None
+    env: dict[EnvironmentName, Credential] = Field(default_factory=dict)
+    headers: dict[str, Credential] = Field(default_factory=dict)
+    timeout: Seconds = 60.0
+
+    def to_resource(self, name: str) -> MCPServerConfig:
+        transport = "streamable_http" if self.type == "http" else self.type
+        return MCPServerConfig(
+            id=name,
+            transport=transport,
+            enabled=self.enabled,
+            command=self.command,
+            args=self.args,
+            cwd=self.cwd,
+            url=self.url,
+            env=self.env,
+            headers=self.headers,
+            timeout=self.timeout,
+        )
+
+
+class CursorMCPConfig(StrictModel):
+    """Cursor's named-server envelope, kept at the API boundary only."""
+
+    servers: dict[ID, CursorMCPServerConfig]
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_cursor_alias(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        has_servers = "servers" in value
+        has_mcp_servers = "mcpServers" in value
+        if has_servers and has_mcp_servers:
+            raise ValueError("Cursor 配置不能同时包含 servers 和 mcpServers")
+        if has_mcp_servers:
+            value = {**value, "servers": value["mcpServers"]}
+            value.pop("mcpServers", None)
+        return value
+
+    def to_resources(self) -> list[MCPServerConfig]:
+        return [server.to_resource(name) for name, server in self.servers.items()]
+
+
 ModelName = Annotated[str, Field(min_length=1, pattern=r"\S")]
 
 

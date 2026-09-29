@@ -387,8 +387,12 @@ class ResourceStore:
             self._commit(data, changed=set(), normalize=False)
             return True
 
-    def save_many(self, resources: Mapping[ResourceKind, list[Any]]) -> None:
+    def save_many(
+        self, resources: Mapping[ResourceKind, list[Any]], *, mode: SaveMode = "upsert"
+    ) -> None:
         """Validate and publish mutually dependent resource updates together."""
+        if mode not in ("create", "replace", "upsert"):
+            raise LogAgentError("invalid_argument", "保存模式无效")
         with self._lock:
             data = self._view.model_dump(mode="python")
             changed: set[tuple[str, str]] = set()
@@ -396,6 +400,11 @@ class ResourceStore:
                 kind = self._kind(resource_kind)
                 for resource in values:
                     value = self._value(kind, resource)
+                    exists = value.id in data[kind]
+                    if mode == "create" and exists:
+                        raise LogAgentError("already_exists", "资源已存在")
+                    if mode == "replace" and not exists:
+                        raise LogAgentError("not_found", "资源不存在")
                     data[kind][value.id] = value.model_dump(mode="python")
                     changed.add((kind, value.id))
             if changed:

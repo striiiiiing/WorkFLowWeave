@@ -59,9 +59,11 @@ class LifecycleResourceStore(ResourceStore):
             self._published()
         return consumed
 
-    def save_many(self, resources: Mapping[ResourceKind, list[Any]]) -> None:
+    def save_many(
+        self, resources: Mapping[ResourceKind, list[Any]], *, mode: str = "upsert"
+    ) -> None:
         """Refresh schedules once after a successful nonempty batch."""
-        super().save_many(resources)
+        super().save_many(resources, mode=mode)
         if any(resources.values()):
             self._published()
 

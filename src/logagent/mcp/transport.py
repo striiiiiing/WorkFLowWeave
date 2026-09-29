@@ -6,7 +6,13 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.sse import sse_client
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
-from mcp.types import ServerNotification, ToolListChangedNotification
+from mcp.types import (
+    ClientRequest,
+    JSONRPCRequest,
+    ServerNotification,
+    ServerResult,
+    ToolListChangedNotification,
+)
 
 
 class CatalogSession:
@@ -19,6 +25,14 @@ class CatalogSession:
         if cursor is None:
             self.changed[0] = False
         return result
+
+    async def discover(self):
+        return await self.session.send_request(
+            ClientRequest(root=JSONRPCRequest(
+                method="server/discover", params={}, jsonrpc="2.0", id=1,
+            )),
+            ServerResult,
+        )
 
     async def call_tool(self, tool, arguments):
         return await self.session.call_tool(tool, arguments)

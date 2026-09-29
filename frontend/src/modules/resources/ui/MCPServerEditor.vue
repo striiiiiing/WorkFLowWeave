@@ -3,6 +3,12 @@ import { ref } from 'vue'
 import { useResourceTransport } from '../composables/useResourceTransport'
 import type { Credential, MCPServerConfig } from '../model/types'
 import { createResource } from '../model/resources'
+import {
+  cursorMcpExample,
+  cursorServerToResource,
+  parseCursorMcpConfig,
+  resourceToCursorMcpConfig,
+} from '../model/cursor'
 
 const props = defineProps<{ initial?: MCPServerConfig }>()
 const emit = defineEmits<{ saved: []; cancel: [] }>()
@@ -13,12 +19,61 @@ const draft = ref<MCPServerConfig>(
 const argsText = ref(draft.value.args.join('\n'))
 const envText = ref(JSON.stringify(draft.value.env, null, 2))
 const headersText = ref(JSON.stringify(draft.value.headers, null, 2))
+const jsonMode = ref(false)
+const jsonText = ref(
+  JSON.stringify(props.initial ? resourceToCursorMcpConfig(draft.value) : cursorMcpExample(), null, 2),
+)
 const error = ref('')
 const pending = ref(false)
+function syncFieldDraft(value: MCPServerConfig) {
+  draft.value = value
+  argsText.value = value.args.join('\n')
+  envText.value = JSON.stringify(value.env, null, 2)
+  headersText.value = JSON.stringify(value.headers, null, 2)
+}
+function toggleJsonMode() {
+  error.value = ''
+  if (jsonMode.value) {
+    try {
+      const config = parseCursorMcpConfig(jsonText.value)
+      const entries = Object.entries(config.servers)
+      if (entries.length !== 1) throw new Error('切回字段模式时 JSON 必须只包含一个 MCP 服务。')
+      syncFieldDraft(cursorServerToResource(entries[0][0], entries[0][1]))
+      jsonMode.value = false
+    } catch (cause) {
+      error.value = String(cause)
+    }
+    return
+  }
+  jsonText.value = JSON.stringify(
+    props.initial ? resourceToCursorMcpConfig(draft.value) : cursorMcpExample(),
+    null,
+    2,
+  )
+  jsonMode.value = true
+}
 async function save() {
   error.value = ''
   pending.value = true
   try {
+    if (jsonMode.value) {
+      const config = parseCursorMcpConfig(jsonText.value)
+      const entries = Object.entries(config.servers)
+      if (props.initial) {
+        if (entries.length !== 1 || entries[0][0] !== props.initial.id) {
+          throw new Error('编辑已有 MCP 服务时，JSON 必须只包含当前服务名称。')
+        }
+        await api.replace(
+          'mcp_servers',
+          props.initial.id,
+          cursorServerToResource(entries[0][0], entries[0][1]),
+        )
+      } else {
+        await api.importMcpServers(config)
+      }
+      emit('saved')
+      return
+    }
     draft.value.args = argsText.value ? argsText.value.split('\n') : []
     draft.value.env = JSON.parse(envText.value) as Record<string, Credential>
     draft.value.headers = JSON.parse(headersText.value) as Record<string, Credential>
@@ -45,31 +100,44 @@ async function save() {
 <template>
   <el-form novalidate label-position="top" @submit.prevent="save">
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
-    <el-form-item label="服务 ID">
-      <el-input v-model="draft.id" :disabled="!!initial" />
-    </el-form-item>
-    <el-form-item label="传输方式">
-      <el-select v-model="draft.transport">
-        <el-option value="stdio" label="stdio" />
-        <el-option value="streamable_http" label="Streamable HTTP" />
-        <el-option value="sse" label="SSE" />
-      </el-select>
-    </el-form-item>
-    <template v-if="draft.transport === 'stdio'">
-      <el-form-item label="可执行文件"><el-input v-model="draft.command" /></el-form-item>
-      <el-form-item label="参数（每行一项）">
-        <el-input v-model="argsText" type="textarea" :rows="3" />
+    <div class="flex justify-end mb-4">
+      <el-button native-type="button" @click="toggleJsonMode">
+        {{ jsonMode ? '填写参数' : '编辑 JSON' }}
+      </el-button>
+    </div>
+    <template v-if="jsonMode">
+      <el-form-item label="Cursor MCP 配置 JSON">
+        <el-input v-model="jsonText" type="textarea" :rows="14" />
       </el-form-item>
-      <el-form-item label="工作目录"><el-input v-model="draft.cwd" /></el-form-item>
-      <el-form-item label="环境凭据引用（JSON 对象）">
-        <el-input v-model="envText" type="textarea" :rows="3" />
-      </el-form-item>
+      <p class="muted text-sm">服务名称来自 servers 对象的键名，例如 qqmusic-mcp。</p>
     </template>
     <template v-else>
-      <el-form-item label="服务 URL"><el-input v-model="draft.url" /></el-form-item>
-      <el-form-item label="Header 凭据引用（JSON 对象）">
-        <el-input v-model="headersText" type="textarea" :rows="3" />
+      <el-form-item label="服务名称">
+        <el-input v-model="draft.id" :disabled="!!initial" />
       </el-form-item>
+      <el-form-item label="传输方式">
+        <el-select v-model="draft.transport">
+          <el-option value="stdio" label="stdio" />
+          <el-option value="streamable_http" label="Streamable HTTP" />
+          <el-option value="sse" label="SSE" />
+        </el-select>
+      </el-form-item>
+      <template v-if="draft.transport === 'stdio'">
+        <el-form-item label="可执行文件"><el-input v-model="draft.command" /></el-form-item>
+        <el-form-item label="参数（每行一项）">
+          <el-input v-model="argsText" type="textarea" :rows="3" />
+        </el-form-item>
+        <el-form-item label="工作目录"><el-input v-model="draft.cwd" /></el-form-item>
+        <el-form-item label="环境凭据引用（JSON 对象）">
+          <el-input v-model="envText" type="textarea" :rows="3" />
+        </el-form-item>
+      </template>
+      <template v-else>
+        <el-form-item label="服务 URL"><el-input v-model="draft.url" /></el-form-item>
+        <el-form-item label="Header 凭据引用（JSON 对象）">
+          <el-input v-model="headersText" type="textarea" :rows="3" />
+        </el-form-item>
+      </template>
     </template>
     <el-form-item label="连接超时 / 秒">
       <el-input-number v-model="draft.timeout" :min="0.001" :step="0.001" />

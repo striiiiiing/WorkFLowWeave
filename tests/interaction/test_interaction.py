@@ -30,6 +30,7 @@ class MemoryResources:
         self.values: dict[str, dict[str, object]] = {
             "sources": {},
             "setters": {},
+            "mcp_servers": {},
             "ai": {},
             "channels": {},
             "workflows": {},
@@ -56,6 +57,11 @@ class MemoryResources:
         if ident not in self.values[kind]:
             raise LogAgentError("not_found", "resource does not exist")
         del self.values[kind][ident]
+
+    def save_many(self, resources, *, mode: str = "upsert"):
+        for kind, values in resources.items():
+            for value in values:
+                self.save(kind, value, mode=mode)
 
 
 class Workflow:
@@ -270,6 +276,35 @@ def test_lifespan_and_successful_resource_trigger_session_flow():
             assert client.delete(f"/api/{kind}/{payload['id']}").status_code == 204
             assert client.get(f"/api/{kind}/{payload['id']}").status_code == 409
     assert lifecycle.shutdowns == 1
+
+
+def test_cursor_mcp_import_uses_server_name_and_hyphen():
+    lifecycle = Lifecycle()
+    with _client(lifecycle) as client:
+        response = client.post(
+            "/api/mcp_servers/import",
+            json={
+                "servers": {
+                    "qqmusic-mcp": {
+                        "type": "stdio",
+                        "command": "qqmusic-mcp",
+                        "args": ["stdio"],
+                    }
+                }
+            },
+        )
+        assert response.status_code == 201, response.text
+        assert response.json()[0]["id"] == "qqmusic-mcp"
+        saved = client.get("/api/mcp_servers").json()
+        assert saved[0]["id"] == "qqmusic-mcp"
+        assert saved[0]["command"] == "qqmusic-mcp"
+
+        duplicate = client.post(
+            "/api/mcp_servers/import",
+            json={"servers": {"qqmusic-mcp": {"command": "other"}}},
+        )
+        assert duplicate.status_code == 409
+        assert client.get("/api/mcp_servers").json() == saved
 
 
 def test_transport_validation_rejects_unknown_fields_and_invalid_query_values():
