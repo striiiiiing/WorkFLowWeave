@@ -18,14 +18,14 @@
 
 ## 2. 本地 merge 前验收准备
 
-- [ ] 2.1 复核 redesign worktree 的任务 13.1–13.6 及 intent barrier 修复，确认没有覆盖主工作区用户未提交改动。
-- [ ] 2.2 记录主工作区 dirty 文件，采用可恢复方式保存后将 `feat/redesign-workflow` 合并到主分支；每个冲突单独报告，不强制覆盖。
+- [x] 2.1 复核 redesign worktree 的任务 13.1–13.6 及 intent barrier 修复；保留主工作区用户未提交的 `data-v4/`、`node_modules/`、`src/logagent/lifecycle/.idea/`，未覆盖或回滚。
+- [x] 2.2 已将 `feat/redesign-workflow` 合并到 `refactor/frontend-architecture`：merge commit `d7674f7`，intent barrier 修复随后以 `d99e122` 记录；合并前后均未使用 reset/clean。
 
 ## 3. Merge 后本地验收
 
-- [ ] 3.1 按后端 60 秒硬超时运行变更相关单测、Ruff/类型检查和构建。
-- [ ] 3.2 运行 HTTP/SSE smoke 与 Playwright；随后用 Windows Tabbit、GPT-6 Luna Max 进行真实页面导航、Workflow run、snapshot 首帧、终态和离页检查。
-- [ ] 3.3 对照 redesign-workflow 第 13 节更新验收证据；Tabbit runtime 关闭上下文时保持 13.8/13.9 未勾选并汇报阻塞。
+- [x] 3.1 按后端 60 秒硬超时拆分运行变更相关回归：配置/调用 20 passed；MCP/CLI 2 passed；intent/receipt、checkpoint 与恢复关键场景 4 passed；进程强退四个场景分别通过；SessionStore 关键并发/幂等 7 passed；collection history 15 passed。`ruff check src tests` 通过；前端 typecheck、architecture check、build 通过；前端 Vitest 49 文件/243 测试通过。
+- [x] 3.2 隔离 Playwright 全量 17/17 通过；本地临时后端 14301 + 前端 3000 的 live smoke 1/1 通过；HTTP/SSE API smoke 200。旧 Collector E2E fixture 已迁移为 MCP/CLI `call` 契约，并补充 CLI raw 结果无业务 `count` 断言。
+- [x] 3.3 对照 redesign-workflow 第 13 节更新证据：自动化 13.8/13.9 相关部分通过；Windows Tabbit 使用 GPT-6 Luna Max 导航后两次复现 `Target page, context or browser has been closed`，未收到真实 Workflow run 的 SSE `snapshot`/终态/离页证据，因此 13.8、13.9 继续未勾选，不将 runtime 阻塞伪报为通过。
 
 ## 4. 远端同步与插件迁移（本地验收通过后）
 
@@ -40,3 +40,10 @@
 
 - [ ] 5.1 审查 diff：无隐式 manifest 映射、静默 fallback、凭据/运行数据同步、重复插件 owner 或第二套事件存储。
 - [ ] 5.2 在本任务记录本地 merge、远端 commit、十个 source inventory、SSE/Agent-MCP 证据及 AxonHub 原始计数摘要；只有全部验收条件满足才宣布完成。
+
+## 本轮本地验收补记（2026-09-29）
+
+- Playwright 旧 Collector 契约已从 `frontend/tests/e2e/frontend.spec.ts`、`resources.spec.ts`、`live.spec.ts` 清理，改测 CLI shell source、MCP/CLI editor、raw stdout/stderr、固定版本正文和无业务 count。
+- 发现并修复 `ResourceStore` 对带 `SourceConfig.call` 的 workflow override 仍进入 Collector capability 校验的问题；call 形式由 `SourceConfig.call` 自身校验，回归测试为 `test_cli_source_workflow_limits_override_skips_collector_capability_check`。
+- 统一补齐旧 Collector 快照的显式兼容边界：公开 `CollectorInvocation` 不再解引用空 `call`，`SessionView.mcp_binding` 与健康诊断会跳过非 MCP 来源；新增回归后 MCP/SessionStore 28 项、采集/配置 48 项、生命周期筛选 12 项、MCP/CLI 与 overrides 19 项均通过。
+- 未启动远端 SSH、插件迁移或 AxonHub 查询；这些项目严格留待本地验收收口后执行。Live smoke 首次无服务时的 `ECONNREFUSED 127.0.0.1:3000` 是环境前置缺失，启动可控本地链路后已通过 1/1。
