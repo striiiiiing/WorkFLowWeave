@@ -10,9 +10,9 @@ async def invoke(arguments, context):
 
 
 plugin = ToolDeclaration(
-    "mcp", "Inspect MCP service status, list/search tools, load a service catalog, describe a tool, or call it. Schemas are returned only on request.",
-    schema({
-        "action": field("string", "Operation", enum=["status", "list", "search", "load", "describe", "call"]),
+    "mcp", "Inspect MCP services, list/search tools, describe a tool, or call it. Schemas are returned only on request.",
+        schema({
+        "action": field("string", "Operation", enum=["list", "search", "describe", "call"]),
         "server": field("string", "Stable server identity"),
         "tool": field("string", "Original MCP tool name"),
         "arguments": field("object", "Complete call arguments; no collection defaults are inherited"),

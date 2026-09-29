@@ -1,4 +1,11 @@
 export type * from './model/types'
+export {
+  cursorMcpExample,
+  cursorServerToResource,
+  parseCursorMcpConfig,
+  resourceToCursorMcpConfig,
+} from './model/cursor'
+export type { CursorMcpConfig } from './model/cursor'
 export * from './api/resourcesApi'
 export * from './api/dependencies'
 export * from './model/resources'
