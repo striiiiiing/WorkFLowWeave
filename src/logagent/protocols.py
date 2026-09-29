@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, Literal, Protocol, overload
 
 from logagent.models import (
@@ -120,6 +121,10 @@ class ResourceStore(ResourceReader, Protocol):
     def save(
         self, kind: ResourceKind, resource: StrictModel | JSONObject, *, mode: SaveMode = "upsert"
     ) -> StrictModel: ...
+
+    def save_many(
+        self, resources: Mapping[ResourceKind, list[Any]], *, mode: SaveMode = "upsert"
+    ) -> None: ...
 
     def delete(self, kind: ResourceKind, ident: str) -> None: ...
 

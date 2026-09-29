@@ -29,7 +29,8 @@ class SessionView:
             return {"error": "原 Workflow 使用旧版来源配置，MCP 绑定不可恢复"}
         return {
             "servers": {key: value.model_dump(mode="json") for key, value in snapshot.mcp_servers.items()},
-            "sources": [{"source": source.id, "server": source.call.server, "tool": source.call.tool}
+            "sources": [{"source": source.id, "server": source.call.server, "tool": source.call.tool,
+                         "arguments": source.call.arguments}
                         for source in snapshot.sources.values()
                         if source.call is not None and source.call.kind == "mcp"],
         }

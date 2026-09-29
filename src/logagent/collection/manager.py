@@ -44,7 +44,9 @@ class CollectorManager:
             raw = execution.raw
             status = execution.status
             if status == "success":
-                has_content = raw is not None and (
+                has_content = execution.count_state == "available" and raw is not None and (
+                    raw.get("_meta", {}).get("logagent_count", 0) > 0
+                ) or raw is not None and execution.count_state == "count_unavailable" and (
                     "structuredContent" in raw or any(
                         block.get("type") != "text" or block.get("text") != ""
                         for block in raw.get("content", [])
@@ -60,6 +62,8 @@ class CollectorManager:
             return CollectionResult(source_id=source.id, status=status,
                                     raw=raw, error=error, metadata=metadata)
         except LogAgentError as exc:
+            # Keep legacy missing projection for old callers; MCP workflow
+            # policy maps this fact through on_error in arrange().
             return CollectionResult(source_id=source.id,
                                     status="missing" if exc.code in {
                                         "mcp_out_of_scope", "mcp_tool_missing", "mcp_disabled",

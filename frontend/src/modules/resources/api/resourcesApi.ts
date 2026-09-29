@@ -2,12 +2,14 @@ import { segment, type HttpClient } from '@/shared/api'
 import type { JsonObject } from '@/shared/types'
 import type {
   Credential,
+  MCPServerConfig,
   ResourceKind,
   ResourceMap,
   SourceConfig,
   SourceOverride,
   AIConfig,
 } from '../model/types'
+import type { CursorMcpConfig } from '../model/cursor'
 
 export function createResourcesApi(http: HttpClient) {
   return {
@@ -52,6 +54,8 @@ export function createResourcesApi(http: HttpClient) {
       http.request<ResourceMap[K]>({ url: `/${kind}/${segment(id)}`, signal }),
     create: <K extends ResourceKind>(kind: K, value: ResourceMap[K]) =>
       http.request<ResourceMap[K]>({ url: `/${kind}`, method: 'POST', data: value }),
+    importMcpServers: (value: CursorMcpConfig) =>
+      http.request<MCPServerConfig[]>({ url: '/mcp_servers/import', method: 'POST', data: value }),
     replace: <K extends ResourceKind>(kind: K, id: string, value: ResourceMap[K]) =>
       http.request<ResourceMap[K]>({ url: `/${kind}/${segment(id)}`, method: 'PUT', data: value }),
     delete: (kind: ResourceKind, id: string) =>
