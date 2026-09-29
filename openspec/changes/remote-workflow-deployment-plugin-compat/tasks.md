@@ -52,7 +52,7 @@
 
 - 远端原 dirty 清单已保存到 `/tmp/workflowServer-remote-sync-20260929-142144`，并建立可恢复分支 `backup/remote-plugin-sync-20260929-142144`；未 reset、clean 或覆盖用户文件。远端原有未提交文件仍保持 dirty 状态。
 - 远端提交 `76e50c1` 拆出十个独立 QwenPaw source package，并把当前紧凑 JSON/CLI 适配提取到 `src/logagent/qwenpaw`；`6d1cd6d` 修正新文件权限。旧 `qwenpaw_sources` 只作为显式 `logagent_legacy` 回滚副本，不发布重复能力；`qwenpaw_notify` 仍是独立 channel。
-- 远端定向测试 `tests/qwenpaw/test_split_plugins.py tests/qwenpaw/test_adapters.py tests/config/test_config.py`：79 passed；目标文件 Ruff 通过。远端服务重启后 `GET /api/health`、`GET /api/plugins`、`GET /api/sources`、`GET /api/workflows` 和 `POST /api/reload?scope=plugins` 均 HTTP 200，health 为 ready；plugin inventory 共 25 项，其中十个 source ID 与 owner 一一对应，另有两个 `qwenpaw_notify` channel，未发布旧聚合能力。
+- 远端定向测试 `tests/qwenpaw/test_split_plugins.py tests/qwenpaw/test_adapters.py tests/config/test_config.py`：79 passed；目标文件 Ruff 通过。远端服务重启后 `GET /api/health`、`GET /api/plugins`、`GET /api/sources`、`GET /api/workflows` 和 `POST /api/reload?scope=plugins` 均 HTTP 200，health 为 ready；plugin inventory 共 25 项，其中十个 source ID 与 owner 一一对应，另有两个 `qwenpaw_notify` channel，未发布旧聚合能力。十个 daily source 的 `call-schema` 查询全部 200（10/10），但未执行带外部 CLI/通知副作用的采集。
 - 远端前端 systemd 服务实际监听 `13002`，`API_TARGET=http://127.0.0.1:4300`，经 `13002/api/health|plugins|workflows` 代理验证 HTTP 200；`3000` 属于同机其他 Karakeep 服务，未误判为本项目入口。
 - 本地前端复验：`npm run typecheck`、`npm run architecture:check`、`npm run build` 通过；Vitest 49 files/243 tests passed；Playwright 17/17 passed（54.9s）。
 - 仍未勾选 4.3–4.6：本轮只验证了远端健康、inventory、资源/Workflow 查询和插件 reload，尚未在远端实际触发 Workflow 并取得 SSE `snapshot`/终态/历史证据，也未完成远端 Agent-MCP 精确绑定和 AxonHub 原始缓存/token 计数；这些不是本轮已完成项。
