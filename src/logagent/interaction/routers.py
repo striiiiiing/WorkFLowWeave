@@ -148,7 +148,7 @@ async def create_mcp_server(payload: MCPServerConfig, services: Services):
 async def import_mcp_servers(payload: CursorMCPConfig, services: Services):
     values = payload.to_resources()
     if not values:
-        raise LogAgentError("invalid_argument", "Cursor 配置至少需要一个 MCP 服务")
+        raise LogAgentError("invalid_argument", "配置至少需要一个 MCP 服务")
     await asyncio.to_thread(services.resources.save_many, {"mcp_servers": values}, mode="create")
     return values
 
