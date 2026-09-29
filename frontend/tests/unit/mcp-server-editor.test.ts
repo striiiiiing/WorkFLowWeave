@@ -60,4 +60,13 @@ describe('MCP server Cursor JSON editor', () => {
     expect(api.importMcpServers).not.toHaveBeenCalled()
     wrapper.unmount()
   })
+
+  it('allows switching an empty Cursor envelope back to fields', async () => {
+    const wrapper = editor()
+    await wrapper.get('button').trigger('click')
+    await wrapper.get('button').trigger('click')
+    expect(wrapper.text()).toContain('服务名称')
+    expect(wrapper.text()).not.toContain('Cursor MCP 配置 JSON')
+    wrapper.unmount()
+  })
 })
