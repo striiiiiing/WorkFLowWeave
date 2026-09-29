@@ -24,8 +24,13 @@ def arrange(state, runtime: Runtime[WorkflowContext]):
     for item in items:
         if item.status == "success":
             continue
-        policy = "error" if item.status in {"failed", "timeout"} else item.status
-        if getattr(snapshot.sources[item.source_id], "on_" + policy) == "stop":
+        source = snapshot.sources[item.source_id]
+        if source.call is not None and source.call.kind == "mcp":
+            policy = source.on_error
+        else:
+            policy_name = "error" if item.status in {"failed", "timeout"} else item.status
+            policy = getattr(source, "on_" + policy_name)
+        if policy == "stop":
             error = {"code": "collection_stopped", "message": "来源策略要求停止下游阶段"}
             break
     if not error:

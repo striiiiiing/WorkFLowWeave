@@ -34,6 +34,7 @@ class MCPExecution:
     result_known: bool
     raw: dict | None = None
     error: str | None = None
+    count_state: str = "count_unavailable"
 
 
 class MCPRuntime:
@@ -81,6 +82,21 @@ class MCPRuntime:
     async def _refresh(self, session, config):
         tools, cursor, seen = [], None, set()
         while True:
+            try:
+                page = await session.discover()
+                discovered = page.get("tools") if isinstance(page, dict) else getattr(page, "tools", None)
+                if discovered is not None:
+                    tools.extend(
+                        item.model_dump(mode="json", by_alias=True, exclude_none=True)
+                        if hasattr(item, "model_dump") else dict(item)
+                        for item in discovered
+                    )
+                    break
+            except Exception as exc:
+                if not isinstance(exc, (AttributeError, NotImplementedError)) and not any(
+                    marker in str(exc).lower() for marker in ("method", "unsupported", "unknown")
+                ):
+                    raise
             page = await session.list_tools(cursor=cursor)
             tools.extend(tool.model_dump(mode="json", by_alias=True, exclude_none=True)
                          for tool in page.tools)
@@ -200,6 +216,13 @@ class MCPRuntime:
             # A confirmed result remains confirmed even if transport cleanup fails.
             return MCPExecution(server, tool, dict(context),
                                 "tool_error" if raw.get("isError") else "success",
-                                "received", True, raw, "transport_cleanup_failed")
+                                "received", True, raw, "transport_cleanup_failed", count_state(raw))
         return MCPExecution(server, tool, dict(context),
-                            "tool_error" if raw.get("isError") else "success", phase, True, raw)
+                            "tool_error" if raw.get("isError") else "success", phase, True, raw,
+                            count_state=count_state(raw))
+
+
+def count_state(raw: dict | None) -> str:
+    meta = raw.get("_meta") if isinstance(raw, dict) else None
+    value = meta.get("logagent_count") if isinstance(meta, dict) else None
+    return "available" if type(value) is int and value >= 0 else "count_unavailable"
