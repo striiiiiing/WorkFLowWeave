@@ -1,0 +1,191 @@
+# Agent 实施与审核记录
+
+## 授权与基线
+
+- 2026-09-22 用户授权实施已写明的 Agent/前端设计，要求先 commit，再写 task.md，随后执行，每个完成点单独 commit。
+- 实施前基线：`36d8f96`，包含此前工作树的业务、测试和 OpenSpec 改动；`master.key`、`master.key.initialized` 保留本地，未提交。该提交是工作快照，不等同于通过功能验收。
+- 基线 staged whitespace 检查发现前序 `frontendFix/tasks/2026-09-21-frontend-architecture-review/task.md` 的 EOF 空行；保留原状，不混入 Agent 实施。
+- 仓库 post-commit 钩子自动推送 workflow，基线推送因 non-fast-forward 拒绝，本地提交有效。后续使用钩子已有的 `SKIP_WORKFLOW_PUSH=1`，本任务仅创建本地提交。
+- 权威依据：[proposal](../../proposal.md)、[design](../../design.md)、[frontend](../../frontend.md)、[任务索引及默认值](../../tasks.md)。本轮不修改 proposal/design/frontend；若实现发现必须改变设计，先提出具体差异。
+- 产品代码、任务记录由主代理编写。用户最新修订：上下文依赖少的独立只读分析/测试使用 `gpt-5.5`、推理 `xhigh`；其他允许委派的复杂任务仅在能够明确指定 `gpt-6-astra`、推理 `xhigh` 时派发。此前已启动的依赖审计使用原授权的 Astra xhigh；不追溯改写执行事实。子代理不得写产品代码、设计或任务文档，不提交。当前续接已恢复指定模型派发能力，独立生命周期回归审计按最新授权使用 GPT-5.5 xhigh。
+
+## 结构性判断与不变量
+
+这是新增跨模块执行契约，不能以局部聊天端点或自写 ReAct 代替设计。公共配置解析、模型租约、插件发现分别复用唯一入口；新增代码只承担 Agent 会话、文件、预算和工具包装。
+
+审核先对照 design/frontend 的用户行为，再对照下列任务及验证证据。每项完成提交同时更新本记录；未实际验证的条目保持未完成。各项依赖顺序为 A → B → C → D → E → F，独立只读调查和测试准备可并行。
+
+## 任务与验收
+
+### A. 依赖兼容（对应 2.1）
+
+- [x] A1 在独立虚拟环境解析并锁定 LangChain 1.x、LangGraph 1.x、匹配 checkpoint/sqlite、aiorwlock；提交 pyproject.toml 和 uv.lock。
+- [x] A2 先用旧依赖建立恢复证据，再在现有 Workflow 数据库副本验证新版本读取；不打开原库进行迁移。
+- [x] A3 回归父子图、取消、恢复与通知去重；核实 create_agent、异步工具包装、摘要中间件公开 API 和 `trim_tokens_to_summarize=None`。
+
+预期改动：pyproject.toml、uv.lock、必要的兼容修正及 tests/workflow。升级失败必须查清旧库/框架语义差异，不以重置数据库通过检查。
+
+### B. 公共接入与插件（对应 2.2–2.4）
+
+- [x] B1 在 AI 模块抽取共享模型 lease，支持显式 streaming/输出限制，文本分析继续原契约，凭据解析/连接/错误脱敏不重复实现。
+- [x] B2 从 ResourceStore 抽出共享调用解析；新增 call_options_schema，保留引用、类型和合法调用默认值，拒绝实例层覆盖。
+- [x] B3 Registry/配置/owners/只读视图/发现报告/API/前端 DTO 全面增加 tool kind；五个内置工具懒加载，enabled 仅存插件配置。
+- [x] B4 logs/history/mock 声明 read，其他未声明 Collector 为 exclusive，Channel 固定 exclusive；验证禁用不导入、冲突和事务回滚。
+
+预期改动：src/logagent/{ai,config,schema.py,models.py,protocols.py,lifecycle}、前端插件类型以及对应测试。保留旧 Collector/Channel 内置启停语义。
+
+### C. 文件与工具边界（对应 3.1、3.3–3.4、4.1–4.4）
+
+- [x] C1 唯一 WorkspaceBackend 支持目录句柄安全访问、只读映射、分页、hash/If-Match、原子覆盖及精确替换；Runtime/self.json 由会话视图解析。
+- [x] C2 注册 plugin/read/write/grep/shell；网关复用实例快照与 Manager 单次调用，不重复 Schema 或发送逻辑。
+- [x] C3 共享 aiorwlock 与读 semaphore；排队、取消、超时均可见，读 4/写 1且写与读互斥；调度器已提供给后续 AgentService 复用。
+- [x] C4 bubblewrap 单次进程、最小环境、只读事实挂载、网络开关、进程树清理；实际隔离不可用时明确失败，关闭沙箱使用固定最小环境。
+- [x] C5 工具完整输出文件化、预览预算和 16 MiB 超量失败；AGENTS 常驻、Memory 按时区、History 笔记与事实分离。
+- [x] C6 补齐 design §2/§4.1/§4.2 的公共 Collector HTTP/CLI 入口；Agent 和 HTTP 共用调用应用服务，CLI 只包装 HTTP。
+
+预期改动：agent/{workspace,sandbox,tools,gateway}.py、内置 tool 插件及测试。数值沿用 tasks.md 已列理由：200 行、50 命中、20 目录项、60 秒 Shell、约 2000-token 预览；不新增隐含硬上限。
+
+### D. 会话、图与持久一致性（对应 3.2、5.4–5.6）
+
+- [x] D1 AgentService 持有后台轮任务、每会话单轮、request_id 幂等；每轮固定资源/插件同代快照。
+- [x] D2 使用 create_agent 与独立 SQLite checkpointer，整轮持有模型租约；连接断开不取消运行，显式取消释放工具与租约。
+- [x] D3 JSONL 原子占用/started fsync/结果提交；稳定调用键复用、同键异参冲突、活动键共享任务、发送前记账。
+- [x] D4 重启标记 interrupted/outcome_unknown，不重做旧副作用；补齐工具消息后接收新消息，checkpoint 缺失/损坏明确不可继续。
+- [x] D5 lifecycle 装配、关停、插件 reload 在活动 Agent 轮时 busy；资源更新只影响下一轮。
+
+预期改动：agent/{events,service,graph}.py、lifecycle 和恢复测试。事实来自 JSONL，checkpoint 保存框架上下文，笔记不能反向修改状态。
+
+### E. 上下文与压缩（对应 5.1–5.3）
+
+- [x] E1 每轮捕获 AGENTS、prompt、工具及 AgentConfig，逐模型请求计算完整 system/tools/messages 预算；未知窗口必须显式配置，实际输出上限与预留一致。
+- [x] E2 动态委托官方 SummarizationMiddleware，关闭 4000-token 输入裁剪；固定提示和摘要参数按请求新建，错误传播。
+- [x] E3 一次请求至多一次逻辑压缩，摘要后再次检查；验证长历史完整输入、ToolMessage 配对和容量超限错误。
+- [x] E4 主模型无活动默认 300 秒，总 timeout 沿用 AIConfig；增量发布后失败不得重试拼接，工具不自动重试。
+
+预期改动：agent/context.py、配置模型、AI 共享入口与测试。现行依据为 design §3.1/§8 及设计修订任务：默认 200,000/180,000/40,000 固定 token 阈值，按完整消息计数；不再使用旧 80%/20% 自适应比例。估算与实际 usage 必须区分。
+
+### F. HTTP、SSE、前端与最终验收（对应 6、7）
+
+- [x] F1 独立 /api/agents 会话、消息、取消、手动压缩、文件、配置、工具 DTO；明确 409、If-Match 和 request_id 冲突。
+- [x] F2 持久序号 SSE、回放/实时无缝续传、慢客户端不阻塞执行、心跳不算模型活动。
+- [x] F3 /agents 两栏聊天与按需工具/文件/设置抽屉，复用 Markdown、报告、useQuery/useAsyncTask；新增单个导航。
+- [x] F4 工具开关沿用插件配置与 reload；显示真实沙箱/并发/未知发送状态、上下文估算、压缩摘要、文件冲突保留草稿。
+- [x] F5a 本轮：前端组件/流状态单测、类型检查、构建；临时目录与假模型的非浏览器真实后端 HTTP/SSE 验证，覆盖停止、重连、冲突，不连接真实渠道。
+- [ ] F5b 用户独立方案待验收：真实浏览器操作、窄屏视觉与真实浏览器 SSE；不属于本轮 Agent 完成阻塞，不声称已通过。
+- [x] F6 后端定向回归、静态检查、构建、旧 Workflow 回归、OpenSpec 严格验证与 diff 审查。
+
+## 验证与提交规则
+
+- 2026-09-23 续接补漏基线：HEAD `710d93f`。复核发现索引 2.3 的 HTTP/CLI/application service 勾选超前，现有调用仅在 Agent gateway；新增 C6 并重新打开索引 2.3，不改 design。用户要求不新增或重新派发 subagent，主代理直接完成这一整包；真实浏览器仍由用户验收。
+- C6 结构性修复计划：把 gateway 的参数模型、目标解析、Schema 投影和单次采集抽到 `collection/invocation.py`；HTTP 增加 `/api/sources/{id}/call-schema` 与 `/api/sources/{id}/collect`，CLI 增加 `collect`/`collect-schema`，复用生命周期资源快照、CollectorManager、凭据和 SessionView。依据 design §4.1/§5，公共入口不获取 Agent workspace 锁；资源模板沿用 `invocation_snapshot` 展开，实例参数限制沿用 `normalize_call_options`，不复制 Schema/重试规则。
+- C6 默认值依据：HTTP 独立采集上下文使用 `workflow_id=collection` 和服务端生成 UUID 作为 `session_id`，仅标识本次调用，不伪造 Workflow/Agent 会话；沿用生命周期日志/凭据/历史查询依赖。CLI 采集请求保留现有 30 秒连接/写入限制，取消客户端读取超时，由已有 `SourceConfig.timeout` 限制业务执行，避免原 CLI 30 秒先截断长采集；响应未知不自动重试。输入文件使用 UTF-8 JSON 的 `{options,setters}`，空参数沿用资源保存值。
+- C6 验证计划：共享服务/Agent/HTTP/CLI 对同一资源覆盖、模板和空 Setter 的一致性，拒绝实例字段与无效目标，状态/超时/取消保真和无自动重试；单批后端测试硬限 60 秒，随后 ruff、Python 构建、真实 localhost HTTP/CLI 非浏览器烟测，完成后补证据并单独提交。
+
+- 后端每批测试使用 `timeout 60s`；按定向单测 → 静态/类型 → 构建 → 最小烟测执行。
+- 检查具有行为意义：副作用只执行一次、互斥无重叠、恢复不重放、摘要输入不丢失、前端续传不重复和冲突不覆盖。
+- 每个已完成里程碑提交实现与证据。若拆成更小提交，在此新增实际边界，不提前勾选更大的未完项。
+- 审查重点：重复逻辑/第二事实来源、过度 gate、吞错、静默降级、禁用绕过、竞态、重复发送、凭据泄露和与设计未说明的偏离。
+
+## F 最终契约收尾计划（2026-09-23）
+
+以现行 design §4.2/§8/§9/§10、frontend §1–7 与设计修订任务为最终验收依据；上文旧 F6 验证不覆盖本轮最终代码，本轮开始时暂时撤销勾选，最终状态以下方新记录为准。根因是图执行、管理端点和页面投影各有未接通的公共契约，按结构性修复处理，不追加第二套调度/摘要/配置来源。
+
+1. 统一工具包装：Collector-only 网关，动态执行类别、完整 Artifact 与可归并工具事实；先验证调用/互斥/错误与取消。
+2. 命令和历史边界：复用 create_agent 中间件在完整工具组后的模型边界处理 append/compact；stop 取消优先；使用公开 checkpoint/state API 建分支，禁止直接操作 saver SQLite 表，编辑只切用户节点之前的投影。
+3. 管理与事件：HTTP 条件写、分页与共享锁、持久配置和真实工具状态；SSE 游标无缝连接、重连去重及慢连接隔离。
+4. 页面：真实分支树/编辑预览、文件分页/冲突草稿、来源/模型/设置/摘要/未知副作用、Workflow 最新和历史入口，复用 useQuery/useAsyncTask。
+5. 按下方用户最新验收授权，前端单测→类型→构建→非浏览器真实临时 FastAPI/HTTP/SSE，覆盖发送/停止/重连/冲突；真实浏览器操作与桌面/窄屏视觉交由用户独立验收。最后后端及旧 Workflow 回归、静态检查、OpenSpec strict、diff 自审。每批后端 timeout 60s，逐完成点本地提交，不推送、不混入共享脏文件。
+
+## 执行记录
+
+- F 命令与分支完成点（2026-09-23）：依据 design §1/§8/§9，ContextMiddleware 通过 create_agent 官方 before/after_model 钩子在完整工具组之后接收 append，保持同轮快照与租约；无工具的模型返回也会消费命令，最终边界关闭后的输入等待终态再启动新轮。运行 compact 复用同一 prepare(force=True)，空闲 compact 是 AgentService 持有的可取消任务，无可压缩前缀以 command.completed.compacted=false 表示，不伪造 context.compacted。停止独立取消当前任务并撤销排队命令，不启动旧 append。fork 删除私有 saver.conn/SQLite 拷贝，改用公开 StateGraph 状态投影与事件记录的精确 checkpoint_id；编辑仅接受 message.user 的 message_id，子树继承截止父事件的只读历史，不复制未来/待执行工具。46 项服务/图/准入/任务归属/快照/最终契约在 5.27s 通过；新增运行 compact 与停止竞争的最后定向批次 13 passed / 4.58s，均 timeout 60s。ruff/diff-check 通过；接口新增 message_id fork 和 history 投影，F 全项待其余管理/API/UI验收。
+
+- F 前置工具契约完成点（2026-09-23）：根据 design §4.2，移除 plugin 的 Channel list/schema/call 分支，既有 ChannelManager/Workflow 通知不变。真实 create_agent 包装现在按网关目标声明选择工作区 read/exclusive，结果经唯一 ArtifactStore 保存完整脱敏正文并返回有限预览；工具事实携带 name/arguments/execution/turn_id/tool_call_id，排队尚未开始的取消明确 cancelled，已开始后取消明确 outcome_unknown。无新的副作用重试。33 项 gateway/service/task-ownership/turn-config/最终集成回归在 timeout 60s 下 4.37s 通过；新增真实图验证写 Collector 等待读锁释放、仅调用一次、长输出 Artifact 完整、预览受限。ruff 与 diff-check 通过。F1–F6 尚未因此提前勾选。
+
+- E1/E2/E3 主路径完成点（2026-09-23，快照提交 `0a0a201` 之后）：按 design §3.1/§8 和设计修订任务，删除旧 `safety_ratio/trigger_ratio/keep_ratio/summary_ratio` 配置，改为固定绝对 `trigger_tokens=180000`、`keep_tokens=40000`，`context_window=200000` 仍为明确展示的项目用户预算，不宣称所有模型容量。已知模型公开 profile 容量与配置取较小值；context_window 为 null 且 profile 未知时明确 `context_budget_unavailable`。独立 summary_ai 不继承主模型容量，必须有其 profile 或显式 summary_context_window。主/摘要输出预留默认仍为 4096；两者不同时通过既有 AIService 租约构造各自上限的模型，不修改活动模型或另造 Provider 工厂。
+- 每次模型节点由 `ContextMiddleware` 计算固定 system/AGENTS、实际转换后的工具定义、包含 checkpoint 的完整 state.messages 及输出预留。优先模型 tokenizer，仅不支持/缺少依赖时使用明确标记的框架估算，其他异常传播；全部预算均带 estimated=true，不冒充 provider usage。普通请求达到固定阈值或实际容量才委托按请求新建的官方 SummarizationMiddleware；传消息深副本，`trim_tokens_to_summarize=None`，由框架选取完整消息组。摘要代理直接检查框架实际生成的完整序列化提示和独立输出预留，超限/空摘要/模型异常直接失败；一次逻辑调用后用公开 add_messages reducer 投影并再次检查完整请求，超限不循环摘要。历史 reported usage 不反向触发额外压缩，无可压缩前缀时手动 prepare(force=True) 无操作、自动超限明确失败；HTTP compact 的排队/空闲接入仍归 F，不以该辅助入口冒称管理 API 完成。
+- 压缩成功先保存脱敏可读 `History/<session_id>/summaries/<uuid>.md` 与 context.compacted 事实，再交回图提交新消息；旧聊天事件与 checkpoint 链不删除。事件保存 summary、artifact_path、removed_message_ids、before/after 预算及 source_event_range（本次压缩所依据的原始事件日志范围，精确被替换上下文以 message IDs 表示，不把保留消息误称已从历史删除）。每次合法模型请求发布 context.budget；会话 context_budget 从日志最新事件派生，不建第二状态库。摘要模型流事件通过框架 lc_source=summarization 元数据隔离，不变成聊天 message.delta。turn.failed 对 LogAgentError 保留 code/message/details，让容量失败的大项占用可见。
+- E1/E2/E3 实测：新增 `tests/agent/test_context.py` 19 项，验证固定默认值与旧比例拒绝、模型 tokenizer/显式估算、未知主/摘要容量、system/tools 触发、旧 usage 不误触发、超过 100k 字符的完整摘要前缀、ToolMessage 配对、完整序列化摘要提示超限、失败/空摘要/摘要仍超限只调用一次且原消息不变、无可压缩前缀、工具结果增长以及真实 SQLite 历史压缩/可读摘要与预算事件。真实 ChatOpenAI + AIService + httpx.MockTransport 实测三次请求的 max_completion_tokens 为主 120/摘要 60/主 120，旧 max_tokens 被移除，主 tools 稳定，摘要不发聊天增量。该测试最初触发 tiktoken 首次网络下载被 60s 硬超时终止，随后仅把测试 tokenizer 固定为本地计数，真实 Provider/连接/HTTP 序列化保持并通过，不放宽超时。
+- 最终定向回归：`rtk proxy timeout 60s .venv/bin/pytest -q --tb=short tests/agent tests/interaction/test_agent_api.py tests/lifecycle/test_lifecycle.py tests/ai/test_model_lease.py` → 136 passed / 24.69s；核心批次 57 passed / 16.45s，context/AI lease/framework/gateway 批次 29 passed / 8.31s。仅有已知 Starlette anyio BlockingPortal 弃用警告。恢复 E2/E3 勾选基于本轮主路径证据；下方旧完成记录继续仅作历史。
+- 完成前检查：`rtk proxy .venv/bin/ruff check src/logagent/agent tests/agent tests/ai/test_model_lease.py`、`rtk proxy uv build`、`rtk proxy openspec validate add-file-centric-agent --strict --no-interactive`、`rtk proxy git diff --check` 均通过；构建后 Provider 请求体与真实 ASGI/SSE disconnect 两项烟测 2 passed / 15.50s。自审确认无框架私有阈值写入/摘要算法副本、无循环压缩/异常吞为成功、无新配置持久库或工具锁、未更改其他任务脏文件。原始消息先复制再委托，失败保留原状态；统计依然是预估，真实 usage 只可作为后续观测。
+- F 接口交接：config 移除四个 ratio 键，新增 trigger_tokens/keep_tokens；保留 context_window/output_tokens/summary_context_window/summary_max_tokens/summary_ai。session 新增 context_budget（null 或最新预算）；context.budget.data 字段为 turn_id、messages/system/tools/output/total/window/remaining、estimated=true、token_counter=model_tokenizer|framework_approximate，remaining 已扣输出预留。context.compacted.data 见上一段，before/after 使用相同预算字段。后续设置抽屉与上下文显示应明确“估算/用户预算”，手动 compact 复用 ContextMiddleware.prepare(force=True)，不能恢复旧空压缩伪成功。证据见 test_context.py、test_turn_config.py 与既有 API/SSE 回归；未修改前端、proposal/design 或其他任务脏文件。
+
+- E1 配置快照完成点（2026-09-23）：按 design §3.1/§9.1/§10，扩展已有 `_TurnResources` 捕获深拷贝 AgentConfig、工具 Schema 和无 ResourceStore 时的 AIConfig；主模型输出限制、摘要资源选择、工具参数及 idle timeout 不再读取活动轮中的 `self.config`。`update_config` 仅发布下一轮配置，调用方后续修改对象不会改变已发布值。工作区始终保持同一个 ToolScheduler/RWLock/Semaphore；新轮应用共享读容量，缩容等待既有读槽释放，取消归还已收回槽，不新建第二把锁或依赖信号量私有属性。该容量是工作区公共限制，模型生成不持工具锁。
+- E1 快照实测：`rtk proxy timeout 60s .venv/bin/pytest -q tests/agent/test_turn_config.py tests/agent/test_service.py tests/agent/test_admission.py tests/agent/test_task_ownership.py` → 38 passed / 4.97s。新增 4 项验证同轮工具后 prompt/Schema/config/idle timeout 固定、下一轮重新捕获及 provider 输出参数一致，配置更新后写锁仍阻止读取，缩扩容与取消不遗失容量。ruff、uv build、diff-check 通过；构建后单独重跑快照集成烟测 1 passed。E1 全项暂不勾选。
+- E2/E3 证据纠正：本轮代码核对发现旧勾选超出真实证据：graph 直接安装官方中间件，service 仅检查本轮新消息，尚未逐请求计入 checkpoint 历史/system/tools，也未接上摘要完整输入容量与结果复检。暂撤销 E2/E3 勾选，后续以真实 create_agent 接入测试恢复；先前测试/提交作为历史事实保留，不把辅助函数测试当作主路径验收。
+
+- 2026-09-23 委派授权更新：用户最新明确允许指定的 GPT-6 Astra xhigh 实施代理修改产品代码、测试和实施 task.md，并按完成点创建本地提交；主代理负责派发协调。本次 D1/D2 按该最新授权执行，覆盖上文旧的“子代理不得写代码/任务文档或提交”限制，不追溯改写此前执行事实。行为依据为现行 design.md 及 `../2026-09-22-design-revision/task.md`，不按旧记录推导冲突行为；不改 proposal/design。
+
+- D1 收尾完成（2026-09-23）：依据 design §9.1/§9.3/§10 和设计修订任务的按轮快照要求，普通消息与 append 共用一个锁内去重/冲突/持久接收入口；事件成功落盘后才发布 request_id 和队列视图，避免并发相同 ID 误报 busy、重复排队及落盘失败留下假成功。创建会话也在同一准入边界完成，阻止同 ID 并发创建和关停交叉；created_at/updated_at 从持久事件取值并在重启时恢复。资源沿用一次 ResourceStore.invocation_snapshot，工具/Manager 继续由 lifecycle 的活动轮 reload 禁止规则固定代次；每轮 Catalog 由该快照按 generation/turn_id 写出，旧目录保留。补齐 CollectorManager 所需 CollectionContext，lifecycle 注入现有凭据、日志路径、SessionView；没有新增资源、凭据或插件发现来源。
+- D1 实测：`rtk proxy timeout 60s .venv/bin/pytest -q tests/agent/test_admission.py tests/agent/test_service.py tests/agent/test_gateway.py tests/lifecycle/test_lifecycle.py` → 51 passed / 18.59s。新增 10 项覆盖并发同键同文/异文、普通提交/排队、落盘失败无幽灵接收、同会话单轮及跨会话同时生成、重启幂等与时间戳、会话创建竞争，以及真实 create_agent → plugin → CollectorManager 单次调用时 AI/Schema/Catalog/工具启停快照一致。初跑明确发现并修复 created_at 重启漂移和同 ID 会话创建竞争。定向 ruff、`rtk proxy uv build`、`rtk proxy git diff --check` 通过；自审未新增第二事实库、吞错或自动重试。D2 的断连与取消清理顺序继续单独验收。
+- D2 收尾完成（2026-09-23，D1 提交 `c273f7e` 之后）：依据 design §3.1/§3.2/§9.1，保留 create_agent 原生图与独立 `runtime/checkpoints.sqlite`；消息接收本身改由服务持有任务并 shield，避免 HTTP 在 fsync/准入中断开留下已接收却无人执行的轮次。202 返回前只等待轮协程进入清理范围，不等待模型；显式 stop 对活动轮只注入一次取消，停止请求断连不重复取消工具清理。工具任务的 finally 清理位于模型/摘要租约内部，先等运行/排队工具结束及锁释放，再退出租约；清理中的非取消异常继续抛出。排队工具取消也落明确终态；普通事件追加复用既有 file_io 等待取消中的持久写完成，不让后台 fsync 越过取消终态。
+- D2 实测：`rtk proxy timeout 60s .venv/bin/pytest -q tests/agent/test_task_ownership.py tests/agent/test_admission.py tests/agent/test_service.py` → 34 passed / 4.17s；`rtk proxy timeout 60s .venv/bin/pytest -q tests/interaction/test_agent_api.py tests/agent/test_framework_contracts.py tests/agent/test_execution.py tests/lifecycle/test_lifecycle.py` → 42 passed / 20.77s。新增 7 项所有权测试验证接收/等待方取消不传递、立即 stop、模型→工具→模型全程一个租约、stop 断连/重复 stop、排队工具取消、同轮工具失败清理同伴、Agent/Workflow 使用相同 thread ID 仍隔离且重启后保留 Agent 上下文及多条 checkpoint。新增真实 FastAPI ASGI/SSE 烟测发送 `http.disconnect`，证明后台继续完成且 Last-Event-ID 回放无重复。修正测试忙轮询为 Event 后对应两文件 12 passed / 10.32s；ruff、uv build、diff-check 通过，构建后单独重跑真实 SSE smoke 通过。唯一测试警告为 Starlette 的 anyio BlockingPortal 弃用提示；未修改第三方依赖。
+- D1/D2 自审与后续边界：无新第二事实来源、宽泛吞错成功或副作用重试；保留现有其他任务未提交改动，未修改 proposal/design，未推送。供后续 E1/F 审查：AgentConfig 仍需按 turn 固定（_model/_stream_graph 读取 self.config），update_config 不应在活动工具持锁时创建另一把工作区锁；plugin 当前 channels 分支与 design Collector-only 的偏离仍由最终接口收尾处理，本次未冒称已验收该范围。
+
+- 已完成：提交实施前基线，并在任何业务实现之前建立本记录。
+- A 已完成（依赖由外部新增提交 `119e486` 收录，保留该提交，不重复提交相同变更）。锁定 langchain 1.4.2、core 1.6.4、langgraph 1.2.12、prebuilt 1.1.0、checkpoint 4.2.0、sqlite 3.1.1、aiorwlock 1.5.1；新环境 `/tmp/logagent-agent-implementation-venv`，原 `.venv` 仍保留旧版本供交叉验证。
+- 旧/新环境 Workflow 恢复、进程退出、生命周期 39 项各通过（47.75s / 24.94s）；主代理额外按两批验证 recovery/lifecycle/interval/availability 40 项、integration/overrides/disabled/session 44 项，旧新均通过。最初合并批次 60s 超时，已拆批而非放宽时限。
+- 真实旧库含 WAL，只复制库与日志后对副本备份；原文件 size/mtime/SHA256 不变。新旧解码 78 checkpoints、231 writes、10 namespaces 完全一致，摘要 `aef6c876035156948b6f52837b8ca84d7337b8f6b0c62c4d03d7a32219e26dea`。
+- 旧解释器生成 crash-analysis/crash-notify/crash-archive 后新解释器恢复均通过；采集不重复、已完成分析不重复、未知发送保留 delivery_uncertain 且只继续下一目标。证据脚本 `/tmp/logagent-cross-version.py`，副本 `/tmp/logagent-db-audit-rb7qhm8j`。
+- 可持续回归固化为 `tests/agent/test_framework_contracts.py`：3 passed（0.54s）；验证完整摘要输入、未知工具异常传播、pending 工具补齐消息并通过公开 aupdate_state 清理后不重放。ruff 通过，uv build 成功，OpenSpec strict 有效。
+- 框架版本差异的实现依据：1.4.2 middleware 还会读取历史 AI usage 触发摘要，因此应用先按本轮预算判断是否委托；官方摘要内部 with_retry 重试所有 Exception，必须由总 timeout 覆盖，确定性容量错误在委托前校验。向 middleware 传消息副本，避免失败时它补 ID 改动原状态。不改框架私有方法。
+- 尚未完成：B–F。
+
+- B1 完成：AIService.lease 与文本 execute 共用 _model_lease/ChannelManager/凭据入口；OpenAIChannel 显式 streaming 与 max_completion_tokens，移除其他重复输出限制键且不改输入配置。模型上游错误脱敏，工具/存储异常原样传播，租约覆盖调用方整个上下文。19 项定向测试通过（5.07s），包括流式 tools HTTP payload、输出限制、连接关闭取消、凭据脱敏、Workflow 分析回归；ruff 和 diff --check 通过。
+
+- B2 完成：config/calls.py 抽取来源模板/覆盖与渠道覆盖，Workflow 原调用路径切换到公共函数；ResourceStore.invocation_snapshot 在同一锁内捕获启用实例和模型。call_options_schema 保留定义并重定位本地引用，只暴露调用属性与非凭据默认值，固定值解除 required，跨字段约束仍由原完整 Schema 校验。47 项配置/Schema/Workflow 覆盖测试通过（8.63s），ruff 与构建通过。
+
+- C 的细化约定：History 下单层 `.md` 为可写笔记，子目录映射运行事实并只读，避免尚未创建的会话目录被工具抢先伪造。文件读取/写入使用目录句柄和 O_NOFOLLOW；线程内文件操作在取消时先完成再释放统一调度锁，避免后台写入越过独占窗口。主模型输出预留默认 4096 tokens（可配置），用于首版文本问答和工具参数的单次输出；与真实 provider 限制同步，并在模型容量不足时要求调整，不代表模型窗口。
+
+- B3/B4 完成：工具声明与注册事务、owner 冲突、只读视图、generation、发现/API/前端 DTO 已贯通；五内置工具先查 enabled 后导入，logs/history/mock 声明 read，其余 Collector 默认 exclusive。184 项插件/配置/契约/HTTP/生命周期定向测试通过（12.22s），ruff、前端类型与构建、Python 构建通过。生命周期旧测试预期纯正文但未关闭默认 include_counts；仅使该测试显式声明 False，完整 lifecycle 20 项通过，未改变业务默认。
+
+- C4 进程清理决策：仅 killpg 无法回收 Shell 中调用 setsid 后脱离原进程组的后台任务。单次 Shell 使用独立的 Linux subreaper 监督进程；主服务取消先通知监督进程，监督进程杀死并回收所有后代后才退出，不在主服务设置全局 subreaper，也不影响 Workflow 的子进程。该辅助进程只承接本次命令，不构成后台 Shell 会话。
+
+- C 批次完成：修正 Shell 使用 `sh -c`，避免登录 Shell 从宿主 profile 注入环境变量；`WorkspaceBackend` 增加 `Runtime/self.json` 会话作用域逻辑映射、Runtime/Sessions 只读目录和不可搜索/写入约束。新增并通过 self 映射隔离测试；Agent 定向测试 49 项通过，ruff 与 diff-check 通过。
+
+- D 基础实现：新增 `EventLog`、`create_agent` 图装配和 `AgentService`。当前已验证工具 started/completed、request_id 幂等、单轮后台任务、独立 `runtime/checkpoints.sqlite` 及重启后的 `outcome_unknown` 标记；资源代次快照、活动键跨进程协调、pending ToolMessage 修复和 HTTP/SSE 仍待完成。新增服务、工具、恢复测试，Agent 定向测试 53 项通过，ruff 通过。
+
+- D3/D4 完成：EventLog 使用跨进程文件锁在同一提交临界区分配序号、占用稳定键并 fsync；稳定键采用 `(session_id, turn_id, tool_call_id)`，重复活动键等待既有终态，完成键复用且参数冲突明确失败。启动把未完成轮次追加 `turn.interrupted`，未完成副作用追加 `tool.outcome_unknown`；下一条消息读取公开 checkpoint 状态，为 pending 工具补入 `ToolMessage(outcome_unknown)` 后清理工具边界。历史会话缺少或无法读写 checkpoint 时返回 `checkpoint_missing`/`checkpoint_corrupt`，不猜测状态或重放副作用。定向 Agent 测试 58 项通过，ruff 与 diff-check 通过。
+
+- D5 完成：Agent 已纳入 lifecycle 的启动、插件重载准入协调和关停顺序；活动 Agent 轮次使插件重载返回 `plugin_reload_conflict`，且不会卸载或发布新插件。Agent 准入使用同一把 admission lock，避免 reload/shutdown 与新会话或新轮次竞态；资源与插件快照仍在每轮开始捕获，更新只影响后续轮次。Agent 与 lifecycle 定向测试 78 项通过，ruff 与 diff-check 通过。
+
+- E 基础实现：`context.py` 新增固定 system/tools/output 预算估算、超限显式 `context_budget_exceeded`、官方 `SummarizationMiddleware` 的 `trim_tokens_to_summarize=None` 包装及 ToolMessage 配对校验；每次请求构造独立中间件，摘要提示缺少 `{messages}` 时补入完整消息占位。新增预算与完整摘要输入测试，Agent 定向测试 55 项通过，ruff 通过。E1 尚待 Agent 主流程接入。
+
+- E4 完成：Agent 轮次在捕获的 `AIConfig.timeout` 内持有主模型租约；`AgentConfig.idle_timeout` 默认 300 秒仅在收到上游 `on_chat_model_start` 后等待模型事件，不把工具运行或 SSE 心跳误判为模型活动。图改用 LangGraph `astream_events(version="v2")`，真实模型增量先以 `message.delta` 持久化；增量发布后异常记录 `turn.failed(partial=true)` 并原样结束，不自动重试或重复拼接。取消时取消并等待活动工具任务，使调度锁、工具事件和模型租约均在轮次结束前释放；可选 `summary_ai` 从同一 ResourceStore 代次捕获并独立租约，摘要调用按该资源的 `AIConfig.timeout` 单独限时，默认仍复用主模型。依据 design §3.2、§8.3、§9.2、§10：总时限沿用 AIConfig，默认无活动窗口采用设计值 300 秒，工具不挂自动重试。`tests/agent/test_service.py` E4 行为覆盖 14 项（含模型空闲/总时限、独立摘要超时、增量失败不重试、取消工具清理），全部通过；ruff 与 diff-check 通过。
+
+- F1/F2 契约修正（`ff2f1a3`）：SSE 路由在发送响应前验证 session 与事件文件，使不存在 session 返回结构化 `session_not_found` 409；补齐 `file_conflict`、`replace_conflict`、`session_conflict` 的 409 映射，文件 PUT 返回 `ETag`。EventLog 持久事件补充 `session_id`、`turn_id`、`at`、`data` 公共信封，保留内部索引字段；17 项 Agent/API 定向测试通过，ruff 通过。当前仍缺少真正的 SSE 回放解析与 append/fork 命令。
+- F3/F4 基础（`f033c82`、`6c0c5a1`）：`/agents` 页面增加安全 Markdown 报告渲染、用户/增量/工具/压缩事件展示、停止/compact/工具面板、窄屏布局；Agent API 增加 config/file DTO；工具视图包含 plugin、generation、definition token 估算。配置 API 暴露 sandbox enabled/network/available/status，区分关闭和不可用。前端 typecheck/build 通过，现有 query/report 单测 9 项通过。完整分支树、文件抽屉、插件开关写 API、append/fork UI 仍未完成。
+- Qwen Paw 对照记录（只读借鉴，未引入其协议）：`/mnt/d/code/QwenPaw/console/src/pages/Chat/replayFastForward.ts` 与同目录 `tests/replayFastForward.test.ts` 将重连回放缓冲到显式 `replay_end` 后一次性快进、过滤标记，并在旧后端无标记时以短 idle 窗口降级；本实现继续以 EventLog 的持久 `id`/`Last-Event-ID` 为唯一游标，不增加标记事件。`/mnt/d/code/QwenPaw/src/qwenpaw/app/routers/fork.py` 的 `POST /fork/agent` 先复制父会话状态再建立子会话，验证了“父会话只读、子会话独立”的交互方向；本实现改为复制 LangGraph checkpoint 完整链和 branch 元数据，不复制可编辑事件正文作为执行状态。
+- Append/fork 最小契约已实现：`AgentService.append` 在活动轮次写入 `command.queued`，当前终态落盘后仅启动一个排队轮次；空闲 append 直接创建新轮次，request_id 仍按同一幂等表去重。`POST /api/agents/sessions/{id}/append` 返回排队 turn；`POST /api/agents/sessions/{id}/fork` 复制独立 SQLite checkpoint 的完整链与 writes，记录 `parent_session_id`、`parent_turn_id`、`parent_branch_id`，父事件文件和父会话不变。当前 SQLite saver 的 `acopy_thread` 为抽象占位，因此实现使用其连接锁内的同一 checkpoint 表事务复制；无可用 checkpoint 明确返回 `checkpoint_missing`，不猜测上下文。行为测试覆盖排队只启动一次、fork 后子会话继续及父分支不变。
+- F3/F4 增量完成（`e3ac86f`、`0a58370`）：前端新增 append/fork 操作、工具插件开关调用、generation/定义 Token/执行类别、真实沙箱/并发/上下文设置面板，以及按需文件抽屉。文件保存携带 `If-Match`，`Runtime/` 显示只读；写冲突错误时不清空草稿。复用现有 `ReportText`，未在前端复制权限或执行类别判断。`npm run typecheck`、`npm run build`、前端 Vitest 全量通过。仍未勾选 F3/F4：分支树完整可视化、抽屉目录分页、真实浏览器 SSE 烟测和 send 状态细分仍待最终验收。
+- F5/F6 验收记录（`e7e7039`）：新增 `frontend/playwright.agent.config.ts`、`frontend/tests/serve_agent_backend.py` 和 `frontend/tests/e2e/agent.spec.ts`。假模型仅在本地流式响应，后端仍使用真实 FastAPI Agent 路由、EventLog、SQLite checkpoint、WorkspaceBackend；HTTP smoke 实际验证 health、创建/发送、完整 SSE 事件、`Last-Event-ID` 回放、慢模型取消和 `If-Match` 文件冲突，结果分别为 200/201/202/409，未连接真实渠道。Playwright 已实际启动该后端和前端预览，但 Chromium 在页面启动前因运行环境缺少 `libnspr4.so` 退出（`browserType.launch`，不是应用断言失败），故 F5 保持未勾选，命令为 `cd frontend && npm run test:e2e -- --config playwright.agent.config.ts`；安装 Chromium 系统依赖后可直接重跑。
+- F6 已完成：`timeout 60s ./.venv/bin/pytest -q tests/agent/test_service.py tests/agent/test_framework_contracts.py`（20 passed）、`tests/interaction/test_agent_api.py`（4 passed）、Agent 其余三批（20/26 passed），旧 Workflow/lifecycle 按文件拆批全部通过（包括进程恢复 3 passed/45.97s）；`npm test`（19 files/97 tests）、`npm run typecheck`、`npm run build`、`ruff check src tests frontend/tests/serve_agent_backend.py`、`uv build`、`openspec validate add-file-centric-agent --strict --no-interactive` 和 `git diff --check` 均通过。合并批次超过 60 秒时按文件拆分，未放宽单批硬超时；未发现 catch-all 成功、重复副作用、事件游标跳号或中间 checkpoint 删除。
+
+- 验收责任修订（2026-09-23，用户明确授权）：用户要求“继续，同时真实浏览器验收不应该是你要负责的，我到时候另外的方案进行验收”，指定本 task.md。保持 proposal/design/frontend 设计不变；本轮不启动或执行浏览器、Playwright、Chrome MCP，也不准备浏览器依赖。F5 拆分为本轮自动化/非浏览器后端 HTTP/SSE 验证与用户真实浏览器验收，F5b 保留待验收；F1–F4、F6 仍按既有设计完成并逐完成点提交。
+
+- F1/F2 管理与流契约完成点（2026-09-23）：统一 Agent 文件读取/写入路由，读取沿用共享 read 调度、写入沿用 exclusive；保存强制 If-Match，新建 If-None-Match:*，409 冲突保留磁盘新版本，Runtime 只读。Agent router 必须注册在通用资源 /{kind}/{id} 前，真实 HTTP 测试暴露并修复 file 被当作资源后返回422的问题；接管 app.py Agent import/include_router 与 lifecycle/services.py Agent 字段两处必要装配。配置同目录原子保存，时区来自宿主 IANA 设定，Session 元数据物化、活动模型/工具代次和不可继续原因由持久事实派生；禁用插件元数据沿用 PluginRegistry 同一次发现，无第二扫描/配置源。Workflow 续接读取 session_view 的最终结果并冻结来源，拒绝客户端覆盖；模型切换下轮生效。/commands 提供 channel/session/priority 信封及 /new、/resume、/workflow、/append、/compact、/fork、/stop，复用既有准入与独立取消通道。EventLog 工具事实唤醒 SSE，慢客户端完成竞态在相同游标下 drain，排队命令取消先于终态；空会话 compact 保存空 checkpoint，不消耗 Workflow 输入。tests/agent、tests/interaction/test_agent_api.py、tests/config/test_plugin_setting.py：124 passed / 17.69s（timeout 60s）；含真实 ASGI 流断连/慢消费/续传、冻结来源、命令停止、文件条件写入、恢复持久化。ruff 通过。后续前端和最终回归仍按 F3–F6 完成。
+
+- F 恢复边界自审完成点（2026-09-23）：真实图的“模型返回后手动摘要失败→用户再发新消息”测试暴露两个过度门禁：新准入重复 await 已失败任务；已配对消息后的待执行 middleware/model 节点被当成损坏 checkpoint。现在准入只等待尚未结束任务的完成事实；仅在先前终态为 failed/cancelled/interrupted、待执行节点属于当前已知图且无未配对工具调用时，用既有公开消息投影清除调度，不重做副作用；未知节点继续明确失败。摘要失败/取消写 command.failed 后重新抛出，原始消息和失败事实保留，不显示压缩成功。Runtime/Sessions 在 turn.resources 发布后立即物化运行态。定向43项通过，最终 tests/agent + Agent HTTP 124 passed /52.68s（timeout60s）；ruff通过。
+
+- F3/F4 页面完成点（2026-09-23）：依据 frontend §1–7 和 design §8–10，新增 Agent 分支树、工具事实归并、压缩摘要、文件/设置抽屉与 Workflow 最新/历史结果续接入口；模型和来源预览在确认时绑定已预览 session，不受后来运行替换。当前分支只有用户消息可编辑，预览后从该消息之前的公开 checkpoint 投影建立新分支；父历史、助手和工具消息保持只读。页面复用 ReportText、useQuery/useAsyncTask；停止使用独立动作，活动轮 compact 在模型边界排队。两条 Agent 路由、单个导航和两个 Workflow 入口按必要 hunks 提交，布局使用组件内样式，不依赖共享工作树其他任务的报告/全局样式。
+- F3/F4 事件与冲突决策：useAgentStream 以 session_id:id 合并父子历史，先读历史再取最新会话并从持久游标接流；新轮建立独立代次，旧轮终态/旧连接回调不能关闭新轮。断线从 500ms 退避到最多 5s，仅调节 UI 网络重试频率，不重试业务副作用；普通消息和 append 响应未知时保留草稿与 request_id，用户明确重试沿用同 ID，管理命令不冒称幂等。读取工具仅在任一工具结束之前已排队的同组内折叠，避免把后续依赖误示为并行。文件只有按一致 hash 载入完整正文后才允许保存，写入路径绑定已读文件，冲突保留草稿并单独加载远端供用户明确合并；Runtime 只读来自后端。
+- F4 预算决策：依据 design §3.1/§8 的按轮快照约束，context.budget 新增本轮有效 trigger=min(trigger_tokens, window)，页面使用该事件值展示触发线；设置更改只影响下一轮，不能用新配置倒推当前预算。旧历史缺少 trigger 时明确显示“历史未记录，下轮重新计算”。context/final_contracts 定向 28 passed /23.17s（timeout60s），ruff 通过。
+- F5a 前端验证：共享工作树 Vitest 22 files/112 tests passed /71.57s；随后在 37a13bc 加本任务精确暂存补丁的隔离 worktree 验证 Agent 三文件与基线 ReportText 共 18 passed /32.18s（Agent15+报告3），最后追加的未知发送同 ID 重试用例所在 agent-view 文件 4 passed /50.54s，新增 Agent 共16项均有通过证据，不将追加后未重跑的全量描述为113项通过。隔离前端 npm run typecheck、npm run build 通过（Vite 3556 modules/32.45s）；其 frontend 文件与本任务暂存内容逐字节一致，未借用共享脏报告组件或样式。共享工作树另有 CollectorDesignDemoView.vue:254 的 selectedTemplate 未使用导致 TS6133，属于其他任务，未改动或提交；本任务类型/构建结论以隔离检出为界。
+- F5a 非浏览器烟测：临时目录、假模型、真实 Uvicorn/FastAPI/EventLog/checkpoint/Workspace，经 localhost:14301 的真实 HTTP/SSE 验证创建201、发送202、9条连续持久事件、Last-Event-ID 仅回放缺失末条、新建 If-None-Match:*、If-Match 改写和 stale409 保留远端，以及独立 stop 得到 cancelled。首次10秒就绪窗口被繁忙导入耗尽，改为明确40秒就绪窗口后上述业务断言通过；未改变产品超时。进程与临时目录已清理，未连接真实渠道，未启动浏览器或准备浏览器依赖。F5b 仍由用户独立验收，不以组件/HTTP结果声称真实浏览器或窄屏视觉已通过。
+
+### F6 本轮最终验收（2026-09-23）
+
+- 本轮完成提交：`e472e17` 工具/Collector/Artifact 契约、`0b2b2c3` 模型边界命令和精确 fork、`122c6f3` 管理与持久流、`37a13bc` 失败后的明确续接、`54e6290` 会话/文件/Workflow 前端。已完成 F1–F4、F5a、F6；F5b 保持用户待验收。proposal/design/frontend 未改，未推送。
+- 后端均按批次 `timeout 60s .venv/bin/pytest`：最终 Agent+HTTP 124 passed /52.68s；最后预算字段改动的 context/final_contracts 28 passed /23.17s。旧 Workflow 的 test_recovery_availability、test_session_search、test_session_store、test_workflow_interval、test_workflow_lifecycle、test_workflow_recovery 六文件 67 passed /10.28s；test_workflow_process_recovery 单独3 passed /36.53s。lifecycle 两文件、AI model_lease 与 test_service 的确定性部分（`-k 'not request_roles_prompt_credentials_and_usage'`）43 passed /14.71s、1 skipped、4 deselected。排除项原因如下，不将这些定向批次描述为全量后端通过。
+- 外部服务失败如实保留：一次包含 turn_config/model_lease/ai service/interaction/recovery_query 的批次结果为46 passed、2 failed、3 skipped /19.25s；两个失败均为已有 `tests/ai/test_service.py::test_request_roles_prompt_credentials_and_usage[mock-...]`，默认请求 localhost:19026/v1。`tests/ai/live_helpers.py:73` 要求 mock 正文包含“测试”，当前本地服务实际返回 `LOGAGENT_OK`。未修改外部服务或放宽断言，也未再次请求该服务/真实模型；确定性模型租约和配置测试另批通过。
+- 静态/构建与烟测：`ruff check src tests frontend/tests/serve_agent_backend.py` 通过，最后 context 字段改动另行 ruff 通过；最终代码 `uv build` 产出 sdist/wheel。前端最终冻结文件的隔离 typecheck 与格式检查通过，隔离构建和16项 Agent 测试证据见 F5a；共享 CollectorDesignDemoView.vue 的 TS6133 边界同上。真实 ASGI 断连/续传和 localhost HTTP/SSE 烟测通过，未用启动日志代替业务验证。OpenSpec strict 与 diff-check 通过。
+- 最终差异自审：复用唯一配置、插件发现、模型租约、Workspace 调度、公开 checkpoint 和官方摘要入口；无第二 Schema/模型池/摘要实现、无静默失败成功化、无自动重做未知副作用、无链上中间 checkpoint 删除。事件游标跨分支去重，停止不等待共享动作，文件部分读取不能覆盖全文，冲突与响应未知均保留用户输入。仅提交本任务文件及必要接线 hunks，保留其他任务共享脏改动；最终索引以本轮证据覆盖历史勾选，不追改历史执行事实。
+
+### C6 公共 Collector 入口补漏完成（2026-09-23）
+
+- 实施前记录提交 `3c38c64`。从 Agent gateway 抽取 `collection/invocation.py` 的 `CollectorInvocation`/`CollectionArguments`，统一目标解析、Schema 投影、允许覆盖的参数归一化、保存值与 Setter 合并、单次 CollectorManager 调用；服务只引用既有快照和注入的执行协议，不新建 Manager/插件池。Agent 每轮保存该服务的快照，HTTP 每次请求捕获资源/注册描述后直接调用，同一请求在进入 Manager 前没有 await 或工作区锁。
+- HTTP 提供 `GET /api/sources/{id}/call-schema`、`POST /api/sources/{id}/collect`；CLI 提供 `logagent collect-schema ID --api-url URL`、`logagent collect ID --arguments overrides.json --api-url URL`。不传 `--arguments` 时发送 `{}`；文件格式为 `{"options":{},"setters":{}}`。来源不存在、禁用或插件不可用沿用 `target_unavailable` 并显式映射 409；结构/实例字段越权返回 422。Collector 参数值校验仍由 Manager 产生 `failed` 采集结果（HTTP 200 携带事实），六种采集状态原样保留，不把失败转成成功或重复执行。
+- 新增 32 项自动化测试全部通过，覆盖 Agent/共享服务/真实 ASGI/CLI 到 HTTP 的行为一致性、模板展开、保存默认值、显式空列表、资源不变、Agent 固定快照与 HTTP 新快照、生命周期上下文注入、禁用目标、错误脱敏、六种状态、取消清理、单次执行、持写锁不死锁、CLI 本地无效输入/路径注入/读取超时和无重试。首次测试把 Collector 非法参数值误期待为 HTTP 422，核对既有 Manager 契约后修正测试为明确 `failed` 事实，未改变既有采集错误语义。
+- 回归均使用 `rtk proxy timeout 60s .venv/bin/pytest`：Gateway + 原 HTTP 测试 27 passed /11.83s；新增入口 + Gateway + 全部 Collector 测试初跑 166 passed、1 failed /24.56s，唯一失败为旧 history 测试仍断言插件发现只有三个 Collector。依据 design §4.1 的五个内置工具契约，改为分别精确核对 Collector 与 Tool 名单，随后完整 history 文件 15 passed /5.72s。Agent service/admission/final_contracts + lifecycle 57 passed /34.39s。上述批次存在重叠，不合并声称全量后端通过。
+- 受影响文件 Ruff、`uv build`（sdist/wheel）、diff-check 通过。真实 Uvicorn + ApplicationLifecycle 临时目录烟测（整批 timeout 60s）关闭 `agent_shell` 后，经 localhost HTTP 创建来源 201、查询 Schema 200、采集 timeout 事实、无效来源 409；实际 CLI 子进程在真实 Agent scheduler exclusive 锁内完成 success 和显式空 Setter 的 filtered_empty，Schema CLI 与 HTTP 一致，保存资源未被改写。进程与临时目录正常清理；未启动浏览器、未调用真实模型或渠道。
+- 差异自审确认：公共入口没有 Agent lock 递归、独立插件扫描、第二份 Schema 或自动副作用重试；错误与取消保留，CLI ID 使用既有 ID 类型验证，输入错误不输出原始秘密值。未修改 proposal/design/frontend，未新增或重新派发 subagent；F5b 仍由用户独立验收。

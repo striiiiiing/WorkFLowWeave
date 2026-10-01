@@ -1,0 +1,678 @@
+"""系统配置读取、插件发现及能力发布测试。
+
+在临时目录生成真实插件清单、入口和私有配置，验证路径解析、默认值、Setter
+展开与 schema/语义校验；通过非法入口、重复声明、导入异常验证整插件回滚、
+错误脱敏及已发布视图隔离。插件为测试生成，不加载用户插件或远程服务。
+"""
+
+from __future__ import annotations
+
+import json
+from copy import deepcopy
+
+import pytest
+
+from logagent.config import ConfigurationReader, PluginRegistry
+from logagent.errors import LogAgentError
+from logagent.models import (
+    CollectionContext,
+    CollectorOutput,
+    SystemConfig,
+)
+
+
+def object_schema(properties=None, *, required=()):
+    return {
+        "type": "object",
+        "properties": deepcopy(properties or {}),
+        "required": list(required),
+        "additionalProperties": False,
+    }
+
+
+class SampleCollector:
+    description = "A deterministic test collector"
+    fields = ["message", "level"]
+    count_unit = "records"
+    options_schema = object_schema()
+    setters_schema = object_schema()
+
+    def __init__(self, name="sample"):
+        self.name = name
+
+    async def collect(self, options, setters, context):
+        return CollectorOutput(status="success", text="original", count=1)
+
+
+class ConfigurableCollector(SampleCollector):
+    options_schema = object_schema(
+        {
+            "required_value": {"type": "string", "description": "An instance value"},
+            "limit": {"type": "integer", "minimum": 1, "default": 10, "description": "Limit"},
+            "connection": {
+                "type": "object",
+                "description": "Connection as a whole value",
+                "properties": {
+                    "host": {"type": "string"},
+                    "label": {"type": "string"},
+                },
+                "required": ["host"],
+                "additionalProperties": False,
+                "default": {"host": "schema", "label": "schema"},
+            },
+        },
+        required=["required_value"],
+    )
+    setters_schema = object_schema(
+        {
+            "fields": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Selected fields",
+            },
+            "filter": {
+                "type": "object",
+                "description": "Equals filter",
+                "additionalProperties": {"type": "string"},
+            },
+        }
+    )
+
+
+PLUGIN_SUPPORT = """from logagent.models import CollectorOutput
+
+class SampleCollector:
+    description = "Plugin test collector"
+    fields = ["message"]
+    count_unit = "records"
+    options_schema = {
+        "type": "object",
+        "properties": {
+            "required_value": {"type": "string", "description": "Instance value"},
+            "limit": {"type": "integer", "minimum": 1, "description": "Limit", "default": 10}
+        },
+        "required": ["required_value"],
+        "additionalProperties": False
+    }
+    setters_schema = {"type": "object", "additionalProperties": False}
+
+    def __init__(self, name):
+        self.name = name
+
+    async def collect(self, options, setters, context):
+        return CollectorOutput(status="success", text=self.name, count=1)
+"""
+
+
+def write_plugin(
+    root, directory, *, plugin_id=None, body=None, kind="collector", backend="main.py"
+):
+    package = root / directory
+    package.mkdir(parents=True)
+    (package / "plugin.json").write_text(
+        json.dumps(
+            {
+                "id": plugin_id or directory,
+                "version": "1.0",
+                "kind": kind,
+                "api_version": 1,
+                "entry": {"backend": backend},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (package / "support.py").write_text(PLUGIN_SUPPORT, encoding="utf-8")
+    path = package / backend
+    if not path.is_absolute() or path.is_relative_to(package):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            body
+            or (
+                "from .support import SampleCollector\n"
+                "class Plugin:\n"
+                "    def register(self, api):\n"
+                f"        api.register_collector(SampleCollector({directory!r}))\n"
+                "plugin = Plugin()\n"
+            ),
+            encoding="utf-8",
+        )
+    return package
+
+
+async def discover(root, *, builtins=()):
+    registry = PluginRegistry(builtin_collectors=builtins)
+    report = await registry.discover_plugins(SystemConfig(plugin_dir=str(root)))
+    return registry, report
+
+
+async def test_system_paths_are_relative_to_config_and_defaults_are_fixed(tmp_path, monkeypatch):
+    directory = tmp_path / "configuration"
+    directory.mkdir()
+    location = directory / "system.json"
+    location.write_text(json.dumps({"plugin_dir": "../extensions", "log_file": "logs/tool.jsonl"}))
+    monkeypatch.chdir(tmp_path)
+    config = await ConfigurationReader().load_system(location)
+    assert config.data_dir == str(directory / "data")
+    assert config.plugin_dir == str(tmp_path / "extensions")
+    assert config.log_file == str(directory / "logs/tool.jsonl")
+    assert config.master_key_file == str(directory / "master.key")
+    assert config.host == "127.0.0.1"
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "not json",
+        "[]",
+        '{"port": "invalid"}',
+        '{"port": 65536}',
+        '{"unknown": "secret-value"}',
+        '{"port": 8000, "port": 9000}',
+        '{"data_dir": ""}',
+    ],
+)
+async def test_invalid_system_config_is_rejected_without_exposing_input(tmp_path, content):
+    path = tmp_path / "system.json"
+    path.write_text(content)
+    with pytest.raises(LogAgentError) as error:
+        await ConfigurationReader().load_system(path)
+    assert "secret-value" not in error.value.info.model_dump_json()
+
+
+async def test_optional_plugin_settings_are_missing_only_not_invalid_or_unreadable(tmp_path):
+    reader = ConfigurationReader()
+    path = tmp_path / "config.json"
+    assert await reader.load_plugin_config(path) == {}
+    with pytest.raises(LogAgentError, match="不存在"):
+        await reader.load_system(path)
+    path.write_text('{"collector": {"demo": {"enabled": "invalid"}}}')
+    with pytest.raises(LogAgentError):
+        await reader.load_plugin_config(path)
+    path.unlink()
+    path.mkdir()
+    with pytest.raises(LogAgentError):
+        await reader.load_plugin_config(path)
+
+
+async def test_valid_plugin_config_and_invalid_top_level_kind(tmp_path):
+    path = tmp_path / "config.json"
+    path.write_text('{"collector": {"demo": {"enabled": false}}}')
+    config = await ConfigurationReader().load_plugin_config(path)
+    assert config["collector"]["demo"].enabled is False
+    path.write_text('{"unsupported": {}}')
+    with pytest.raises(LogAgentError):
+        await ConfigurationReader().load_plugin_config(path)
+
+
+async def test_builtin_views_and_captured_implementation_are_isolated(tmp_path):
+    original = ConfigurableCollector()
+    registry, report = await discover(tmp_path / "missing", builtins=[original])
+    assert report.errors == []
+    view = registry.collectorRegister
+    exposed = view.get("sample")
+    assert view.get("absent") is None
+    exposed.fields.clear()
+    exposed.options_schema["properties"].clear()
+    exposed.setters_schema["properties"].clear()
+    report.registered[0].fields.clear()
+    described = view.describe()
+    described[0].options_schema.clear()
+    described.clear()
+
+    async def replacement(options, setters, context):
+        raise AssertionError("The stable original implementation must be called")
+
+    original.collect = replacement
+    original.options_schema = object_schema()
+    assert view.get("sample").fields == ["message", "level"]
+    assert "limit" in view.get("sample").options_schema["properties"]
+    result = await exposed.collect({}, {}, CollectionContext("workflow", "session"))
+    assert result.text == "original"
+    assert not hasattr(view, "register_collector")
+
+
+@pytest.mark.parametrize("invalid", ["sync", "signature", "name", "fields", "schema", "default"])
+async def test_invalid_builtin_declarations_prevent_publication(tmp_path, invalid):
+    collector = SampleCollector()
+    if invalid == "sync":
+        collector.collect = lambda options, setters, context: None
+    elif invalid == "signature":
+
+        async def wrong_signature(options):
+            pass
+
+        collector.collect = wrong_signature
+    elif invalid == "name":
+        collector.name = "../outside"
+    elif invalid == "fields":
+        collector.fields = ["message", "message"]
+    elif invalid == "schema":
+        collector.options_schema = {"type": "array"}
+    else:
+        collector.options_schema = object_schema(
+            {"limit": {"type": "integer", "default": "invalid", "description": "Limit"}}
+        )
+    registry = PluginRegistry(builtin_collectors=[collector])
+    with pytest.raises(LogAgentError) as error:
+        await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path)))
+    assert error.value.code == "builtin_registration_failed"
+    assert registry.collectorRegister.describe() == []
+
+
+async def test_semantic_validation_is_captured_and_receives_copies(tmp_path):
+    collector = ConfigurableCollector()
+    calls = []
+
+    def check(options, setters):
+        calls.append(options["required_value"])
+        options.clear()
+        setters.clear()
+
+    collector.validate = check
+    registry, _ = await discover(tmp_path, builtins=[collector])
+    registered = registry.collectorRegister.get("sample")
+    collector.validate = lambda options, setters: (_ for _ in ()).throw(AssertionError("replaced"))
+    options = {"required_value": "ok"}
+    registered.validate(options, {})
+    assert calls == ["ok"]
+    assert options == {"required_value": "ok"}
+
+
+async def test_multiple_capabilities_and_package_relative_import(tmp_path):
+    write_plugin(
+        tmp_path,
+        "demo",
+        backend="nested/main.py",
+        body="""from ..support import SampleCollector
+class Plugin:
+    def register(self, api):
+        api.register_collector(SampleCollector("first"))
+        api.register_collector(SampleCollector("second"))
+plugin = Plugin()
+""",
+    )
+    registry, report = await discover(tmp_path)
+    assert [item.name for item in report.registered if item.kind == "collector"] == ["first", "second"]
+    assert all(item.plugin == "demo" for item in report.registered if item.kind == "collector")
+    result = await registry.collectorRegister.get("second").collect(
+        {}, {}, CollectionContext("workflow", "session")
+    )
+    assert result.text == "second"
+
+
+async def test_package_initializer_can_be_the_backend(tmp_path):
+    write_plugin(tmp_path, "demo", backend="__init__.py")
+    registry, report = await discover(tmp_path)
+    assert not report.errors
+    assert registry.collectorRegister.get("demo") is not None
+
+
+async def test_initializer_importing_backend_does_not_execute_it_twice(tmp_path):
+    marker = tmp_path / "imports.txt"
+    package = write_plugin(
+        tmp_path,
+        "demo",
+        body=f"""from pathlib import Path
+from .support import SampleCollector
+with Path({str(marker)!r}).open("a") as log:
+    log.write("imported\\n")
+class Plugin:
+    def register(self, api):
+        api.register_collector(SampleCollector("demo"))
+plugin = Plugin()
+""",
+    )
+    (package / "__init__.py").write_text("from .main import plugin\n")
+    _, report = await discover(tmp_path)
+    assert not report.errors
+    assert marker.read_text().splitlines() == ["imported"]
+
+
+@pytest.mark.parametrize("change", [{"api_version": 2}, {"unexpected": "secret-value"}])
+async def test_manifest_validation_precedes_backend_import(tmp_path, change):
+    marker = tmp_path / "imported"
+    package = write_plugin(
+        tmp_path, "bad", body=f"from pathlib import Path\nPath({str(marker)!r}).touch()"
+    )
+    manifest = json.loads((package / "plugin.json").read_text())
+    manifest.update(change)
+    (package / "plugin.json").write_text(json.dumps(manifest))
+    _, report = await discover(tmp_path)
+    assert len(report.errors) == 1
+    assert report.errors[0].details["stage"] == "manifest"
+    assert "secret-value" not in report.model_dump_json()
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize("mode", ["async", "wrong_signature", "not_callable"])
+async def test_invalid_optional_semantic_hooks_reject_declaration(tmp_path, mode):
+    collector = SampleCollector()
+    if mode == "async":
+
+        async def validator(options, setters):
+            pass
+
+        collector.validate = validator
+    elif mode == "wrong_signature":
+        collector.validate = lambda options: None
+    else:
+        collector.validate = 5
+    with pytest.raises(LogAgentError) as error:
+        await discover(tmp_path, builtins=[collector])
+    assert error.value.code == "builtin_registration_failed"
+
+
+async def test_semantic_hook_error_does_not_mutate_options(tmp_path):
+    collector = SampleCollector()
+
+    def validator(options, setters):
+        options["modified"] = True
+        raise RuntimeError("credential-super-secret")
+
+    collector.validate = validator
+    registry, _ = await discover(tmp_path, builtins=[collector])
+    options = {}
+    with pytest.raises(RuntimeError, match="credential-super-secret"):
+        registry.collectorRegister.get("sample").validate(options, {})
+    assert options == {}
+
+
+async def test_builtin_conflict_discards_every_capability_of_plugin(tmp_path):
+    write_plugin(
+        tmp_path,
+        "bad",
+        body="""from .support import SampleCollector
+class Plugin:
+    def register(self, api):
+        api.register_collector(SampleCollector("orphan"))
+        api.register_collector(SampleCollector("sample"))
+plugin = Plugin()
+""",
+    )
+    write_plugin(tmp_path, "good")
+    registry, report = await discover(tmp_path, builtins=[SampleCollector()])
+    assert [item.name for item in report.registered if item.kind == "collector"] == ["sample", "good"]
+    assert registry.collectorRegister.get("orphan") is None
+    assert registry.collectorRegister.get("sample").description == SampleCollector.description
+    errors = registry.collectorRegister.diagnostics("orphan")
+    assert errors[0].details["reason"] == "registration_conflict"
+    errors[0].details.clear()
+    assert registry.collectorRegister.diagnostics("orphan")[0].details["plugin"] == "bad"
+
+
+async def test_plugin_cannot_swallow_declaration_failure_and_publish_partial_state(tmp_path):
+    write_plugin(
+        tmp_path,
+        "bad",
+        body="""from .support import SampleCollector
+class Plugin:
+    def register(self, api):
+        api.register_collector(SampleCollector("same"))
+        try:
+            api.register_collector(SampleCollector("same"))
+        except Exception:
+            pass
+plugin = Plugin()
+""",
+    )
+    registry, report = await discover(tmp_path)
+    assert registry.collectorRegister.get("same") is None
+    assert report.errors[0].details["reason"] == "registration_aborted"
+
+
+@pytest.mark.parametrize("defaults", [{}, {"demo": {"limit": 4}}])
+async def test_old_framework_plugin_defaults_are_explicitly_rejected(tmp_path, defaults):
+    (tmp_path / "config.json").write_text(
+        json.dumps({"collector": {"demo": {"defaults": defaults}}})
+    )
+    with pytest.raises(LogAgentError):
+        await discover(tmp_path)
+
+
+async def test_plugin_reads_private_json_and_injects_constructor_dependencies(tmp_path):
+    package = write_plugin(tmp_path, "private", body='''
+import json
+from .support import SampleCollector
+from logagent.models import CollectorOutput
+
+class ConfiguredCollector(SampleCollector):
+    def __init__(self, prefix):
+        super().__init__("private")
+        self.prefix = prefix
+
+    async def collect(self, options, setters, context):
+        return CollectorOutput(status="success", text=self.prefix + options["required_value"], count=1)
+
+class Plugin:
+    def register(self, api):
+        assert api.config_path.is_absolute()
+        settings = json.loads(api.config_path.read_text())
+        api.register_collector(ConfiguredCollector(settings["prefix"]))
+plugin = Plugin()
+''')
+    private = package / "config.json"
+    private.write_text('{"prefix": "original:"}')
+    registry, report = await discover(tmp_path)
+    assert not report.errors
+    original = registry.collectorRegister.get("private")
+    private.write_text('{"prefix": "new:"}')
+    await registry.reload_plugins(SystemConfig(plugin_dir=str(tmp_path)), owners=["private"])
+    context = CollectionContext("workflow", "session")
+    assert (await original.collect({"required_value": "value"}, {}, context)).text == "original:value"
+    current = registry.collectorRegister.get("private")
+    assert (await current.collect({"required_value": "value"}, {}, context)).text == "new:value"
+
+
+@pytest.mark.parametrize("private", [None, "broken JSON", '{"unexpected": 1}'])
+async def test_invalid_private_configuration_rolls_back_only_its_plugin(tmp_path, private):
+    package = write_plugin(tmp_path, "private", body='''
+import json
+from .support import SampleCollector
+class Plugin:
+    def register(self, api):
+        api.register_collector(SampleCollector("temporary"))
+        settings = json.loads(api.config_path.read_text())
+        if settings["required"] != "valid":
+            raise ValueError("bad private configuration")
+plugin = Plugin()
+''')
+    if private is not None:
+        (package / "config.json").write_text(private)
+    write_plugin(tmp_path, "good")
+    registry, report = await discover(tmp_path)
+    assert len(report.errors) == 1
+    assert registry.collectorRegister.get("temporary") is None
+    assert registry.collectorRegister.get("good") is not None
+
+
+async def test_disabled_plugin_is_not_imported(tmp_path):
+    marker = tmp_path / "executed"
+    write_plugin(
+        tmp_path, "disabled", body=f"from pathlib import Path\nPath({str(marker)!r}).touch()"
+    )
+    (tmp_path / "config.json").write_text('{"collector": {"disabled": {"enabled": false}}}')
+    registry, report = await discover(tmp_path)
+    assert not marker.exists()
+    assert [item for item in report.registered if item.kind == "collector"] == report.errors == []
+    assert registry.collectorRegister.get("disabled") is None
+
+
+async def test_duplicate_plugin_ids_use_stable_directory_order(tmp_path):
+    write_plugin(tmp_path, "z_last", plugin_id="same")
+    write_plugin(tmp_path, "a_first", plugin_id="same")
+    _, report = await discover(tmp_path)
+    assert [item.name for item in report.registered if item.kind == "collector"] == ["a_first"]
+    assert report.errors[0].details["reason"] == "plugin_id_conflict"
+
+
+async def test_plugin_id_prefix_is_validated_and_published(tmp_path):
+    write_plugin(
+        tmp_path,
+        "prefixed",
+        body="""from logagent.models import CollectorOutput
+class Collector:
+    name = "prefixed"
+    id_prefix = "logs"
+    description = "Prefixed collector"
+    fields = []
+    count_unit = "records"
+    options_schema = {"type": "object", "additionalProperties": False}
+    setters_schema = {"type": "object", "additionalProperties": False}
+    async def collect(self, options, setters, context):
+        return CollectorOutput(status="success", text="", count=0)
+class Plugin:
+    def register(self, api):
+        api.register_collector(Collector())
+plugin = Plugin()
+""",
+    )
+    registry, report = await discover(tmp_path)
+    assert report.registered[0].id_prefix == "logs"
+    assert registry.collectorRegister.describe()[0].id_prefix == "logs"
+
+
+@pytest.mark.parametrize("prefix", [123, "", "has space", "x" * 44])
+async def test_invalid_plugin_id_prefix_is_rejected(tmp_path, prefix):
+    write_plugin(
+        tmp_path,
+        "invalid_prefix",
+        body=f"""from logagent.models import CollectorOutput
+class Collector:
+    name = "invalid_prefix"
+    id_prefix = {prefix!r}
+    description = "Invalid prefix collector"
+    fields = []
+    count_unit = "records"
+    options_schema = {{"type": "object", "additionalProperties": False}}
+    setters_schema = {{"type": "object", "additionalProperties": False}}
+    async def collect(self, options, setters, context):
+        return CollectorOutput(status="success", text="", count=0)
+class Plugin:
+    def register(self, api):
+        api.register_collector(Collector())
+plugin = Plugin()
+""",
+    )
+    _, report = await discover(tmp_path)
+    assert not [item for item in report.registered if item.kind == "collector"]
+    assert report.errors[0].details["reason"] == "invalid_declaration"
+
+
+@pytest.mark.parametrize("backend", ["../outside.py", "/tmp/outside.py", "main.txt"])
+async def test_entry_must_be_a_python_file_inside_plugin(tmp_path, backend):
+    package = write_plugin(tmp_path, "bad")
+    manifest = json.loads((package / "plugin.json").read_text())
+    manifest["entry"]["backend"] = backend
+    (package / "plugin.json").write_text(json.dumps(manifest))
+    (tmp_path / "outside.py").write_text("raise AssertionError('must not import')")
+    _, report = await discover(tmp_path)
+    assert not [item for item in report.registered if item.kind == "collector"]
+    assert report.errors[0].details["reason"] == "plugin_entry_invalid"
+
+
+async def test_entry_symlink_cannot_escape_package(tmp_path):
+    package = write_plugin(tmp_path, "bad")
+    outside = tmp_path / "outside.py"
+    outside.write_text("raise AssertionError('must not import')")
+    (package / "main.py").unlink()
+    (package / "main.py").symlink_to(outside)
+    _, report = await discover(tmp_path)
+    assert report.errors[0].details["reason"] == "plugin_entry_invalid"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "raise RuntimeError('super-secret-password')",
+        "from logagent.errors import LogAgentError\n"
+        "class Plugin:\n"
+        "    def register(self, api):\n"
+        "        raise LogAgentError('custom-secret-code', 'super-secret-password', {'value': 'secret'})\n"
+        "plugin = Plugin()",
+        "plugin = object()",
+        "class Plugin:\n    async def register(self, api):\n        pass\nplugin = Plugin()",
+    ],
+)
+async def test_bad_entry_is_isolated_and_arbitrary_exception_data_is_redacted(tmp_path, body):
+    write_plugin(tmp_path, "bad", body=body)
+    write_plugin(tmp_path, "good")
+    registry, report = await discover(tmp_path)
+    assert registry.collectorRegister.get("good") is not None
+    assert len(report.errors) == 1
+    assert "super-secret-password" not in report.model_dump_json()
+    assert "custom-secret-code" not in report.model_dump_json()
+    assert registry.collectorRegister.diagnostics("missing")
+
+
+async def test_kind_api_is_restricted_and_channel_view_is_independent(tmp_path):
+    write_plugin(
+        tmp_path,
+        "wrong",
+        body="""class Plugin:
+    def register(self, api):
+        api.register_channel(object())
+plugin = Plugin()
+""",
+    )
+    write_plugin(
+        tmp_path,
+        "channel",
+        kind="channel",
+        body="""class Channel:
+    name = "mail"
+    description = "Test notification type"
+    capabilities = ["notification"]
+    options_schema = {"type": "object", "additionalProperties": False}
+    async def create(self, config, credentials):
+        return "stable-channel"
+class Plugin:
+    def register(self, api):
+        api.register_channel(Channel())
+plugin = Plugin()
+""",
+    )
+    registry, report = await discover(tmp_path)
+    channel = registry.channelRegister.get("mail")
+    assert await channel.create(None, None) == "stable-channel"
+    channel.capabilities.clear()
+    channel.options_schema.clear()
+    assert registry.channelRegister.get("mail").capabilities == ["notification"]
+    assert registry.collectorRegister.get("mail") is None
+    assert len(report.errors) == 1
+
+
+async def test_invalid_global_settings_leave_previous_published_view_intact(tmp_path):
+    write_plugin(tmp_path, "demo")
+    registry, _ = await discover(tmp_path)
+    old_view = registry.collectorRegister
+    (tmp_path / "config.json").write_text("not JSON")
+    with pytest.raises(LogAgentError):
+        await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path)))
+    assert registry.collectorRegister is old_view
+    assert registry.collectorRegister.get("demo") is not None
+
+
+async def test_string_config_values_normalize_through_readers_and_store(tmp_path):
+    from logagent.channel.mock import MockFileChannelType
+    from logagent.collection.mock import MockCollector
+    from logagent.config.store import ResourceStore
+
+    system = tmp_path / "system.json"
+    system.write_text('{"port": "4300"}')
+    assert (await ConfigurationReader().load_system(system)).port == 4300
+    plugins = tmp_path / "plugins.json"
+    plugins.write_text('{"collector": {"demo": {"enabled": "false"}}}')
+    config = await ConfigurationReader().load_plugin_config(plugins)
+    assert config["collector"]["demo"].enabled is False
+    registry = PluginRegistry([MockCollector()], builtin_channels=[MockFileChannelType()])
+    await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
+    store = ResourceStore(tmp_path / "resources.json", collector_register=registry.collectorRegister, channel_register=registry.channelRegister)
+    source = store.save("sources", {"id": "source", "call": {
+        "kind": "cli", "mode": "argv", "executable": "printf", "argv": ["%s", "example"],
+    }, "timeout": "2.5"})
+    assert source.timeout == 2.5
+    assert store.list("sources")[0].timeout == 2.5
+    channel = store.save("channels", {"id": "channel", "channel": "mock", "enabled": "false", "options": {"path": "out.txt"}})
+    assert channel.enabled is False
+    ai = store.save("ai", {"id": "ai", "provider": "mock", "models": {"mock": {}}, "retries": "3"})
+    assert ai.retries == 3

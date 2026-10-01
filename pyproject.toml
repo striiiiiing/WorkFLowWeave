@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "logagent"
+version = "0.1.0"
+description = "Configurable asynchronous collection for LogAgent workflows"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "aiorwlock>=1.5.1,<2",
+  "aiosmtplib>=3,<6",
+  "aiosqlite>=0.20,<0.22",
+  "cryptography>=44,<47",
+  "apscheduler>=3.11,<4",
+  "cron-descriptor>=2,<3",
+  "fastapi>=0.115,<1",
+  "httpx>=0.27,<1",
+  "jsonschema[format]>=4.23,<5",
+  "langchain>=1.4.2,<2",
+  "langchain-core>=1.6.4,<2",
+  "langchain-openai>=1.6.2,<2",
+  "langgraph>=1.2.12,<2",
+  "langgraph-checkpoint-sqlite>=3.1.1,<4",
+  "openai>=3.4,<4",
+  "orjson>=3.12.0",
+  "pydantic>=2.10,<3",
+  "sqlmodel>=0.0.42,<0.1",
+  "typer>=0.15,<1",
+  "uvicorn>=0.34,<1",
+  "websockets>=15,<17",
+  "mcp>=1.26,<2",
+  "ison-py==1.2.0",
+  "zon-format>=1.2.3",
+  "tiktoken>=0.12,<1",
+  "toon-format",
+]
+
+[project.scripts]
+logagent = "logagent.interaction.bootstrap:main"
+
+[dependency-groups]
+dev = ["pytest>=8.3,<10", "pytest-asyncio>=0.25,<2", "ruff>=0.11"]
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+
+[tool.uv.sources]
+toon-format = { git = "https://github.com/toon-format/toon-python.git", rev = "e475c82e9da03dfaf88c0b277dee6b5d17100b13" }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/logagent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B", "ASYNC"]

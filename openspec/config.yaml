@@ -1,0 +1,23 @@
+schema: spec-driven
+
+context: |
+  LogAgent 是 Python 3.11+ 异步采集与 AI 分析服务，前端使用 Vue 3。
+  文档使用中文；OpenSpec Requirement、Scenario 和增量标题保留标准英文格式。
+  存放与迁移约定见 openspec/README.md。
+  openspec/specs 保存已验收并同步的能力规范；changes/<change-id>/specs 保存变更增量。
+  现有 configurable-collection-analysis-workflow 尚未整体验收，保持活动状态。
+  既有 proposal.md、总设计和模块 design.md 保留；contracts 是派生说明。
+  用户未授权时不得修改设计决策；规范与设计冲突应报告，不能据实现反向修改设计。
+
+rules:
+  proposal:
+    - 新变更按单一目标命名，列出新增或修改的 capability；不要继续向旧总变更追加独立需求。
+  specs:
+    - 按 capability 存放于 specs/<capability>/spec.md，描述可观察行为和可验证场景。
+    - 从已确认的 proposal/design 提取要求，不新增未确认需求，不把实现任务或类定义写成规范。
+  design:
+    - 修改既有设计决策须先取得用户同意；可引用详细模块设计，避免重复维护。
+  tasks:
+    - 使用根 tasks.md 作为 CLI 任务入口，以带编号的复选框记录可验证工作。
+    - 记录设计依据、取舍及默认值理由；设计变更另建 change，保留旧任务历史。
+    - 旧模块 task.md 是详细执行证据；根 tasks.md 管理汇总验收，不重复抄写详细步骤。
