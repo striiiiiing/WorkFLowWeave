@@ -92,6 +92,7 @@ class QQChannel:
         self._handler: InboundHandler | None = None
         self._stopping = False
         self._routes: dict[str, Any] = {}
+        self._gateway_coro: Any = None
 
     async def start(self) -> None:
         if self._stopping:
@@ -115,6 +116,22 @@ class QQChannel:
         self._client._logagent_emit = self._emit_message
         self._appid = self._options["app_id"]
         self._secret = secret
+        # botpy exposes an async ``Client.start`` in addition to the blocking
+        # ``run`` convenience wrapper.  Asking it for ``ret_coro`` performs
+        # token/login setup and leaves the gateway coroutine for the explicit
+        # Agent receiver lifecycle below.  This also makes one-way sends work
+        # without implicitly subscribing the channel to inbound events.
+        sdk_start = getattr(self._client, "start", None)
+        if callable(sdk_start) and inspect.iscoroutinefunction(sdk_start):
+            try:
+                self._gateway_coro = await sdk_start(
+                    appid=self._appid, secret=self._secret, ret_coro=True
+                )
+            except Exception as exc:
+                raise ChannelDeliveryError(
+                    "qq_authentication_failed", "QQ Bot 登录失败",
+                    details={"exception_type": type(exc).__name__},
+                ) from exc
 
     async def send(self, notification: Notification, *, options: dict) -> None:
         validate_workflow_options(options, _OPTIONS_SCHEMA)
@@ -157,6 +174,11 @@ class QQChannel:
             raise ChannelDeliveryError("qq_already_receiving", "QQ 渠道已在接收消息")
         self._handler = handler
         run = getattr(self._client, "run", None)
+        if self._gateway_coro is not None:
+            gateway = self._gateway_coro
+            self._gateway_coro = None
+            self._runner = asyncio.create_task(gateway, name="qq-botpy")
+            return
         if not callable(run):
             raise ChannelDeliveryError("qq_sdk_invalid", "qq-botpy 客户端缺少 run 方法")
         if inspect.iscoroutinefunction(run):
