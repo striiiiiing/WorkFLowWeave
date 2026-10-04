@@ -45,15 +45,19 @@ class _QQApi:
 
     async def post_c2c_message(self, **kwargs):
         self.calls.append(("c2c", kwargs))
+        return {"id": "sent-c2c"}
 
     async def post_group_message(self, **kwargs):
         self.calls.append(("group", kwargs))
+        return {"id": "sent-group"}
 
     async def post_message(self, **kwargs):
         self.calls.append(("guild", kwargs))
+        return {"id": "sent-guild"}
 
     async def post_dms(self, **kwargs):
         self.calls.append(("dm", kwargs))
+        return {"id": "sent-dm"}
 
 
 class _QQClient:
