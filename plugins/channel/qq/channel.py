@@ -267,9 +267,12 @@ class QQChannel:
         content = _value(message, "content", "text")
         author = _value(message, "author", "member", default=None)
         sender = _value(author, "id", "user_openid", "member_openid", default=None)
-        target = _value(message, "channel_id", "guild_id", "group_openid", default=None)
-        if target is None and kind == "c2c":
-            target = sender
+        target = {
+            "c2c": sender,
+            "group": _value(message, "group_openid", default=None),
+            "guild": _value(message, "channel_id", default=None),
+            "dm": _value(message, "guild_id", default=None),
+        }.get(kind)
         if not all(isinstance(item, str) and item for item in (message_id, sender, target, content)):
             return
         if self._handler is None:
@@ -283,6 +286,10 @@ class QQChannel:
     ) -> None:
         if self._client is None:
             raise ChannelDeliveryError("qq_not_started", "QQ 渠道尚未启动")
+        if self._gateway_coro is not None and self._runner is None:
+            gateway = self._gateway_coro
+            self._gateway_coro = None
+            self._runner = asyncio.create_task(gateway, name="qq-botpy")
         api = getattr(self._client, "api", None)
         if api is None:
             raise ChannelDeliveryError("qq_sdk_invalid", "qq-botpy 客户端缺少 API 入口")
