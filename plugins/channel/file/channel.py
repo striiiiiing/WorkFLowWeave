@@ -59,7 +59,12 @@ class _NotificationFileHandler(logging.FileHandler):
                 self.path.parent.mkdir(parents=True, exist_ok=True)
                 self.stream = self._open()
 
-    def write_notification(self, notification: Notification, channel_id: str) -> None:
+    def write_notification(
+        self,
+        notification: Notification,
+        channel_id: str,
+        result: _WriteResult | None = None,
+    ) -> None:
         if self.stream is None:
             raise RuntimeError("file handler is not started")
         record = logging.LogRecord(
@@ -78,9 +83,16 @@ class _NotificationFileHandler(logging.FileHandler):
         self.acquire()
         try:
             rendered = self.format(record) + self.terminator
+            if result is not None:
+                result.operation = "write"
+                result.expected = len(rendered)
             written = self.stream.write(rendered)
+            if result is not None:
+                result.written = written if isinstance(written, int) else None
             if type(written) is int and written != len(rendered):
                 raise OSError(errno.EIO, f"short write: wrote {written} of {len(rendered)} characters")
+            if result is not None:
+                result.operation = "flush"
             self.flush()
         finally:
             self.release()
@@ -97,6 +109,8 @@ class _WriteResult:
     uncertain: bool = False
     operation: str = "write"
     error: BaseException | None = None
+    written: int | None = None
+    expected: int | None = None
 
 
 _HANDLERS: dict[str, tuple[_NotificationFileHandler, int]] = {}
@@ -145,7 +159,7 @@ class FileChannel:
                 raise RuntimeError("file handler is not started")
             result.started = True
             try:
-                self.handler.write_notification(notification, self.channel_id)
+                self.handler.write_notification(notification, self.channel_id, result)
             except BaseException as exc:
                 result.error = exc
                 result.uncertain = result.started
@@ -217,6 +231,10 @@ class FileChannel:
         }
         if isinstance(error, OSError) and error.errno is not None:
             details["errno"] = error.errno
+        if result.written is not None:
+            details["written"] = result.written
+        if result.expected is not None:
+            details["expected"] = result.expected
         return ChannelDeliveryError(
             "file_write_failed",
             f"文件日志写入失败（{result.operation}，{type(error).__name__}）",
