@@ -1,0 +1,26 @@
+name: workflowweave
+services:
+  backend:
+    image: ${BACKEND_IMAGE:-workflowweave-backend:local}
+    build:
+      context: .
+      target: backend
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-4300}:4300"
+    volumes:
+      - state:/var/lib/logagent
+    restart: unless-stopped
+    stop_grace_period: 180s
+  frontend:
+    image: ${FRONTEND_IMAGE:-workflowweave-frontend:local}
+    build:
+      context: .
+      target: frontend
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+volumes:
+  state:

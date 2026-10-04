@@ -261,13 +261,11 @@ def _failure(
 class PluginRegistry:
     def __init__(
         self,
-        builtin_collectors: Iterable[Collector] | None = None,
+        builtin_collectors: Iterable[Collector] = (),
         *,
         builtin_channels: Iterable[ChannelType] = (),
     ) -> None:
-        self._builtin_collectors = (
-            tuple(builtin_collectors) if builtin_collectors is not None else None
-        )
+        self._builtin_collectors = tuple(builtin_collectors)
         self._builtin_channels = tuple(builtin_channels)
         self._collector_register = CollectorRegister()
         self._channel_register = ChannelRegister()
@@ -361,15 +359,10 @@ class PluginRegistry:
         *,
         reload_owners: frozenset[str] | None = None,
     ) -> tuple[CollectorRegister, ChannelRegister, ToolRegister, DiscoveryReport]:
-        builtins = self._builtin_collectors
-        if builtins is None:
-            from logagent.collection import builtin_collectors
-
-            builtins = tuple(builtin_collectors())
         entries: dict[PluginKind, dict[str, _Registration]] = {
             "collector": {}, "channel": {}, "tool": {},
         }
-        for kind, capabilities in (("collector", builtins), ("channel", self._builtin_channels)):
+        for kind, capabilities in (("collector", self._builtin_collectors), ("channel", self._builtin_channels)):
             if not capabilities:
                 continue
             transaction = _RegistrationTransaction(kind, "builtin", entries[kind])
@@ -401,9 +394,18 @@ class PluginRegistry:
         tool_plugins = {owner: {"plugin": owner, "enabled": settings.get("tool", {}).get(
             owner, PluginSettings()).enabled} for owner in BUILTIN_TOOLS}
         try:
-            directories = sorted(
-                (entry for entry in root.iterdir() if entry.is_dir()), key=lambda entry: entry.name
-            )
+            directories = []
+            for entry in sorted(root.iterdir(), key=lambda path: path.name):
+                if not entry.is_dir() or entry.name.startswith((".", "__")):
+                    continue
+                if entry.name in ("channel", "collector", "tool") and not (entry / "plugin.json").exists():
+                    directories.extend(sorted(
+                        (child for child in entry.iterdir() if child.is_dir()
+                         and not child.name.startswith((".", "__"))),
+                        key=lambda path: path.name,
+                    ))
+                else:
+                    directories.append(entry)
         except FileNotFoundError:
             directories = []
         except OSError:
@@ -447,6 +449,8 @@ class PluginRegistry:
                         raise LogAgentError("plugin_entry_invalid", "插件入口无效") from None
                     raise
                 kind, plugin_id = manifest.kind, manifest.id
+                if directory.parent != root and kind != directory.parent.name:
+                    raise LogAgentError("invalid_declaration", "插件种类与分组目录不一致")
                 if kind == "tool":
                     tool_plugins[plugin_id] = {"plugin": plugin_id, "enabled": settings.get(
                         "tool", {}).get(plugin_id, PluginSettings()).enabled}

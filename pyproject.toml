@@ -10,7 +10,6 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "aiorwlock>=1.5.1,<2",
-  "aiosmtplib>=3,<6",
   "aiosqlite>=0.20,<0.22",
   "cryptography>=44,<47",
   "apscheduler>=3.11,<4",
@@ -40,6 +39,13 @@ dependencies = [
 [project.scripts]
 logagent = "logagent.interaction.bootstrap:main"
 
+[project.optional-dependencies]
+email = ["aiosmtplib>=3,<6"]
+qq = ["qq-botpy==1.2.1"]
+feishu = ["lark-oapi==1.7.3"]
+telegram = ["python-telegram-bot>=22.8,<23"]
+channels = ["aiosmtplib>=3,<6", "qq-botpy==1.2.1", "lark-oapi==1.7.3", "python-telegram-bot>=22.8,<23"]
+
 [dependency-groups]
 dev = ["pytest>=8.3,<10", "pytest-asyncio>=0.25,<2", "ruff>=0.11"]
 
@@ -51,6 +57,9 @@ toon-format = { git = "https://github.com/toon-format/toon-python.git", rev = "e
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/logagent"]
+
+[tool.hatch.build.targets.sdist]
+exclude = ["/plugins/channel/wechat_openclaw/node_modules"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

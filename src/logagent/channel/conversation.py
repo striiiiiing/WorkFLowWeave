@@ -18,7 +18,7 @@ class ChannelAddress(StrictModel):
 
     @property
     def peer(self) -> tuple[str, str, str]:
-        # Group members have separate Agent context, even when sharing a room.
+        # Preserve each source's deduplication identity and trusted reply route.
         return self.kind, self.target, self.sender
 
 
