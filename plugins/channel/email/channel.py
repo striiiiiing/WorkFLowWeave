@@ -17,7 +17,6 @@ from logagent.channel.errors import ChannelDeliveryError
 from logagent.models import ChannelConfig, Credential, Notification
 from logagent.schema import (
     resource_options_schema,
-    split_options,
     validate_instance,
     validate_workflow_options,
 )
@@ -79,8 +78,10 @@ class EmailChannel:
 
     def __init__(self, config: ChannelConfig, credentials: Any, *, client_factory=aiosmtplib.SMTP):
         validate_instance(config.options, resource_options_schema(_OPTIONS_SCHEMA), path=["options"])
-        account, _ = split_options(config.options, _OPTIONS_SCHEMA)
-        self._config = config.model_copy(update={"options": account}, deep=True)
+        # Keep workflow-marked defaults (recipient) on the account.  A call may
+        # override them, but an omitted override must still use the configured
+        # default recipient.
+        self._config = config.model_copy(deep=True)
         self._credentials = credentials
         self._client_factory = client_factory
         self._client = None

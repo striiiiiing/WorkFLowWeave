@@ -4,10 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+from dataclasses import dataclass
 
 from logagent.agent.commands import AgentChannel, AgentCommand
-from logagent.channel.bindings import ChannelBindings
+from logagent.channel.bindings import ChannelBindings, InstanceBinding
 from logagent.errors import LogAgentError
+
+
+@dataclass(frozen=True)
+class ProcessedInput:
+    response: dict
+    binding: InstanceBinding
 
 
 class AgentChannelProcessor:
@@ -22,45 +29,51 @@ class AgentChannelProcessor:
             return await self.commands.dispatch(command)
         return await self.commands.dispatch(command, valid=valid)
 
-    async def process(self, peer: str, command: AgentCommand, *, valid=lambda: True) -> dict:
-        action, argument = command.operation()
-        async with self._locks.setdefault(peer, asyncio.Lock()):
+    async def bind(self, channel_id: str, session_id: str | None) -> InstanceBinding:
+        async with self._locks.setdefault(channel_id, asyncio.Lock()):
+            if session_id is not None:
+                await self.commands.get_session(session_id)
+            return await self.bindings.bind_instance(channel_id, session_id)
+
+    async def process(self, channel_id: str, command: AgentCommand, *,
+                      binding: InstanceBinding, valid=lambda: True) -> ProcessedInput:
+        action, _ = command.operation()
+        async with self._locks.setdefault(channel_id, asyncio.Lock()):
+            if self.bindings.instance(channel_id) != binding:
+                raise LogAgentError("channel_binding_changed", "输入受理后渠道绑定已变更")
             if not valid():
                 raise LogAgentError("message_interrupted", "消息因更高优先级的停止命令而取消")
             admitted: asyncio.Future[str | None] = asyncio.get_running_loop().create_future()
-            self._admitting[peer] = admitted
+            self._admitting[channel_id] = admitted
             try:
-                command.session = await self.bindings.current(peer)
+                command.session = binding.session_id
                 if not valid():
                     raise LogAgentError("message_interrupted", "消息因更高优先级的停止命令而取消")
-                if action == "resume":
-                    target = argument or command.session
-                    if target is None or not await self.bindings.owns(peer, target):
-                        raise LogAgentError("session_forbidden", "此会话不属于当前渠道对话")
-                if command.session is None and action in {"message", "append"}:
-                    created = await self._dispatch(AgentCommand(
-                        channel=command.channel, request_id=f"{command.request_id}:new", text="/new",
-                    ))
-                    command.session = created["result"]["session_id"]
-                    await self.bindings.bind(peer, command.session)
+                if command.session is None and action in {"message", "append", "compact", "fork"}:
+                    raise LogAgentError("channel_unbound", "渠道实例尚未绑定对话，请绑定或使用 /resume")
                 if not valid():
                     raise LogAgentError("message_interrupted", "消息因更高优先级的停止命令而取消")
                 response = await self._dispatch(command, valid=valid)
                 if response["kind"] == "session":
-                    await self.bindings.bind(peer, response["result"]["session_id"])
+                    binding = await self.bindings.bind_instance(
+                        channel_id, response["result"]["session_id"],
+                    )
                 result = response["result"]
                 admitted.set_result(
                     command.session or (result.get("session_id") if isinstance(result, dict) else None)
                 )
-                return response
+                return ProcessedInput(response, binding)
             finally:
                 if not admitted.done():
                     admitted.set_result(command.session)
-                self._admitting.pop(peer, None)
+                self._admitting.pop(channel_id, None)
 
-    async def stop(self, peer: str, command: AgentCommand) -> dict:
-        session = await self.bindings.current(peer)
-        pending = self._admitting.get(peer)
+    async def stop(self, channel_id: str, command: AgentCommand, *,
+                   binding: InstanceBinding) -> ProcessedInput:
+        if self.bindings.instance(channel_id) != binding:
+            raise LogAgentError("channel_binding_changed", "输入受理后渠道绑定已变更")
+        session = binding.session_id
+        pending = self._admitting.get(channel_id)
         if session is not None:
             command.session = session
             await self._dispatch(command)
@@ -71,7 +84,7 @@ class AgentChannelProcessor:
         if session is None:
             raise LogAgentError("invalid_argument", "此命令需要 session")
         command.session = session
-        return await self._dispatch(command)
+        return ProcessedInput(await self._dispatch(command), binding)
 
     async def dispatch_web(self, peer: str, command: AgentCommand, *, valid) -> dict:
         async with self._locks.setdefault(peer, asyncio.Lock()):

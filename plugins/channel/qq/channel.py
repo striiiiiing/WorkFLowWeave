@@ -12,6 +12,7 @@ import asyncio
 import inspect
 import logging
 from collections.abc import Callable
+from copy import deepcopy
 from typing import Any
 
 from pydantic import TypeAdapter
@@ -44,12 +45,14 @@ _OPTIONS_SCHEMA = {
             "type": "string",
             "enum": ["c2c", "group", "guild", "dm"],
             "description": "单向通知目标类型",
+            "x-logagent-workflow": True,
         },
         "target_id": {
             "type": "string",
             "minLength": 1,
             "pattern": r"^\S+$",
             "description": "单向通知目标标识",
+            "x-logagent-workflow": True,
         },
     },
     "required": ["app_id", "client_secret"],
@@ -144,7 +147,9 @@ class QQChannel:
 
     async def send(self, notification: Notification, *, options: dict) -> None:
         validate_workflow_options(options, _OPTIONS_SCHEMA)
-        kind, target = self._options.get("target_kind"), self._options.get("target_id")
+        effective = {**self._options, **deepcopy(options)}
+        validate_instance(effective, _OPTIONS_SCHEMA, path=["options"])
+        kind, target = effective.get("target_kind"), effective.get("target_id")
         if not kind or not target:
             raise ChannelDeliveryError("qq_target_missing", "QQ 普通发送需要配置 target_kind 和 target_id")
         await self._send_via_api(notification.text, kind=kind, target=target)
@@ -194,7 +199,9 @@ class QQChannel:
                 if inspect.isawaitable(result):
                     await result
             self._client = None
-            self._gateway_coro = None
+            gateway, self._gateway_coro = self._gateway_coro, None
+            if inspect.iscoroutine(gateway):
+                gateway.close()
         self._receiver_state = "stopped"
 
     async def stop(self) -> None:
@@ -215,10 +222,29 @@ class QQChannel:
 
     def _make_client_factory(self, botpy: Any) -> Callable[..., Any]:
         parent = botpy.Client
+        http_type = getattr(getattr(botpy, "http", None), "BotHttp", None)
+        api_type = getattr(getattr(botpy, "api", None), "BotAPI", None)
+        if not isinstance(http_type, type) or not isinstance(api_type, type):
+            raise ChannelDeliveryError("qq_sdk_invalid", "qq-botpy 缺少公开 HTTP API 注入入口")
         emit = self._emit_message
         channel = self
 
+        class NoPostRetryBotHttp(http_type):
+            async def request(self, route: Any, retry_time: int = 0, **kwargs: Any):
+                # botpy retries by recursively incrementing retry_time after a reset.
+                if route.method == "POST" and retry_time > 0:
+                    raise ConnectionResetError("QQ API POST acknowledgement was lost")
+                return await super().request(route, retry_time=retry_time, **kwargs)
+
         class Client(parent):
+            def __init__(self, *, intents: Any):
+                super().__init__(intents=intents, log_level=logging.INFO)
+                self.http = NoPostRetryBotHttp(
+                    timeout=self.http.timeout,
+                    is_sandbox=self.http.is_sandbox,
+                )
+                self.api = api_type(http=self.http)
+
             async def on_ready(self):
                 channel._receiver_state = "running"
                 await super().on_ready()
@@ -297,11 +323,6 @@ class QQChannel:
     ) -> None:
         if self._client is None:
             await self._initialize_client()
-        if self._gateway_coro is not None and self._runner is None:
-            gateway = self._gateway_coro
-            self._gateway_coro = None
-            self._runner = asyncio.create_task(gateway, name="qq-botpy")
-            self._runner.add_done_callback(self._receiver_done)
         api = getattr(self._client, "api", None)
         if api is None:
             raise ChannelDeliveryError("qq_sdk_invalid", "qq-botpy 客户端缺少 API 入口")
@@ -340,8 +361,26 @@ class QQChannel:
             raise ChannelDeliveryError(
                 "qq_send_failed", "QQ 消息发送失败",
                 details={"exception_type": type(exc).__name__, "kind": kind},
-                uncertain=True,
+                uncertain=not self._is_explicit_rejection(exc),
             ) from exc
+
+    def _is_explicit_rejection(self, error: Exception) -> bool:
+        errors = getattr(self._botpy, "errors", None)
+        if errors is None:
+            return False
+        rejection_names = (
+            "AuthenticationFailedError",
+            "ForbiddenError",
+            "NotFoundError",
+            "MethodNotAllowedError",
+            "SequenceNumberError",
+        )
+        rejection_types = tuple(
+            error_type
+            for name in rejection_names
+            if isinstance((error_type := getattr(errors, name, None)), type)
+        )
+        return bool(rejection_types) and isinstance(error, rejection_types)
 
 
 class QQChannelType:

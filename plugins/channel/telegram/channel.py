@@ -29,12 +29,6 @@ _OPTIONS_SCHEMA = {
             "description": "单向通知的 Telegram chat ID",
             "x-logagent-workflow": True,
         },
-        "allowed_user_ids": {
-            "type": "array",
-            "items": {"type": ["string", "integer"]},
-            "default": [],
-            "description": "可选的入站用户 ID 白名单",
-        },
     },
     "required": ["token"],
 }
@@ -57,6 +51,7 @@ class TelegramChannel:
         self._token: str | None = None
         self._handler: InboundHandler | None = None
         self._polling = False
+        self._handler_registered = False
         self._initialized = False
         self._started = False
         self._stopping = False
@@ -115,7 +110,8 @@ class TelegramChannel:
     async def start_receiving(self, handler: InboundHandler) -> None:
         if self._application is None:
             raise ChannelDeliveryError("telegram_not_started", "Telegram 渠道尚未启动")
-        if self._polling:
+        updater = getattr(self._application, "updater", None)
+        if self._polling or bool(getattr(updater, "running", False)):
             raise ChannelDeliveryError("telegram_already_receiving", "Telegram 渠道已在接收消息")
         self._handler = handler
         try:
@@ -125,29 +121,31 @@ class TelegramChannel:
                 "telegram_sdk_missing", "Telegram 渠道需要安装 python-telegram-bot SDK",
                 details={"package": "python-telegram-bot"},
             ) from exc
-        self._application.add_handler(
-            MessageHandler(filters.TEXT & ~filters.COMMAND, self._on_update)
-        )
+        if not self._handler_registered:
+            self._application.add_handler(
+                MessageHandler(filters.TEXT, self._on_update)
+            )
+            self._handler_registered = True
         if not self._initialized:
             await self._call("initialize")
             self._initialized = True
-        await self._call("start")
-        self._started = True
-        updater = getattr(self._application, "updater", None)
+        if not self._started:
+            await self._call("start")
+            self._started = True
         start_polling = getattr(updater, "start_polling", None)
         if not callable(start_polling):
             raise ChannelDeliveryError("telegram_sdk_invalid", "Telegram Application 缺少 polling updater")
         result = start_polling()
         if inspect.isawaitable(result):
             await result
-        self._polling = True
+        self._polling = bool(getattr(updater, "running", True))
 
     async def stop_receiving(self) -> None:
         if self._application is None:
             return
         updater = getattr(self._application, "updater", None)
         stop_polling = getattr(updater, "stop", None)
-        if callable(stop_polling):
+        if callable(stop_polling) and bool(getattr(updater, "running", self._polling)):
             result = stop_polling()
             if inspect.isawaitable(result):
                 await result
@@ -180,12 +178,25 @@ class TelegramChannel:
         text = getattr(message, "text", None)
         message_id = getattr(message, "message_id", None)
         chat_id = getattr(chat, "id", None)
-        if not isinstance(text, str) or not text.strip() or message_id is None or chat_id is None:
+        if (
+            not isinstance(text, str)
+            or not text.strip()
+            or type(message_id) is not int
+            or message_id <= 0
+            or type(chat_id) is not int
+            or chat_id == 0
+            or type(user_id) is not int
+            or user_id <= 0
+        ):
             return
         address = ChannelAddress(
-            kind="telegram", target=str(chat_id), sender=str(user_id or chat_id), message_id=str(message_id)
+            kind="telegram", target=str(chat_id), sender=str(user_id), message_id=str(message_id)
         )
-        await self._handler(InboundMessage(request_id=str(message_id), text=text.strip(), address=address))
+        await self._handler(InboundMessage(
+            request_id=f"{chat_id}:{message_id}",
+            text=text.strip(),
+            address=address,
+        ))
 
     async def _send_message(self, chat_id: Any, text: str, *, reply_to: int | None = None) -> None:
         if self._application is None:
@@ -200,12 +211,41 @@ class TelegramChannel:
         try:
             result = method(**kwargs)
             if inspect.isawaitable(result):
-                await result
+                result = await result
         except Exception as exc:
+            from telegram.error import BadRequest, NetworkError, RetryAfter, TelegramError
+
+            details = {"exception_type": type(exc).__name__}
+            if isinstance(exc, RetryAfter):
+                raise ChannelDeliveryError(
+                    "telegram_rate_limited", "Telegram 限流拒绝了消息",
+                    details=details,
+                ) from exc
+            if isinstance(exc, BadRequest):
+                raise ChannelDeliveryError(
+                    "telegram_rejected", "Telegram API 拒绝了消息",
+                    details=details,
+                ) from exc
+            if isinstance(exc, NetworkError):
+                raise ChannelDeliveryError(
+                    "telegram_send_uncertain", "Telegram 网络错误，消息是否受理不确定",
+                    details=details, uncertain=True,
+                ) from exc
+            if isinstance(exc, TelegramError):
+                raise ChannelDeliveryError(
+                    "telegram_rejected", "Telegram API 拒绝了消息",
+                    details=details,
+                ) from exc
             raise ChannelDeliveryError(
-                "telegram_send_failed", "Telegram 消息发送失败",
-                details={"exception_type": type(exc).__name__}, uncertain=True,
+                "telegram_send_uncertain", "Telegram 消息发送结果不确定",
+                details=details, uncertain=True,
             ) from exc
+        message_id = getattr(result, "message_id", None)
+        if type(message_id) is not int or message_id <= 0:
+            raise ChannelDeliveryError(
+                "telegram_send_uncertain", "Telegram API 未返回可验证的消息 ID",
+                details={"response": "message_id_missing"}, uncertain=True,
+            )
 
     async def _call(self, name: str, *, missing_ok: bool = False) -> None:
         method = getattr(self._application, name, None)

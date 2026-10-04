@@ -1,4 +1,4 @@
-"""文件通知渠道的追加与清理测试。
+"""文件日志通知渠道的追加与清理测试。
 
 向临时文件发送多行通知并并发追加，核对原内容保留、输出不交错且不受应用
 日志过滤影响；注入写入/flush 失败和取消，区分失败与投递不确定，检查共享
@@ -13,13 +13,13 @@ import threading
 import pytest
 
 from logagent.channel.errors import ChannelDeliveryError
-from logagent.channel.mock import MockFileChannel
 from logagent.models import ChannelConfig, Notification
+from plugins.channel.file.channel import FileChannel
 
 
 def _channel(path, channel_id="mock"):
-    return MockFileChannel(
-        ChannelConfig(id=channel_id, channel="mock", options={"path": str(path)})
+    return FileChannel(
+        ChannelConfig(id=channel_id, channel="file", options={"path": str(path)})
     )
 
 
@@ -32,6 +32,21 @@ def _notification(text, *, title="", output_id="output"):
     )
 
 
+def _log_records(path):
+    records = []
+    current = None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if "Z channel=" in line:
+            if current is not None:
+                records.append(current)
+            current = [line]
+        elif current is not None:
+            current.append(line)
+    if current is not None:
+        records.append(current)
+    return records
+
+
 async def test_send_preserves_readable_multiline_text_and_existing_content(tmp_path):
     path = tmp_path / "notifications.txt"
     path.write_text("existing\n", encoding="utf-8")
@@ -39,12 +54,10 @@ async def test_send_preserves_readable_multiline_text_and_existing_content(tmp_p
     await channel.start()
     try:
         await channel.send(_notification("first\nsecond", title="Report"), options={})
-        assert path.read_text(encoding="utf-8") == (
-            "existing\n"
-            "Report\n"
-            "first\n"
-            "second\n"
-        )
+        records = _log_records(path)
+        assert len(records) == 1
+        assert "title=Report" in records[0][0]
+        assert records[0][1:] == ["first", "second"]
     finally:
         await channel.stop()
 
@@ -61,7 +74,7 @@ async def test_concurrent_appends_do_not_interleave(tmp_path):
                 for index, message in enumerate(messages)
             )
         )
-        assert sorted(path.read_text(encoding="utf-8").splitlines()) == sorted(messages)
+        assert sorted(record[1] for record in _log_records(path)) == sorted(messages)
     finally:
         await channel.stop()
 
@@ -79,7 +92,7 @@ async def test_handler_filter_and_level_do_not_skip_mock_output(tmp_path):
     await channel.start()
     try:
         await channel.send(_notification("written directly"), options={})
-        assert path.read_text(encoding="utf-8") == "written directly\n"
+        assert _log_records(path)[0][1:] == ["written directly"]
     finally:
         await channel.stop()
 
@@ -94,7 +107,7 @@ async def test_global_logging_disable_and_disabled_root_do_not_skip_mock_output(
         logging.disable(logging.CRITICAL)
         logging.root.disabled = True
         await channel.send(_notification("still written"), options={})
-        assert path.read_text(encoding="utf-8") == "still written\n"
+        assert _log_records(path)[0][1:] == ["still written"]
     finally:
         logging.disable(previous_disable)
         logging.root.disabled = previous_root_disabled
@@ -134,7 +147,7 @@ async def test_write_and_flush_errors_fail_send_with_diagnostics(
     try:
         with pytest.raises(ChannelDeliveryError) as caught:
             await channel.send(_notification("not delivered"), options={})
-        assert caught.value.code == "mock_write_failed"
+        assert caught.value.code == "file_write_failed"
         assert caught.value.uncertain is True
         assert caught.value.details["operation"] == operation
         assert caught.value.details["exception_type"] == "OSError"
@@ -174,7 +187,7 @@ async def test_each_send_has_an_independent_result(tmp_path, monkeypatch):
             await channel.send(_notification("first"), options={})
         await channel.send(_notification("second"), options={})
         assert failing.calls == 2
-        assert path.read_text(encoding="utf-8") == "second\n"
+        assert _log_records(path)[0][1:] == ["second"]
     finally:
         monkeypatch.setattr(channel.handler, "_stream", real_stream)
         await channel.stop()
@@ -204,7 +217,7 @@ async def test_partial_write_is_uncertain(tmp_path, monkeypatch):
     try:
         with pytest.raises(ChannelDeliveryError) as caught:
             await channel.send(_notification("partially delivered"), options={})
-        assert caught.value.code == "mock_write_failed"
+        assert caught.value.code == "file_write_failed"
         assert caught.value.uncertain is True
         assert caught.value.details["operation"] == "write"
         assert caught.value.details["errno"] == errno.EIO
@@ -216,11 +229,13 @@ async def test_partial_write_is_uncertain(tmp_path, monkeypatch):
 
 async def test_failure_before_stream_write_is_not_uncertain(tmp_path):
     channel = _channel(tmp_path / "not-started.txt")
-    with pytest.raises(ChannelDeliveryError) as caught:
-        await channel.send(_notification("not delivered"), options={})
-    assert caught.value.code == "mock_write_failed"
-    assert caught.value.uncertain is False
-    await channel.stop()
+    try:
+        with pytest.raises(ChannelDeliveryError) as caught:
+            await channel.send(_notification("not delivered"), options={})
+        assert caught.value.code == "file_write_failed"
+        assert caught.value.uncertain is False
+    finally:
+        await channel.stop()
 
 
 class _BlockingStream:
@@ -267,13 +282,13 @@ async def test_cancellation_propagates_and_does_not_append_twice(tmp_path, monke
         monkeypatch.setattr(channel.handler, "_stream", real_stream)
         await channel.stop()
     assert blocking.write_calls == 1
-    assert path.read_text(encoding="utf-8") == "cancelled\n"
+    assert _log_records(path)[0][1:] == ["cancelled"]
 
 
 async def test_shared_handler_stop_is_reference_counted_and_idempotent(tmp_path):
     path = tmp_path / "shared.txt"
     first = _channel(path, "first")
-    second = _channel(path, "second")
+    second = _channel(tmp_path / "nested" / ".." / path.name, "second")
     assert first.handler is second.handler
     await asyncio.gather(first.start(), second.start())
 
@@ -305,7 +320,7 @@ async def test_missing_write_count_cannot_report_success(tmp_path, monkeypatch):
 
 async def test_cancelled_start_is_drained_before_close(tmp_path, monkeypatch):
     from logagent.errors import LogAgentError
-    monkeypatch.setattr("logagent.channel.mock._STOP_TIMEOUT", .02)
+    monkeypatch.setattr("plugins.channel.file.channel._STOP_TIMEOUT", .02)
     channel = _channel(tmp_path / "late-start.txt")
     entered, release = threading.Event(), threading.Event()
     original = channel.handler.start
@@ -322,7 +337,7 @@ async def test_cancelled_start_is_drained_before_close(tmp_path, monkeypatch):
             await task
         with pytest.raises(LogAgentError) as error:
             await channel.stop()
-        assert error.value.code == "mock_stop_timeout"
+        assert error.value.code == "file_stop_timeout"
         assert not channel._stop_task.done()
     finally:
         release.set()
@@ -335,7 +350,7 @@ async def test_cancelled_start_is_drained_before_close(tmp_path, monkeypatch):
 
 async def test_stop_waits_for_cancelled_write_and_can_be_awaited_again(tmp_path, monkeypatch):
     from logagent.errors import LogAgentError
-    monkeypatch.setattr("logagent.channel.mock._STOP_TIMEOUT", .02)
+    monkeypatch.setattr("plugins.channel.file.channel._STOP_TIMEOUT", .02)
     path = tmp_path / "pending.txt"
     channel = _channel(path)
     await channel.start()
@@ -349,13 +364,13 @@ async def test_stop_waits_for_cancelled_write_and_can_be_awaited_again(tmp_path,
             await send
         with pytest.raises(LogAgentError) as error:
             await channel.stop()
-        assert error.value.code == "mock_stop_timeout"
+        assert error.value.code == "file_stop_timeout"
     finally:
         blocking.release_write.set()
         await asyncio.wait_for(asyncio.shield(channel._stop_task), 1)
         await channel.stop()
     assert channel.handler._stream is None
-    assert path.read_text() == "once\n"
+    assert _log_records(path)[0][1:] == ["once"]
 
 
 async def test_new_owner_shares_handler_during_close(tmp_path, monkeypatch):
@@ -387,4 +402,4 @@ async def test_new_owner_shares_handler_during_close(tmp_path, monkeypatch):
         await second.send(_notification("new owner"), options={})
     finally:
         await second.stop()
-    assert path.read_text() == "new owner\n"
+    assert _log_records(path)[0][1:] == ["new owner"]

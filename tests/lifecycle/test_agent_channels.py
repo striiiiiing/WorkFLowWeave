@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+import shutil
+from pathlib import Path
 
 import httpx
 import pytest
@@ -13,7 +15,6 @@ from logagent.channel import builtin_channels
 from logagent.channel.bindings import ChannelBindings
 from logagent.channel.conversation import ChannelAddress, InboundMessage
 from logagent.channel.manager import ChannelManager
-from logagent.collection import builtin_collectors
 from logagent.config import PluginRegistry, ResourceStore
 from logagent.errors import LogAgentError
 from logagent.interaction.app import create_app
@@ -21,11 +22,13 @@ from logagent.lifecycle import ApplicationLifecycle
 from logagent.models import ChannelConfig, Notification, SystemConfig
 from tests.agent.helpers import ScriptedModel
 from tests.agent.test_admission import GatedModel
+from tests.fixtures.plugin_helpers import install_test_channel_plugin
 
 
 async def _seed_channel(config, *, agent_enabled=True):
+    install_test_channel_plugin(config.plugin_dir)
     registry = PluginRegistry(
-        builtin_collectors(),
+        [],
         builtin_channels=builtin_channels(),
     )
     await registry.discover_plugins(config)
@@ -63,6 +66,26 @@ async def _wait_for_delivery(client, message):
     pytest.fail("Agent channel reply was not delivered")
 
 
+async def _inject_result(services, config, receiver, message):
+    accepted = await receiver.inject(message)
+    assert accepted["status"] in {"accepted", "duplicate"}
+    async with asyncio.timeout(5):
+        while True:
+            outcome = await services.channels.outcome(config, message)
+            if outcome["response"] is not None:
+                return outcome["response"]
+            await asyncio.sleep(0.005)
+
+
+async def _bind_channel(services, ident="test"):
+    created = await services.channels.dispatch_web(AgentCommand(
+        channel="web", action="new", request_id=f"bind-{ident}",
+    ))
+    session = created["result"]["session_id"]
+    await services.channels.bind_conversation(ident, session)
+    return session
+
+
 async def test_lifecycle_resources_reload_plugin_reload_and_test_channel_http(tmp_path):
     config = SystemConfig(
         data_dir=str(tmp_path / "data"),
@@ -82,6 +105,26 @@ async def test_lifecycle_resources_reload_plugin_reload_and_test_channel_http(tm
             transport=httpx.ASGITransport(app=app),
             base_url="http://test",
         ) as client:
+            created = await client.post("/api/channels/web/commands", json={
+                "action": "new", "request_id": "bind-http",
+            })
+            assert created.status_code == 202
+            session = created.json()["result"]["session_id"]
+            initial = await client.get("/api/channels/test/conversation")
+            assert initial.json() == {"session_id": None}
+            bound = await client.put("/api/channels/test/conversation", json={
+                "session_id": session,
+            })
+            assert bound.status_code == 200
+            assert bound.json() == {"session_id": session}
+            invalid = await client.put("/api/channels/test/conversation", json={
+                "session_id": "missing-session",
+            })
+            assert invalid.status_code == 409
+            assert invalid.json()["error"]["code"] == "session_not_found"
+            assert (await client.get("/api/channels/test/conversation")).json() == {
+                "session_id": session,
+            }
             message = {
                 "request_id": "http-request-1",
                 "text": "hello from HTTP",
@@ -95,10 +138,14 @@ async def test_lifecycle_resources_reload_plugin_reload_and_test_channel_http(tm
             injected = await client.post("/api/channels/test/test/messages", json=message)
             assert injected.status_code == 202
             accepted = injected.json()
-            assert accepted["kind"] == "turn"
-            await services.agent.wait(accepted["result"]["turn_id"])
+            assert accepted == {"status": "accepted"}
             outcome = await _wait_for_delivery(client, message)
+            assert outcome["response"]["kind"] == "turn"
             assert outcome["delivery"]["status"] == "success"
+            assert outcome["response"]["result"]["session_id"] == session
+            events = await client.get(f"/api/channels/web/sessions/{session}/events")
+            assert events.status_code == 200
+            assert "HTTP channel reply" in events.text
 
             outbox = await client.get("/api/channels/test/test/messages")
             assert outbox.status_code == 200
@@ -123,8 +170,10 @@ async def test_lifecycle_resources_reload_plugin_reload_and_test_channel_http(tm
 
             await lifecycle.reload("plugins")
             reloaded_receiver = services.channels.receiver(active_config)
-            assert reloaded_receiver is original_receiver
+            assert reloaded_receiver is not original_receiver
+            assert original_receiver.started is False
             assert reloaded_receiver.handler is not None
+            assert reloaded_receiver.started is True
             previous_outbox_size = len(reloaded_receiver.outbox())
 
             receipt = await services.channels.send(
@@ -143,7 +192,7 @@ async def test_lifecycle_resources_reload_plugin_reload_and_test_channel_http(tm
             }
             assert reloaded_receiver.outbox()[-1]["notification"]["text"] \
                 == "one-way workflow output"
-            assert len(original_receiver.outbox()) == previous_outbox_size + 1
+            assert len(reloaded_receiver.outbox()) == previous_outbox_size + 1
 
     assert reloaded_receiver.handler is None
     assert reloaded_receiver.started is False
@@ -155,6 +204,7 @@ async def test_plugin_reload_conflicts_while_channel_reply_is_in_flight(tmp_path
     channel = await _seed_channel(config)
     lifecycle = ApplicationLifecycle(config, channel_factories={})
     services = await lifecycle.start()
+    await _bind_channel(services)
     services.agent.model_provider = lambda _: ScriptedModel(
         responses=[AIMessage(content="completed before delivery")],
     )
@@ -175,7 +225,7 @@ async def test_plugin_reload_conflicts_while_channel_reply_is_in_flight(tmp_path
         ),
     )
     try:
-        accepted = await receiver.inject(message)
+        accepted = await _inject_result(services, channel, receiver, message)
         await services.agent.wait(accepted["result"]["turn_id"])
         await asyncio.wait_for(started.wait(), 2)
         assert services.channels.active_operations > 0
@@ -279,6 +329,7 @@ async def test_manager_stop_interrupts_queued_request_and_retains_new_input(tmp_
     await _seed_channel(config)
     lifecycle = ApplicationLifecycle(config, channel_factories={})
     services = await lifecycle.start()
+    await _bind_channel(services)
     model = GatedModel(responses=[AIMessage(content="reply after stop")])
     services.agent.model_provider = lambda _: model
     channel = services.resources.get("channels", "test")
@@ -293,20 +344,23 @@ async def test_manager_stop_interrupts_queued_request_and_retains_new_input(tmp_
         )
 
     try:
-        first = await receiver.inject(inbound("running", "A"))
+        first = await _inject_result(services, channel, receiver, inbound("running", "A"))
         await asyncio.wait_for(model.entered.wait(), 2)
         services.channels._input_queue.capacity = 1
-        waiting = asyncio.create_task(receiver.inject(inbound("waiting", "B")))
-        peer = services.channels._peer(channel, inbound("running", "A"))
+        waiting = asyncio.create_task(
+            _inject_result(services, channel, receiver, inbound("waiting", "B"))
+        )
         async with asyncio.timeout(2):
-            while services.channels._input_queue.size(("channel", peer, "normal")) != 1:  # noqa: ASYNC110
+            while services.channels._input_queue.size(("channel", channel.id, "normal")) != 1:  # noqa: ASYNC110
                 await asyncio.sleep(0)
 
         with pytest.raises(LogAgentError) as full:
             await receiver.inject(inbound("overflow", "would overflow"))
         assert full.value.code == "channel_queue_full"
 
-        stopped = await asyncio.wait_for(receiver.inject(inbound("stop", "/stop")), 2)
+        stopped = await asyncio.wait_for(
+            _inject_result(services, channel, receiver, inbound("stop", "/stop")), 2,
+        )
         rejected = await asyncio.wait_for(waiting, 2)
         assert stopped["result"]["status"] == "cancelled"
         assert rejected["error"]["code"] == "message_interrupted"
@@ -314,10 +368,10 @@ async def test_manager_stop_interrupts_queued_request_and_retains_new_input(tmp_
         assert outcome["status"] == "interrupted"
         assert outcome["delivery"]["status"] == "not_started"
         assert first["result"]["session_id"] == stopped["result"]["session_id"]
-        assert (await receiver.inject(inbound("stop", "/stop")))["deduplicated"] is True
+        assert await receiver.inject(inbound("stop", "/stop")) == {"status": "duplicate"}
 
         model.release.set()
-        subsequent = await receiver.inject(inbound("later", "C"))
+        subsequent = await _inject_result(services, channel, receiver, inbound("later", "C"))
         await services.agent.wait(subsequent["result"]["turn_id"])
         assert subsequent["kind"] == "turn"
     finally:
@@ -351,9 +405,10 @@ async def test_verified_legacy_identity_maps_old_request_without_reexecution(tmp
     services = await lifecycle.start()
     try:
         received = await services.channels.receiver(channel).inject(message)
-        assert received["deduplicated"] is True
-        assert received["result"]["session_id"] == "legacy-session"
-        assert (await services.channels.outcome(channel, message))["status"] == "completed"
+        assert received == {"status": "duplicate"}
+        outcome = await services.channels.outcome(channel, message)
+        assert outcome["response"]["result"]["session_id"] == "legacy-session"
+        assert outcome["status"] == "completed"
         new_peer = services.channels._peer(channel, message)
         assert await services.channels.bindings.outcome(new_peer, message.request_id)
     finally:
@@ -431,6 +486,7 @@ async def test_manager_session_switch_keeps_prior_input_in_the_old_session(tmp_p
     await _seed_channel(config)
     lifecycle = ApplicationLifecycle(config, channel_factories={})
     services = await lifecycle.start()
+    await _bind_channel(services)
     model = GatedModel(responses=[
         AIMessage(content="A"), AIMessage(content="B"), AIMessage(content="C"),
     ])
@@ -452,23 +508,30 @@ async def test_manager_session_switch_keeps_prior_input_in_the_old_session(tmp_p
                 await asyncio.sleep(0)
 
     try:
-        first = await receiver.inject(inbound("A", "first"))
+        first = await _inject_result(services, channel, receiver, inbound("A", "first"))
         await model.entered.wait()
-        peer = services.channels._peer(channel, inbound("A", "first"))
-        b_task = asyncio.create_task(receiver.inject(inbound("B", "second")))
-        await queued(("channel", peer, "normal"), 1)
-        new_task = asyncio.create_task(receiver.inject(inbound("new", "/new")))
-        await queued(("channel", peer, "command"), 1)
-        c_task = asyncio.create_task(receiver.inject(inbound("C", "third")))
-        await queued(("channel", peer, "normal"), 2)
+        b_task = asyncio.create_task(
+            _inject_result(services, channel, receiver, inbound("B", "second"))
+        )
+        await queued(("channel", channel.id, "normal"), 1)
+        new_task = asyncio.create_task(
+            _inject_result(services, channel, receiver, inbound("new", "/new"))
+        )
+        await queued(("channel", channel.id, "command"), 1)
+        c_task = asyncio.create_task(
+            _inject_result(services, channel, receiver, inbound("C", "third"))
+        )
+        await queued(("channel", channel.id, "normal"), 2)
         model.release.set()
         second, switched, third = await asyncio.wait_for(
             asyncio.gather(b_task, new_task, c_task), 5,
         )
         assert second["result"]["session_id"] == first["result"]["session_id"]
         assert switched["result"]["session_id"] != first["result"]["session_id"]
-        assert third["result"]["session_id"] == switched["result"]["session_id"]
-        await services.agent.wait(third["result"]["turn_id"])
+        assert third["error"]["code"] == "channel_binding_changed"
+        fresh = await _inject_result(services, channel, receiver, inbound("D", "fresh"))
+        assert fresh["result"]["session_id"] == switched["result"]["session_id"]
+        await services.agent.wait(fresh["result"]["turn_id"])
     finally:
         model.release.set()
         await lifecycle.shutdown()
@@ -481,16 +544,18 @@ async def test_web_and_test_channel_serialize_turns_of_the_same_agent_session(tm
     app = create_app(lifecycle)
     async with app.router.lifespan_context(app):
         services = app.state.services
+        await _bind_channel(services)
         model = GatedModel(responses=[AIMessage(content="test"), AIMessage(content="web")])
         services.agent.model_provider = lambda _: model
         channel = services.resources.get("channels", "test")
         receiver = services.channels.receiver(channel)
-        first = await receiver.inject(InboundMessage(
+        first_message = InboundMessage(
             request_id="test-first", text="first",
             address=ChannelAddress(
                 kind="test", target="shared", sender="alice", message_id="test-first",
             ),
-        ))
+        )
+        first = await _inject_result(services, channel, receiver, first_message)
         await model.entered.wait()
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://test",
@@ -522,16 +587,19 @@ async def test_web_stop_interrupts_waiting_admission_to_shared_session(tmp_path)
     await _seed_channel(config)
     lifecycle = ApplicationLifecycle(config, channel_factories={})
     services = await lifecycle.start()
+    await _bind_channel(services)
     model = GatedModel(responses=[AIMessage(content="first"), AIMessage(content="obsolete")])
     services.agent.model_provider = lambda _: model
     receiver = services.channels.receiver(services.resources.get("channels", "test"))
     try:
-        first = await receiver.inject(InboundMessage(
+        channel = services.resources.get("channels", "test")
+        first_message = InboundMessage(
             request_id="shared-first", text="A",
             address=ChannelAddress(
                 kind="test", target="shared", sender="alice", message_id="shared-first",
             ),
-        ))
+        )
+        first = await _inject_result(services, channel, receiver, first_message)
         await asyncio.wait_for(model.entered.wait(), 2)
         session = first["result"]["session_id"]
         web = services.channels.web_channel
@@ -580,6 +648,7 @@ async def test_lifecycle_shutdown_drains_cancelled_agent_reply_before_channel_an
     await _seed_channel(config)
     lifecycle = ApplicationLifecycle(config, channel_factories={})
     services = await lifecycle.start()
+    await _bind_channel(services)
 
     class WaitingModel(ScriptedModel):
         started: asyncio.Event = Field(default_factory=asyncio.Event)
@@ -603,7 +672,7 @@ async def test_lifecycle_shutdown_drains_cancelled_agent_reply_before_channel_an
             message_id="shutdown-message",
         ),
     )
-    accepted = await receiver.inject(inbound)
+    accepted = await _inject_result(services, channel_config, receiver, inbound)
     await asyncio.wait_for(model.started.wait(), timeout=5)
 
     order = []
@@ -660,3 +729,60 @@ async def test_lifecycle_shutdown_drains_cancelled_agent_reply_before_channel_an
         assert receiver.outbox()[-1]["notification"]["text"] == "本轮已停止。"
     finally:
         await lifecycle.shutdown()
+
+
+async def test_conversation_http_unbind_resume_and_one_way_rejection(tmp_path):
+    config = SystemConfig(data_dir=str(tmp_path / "data"), plugin_dir=str(tmp_path / "plugins"))
+    file_plugin = Path(__file__).parents[2] / "plugins" / "channel" / "file"
+    shutil.copytree(file_plugin, Path(config.plugin_dir) / "channel" / "file")
+    await _seed_channel(config)
+    lifecycle = ApplicationLifecycle(config, channel_factories={})
+    app = create_app(lifecycle)
+    async with app.router.lifespan_context(app):
+        services = app.state.services
+        services.resources.save("channels", ChannelConfig(
+            id="file-only", channel="file", options={"path": "output.log"},
+        ))
+        await _wait_for_channel_sync(services)
+        first = await _bind_channel(services)
+        created = await services.channels.dispatch_web(AgentCommand(
+            channel="web", action="new", request_id="other-conversation",
+        ))
+        target = created["result"]["session_id"]
+        channel = services.resources.get("channels", "test")
+        receiver = services.channels.receiver(channel)
+
+        def inbound(ident, text):
+            return InboundMessage(request_id=ident, text=text, address=ChannelAddress(
+                kind="test", target="room", sender="alice", message_id=ident,
+            ))
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            simplex = await client.put("/api/channels/file-only/conversation", json={
+                "session_id": first,
+            })
+            assert simplex.status_code == 422
+            assert simplex.json()["error"]["code"] == "channel_not_conversation"
+            assert (await client.get("/api/channels/file-only/conversation")).status_code == 422
+            malformed = await client.put("/api/channels/test/conversation", json={})
+            assert malformed.status_code == 422
+            unbound = await client.put("/api/channels/test/conversation", json={"session_id": None})
+            assert unbound.status_code == 200
+            assert unbound.json() == {"session_id": None}
+            rejected = await _inject_result(services, channel, receiver, inbound("unbound", "hello"))
+            assert rejected["error"]["code"] == "channel_unbound"
+            resumed = await _inject_result(
+                services, channel, receiver, inbound("resume", f"/resume {target}"),
+            )
+            assert resumed["result"]["session_id"] == target
+            current = await client.get("/api/channels/test/conversation")
+            assert current.json() == {"session_id": target}
+            missing = await _inject_result(
+                services, channel, receiver, inbound("missing", "/resume missing-session"),
+            )
+            assert missing["error"]["code"] == "session_not_found"
+            assert (await client.get("/api/channels/test/conversation")).json() == {
+                "session_id": target,
+            }

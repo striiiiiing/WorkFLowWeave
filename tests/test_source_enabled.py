@@ -2,16 +2,15 @@
 
 import pytest
 
-from logagent.channel.mock import MockFileChannelType
-from logagent.collection.mock import MockCollector
 from logagent.config import PluginRegistry, ResourceStore
 from logagent.errors import LogAgentError
 from logagent.models import AIConfig, SourceConfig, SystemConfig, WorkflowDefinition
+from tests.fixtures.collectors import MockCollector
 
 
 @pytest.mark.asyncio
 async def test_disabled_source_is_omitted_from_workflow_snapshot(tmp_path):
-    registry = PluginRegistry([MockCollector()], builtin_channels=[MockFileChannelType()])
+    registry = PluginRegistry([MockCollector()])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     store = ResourceStore(
         tmp_path / "resources.json",
