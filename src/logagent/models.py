@@ -160,7 +160,9 @@ class CLIShell(StrictModel):
 
 
 CLICall = Annotated[CLIArgv | CLIShell, Field(discriminator="mode")]
-SourceCall = Annotated[MCPCall | CLICall, Field(discriminator="kind")]
+# An outer discriminator maps "cli" to the nested mode union, which is not
+# a reference string and therefore invalid in OpenAPI discriminator.mapping.
+SourceCall = MCPCall | CLICall
 
 
 class SourceConfig(StrictModel):

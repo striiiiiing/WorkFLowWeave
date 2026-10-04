@@ -18,6 +18,7 @@ Typora_Hook_Log.txt
 /frontend/node_modules
 /botpy.log
 /backup/
+/compose.override.yaml
 .env
 master.key
 master.key.initialized
