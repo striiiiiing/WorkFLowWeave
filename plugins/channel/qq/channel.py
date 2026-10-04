@@ -211,7 +211,6 @@ class QQChannel:
             public_messages=True,
             public_guild_messages=True,
             direct_message=True,
-            guild_messages=True,
         )
 
     def _make_client_factory(self, botpy: Any) -> Callable[..., Any]:
@@ -328,7 +327,15 @@ class QQChannel:
         try:
             result = method(**kwargs)
             if inspect.isawaitable(result):
-                await result
+                result = await result
+            message_id = _value(result, "id", "message_id")
+            if not isinstance(message_id, str) or not message_id:
+                raise ChannelDeliveryError(
+                    "qq_send_uncertain", "QQ API 未返回可验证的消息 ID",
+                    uncertain=True, details={"kind": kind},
+                )
+        except ChannelDeliveryError:
+            raise
         except Exception as exc:
             raise ChannelDeliveryError(
                 "qq_send_failed", "QQ 消息发送失败",
