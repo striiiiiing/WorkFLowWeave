@@ -111,7 +111,7 @@ class _NotificationFileHandler(logging.FileHandler):
             result.started = True
             written = self.stream.write(rendered)
             result.written = written if isinstance(written, int) else None
-            if type(written) is int and written != len(rendered):
+            if type(written) is not int or written != len(rendered):
                 raise OSError(
                     errno.EIO,
                     f"short write: wrote {written} of {len(rendered)} characters",
@@ -154,7 +154,7 @@ _HANDLERS_LOCK = threading.Lock()
 class FileChannel:
     def __init__(self, config: ChannelConfig):
         validate_instance(config.options, resource_options_schema(_OPTIONS_SCHEMA), path=["options"])
-        self.path = Path(config.options["path"])
+        self.path = Path(config.options["path"]).resolve()
         self.channel_id = config.id
         self._released = False
         self._pending: set[asyncio.Task] = set()
