@@ -2,11 +2,20 @@
 
 import asyncio
 import json
+import sqlite3
+from dataclasses import dataclass
 from pathlib import Path
+from threading import RLock
 
 import aiosqlite
 
 from logagent.errors import LogAgentError
+
+
+@dataclass(frozen=True)
+class InstanceBinding:
+    session_id: str | None = None
+    revision: int = 0
 
 
 class ChannelBindings:
@@ -14,6 +23,8 @@ class ChannelBindings:
         self.path = path
         self._db = None
         self._lock = asyncio.Lock()
+        self._instances: dict[str, InstanceBinding] = {}
+        self._cache_lock = RLock()
 
     async def start(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -34,7 +45,20 @@ class ChannelBindings:
             CREATE TABLE IF NOT EXISTS peer_migrations (
                 legacy_peer TEXT PRIMARY KEY, peer TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS instance_bindings (
+                channel_id TEXT PRIMARY KEY, session TEXT,
+                revision INTEGER NOT NULL
+            );
         """)
+        async with self._db.execute(
+            "SELECT channel_id, session, revision FROM instance_bindings"
+        ) as cursor:
+            instances = {
+                ident: InstanceBinding(session, revision)
+                for ident, session, revision in await cursor.fetchall()
+            }
+        with self._cache_lock:
+            self._instances = instances
         async with self._db.execute("PRAGMA table_info(requests)") as cursor:
             columns = {row[1] for row in await cursor.fetchall()}
         if "status" not in columns:
@@ -77,6 +101,51 @@ class ChannelBindings:
         ) as cursor:
             row = await cursor.fetchone()
             return row[0] if row else None
+
+    def instance(self, channel_id: str) -> InstanceBinding:
+        """Read the startup-loaded cache; routing and sends never query SQLite."""
+        with self._cache_lock:
+            return self._instances.get(channel_id, InstanceBinding())
+
+    async def bind_instance(self, channel_id: str, session_id: str | None) -> InstanceBinding:
+        async with self._lock:
+            previous = self.instance(channel_id)
+            if previous.session_id == session_id:
+                return previous
+            binding = InstanceBinding(session_id, previous.revision + 1)
+            with self._cache_lock:
+                self._instances[channel_id] = binding
+            persistence = asyncio.create_task(self._persist_instance(channel_id, binding, previous))
+            cancelled = False
+            # Cancelling an aiosqlite await cannot cancel SQL in its worker.
+            # Keep the write lock until its transaction and cache agree.
+            while not persistence.done():
+                try:
+                    await asyncio.shield(persistence)
+                except asyncio.CancelledError:
+                    cancelled = True
+            persistence.result()
+            if cancelled:
+                raise asyncio.CancelledError
+            return binding
+
+    async def _persist_instance(self, channel_id, binding, previous):
+        try:
+            await self._db.execute(
+                "INSERT INTO instance_bindings VALUES (?, ?, ?) "
+                "ON CONFLICT(channel_id) DO UPDATE SET "
+                "session=excluded.session, revision=excluded.revision",
+                (channel_id, binding.session_id, binding.revision),
+            )
+            await self._db.commit()
+        except sqlite3.Error as exc:
+            # Restoring the session must not revive old or transient snapshots.
+            with self._cache_lock:
+                self._instances[channel_id] = InstanceBinding(
+                    previous.session_id, binding.revision + 1,
+                )
+            await self._db.rollback()
+            raise LogAgentError("storage_failed", "渠道对话绑定保存失败") from exc
 
     async def owns(self, peer, session):
         async with self._lock, self._db.execute(
