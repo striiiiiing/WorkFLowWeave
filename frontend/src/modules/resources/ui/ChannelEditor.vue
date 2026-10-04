@@ -8,6 +8,7 @@ import { useChannelEditor } from '../composables/useChannelEditor'
 import { idRule } from '../model/forms'
 import ParameterField from '@/shared/schema/ParameterField.vue'
 import CredentialEditor from './CredentialEditor.vue'
+import ChannelConversation from './ChannelConversation.vue'
 const props = defineProps<{ initial?: ChannelConfig; capabilities: readonly SchemaCapability[] }>()
 const emit = defineEmits<{ saved: [value: ChannelConfig]; cancel: [] }>()
 const {
@@ -123,6 +124,18 @@ async function submit() {
         @update:model-value="updateAgentEnabled(Boolean($event))"
       />
     </el-form-item>
+    <ChannelConversation
+      v-if="
+        initial &&
+        draft.channel === initial.channel &&
+        capability?.capabilities.includes('conversation')
+      "
+      :key="initial.id"
+      :channel-id="initial.id"
+    />
+    <p v-else-if="capability?.capabilities.includes('conversation')" class="muted mb-4">
+      保存渠道后，可在编辑时绑定已有 Agent 对话。
+    </p>
     <ParameterField
       v-if="capabilityName"
       :key="`options-${capabilityName}`"

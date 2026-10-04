@@ -22,11 +22,14 @@ _VALIDATION_CODES = {
     "invalid_schema",
     "mcp_catalog_invalid",
     "capability_missing",
+    "channel_not_conversation",
     "validation",
     "context_budget_unavailable",
 }
 _CONFLICT_CODES = {
     "channel_disabled",
+    "channel_unbound",
+    "channel_binding_changed",
     "request_outcome_unknown",
     "target_unavailable",
     "mcp_disabled",

@@ -162,6 +162,18 @@ def migrate_resources(data: Any) -> tuple[Any, bool]:
         data = _MIGRATIONS[version](data)
         changed = True
         version = data["format_version"]
+    # The resource shape is unchanged: this is a persisted capability rename,
+    # not an alias accepted by new API input. Keep IDs, paths and bindings.
+    channels = data.get("channels")
+    if isinstance(channels, dict) and any(
+        isinstance(value, dict) and value.get("channel") == "mock"
+        for value in channels.values()
+    ):
+        data = deepcopy(data)
+        for value in data["channels"].values():
+            if isinstance(value, dict) and value.get("channel") == "mock":
+                value["channel"] = "file"
+        changed = True
     return data, changed
 
 
@@ -172,6 +184,9 @@ def migrate_legacy_snapshot(data: Any) -> Any:
     if any("collector" in source for source in data.get("sources", {}).values()):
         raise LogAgentError("legacy_snapshot_incompatible", "旧 Collector 运行不能恢复执行；已有分析正文仍可读取")
     migrated = deepcopy(data)
+    for channel in migrated.get("channels", {}).values():
+        if isinstance(channel, dict) and channel.get("channel") == "mock":
+            channel["channel"] = "file"
     workflow = migrated["workflow"]
     if LEGACY_SCHEDULE_FIELDS & workflow.keys():
         workflow = migrate_workflow(workflow)

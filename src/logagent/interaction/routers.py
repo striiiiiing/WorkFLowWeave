@@ -228,6 +228,22 @@ async def replace_channel(ident: ID, payload: ChannelConfig, services: Services)
     return await _save_resource(services, "channels", payload, mode="replace")
 
 
+class ChannelConversation(StrictModel):
+    session_id: ID | None
+
+
+@router.get("/channels/{ident}/conversation", response_model=ChannelConversation)
+async def channel_conversation(ident: ID, services: Services):
+    config = await _get_resource(services, "channels", ident)
+    return await services.channels.conversation(ident, config=config)
+
+
+@router.put("/channels/{ident}/conversation", response_model=ChannelConversation)
+async def bind_channel_conversation(ident: ID, payload: ChannelConversation, services: Services):
+    config = await _get_resource(services, "channels", ident)
+    return await services.channels.bind_conversation(ident, payload.session_id, config=config)
+
+
 @router.post("/workflows", response_model=WorkflowDefinition, status_code=status.HTTP_201_CREATED)
 async def create_workflow(payload: WorkflowDefinition, services: Services):
     return await _save_resource(services, "workflows", payload, mode="create")
