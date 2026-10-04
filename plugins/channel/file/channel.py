@@ -46,12 +46,23 @@ class _NotificationFileHandler(logging.FileHandler):
 
     def __init__(self, path: Path):
         super().__init__(path, mode="a", encoding="utf-8", delay=True)
+        # Keep the underlying stream visible for diagnostics and deterministic
+        # tests while retaining FileHandler's public ``stream`` attribute.
+        self._io_lock = self.lock
         self.setFormatter(
             _UTCFormatter(
                 "%(asctime)sZ channel=%(channel_id)s session=%(session_id)s "
                 "output=%(output_id)s title=%(title)s\n%(message)s"
             )
         )
+
+    @property
+    def _stream(self):
+        return self.stream
+
+    @_stream.setter
+    def _stream(self, value):
+        self.stream = value
 
     def start(self) -> None:
         with self.lock:
