@@ -57,6 +57,8 @@ class TelegramChannel:
         self._token: str | None = None
         self._handler: InboundHandler | None = None
         self._polling = False
+        self._initialized = False
+        self._started = False
         self._stopping = False
 
     async def start(self) -> None:
@@ -82,10 +84,14 @@ class TelegramChannel:
                 "telegram_sdk_invalid", "Telegram Application 创建失败",
                 details={"exception_type": type(exc).__name__},
             ) from exc
+        # Initialize the Bot once during the resident channel lifecycle so
+        # one-way sends do not race Application's lazy request setup.
+        await self._call("initialize")
+        self._initialized = True
 
     async def send(self, notification: Notification, *, options: dict) -> None:
         validate_workflow_options(options, _OPTIONS_SCHEMA)
-        target = self._options.get("chat_id")
+        target = {**self._options, **options}.get("chat_id")
         if target is None:
             raise ChannelDeliveryError("telegram_target_missing", "Telegram 普通发送需要配置 chat_id")
         await self._send_message(target, notification.text)
@@ -122,8 +128,11 @@ class TelegramChannel:
         self._application.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self._on_update)
         )
-        await self._call("initialize")
+        if not self._initialized:
+            await self._call("initialize")
+            self._initialized = True
         await self._call("start")
+        self._started = True
         updater = getattr(self._application, "updater", None)
         start_polling = getattr(updater, "start_polling", None)
         if not callable(start_polling):
@@ -149,8 +158,12 @@ class TelegramChannel:
         self._stopping = True
         await self.stop_receiving()
         if self._application is not None:
-            for name in ("stop", "shutdown"):
-                await self._call(name, missing_ok=True)
+            if self._started:
+                await self._call("stop")
+                self._started = False
+            if self._initialized:
+                await self._call("shutdown")
+                self._initialized = False
         self._application = None
 
     async def _on_update(self, update: Any, context: Any = None) -> None:
