@@ -46,6 +46,7 @@ class _NotificationFileHandler(logging.FileHandler):
 
     def __init__(self, path: Path):
         super().__init__(path, mode="a", encoding="utf-8", delay=True)
+        self.path = path
         # Keep the underlying stream visible for diagnostics and deterministic
         # tests while retaining FileHandler's public ``stream`` attribute.
         self._io_lock = self.lock
