@@ -13,9 +13,8 @@ import pytest
 from pydantic import ValidationError
 
 from logagent.ai import AIService
-from logagent.channel import ChannelManager, MockFileChannelType
-from logagent.channel.email import EmailChannelType
-from logagent.collection import CollectorManager, MockCollector
+from logagent.channel import ChannelManager
+from logagent.collection import CollectorManager
 from logagent.config import PluginRegistry, ResourceStore
 from logagent.errors import LogAgentError
 from logagent.models import (
@@ -30,6 +29,9 @@ from logagent.models import (
 )
 from logagent.schema import resource_options_schema, validate_instance, validate_schema
 from logagent.workflow.execution.runner import WorkflowRunner
+from plugins.channel.email.channel import EmailChannelType
+from plugins.channel.file.channel import FileChannelType
+from tests.fixtures.collectors import AlternateMockCollector, MockCollector, QueryCollector
 from tests.workflow_ai_helpers import TestChannelFactory
 
 
@@ -162,9 +164,6 @@ async def test_detached_source_snapshot_requires_its_binding_id():
 
 
 async def test_detached_source_uses_its_own_collector_and_survives_shared_deletion(tmp_path):
-    class AlternateMockCollector(MockCollector):
-        name = "alternate"
-
     registry = PluginRegistry([MockCollector(), AlternateMockCollector()])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     store = ResourceStore(
@@ -248,26 +247,6 @@ async def test_missing_plugin_does_not_block_saved_override_snapshot(bindings):
 
 
 async def test_custom_account_requirements_call_path_and_cross_field_validation(tmp_path):
-    class QueryCollector(MockCollector):
-        name = "query"
-        options_schema = {
-            "type": "object", "additionalProperties": False,
-            "properties": {
-                "host": {"type": "string", "description": "Account endpoint"},
-                "path": {"type": "string", "description": "Query file",
-                         "x-logagent-workflow": True, "x-logagent-path": True},
-                "begin": {"type": "integer", "description": "Lower bound",
-                          "x-logagent-workflow": True},
-                "end": {"type": "integer", "description": "Upper bound",
-                        "x-logagent-workflow": True},
-            },
-            "required": ["host", "path", "begin", "end"],
-        }
-
-        def validate(self, options, setters):
-            if options["begin"] > options["end"]:
-                raise ValueError("Invalid query range")
-
     registry = PluginRegistry([QueryCollector()])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     store = ResourceStore(tmp_path / "resources.json", collector_register=registry.collectorRegister,
@@ -331,7 +310,7 @@ def test_account_schema_keeps_conditional_credentials_required():
 
 
 async def test_real_workflows_persist_distinct_inputs_and_recover_original_binding(tmp_path):
-    registry = PluginRegistry([MockCollector()], builtin_channels=[MockFileChannelType()])
+    registry = PluginRegistry([MockCollector()], builtin_channels=[FileChannelType()])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     store = ResourceStore(tmp_path / "resources.json",
                           collector_register=registry.collectorRegister,
@@ -339,7 +318,7 @@ async def test_real_workflows_persist_distinct_inputs_and_recover_original_bindi
     store.save("sources", SourceConfig(id="source", collector="mock"))
     store.save("ai", AIConfig(id="ai", provider="test", models={"model": {}}))
     output = tmp_path / "notifications.txt"
-    store.save("channels", ChannelConfig(id="file", channel="mock", options={"path": str(output)}))
+    store.save("channels", ChannelConfig(id="file", channel="file", options={"path": str(output)}))
     ai = AIService(channel_factories={"test": TestChannelFactory()})
     channels = ChannelManager(registry.channelRegister)
     service = WorkflowRunner(CollectorManager(registry.collectorRegister), ai, channels, store,

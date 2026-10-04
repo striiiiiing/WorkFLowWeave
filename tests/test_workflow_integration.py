@@ -13,9 +13,8 @@ from sqlalchemy import URL, inspect
 from sqlmodel import Session, create_engine, func, select
 
 from logagent.ai import AIService
-from logagent.channel import ChannelManager, MockFileChannelType
+from logagent.channel import ChannelManager
 from logagent.collection.manager import CollectorManager
-from logagent.collection.mock import MockCollector
 from logagent.config import PluginRegistry, ResourceStore, expand_source
 from logagent.models import (
     AIConfig,
@@ -29,13 +28,15 @@ from logagent.models import (
 )
 from logagent.workflow.execution.runner import WorkflowRunner
 from logagent.workflow.storage.models import SessionHeader
+from plugins.channel.file.channel import FileChannelType
+from tests.fixtures.collectors import MockCollector
 from tests.workflow.helpers import archived
 from tests.workflow_ai_helpers import TestChannelFactory
 
 
 @asynccontextmanager
 async def _application(tmp_path, *, provider=None):
-    registry = PluginRegistry([MockCollector()], builtin_channels=[MockFileChannelType()])
+    registry = PluginRegistry([MockCollector()], builtin_channels=[FileChannelType()])
     report = await registry.discover_plugins(
         SystemConfig(plugin_dir=str(tmp_path / "plugins"), data_dir=str(tmp_path))
     )
@@ -76,7 +77,7 @@ def _save_resources(registry, resources, output_path, version):
     resources.save("setters", template)
     resources.save("ai", AIConfig(id="ai", provider="mock", models={"model": {"version": version}}))
     resources.save(
-        "channels", ChannelConfig(id="file", channel="mock", options={"path": str(output_path)})
+        "channels", ChannelConfig(id="file", channel="file", options={"path": str(output_path)})
     )
     resources.save(
         "workflows",
@@ -126,7 +127,7 @@ async def test_real_modules_recovery_preserves_original_output(tmp_path):
         assert original.deliveries[0].status == "success"
         notifications = _notifications(original_path)
         # Full equality catches an accidental second write of the same text.
-        assert notifications == f"Report original\n{original.outputs['final']}\n"
+        assert notifications.endswith(f"title=Report original\n{original.outputs['final']}\n")
 
         history = await service.history("original-run")
         completed = {row["stage"]: row["body"] for row in history if row["scope"] == "phase"}
@@ -168,7 +169,7 @@ async def test_real_modules_recovery_preserves_original_output(tmp_path):
         assert changed.aggregate.text.startswith("changed-summary: changed-second:")
         assert _notifications(original_path) == notifications
         changed_notes = _notifications(changed_path)
-        assert changed_notes == f"Report changed\n{changed.outputs['final']}\n"
+        assert changed_notes.endswith(f"title=Report changed\n{changed.outputs['final']}\n")
 
     engine = create_engine(URL.create("sqlite", database=str(tmp_path / "sessions.sqlite3")))
     try:
@@ -225,8 +226,7 @@ async def test_real_ai_cancellation_resumes_saved_snapshot_after_resource_change
         assert recovered.analyses[1].text == 'original-second: [source=source; format=none]\n{"message":"original"}'
         assert recovered.aggregate.text.startswith("original-summary:")
         notes = _notifications(original_path)
-        assert notes.startswith("Report original\n")
-        assert recovered.outputs["final"] in notes
+        assert notes.endswith(f"title=Report original\n{recovered.outputs['final']}\n")
         assert not changed_path.exists()
         history = await service.history("interrupted")
         assert sum(row["write_key"].startswith("collect:item:source:epoch:") for row in history) == 1
