@@ -91,8 +91,10 @@ class QQChannel:
         self._runner: asyncio.Task[Any] | None = None
         self._handler: InboundHandler | None = None
         self._stopping = False
-        self._routes: dict[str, Any] = {}
         self._gateway_coro: Any = None
+        self._botpy: Any = None
+        self._receiver_state = "stopped"
+        self._receiver_error: str | None = None
 
     async def start(self) -> None:
         if self._stopping:
@@ -106,13 +108,19 @@ class QQChannel:
                 "qq_sdk_missing", "QQ 渠道需要安装腾讯官方 qq-botpy SDK",
                 details={"package": "qq-botpy"},
             ) from exc
+        self._botpy = botpy
+        await self._initialize_client()
+
+    async def _initialize_client(self) -> None:
+        if self._client is not None:
+            return
+        botpy = self._botpy
+        if botpy is None:
+            raise ChannelDeliveryError("qq_not_started", "QQ 渠道尚未启动")
         secret = await self._resolve_secret()
         factory = self._client_factory or self._make_client_factory(botpy)
         intents = self._intents(botpy)
-        try:
-            self._client = factory(intents=intents)
-        except TypeError:
-            self._client = factory()
+        self._client = factory(intents=intents)
         self._client._logagent_emit = self._emit_message
         self._appid = self._options["app_id"]
         self._secret = secret
@@ -122,16 +130,17 @@ class QQChannel:
         # Agent receiver lifecycle below.  This also makes one-way sends work
         # without implicitly subscribing the channel to inbound events.
         sdk_start = getattr(self._client, "start", None)
-        if callable(sdk_start) and inspect.iscoroutinefunction(sdk_start):
-            try:
-                self._gateway_coro = await sdk_start(
-                    appid=self._appid, secret=self._secret, ret_coro=True
-                )
-            except Exception as exc:
-                raise ChannelDeliveryError(
-                    "qq_authentication_failed", "QQ Bot 登录失败",
-                    details={"exception_type": type(exc).__name__},
-                ) from exc
+        if not callable(sdk_start) or not inspect.iscoroutinefunction(sdk_start):
+            raise ChannelDeliveryError("qq_sdk_invalid", "qq-botpy Client 缺少异步 start API")
+        try:
+            self._gateway_coro = await sdk_start(
+                appid=self._appid, secret=self._secret, ret_coro=True
+            )
+        except Exception as exc:
+            raise ChannelDeliveryError(
+                "qq_authentication_failed", "QQ Bot 登录失败",
+                details={"exception_type": type(exc).__name__},
+            ) from exc
 
     async def send(self, notification: Notification, *, options: dict) -> None:
         validate_workflow_options(options, _OPTIONS_SCHEMA)
@@ -150,16 +159,6 @@ class QQChannel:
         validate_workflow_options(options, _OPTIONS_SCHEMA)
         if address.kind not in {"c2c", "group", "guild", "dm"}:
             raise ChannelDeliveryError("qq_address_invalid", "QQ 回复地址类型不受支持")
-        original = self._routes.get(address.message_id)
-        if original is not None and callable(getattr(original, "reply", None)):
-            try:
-                await original.reply(content=notification.text)
-                return
-            except Exception as exc:
-                raise ChannelDeliveryError(
-                    "qq_send_failed", "QQ 原路回复失败",
-                    details={"exception_type": type(exc).__name__},
-                ) from exc
         await self._send_via_api(
             notification.text,
             kind=address.kind,
@@ -169,44 +168,34 @@ class QQChannel:
 
     async def start_receiving(self, handler: InboundHandler) -> None:
         if self._client is None:
-            raise ChannelDeliveryError("qq_not_started", "QQ 渠道尚未启动")
+            await self._initialize_client()
         if self._runner is not None:
             raise ChannelDeliveryError("qq_already_receiving", "QQ 渠道已在接收消息")
         self._handler = handler
-        run = getattr(self._client, "run", None)
-        if self._gateway_coro is not None:
-            gateway = self._gateway_coro
-            self._gateway_coro = None
-            self._runner = asyncio.create_task(gateway, name="qq-botpy")
-            return
-        if not callable(run):
-            raise ChannelDeliveryError("qq_sdk_invalid", "qq-botpy 客户端缺少 run 方法")
-        if inspect.iscoroutinefunction(run):
-            self._runner = asyncio.create_task(
-                run(appid=self._appid, secret=self._secret), name="qq-botpy"
-            )
-        else:
-            # botpy currently exposes a blocking run() entrypoint. Keep it in a
-            # managed task so Manager stop/reload can own its lifetime.
-            self._runner = asyncio.create_task(
-                asyncio.to_thread(run, appid=self._appid, secret=self._secret),
-                name="qq-botpy",
-            )
+        if self._gateway_coro is None:
+            raise ChannelDeliveryError("qq_sdk_invalid", "qq-botpy 网关协程不可用")
+        gateway = self._gateway_coro
+        self._gateway_coro = None
+        self._receiver_state = "connecting"
+        self._receiver_error = None
+        self._runner = asyncio.create_task(gateway, name="qq-botpy")
+        self._runner.add_done_callback(self._receiver_done)
 
     async def stop_receiving(self) -> None:
         runner, self._runner = self._runner, None
         self._handler = None
-        if self._client is not None:
-            for name in ("close", "stop"):
-                method = getattr(self._client, name, None)
-                if callable(method):
-                    result = method()
-                    if inspect.isawaitable(result):
-                        await result
-                    break
         if runner is not None:
             runner.cancel()
             await asyncio.gather(runner, return_exceptions=True)
+        if self._client is not None:
+            close = getattr(self._client, "close", None)
+            if callable(close):
+                result = close()
+                if inspect.isawaitable(result):
+                    await result
+            self._client = None
+            self._gateway_coro = None
+        self._receiver_state = "stopped"
 
     async def stop(self) -> None:
         self._stopping = True
@@ -216,23 +205,25 @@ class QQChannel:
     @staticmethod
     def _intents(botpy: Any) -> Any:
         intents_cls = getattr(botpy, "Intents", None)
-        if intents_cls is None:
-            return None
-        try:
-            return intents_cls(
-                public_messages=True,
-                public_guild_messages=True,
-                direct_message=True,
-                guild_messages=True,
-            )
-        except TypeError:
-            return intents_cls.default()
+        if not callable(intents_cls):
+            raise ChannelDeliveryError("qq_sdk_invalid", "qq-botpy 缺少 Intents")
+        return intents_cls(
+            public_messages=True,
+            public_guild_messages=True,
+            direct_message=True,
+            guild_messages=True,
+        )
 
     def _make_client_factory(self, botpy: Any) -> Callable[..., Any]:
         parent = botpy.Client
         emit = self._emit_message
+        channel = self
 
         class Client(parent):
+            async def on_ready(self):
+                channel._receiver_state = "running"
+                await super().on_ready()
+
             async def on_c2c_message_create(self, message):
                 await emit("c2c", message)
 
@@ -245,7 +236,29 @@ class QQChannel:
             async def on_direct_message_create(self, message):
                 await emit("dm", message)
 
+            async def on_error(self, event_method, *args, **kwargs):
+                channel._receiver_error = event_method
+                channel._receiver_state = "failed"
+                await super().on_error(event_method, *args, **kwargs)
+
         return Client
+
+    def _receiver_done(self, task: asyncio.Task[Any]) -> None:
+        if task.cancelled():
+            return
+        error = task.exception()
+        if error is not None:
+            self._receiver_state = "failed"
+            self._receiver_error = type(error).__name__
+            _LOGGER.error(
+                "qq_gateway_stopped",
+                extra={"error_code": "qq_gateway_failed", "exception_type": type(error).__name__},
+            )
+        elif self._runner is task and self._receiver_state != "stopped":
+            self._receiver_state = "stopped"
+
+    def receiver_status(self) -> dict[str, Any]:
+        return {"state": self._receiver_state, "error": self._receiver_error}
 
     async def _resolve_secret(self) -> str:
         if self._credentials is None:
@@ -278,18 +291,18 @@ class QQChannel:
         if self._handler is None:
             return
         address = ChannelAddress(kind=kind, target=target, sender=sender, message_id=message_id)
-        self._routes[message_id] = message
         await self._handler(InboundMessage(request_id=message_id, text=content.strip(), address=address))
 
     async def _send_via_api(
         self, text: str, *, kind: str, target: str, message_id: str | None = None
     ) -> None:
         if self._client is None:
-            raise ChannelDeliveryError("qq_not_started", "QQ 渠道尚未启动")
+            await self._initialize_client()
         if self._gateway_coro is not None and self._runner is None:
             gateway = self._gateway_coro
             self._gateway_coro = None
             self._runner = asyncio.create_task(gateway, name="qq-botpy")
+            self._runner.add_done_callback(self._receiver_done)
         api = getattr(self._client, "api", None)
         if api is None:
             raise ChannelDeliveryError("qq_sdk_invalid", "qq-botpy 客户端缺少 API 入口")
@@ -297,7 +310,7 @@ class QQChannel:
             "c2c": ("post_c2c_message",),
             "group": ("post_group_message",),
             "guild": ("post_message",),
-            "dm": ("post_dms_message", "post_dms"),
+            "dm": ("post_dms",),
         }[kind]
         method = next((getattr(api, name, None) for name in method_names if callable(getattr(api, name, None))), None)
         if method is None:
