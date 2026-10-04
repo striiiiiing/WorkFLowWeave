@@ -5,8 +5,8 @@
 | 位置 | 职责与文件 |
 | --- | --- |
 | `ai/` | `test_service` 验证服务编排；`test_env` 验证环境配置解析；`test_channels`、`test_live` 验证 HTTP 渠道契约与真实调用。 |
-| `channel/` | `test_channel_manager` 管理实例、并发与清理；`test_channel_mock` 验证文件投递；`test_email_channel` 使用回环 SMTP 验证协议和失败语义。 |
-| `collection/` | `test_manager` 验证采集管理与隔离；`test_mock` 验证过滤/排序等离线采集；`test_logs` 验证有界日志读取；`test_history` 验证 session 历史读取。 |
+| `channel/` | `test_channel_manager` 管理实例、并发与清理；`test_file_channel` 验证文件日志投递；`test_email_channel` 使用回环 SMTP 验证协议和失败语义；`test_notification_plugin_adapters` 验证 QQ/Telegram SDK 适配；`test_agent_channels` 验证双向测试插件的 Agent 流程。 |
+| `collection/` | `test_manager` 验证来源调用管理与隔离；采集器实现由插件提供，不在核心测试导航中维护内置采集器专属用例。 |
 | `config/` | `test_config` 验证插件发现与配置发布；`test_credentials` 验证凭据边界；`test_resource_store` 验证资源持久化、引用及原子快照。 |
 | `interaction/` | `test_interaction` 验证 HTTP 参数、服务委派、状态码与错误脱敏。 |
 | `lifecycle/` | `test_lifecycle` 验证装配、健康、reload 与关闭；`test_lifecycle_logging` 验证日志组件所有权、轮转与脱敏。 |
@@ -17,13 +17,14 @@
 ## 辅助模块
 
 - `workflow_ai_helpers.py`：跨模块复用的 LangChain 模型传输替身，通过 `tests.workflow_ai_helpers` 显式导入。
+- `fixtures/`：只供测试使用的 Collector、双向 Channel 和可安装插件包；不要将测试替身注册为产品默认能力。
 - `workflow/helpers.py`：Workflow 恢复及生命周期测试共享的采集/AI/通知替身与快照构造器；不要从另一个 `test_*.py` 导入。
 - `ai/conftest.py` 与 `ai/live_helpers.py`：HTTP 渠道夹具和环境配置工具，作用域限制在 AI 测试包。
 - `frontend/tests/serve_backend.py`：Playwright 的临时后端启动器。
 
 ## 运行
 
-以下命令从仓库根目录执行，先用 `uv sync` 安装 Python 开发依赖。后端每条命令使用 60 秒硬超时；完整套件应分组运行，避免进程恢复耗时挤占其他组预算。
+以下命令从仓库根目录执行，先用 `uv sync --extra channels` 安装 Python 开发依赖与通知 SDK。后端每条命令使用 60 秒硬超时；完整套件应分组运行，避免进程恢复耗时挤占其他组预算。
 
 ```bash
 rtk proxy timeout 60s uv run pytest tests --collect-only -q
@@ -36,7 +37,7 @@ rtk proxy timeout 60s uv run pytest tests/test_*.py -q
 rtk proxy timeout 60s uv run pytest tests/ai/test_env.py -q
 ```
 
-单独运行模块或文件时直接指定新路径，例如 `rtk proxy timeout 60s uv run pytest tests/collection/test_history.py -q`。根目录新增包标记是为了稳定导入，不添加 sys.path 修改或全局夹具。
+单独运行模块或文件时直接指定当前路径，例如 `rtk proxy timeout 60s uv run pytest tests/channel/test_file_channel.py -q`。根目录新增包标记是为了稳定导入，不添加 sys.path 修改或全局夹具。
 
 `tests/ai/test_service.py`、`tests/ai/test_channels.py` 和 `tests/ai/test_live.py` 默认会向 `http://localhost:19026/v1` 发送真实 HTTP 请求，需要预先启动兼容服务；不是内存 MockTransport。`LOGAGENT_AI_LIVE=1` 会额外启用 Qwen 用例，环境文件由 `LOGAGENT_AI_ENV` 指定，默认 `.env`。端点不可用应表现为真实失败，不修改跳过规则掩盖环境问题。
 

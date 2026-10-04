@@ -12,8 +12,7 @@ from logagent.agent.config import AgentConfig
 from logagent.agent.service import AgentService
 from logagent.channel import ChannelManager
 from logagent.channel.bindings import ChannelBindings
-from logagent.channel.testing import TestChannelType
-from logagent.collection import CollectorManager, MockCollector
+from logagent.collection import CollectorManager
 from logagent.config import PluginRegistry
 from logagent.errors import LogAgentError
 from logagent.models import (
@@ -29,6 +28,7 @@ from logagent.models import (
 )
 from logagent.workflow.execution.runner import WorkflowRunner
 from tests.agent.helpers import ScriptedModel
+from tests.fixtures.plugin_helpers import install_test_channel_plugin
 
 
 def _config(*, enabled=True, agent_enabled=True, target="local"):
@@ -42,8 +42,10 @@ def _config(*, enabled=True, agent_enabled=True, target="local"):
 
 
 async def _registry(tmp_path):
-    registry = PluginRegistry([], builtin_channels=[TestChannelType()])
-    await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
+    plugin_dir = tmp_path / "plugins"
+    install_test_channel_plugin(plugin_dir)
+    registry = PluginRegistry([])
+    await registry.discover_plugins(SystemConfig(plugin_dir=str(plugin_dir)))
     return registry
 
 
@@ -90,14 +92,20 @@ async def _settle_reply(runtime, receiver, request_id, *, sender="alice", target
     pytest.fail("Agent channel reply was not delivered")
 
 
-async def _start(tmp_path, model, config=None):
+async def _start(tmp_path, model, config=None, *, bind=True):
     service = await _agent(tmp_path, model)
     registry = await _registry(tmp_path)
     channels = ChannelManager(registry.channelRegister)
     await channels.configure_agent(
         _AgentCommands(service), tmp_path / "agents" / "channels.sqlite3",
     )
-    await channels.start_agent([config or _config()])
+    config = config or _config()
+    await channels.start_agent([config])
+    if bind:
+        created = await channels.dispatch_web(AgentCommand(
+            channel="web", request_id="test-initial-session", text="/new",
+        ))
+        await channels.bind_conversation(config.id, created["result"]["session_id"])
     return service, channels, channels
 
 
@@ -111,6 +119,9 @@ class _AgentCommands:
 
     async def dispatch(self, command, *, valid=None):
         return await self._channel.dispatch(command, valid=valid)
+
+    async def get_session(self, session_id):
+        return await self._channel.get_session(session_id)
 
     async def wait(self, turn_id):
         return await self._channel.wait(turn_id)
@@ -135,7 +146,22 @@ async def _close(service, channels, runtime):
     await service.close()
 
 
-async def test_first_message_creates_session_and_later_messages_share_context(tmp_path):
+async def _inject_result(runtime, message):
+    config = runtime.configs["test"]
+    admission = await runtime.enqueue(
+        config.id, message, expected=config,
+        generation=runtime._receiver_generations[config.id],
+    )
+    async with asyncio.timeout(5):
+        while True:
+            outcome = await runtime.outcome(config, message)
+            if outcome["response"] is not None:
+                response = outcome["response"]
+                return {**response, "deduplicated": True} if admission["status"] == "duplicate" else response
+            await asyncio.sleep(0.005)
+
+
+async def test_bound_messages_share_context(tmp_path):
     model = ScriptedModel(responses=[
         AIMessage(content="first answer"),
         AIMessage(content="second answer"),
@@ -143,11 +169,11 @@ async def test_first_message_creates_session_and_later_messages_share_context(tm
     service, channels, runtime = await _start(tmp_path, model)
     try:
         receiver = channels.receiver(runtime.configs["test"])
-        first = await receiver.inject(_message("one", "remember this"))
+        first = await _inject_result(runtime, _message("one", "remember this"))
         await service.wait(first["result"]["turn_id"])
         await _settle_reply(runtime, receiver, "one")
 
-        second = await receiver.inject(_message("two", "what did I say?"))
+        second = await _inject_result(runtime, _message("two", "what did I say?"))
         await service.wait(second["result"]["turn_id"])
         await _settle_reply(runtime, receiver, "two")
 
@@ -161,20 +187,21 @@ async def test_first_message_creates_session_and_later_messages_share_context(tm
         await _close(service, channels, runtime)
 
 
-async def test_each_sender_gets_an_independent_agent_session(tmp_path):
+async def test_each_sender_shares_instance_session_and_keeps_reply_route(tmp_path):
     model = ScriptedModel(responses=[
         AIMessage(content="alice"), AIMessage(content="bob"),
     ])
     service, channels, runtime = await _start(tmp_path, model)
     try:
         receiver = channels.receiver(runtime.configs["test"])
-        alice = await receiver.inject(_message("alice-1", "for alice", sender="alice"))
+        alice = await _inject_result(runtime, _message("alice-1", "for alice", sender="alice"))
         await service.wait(alice["result"]["turn_id"])
         await _settle_reply(runtime, receiver, "alice-1", sender="alice")
-        bob = await receiver.inject(_message("bob-1", "for bob", sender="bob"))
+        bob = await _inject_result(runtime, _message("bob-1", "for bob", sender="bob"))
         await service.wait(bob["result"]["turn_id"])
         await _settle_reply(runtime, receiver, "bob-1", sender="bob")
-        assert alice["result"]["session_id"] != bob["result"]["session_id"]
+        assert alice["result"]["session_id"] == bob["result"]["session_id"]
+        assert [entry["address"]["sender"] for entry in receiver.outbox()] == ["alice", "bob"]
         assert [entry["notification"]["text"] for entry in receiver.outbox()] == ["alice", "bob"]
     finally:
         await _close(service, channels, runtime)
@@ -186,13 +213,13 @@ async def test_request_id_is_idempotent_and_rejects_different_content(tmp_path):
     try:
         receiver = channels.receiver(runtime.configs["test"])
         message = _message("same-id", "hello")
-        first = await receiver.inject(message)
+        first = await _inject_result(runtime, message)
         await service.wait(first["result"]["turn_id"])
         await _settle_reply(runtime, receiver, "same-id")
 
-        duplicate = await receiver.inject(message)
+        duplicate = await _inject_result(runtime, message)
         with pytest.raises(LogAgentError) as conflict:
-            await receiver.inject(_message("same-id", "different"))
+            await _inject_result(runtime, _message("same-id", "different"))
 
         assert duplicate["deduplicated"] is True
         assert conflict.value.code == "request_conflict"
@@ -202,23 +229,22 @@ async def test_request_id_is_idempotent_and_rejects_different_content(tmp_path):
         await _close(service, channels, runtime)
 
 
-async def test_new_and_resume_enforce_peer_session_ownership(tmp_path):
+async def test_new_and_resume_allow_other_sender_to_resume_existing_session(tmp_path):
     model = ScriptedModel(responses=[])
     service, channels, runtime = await _start(tmp_path, model)
     try:
-        receiver = channels.receiver(runtime.configs["test"])
-        created = await receiver.inject(_message("new-a", "/new", sender="alice"))
+        created = await _inject_result(runtime, _message("new-a", "/new", sender="alice"))
         session_id = created["result"]["session_id"]
-        own_resume = await receiver.inject(
+        own_resume = await _inject_result(runtime,
             _message("resume-a", f"/resume {session_id}", sender="alice")
         )
-        foreign_resume = await receiver.inject(
+        foreign_resume = await _inject_result(runtime,
             _message("resume-b", f"/resume {session_id}", sender="bob")
         )
         assert own_resume["kind"] == "session"
         assert own_resume["result"]["session_id"] == session_id
-        assert foreign_resume["kind"] == "error"
-        assert foreign_resume["error"]["code"] == "session_forbidden"
+        assert foreign_resume["kind"] == "session"
+        assert (await runtime.conversation("test"))["session_id"] == session_id
     finally:
         await _close(service, channels, runtime)
 
@@ -230,7 +256,7 @@ async def test_binding_survives_runtime_restart(tmp_path):
     service, channels, runtime = await _start(tmp_path, model)
     receiver = channels.receiver(runtime.configs["test"])
     try:
-        first = await receiver.inject(_message("before", "first"))
+        first = await _inject_result(runtime, _message("before", "first"))
         await service.wait(first["result"]["turn_id"])
         await _settle_reply(runtime, receiver, "before")
         bound_session = first["result"]["session_id"]
@@ -246,7 +272,7 @@ async def test_binding_survives_runtime_restart(tmp_path):
         await channels.start_agent([_config()])
         runtime = channels
         receiver = channels.receiver(runtime.configs["test"])
-        second = await receiver.inject(_message("after", "continue"))
+        second = await _inject_result(runtime, _message("after", "continue"))
         await service.wait(second["result"]["turn_id"])
         await _settle_reply(runtime, receiver, "after")
         assert second["result"]["session_id"] == bound_session
@@ -266,11 +292,10 @@ async def test_stop_interrupts_active_model_turn(tmp_path):
     model = WaitingModel(responses=[])
     service, channels, runtime = await _start(tmp_path, model)
     try:
-        receiver = channels.receiver(runtime.configs["test"])
-        accepted = await receiver.inject(_message("running", "long request"))
+        accepted = await _inject_result(runtime, _message("running", "long request"))
         await asyncio.wait_for(model.started.wait(), timeout=1)
         stopped = await asyncio.wait_for(
-            receiver.inject(_message("stop", "/stop")),
+            _inject_result(runtime, _message("stop", "/stop", sender="bob")),
             timeout=1,
         )
         assert stopped["kind"] == "session"
@@ -291,6 +316,9 @@ async def test_stop_prevents_first_message_after_session_binding(tmp_path):
     agent = _AgentCommands(service)
 
     class PausedFirstSubmit:
+        async def get_session(self, session_id):
+            return await agent.get_session(session_id)
+
         async def dispatch(self, command, *, valid=None):
             operation, _ = command.operation()
             if operation == "message":
@@ -312,17 +340,19 @@ async def test_stop_prevents_first_message_after_session_binding(tmp_path):
         PausedFirstSubmit(), tmp_path / "agents" / "channels.sqlite3",
     )
     await channels.start_agent([_config()])
+    created = await agent.dispatch(AgentCommand(
+        channel="web", request_id="paused-test-session", text="/new",
+    ))
+    await channels.bind_conversation("test", created["result"]["session_id"])
     runtime = channels
     try:
-        receiver = channels.receiver(runtime.configs["test"])
-        message_task = asyncio.create_task(receiver.inject(_message("first", "start turn")))
+        message_task = asyncio.create_task(_inject_result(runtime, _message("first", "start turn")))
         await asyncio.wait_for(entered_submit.wait(), timeout=2)
-        queued_task = asyncio.create_task(receiver.inject(_message("queued", "must not start")))
-        peer = runtime._peer(runtime.configs["test"], _message("first", "start turn"))
-        bound_session = await runtime.bindings.current(peer)
+        queued_task = asyncio.create_task(_inject_result(runtime, _message("queued", "must not start", sender="bob")))
+        bound_session = (await runtime.conversation("test"))["session_id"]
         assert bound_session is not None
 
-        stop_task = asyncio.create_task(receiver.inject(_message("stop-first", "/stop")))
+        stop_task = asyncio.create_task(_inject_result(runtime, _message("stop-first", "/stop")))
         await asyncio.wait_for(stop_dispatched.wait(), timeout=2)
         assert not message_task.done()
         assert not stop_task.done()
@@ -396,7 +426,7 @@ async def test_legacy_identity_migration_rejects_conflicting_session_or_receipt(
 
 async def test_restart_reconciles_durable_agent_operations_without_replaying(tmp_path):
     model = ScriptedModel(responses=[AIMessage(content="persisted reply")])
-    service, manager, _ = await _start(tmp_path, model)
+    service, manager, _ = await _start(tmp_path, model, bind=False)
     config = _config()
     new_message = _message("crash-new", "/new")
     turn_message = _message("crash-turn", "hello")
@@ -418,6 +448,7 @@ async def test_restart_reconciles_durable_agent_operations_without_replaying(tmp
                     channel=config.id, request_id=operation_id, text="/new",
                 ))
                 session_id = created["result"]["session_id"]
+                await manager.bind_conversation(config.id, session_id)
             else:
                 accepted = await manager.agent_channel.dispatch(AgentCommand(
                     channel=config.id, session=session_id, request_id=operation_id,
@@ -436,7 +467,6 @@ async def test_restart_reconciles_durable_agent_operations_without_replaying(tmp
             _AgentCommands(restored), tmp_path / "agents" / "channels.sqlite3",
         )
         await restarted.start_agent([config])
-        receiver = restarted.receiver(config)
         new_outcome = await restarted.outcome(config, new_message)
         turn_outcome = await restarted.outcome(config, turn_message)
         assert new_outcome["response"]["result"]["session_id"] == session_id
@@ -445,16 +475,16 @@ async def test_restart_reconciles_durable_agent_operations_without_replaying(tmp
         assert turn_outcome["status"] == "completed"
         for outcome in (new_outcome, turn_outcome):
             assert outcome["delivery"]["status"] == "outcome_unknown"
-        assert (await receiver.inject(new_message))["deduplicated"] is True
-        assert (await receiver.inject(turn_message))["deduplicated"] is True
-        assert await restarted.bindings.current(peer) == session_id
+        assert (await _inject_result(restarted, new_message))["deduplicated"] is True
+        assert (await _inject_result(restarted, turn_message))["deduplicated"] is True
+        assert (await restarted.conversation(config.id))["session_id"] == session_id
         assert len(restored.sessions) == 1
     finally:
         await _close(restored, restarted, restarted)
 
 
-async def test_first_message_creation_crash_restores_binding_but_not_turn(tmp_path):
-    service, manager, _ = await _start(tmp_path, ScriptedModel(responses=[]))
+async def test_legacy_creation_crash_preserves_session_without_adopting_binding(tmp_path):
+    service, manager, _ = await _start(tmp_path, ScriptedModel(responses=[]), bind=False)
     config = _config()
     message = _message("first-crash", "never submitted")
     peer = manager._peer(config, message)
@@ -480,12 +510,13 @@ async def test_first_message_creation_crash_restores_binding_but_not_turn(tmp_pa
             _AgentCommands(restored), tmp_path / "agents" / "channels.sqlite3",
         )
         await restarted.start_agent([config])
-        assert await restarted.bindings.current(peer) == session_id
+        assert (await restarted.conversation(config.id))["session_id"] is None
+        assert (await restored.get_session(session_id))["session_id"] == session_id
         outcome = await restarted.outcome(config, message)
         assert outcome["status"] == "outcome_unknown"
         assert outcome["response"] is None
         with pytest.raises(LogAgentError) as error:
-            await restarted.receiver(config).inject(message)
+            await _inject_result(restarted, message)
         assert error.value.code == "request_outcome_unknown"
     finally:
         await _close(restored, restarted, restarted)
@@ -498,9 +529,9 @@ async def test_replayed_stop_does_not_cancel_a_new_queued_message(tmp_path):
     try:
         config = runtime.configs["test"]
         receiver = channels.receiver(config)
-        await receiver.inject(_message("new", "/new"))
+        await _inject_result(runtime, _message("new", "/new"))
         stop = _message("old-stop", "/stop")
-        await receiver.inject(stop)
+        await _inject_result(runtime, stop)
         entered = asyncio.Event()
 
         class ObservedLock(asyncio.Lock):
@@ -509,12 +540,12 @@ async def test_replayed_stop_does_not_cancel_a_new_queued_message(tmp_path):
                 return await super().__aenter__()
 
         lock = ObservedLock()
-        runtime._conversation_processor._locks[runtime._peer(config, stop)] = lock
+        runtime._conversation_processor._locks[config.id] = lock
         await lock.acquire()
         try:
-            pending = asyncio.create_task(receiver.inject(_message("later", "new message")))
+            pending = asyncio.create_task(_inject_result(runtime, _message("later", "new message")))
             await asyncio.wait_for(entered.wait(), timeout=2)
-            replayed = await receiver.inject(stop)
+            replayed = await _inject_result(runtime, stop)
             assert replayed["deduplicated"] is True
         finally:
             lock.release()
@@ -532,7 +563,7 @@ async def test_reply_uses_the_inbound_address_and_one_way_send_uses_config_targe
     try:
         config = runtime.configs["test"]
         receiver = channels.receiver(config)
-        accepted = await receiver.inject(_message(
+        accepted = await _inject_result(runtime, _message(
             "addressed", "hello", sender="user-7", target="group-9", kind="group",
         ))
         await service.wait(accepted["result"]["turn_id"])
@@ -592,10 +623,10 @@ class _WorkflowAI:
 
 
 async def test_workflow_notification_uses_manager_and_test_channel_one_way_send(tmp_path):
-    registry = PluginRegistry([MockCollector()], builtin_channels=[TestChannelType()])
-    await registry.discover_plugins(
-        SystemConfig(plugin_dir=str(tmp_path / "plugins"), data_dir=str(tmp_path))
-    )
+    plugin_dir = tmp_path / "plugins"
+    install_test_channel_plugin(plugin_dir)
+    registry = PluginRegistry([])
+    await registry.discover_plugins(SystemConfig(plugin_dir=str(plugin_dir), data_dir=str(tmp_path)))
     channels = ChannelManager(registry.channelRegister)
     workflow = WorkflowRunner(
         CollectorManager(registry.collectorRegister),
@@ -698,3 +729,87 @@ async def test_failed_receiver_stop_keeps_runtime_configuration_for_retry(tmp_pa
         assert receiver.handler is None
     finally:
         await _close(service, channels, runtime)
+
+
+async def test_unbound_input_is_explicit_and_resume_can_bind_any_existing_session(tmp_path):
+    service, manager, _ = await _start(tmp_path, ScriptedModel(responses=[]), bind=False)
+    try:
+        response = await _inject_result(manager, _message("unbound", "hello"))
+        assert response["error"]["code"] == "channel_unbound"
+        assert service.sessions == {}
+        assert await manager.conversation("test") == {"session_id": None}
+        missing = await _inject_result(manager, _message("missing", "/resume missing-session"))
+        assert missing["kind"] == "error"
+        assert await manager.conversation("test") == {"session_id": None}
+        created = await manager.dispatch_web(AgentCommand(
+            channel="web", request_id="web-created", text="/new",
+        ))
+        session = created["result"]["session_id"]
+        resumed = await _inject_result(manager, _message("resume", f"/resume {session}", sender="bob"))
+        assert resumed["result"]["session_id"] == session
+        assert await manager.conversation("test") == {"session_id": session}
+    finally:
+        await _close(service, manager, manager)
+
+
+async def test_two_instances_keep_bindings_and_same_message_ids_independent(tmp_path):
+    model = ScriptedModel(responses=[AIMessage(content="one"), AIMessage(content="two")])
+    service, manager, _ = await _start(tmp_path, model)
+    try:
+        second_config = _config().model_copy(update={"id": "test-two"})
+        await manager.configure([_config(), second_config])
+        created = await manager.dispatch_web(AgentCommand(
+            channel="web", request_id="second-session", text="/new",
+        ))
+        second_session = created["result"]["session_id"]
+        await manager.bind_conversation(second_config.id, second_session)
+        message = _message("same-message-id", "hello")
+        assert await manager.enqueue("test", message) == {"status": "accepted"}
+        assert await manager.enqueue("test-two", message) == {"status": "accepted"}
+        assert await manager._input_queue.drain(5) == 0
+        first = await manager.outcome(_config(), message)
+        second = await manager.outcome(second_config, message)
+        assert first["response"]["result"]["session_id"] != second_session
+        assert second["response"]["result"]["session_id"] == second_session
+        assert first["delivery"]["status"] == second["delivery"]["status"] == "success"
+    finally:
+        await _close(service, manager, manager)
+
+
+async def test_rebinding_back_suppresses_inflight_output_and_queued_input(tmp_path):
+    class PausedModel(ScriptedModel):
+        started: asyncio.Event = Field(default_factory=asyncio.Event)
+        release: asyncio.Event = Field(default_factory=asyncio.Event)
+
+        async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+            self.started.set()
+            await self.release.wait()
+            return await super()._agenerate(messages, stop, run_manager, **kwargs)
+
+    model = PausedModel(responses=[AIMessage(content="old output")])
+    service, manager, _ = await _start(tmp_path, model)
+    try:
+        original_session = (await manager.conversation("test"))["session_id"]
+        first_message = _message("running", "start", sender="alice")
+        await _inject_result(manager, first_message)
+        await asyncio.wait_for(model.started.wait(), 2)
+        queued = _message("queued", "must not enter a different binding", sender="bob")
+        assert await manager.enqueue("test", queued) == {"status": "accepted"}
+        created = await manager.dispatch_web(AgentCommand(
+            channel="web", request_id="other-session", text="/new",
+        ))
+        await manager.bind_conversation("test", created["result"]["session_id"])
+        await manager.bind_conversation("test", original_session)
+        model.release.set()
+        assert await manager._input_queue.drain(5) == 0
+        first = await manager.outcome(_config(), first_message)
+        later = await manager.outcome(_config(), queued)
+        assert first["delivery"]["status"] == "failed"
+        assert first["delivery"]["attempts"] == 0
+        assert first["delivery"]["error"]["code"] == "channel_binding_changed"
+        assert later["response"]["error"]["code"] == "channel_binding_changed"
+        assert len(model.seen) == 1
+        assert manager.receiver(_config()).outbox() == []
+    finally:
+        model.release.set()
+        await _close(service, manager, manager)
