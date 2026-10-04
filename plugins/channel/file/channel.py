@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import errno
 import logging
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -75,7 +76,7 @@ class _NotificationFileHandler(logging.FileHandler):
         self,
         notification: Notification,
         channel_id: str,
-        result: _WriteResult | None = None,
+        result: _WriteResult,
     ) -> None:
         if self.stream is None:
             raise RuntimeError("file handler is not started")
@@ -92,22 +93,43 @@ class _NotificationFileHandler(logging.FileHandler):
         record.session_id = notification.session_id
         record.output_id = notification.output_id
         record.title = notification.title
+        record.delivery_result = result
         self.acquire()
         try:
-            rendered = self.format(record) + self.terminator
-            if result is not None:
-                result.operation = "write"
-                result.expected = len(rendered)
-            written = self.stream.write(rendered)
-            if result is not None:
-                result.written = written if isinstance(written, int) else None
-            if type(written) is int and written != len(rendered):
-                raise OSError(errno.EIO, f"short write: wrote {written} of {len(rendered)} characters")
-            if result is not None:
-                result.operation = "flush"
-            self.flush()
+            self.emit(record)
         finally:
             self.release()
+
+    def emit(self, record: logging.LogRecord) -> None:
+        result: _WriteResult = record.delivery_result
+        try:
+            if self.stream is None:
+                raise RuntimeError("file handler is not started")
+            rendered = self.format(record) + self.terminator
+            result.operation = "write"
+            result.expected = len(rendered)
+            result.started = True
+            written = self.stream.write(rendered)
+            result.written = written if isinstance(written, int) else None
+            if type(written) is int and written != len(rendered):
+                raise OSError(
+                    errno.EIO,
+                    f"short write: wrote {written} of {len(rendered)} characters",
+                )
+            result.operation = "flush"
+            self.flush()
+            result.success = True
+        except Exception as exc:
+            result.error = exc
+            result.uncertain = result.started
+            self.handleError(record)
+
+    def handleError(self, record: logging.LogRecord) -> None:
+        del record
+        error = sys.exc_info()[1]
+        if error is None:
+            raise RuntimeError("file handler error occurred outside an exception")
+        raise error
 
     def close(self) -> None:
         with self.lock:
@@ -169,12 +191,11 @@ class FileChannel:
         def write() -> None:
             if self.handler.stream is None:
                 raise RuntimeError("file handler is not started")
-            result.started = True
             try:
                 self.handler.write_notification(notification, self.channel_id, result)
             except BaseException as exc:
                 result.error = exc
-                result.uncertain = result.started
+                result.uncertain = result.uncertain or result.started
                 raise
             result.success = True
 
