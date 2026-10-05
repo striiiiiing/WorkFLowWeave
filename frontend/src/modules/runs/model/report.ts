@@ -5,6 +5,7 @@ export interface ReportItem {
   id: string
   status: string
   text: string
+  agentSessionId?: string
   error?: string
   output?: string
   processedText?: string
@@ -38,7 +39,10 @@ function collectionText(raw: JsonValue | undefined): string {
   if (raw == null) return ''
   const value = object(raw)
   if (typeof value.stdout === 'string') {
-    return [value.stdout, typeof value.stderr === 'string' && value.stderr ? `stderr:\n${value.stderr}` : '']
+    return [
+      value.stdout,
+      typeof value.stderr === 'string' && value.stderr ? `stderr:\n${value.stderr}` : '',
+    ]
       .filter(Boolean)
       .join('\n\n')
   }
@@ -48,8 +52,7 @@ function collectionText(raw: JsonValue | undefined): string {
         return content.type === 'text' ? string(content.text) : JSON.stringify(content, null, 2)
       })
     : []
-  if (value.structuredContent != null)
-    blocks.push(JSON.stringify(value.structuredContent, null, 2))
+  if (value.structuredContent != null) blocks.push(JSON.stringify(value.structuredContent, null, 2))
   return blocks.join('\n\n')
 }
 
@@ -57,23 +60,40 @@ export function parsePhase(stage: WorkflowStage, value: JsonValue): ParsedPhase 
   const body = object(value)
   const errors =
     body.errors == null ? [] : list(body.errors).map((item) => string(object(item).message))
-  if (stage === 'aggregate')
-    return {
-      errors,
-      items: Object.entries(object(body.outputs)).map(([id, text]) => ({
-        id,
-        text: string(text),
-        status: 'success',
-      })),
+  if (stage === 'aggregate') {
+    const items: ReportItem[] = Object.entries(object(body.outputs)).map(([id, text]) => ({
+      id,
+      text: string(text),
+      status: 'success',
+    }))
+    if (body.aggregate != null) {
+      const aggregate = object(body.aggregate)
+      const final = items.find((item) => item.id === 'final')
+      const result: ReportItem = {
+        id: 'final',
+        text: final?.text ?? (aggregate.text == null ? '' : string(aggregate.text)),
+        status: aggregate.status == null ? 'success' : string(aggregate.status),
+        error: error(aggregate.error),
+        ...(typeof aggregate.agent_session_id === 'string'
+          ? { agentSessionId: aggregate.agent_session_id }
+          : {}),
+      }
+      if (final) items[items.indexOf(final)] = result
+      else items.push(result)
     }
+    return { errors, items }
+  }
   if (stage === 'finish')
     return { errors, items: [{ id: '运行结果', status: string(body.status), text: '' }] }
-  const inputViews = stage === 'collect' && body.input_views != null
-    ? new Map(list(body.input_views).map((raw) => {
-        const view = object(raw)
-        return [string(view.source_id), view] as const
-      }))
-    : undefined
+  const inputViews =
+    stage === 'collect' && body.input_views != null
+      ? new Map(
+          list(body.input_views).map((raw) => {
+            const view = object(raw)
+            return [string(view.source_id), view] as const
+          }),
+        )
+      : undefined
   const entries = list(
     body[stage === 'collect' ? 'collection' : stage === 'analyze' ? 'analyses' : 'deliveries'],
   )
@@ -84,8 +104,16 @@ export function parsePhase(stage: WorkflowStage, value: JsonValue): ParsedPhase 
         item[stage === 'collect' ? 'source_id' : stage === 'analyze' ? 'task_id' : 'channel_id'],
       ),
       status: string(item.status),
-      text: stage === 'notify' ? '' : stage === 'collect' ? collectionText(item.raw) : string(item.text),
+      text:
+        stage === 'notify'
+          ? ''
+          : stage === 'collect'
+            ? collectionText(item.raw)
+            : string(item.text),
       error: error(item.error),
+      ...(typeof item.agent_session_id === 'string'
+        ? { agentSessionId: item.agent_session_id }
+        : {}),
     }
     if (stage === 'collect') {
       const view = inputViews?.get(result.id)

@@ -87,6 +87,8 @@ export function addAnalysis(workflow: WorkflowDefinition): WorkflowDefinition {
     system_prompt: null,
     input_prompt: null,
     user_prompt: '',
+    agent_mode: false,
+    agent_tools: null,
   }
   return { ...cloneWorkflow(workflow), analyses: [...workflow.analyses, task] }
 }

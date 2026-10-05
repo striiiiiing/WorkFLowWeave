@@ -44,6 +44,8 @@ async def aggregate(state, runtime: Runtime[WorkflowContext]):
                 "final",
                 context,
                 model,
+                agent_service=runtime.context.agent_service,
+                execution_epoch=state["execution_epoch"],
             )
             model_result = result.model_dump(mode="json", exclude={"text"})
             if result.status != "success":

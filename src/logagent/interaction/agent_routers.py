@@ -35,6 +35,7 @@ class AgentSessionCreate(StrictModel):
     workflow_session_id: ID | None = None
     workflow_result: object | None = None
     workflow_id: ID | None = None
+    task_id: ID | None = None
 
 
 class AgentMessage(StrictModel):
@@ -101,6 +102,7 @@ def build_agent_router():
             workflow_session_id=payload.workflow_session_id,
             workflow_id=payload.workflow_id,
             workflow_result=payload.workflow_result,
+            task_id=payload.task_id,
         )
         return (await dispatch_web(services, command))["result"]
 
