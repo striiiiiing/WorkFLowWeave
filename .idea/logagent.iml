@@ -12,6 +12,7 @@
       <excludeFolder url="file://$MODULE_DIR$/.worktree/task-22/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/.worktree/collect-from-mcp-and-cli/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/.worktree/redesign-workflow/.venv" />
+      <excludeFolder url="file://$MODULE_DIR$/.worktree/notification-channel-plugins/.venv" />
     </content>
     <orderEntry type="jdk" jdkName="uv (LogAgent) (2)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
