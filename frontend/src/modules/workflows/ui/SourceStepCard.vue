@@ -87,11 +87,8 @@ function publish(id: string) {
       type="error"
       :closable="false"
     />
-    <el-form-item
-      prop="sources"
-      :rules="{ type: 'array', required: true, min: 1, message: '至少选择一个采集源' }"
-    >
-      <p v-if="!draft().sources.length" class="muted">加载已有数据源，或直接新增采集源。</p>
+    <el-form-item prop="sources">
+      <p v-if="!draft().sources.length" class="muted">可添加采集源，或直接使用提示词运行任务。</p>
     </el-form-item>
     <SourceBindingList
       :draft="draft()"
@@ -121,7 +118,7 @@ function publish(id: string) {
         <el-select
           :model-value="draft().on_all_empty"
           @update:model-value="editor.update({ on_all_empty: $event })"
-  >
+        >
           <el-option value="stop" label="停止" />
           <el-option value="notice" label="提示" />
           <el-option value="skip" label="跳过" />

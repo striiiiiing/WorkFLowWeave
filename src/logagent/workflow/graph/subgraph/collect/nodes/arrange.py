@@ -38,7 +38,7 @@ def arrange(state, runtime: Runtime[WorkflowContext]):
             if view.status == "failed" and snapshot.sources[view.source_id].on_error == "stop":
                 error = {"code": "input_processing_stopped", "message": "来源输入处理失败，策略要求停止下游阶段"}
                 break
-    if not valid and wf.on_all_empty == "stop" and not error:
+    if wf.sources and not valid and wf.on_all_empty == "stop" and not error:
         error = {"code": "all_empty", "message": "所有来源均无有效内容"}
     if processing_error and not error:
         error = processing_error.model_dump(mode="json")
@@ -47,7 +47,7 @@ def arrange(state, runtime: Runtime[WorkflowContext]):
         "collect",
         shared_input=text,
         input_views=[view.model_dump(mode="json") for view in views],
-        stopped=bool(error) or not valid,
+        stopped=bool(error) or (bool(wf.sources) and not valid),
         status="failed" if error else "running",
         error=error,
         degraded=any(i.status in {"failed", "missing", "timeout"} for i in items),

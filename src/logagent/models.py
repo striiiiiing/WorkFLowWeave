@@ -330,13 +330,26 @@ class ChannelConfig(StrictModel):
 class AnalysisTask(StrictModel):
     id: ID
     ai: ID
+    agent_mode: bool = False
+    agent_tools: list[ID] | None = None
     system_prompt: str | None = None
     input_prompt: str | None = None
     user_prompt: str = ""
     model: ModelName
 
+    @model_validator(mode="after")
+    def agent_prompts(self) -> Self:
+        if self.agent_mode:
+            if not self.user_prompt.strip():
+                raise ValueError("Agent analysis requires a nonblank user_prompt")
+            if self.input_prompt is not None and not self.input_prompt.strip():
+                raise ValueError("Agent analysis input_prompt cannot be blank")
+        return self
+
 
 class FanInConfig(StrictModel):
+    agent_mode: bool = False
+    agent_tools: list[ID] | None = None
     order: list[str] = Field(default_factory=list)
     separator: str = "\n\n"
     ai: ID | None = None
@@ -348,6 +361,8 @@ class FanInConfig(StrictModel):
     mark_incomplete: bool = True
 
     def ordered_inputs(self, analyses: list[AnalysisTask]) -> list[str]:
+        if self.agent_mode:
+            return self.order or [task.id for task in analyses]
         return self.order or ["$input", *(task.id for task in analyses)]
 
     def reused_task(self, analyses: list[AnalysisTask]) -> AnalysisTask | None:
@@ -359,6 +374,13 @@ class FanInConfig(StrictModel):
 
     @model_validator(mode="after")
     def paired_model(self) -> Self:
+        if self.agent_mode:
+            if not self.user_prompt.strip():
+                raise ValueError("Agent fan-in requires a nonblank user_prompt")
+            if self.input_prompt is not None and not self.input_prompt.strip():
+                raise ValueError("Agent fan-in input_prompt cannot be blank")
+        if self.agent_mode and self.ai is None and self.reuse_from is None:
+            raise ValueError("Agent fan-in requires an AI/model or a reused analysis task")
         if (self.ai is None) != (self.model is None):
             raise ValueError("Fan-in AI and model must be specified together")
         if self.reuse_from is not None and self.ai is not None:
@@ -414,7 +436,7 @@ WorkflowSchedule = Annotated[AtSchedule | EverySchedule | CronSchedule, Field(di
 class WorkflowDefinition(StrictModel):
     id: ID
     name: str = ""
-    sources: Annotated[list[ID], AfterValidator(unique_check("sources IDs"))] = Field(min_length=1)
+    sources: Annotated[list[ID], AfterValidator(unique_check("sources IDs"))] = Field(default_factory=list)
     analyses: list[AnalysisTask] = Field(min_length=1)
     fan_in: FanInConfig | None = None
     system_prompt: str = ""
@@ -436,6 +458,9 @@ class WorkflowDefinition(StrictModel):
 
     @model_validator(mode="after")
     def valid_references(self) -> Self:
+        if any(task.agent_mode for task in self.analyses) or (self.fan_in and self.fan_in.agent_mode):
+            if not self.input_prompt.strip():
+                raise ValueError("Workflow Agent input_prompt cannot be blank")
         if not self.source_overrides.keys() <= set(self.sources):
             raise ValueError("Source overrides must reference selected sources")
         if any(
@@ -611,6 +636,7 @@ class InputView(StrictModel):
 class AnalysisResult(StrictModel):
     task_id: ID
     status: AnalysisStatus
+    agent_session_id: ID | None = None
     text: str = ""
     error: ErrorInfo | None = None
     usage: JSONObject = Field(default_factory=dict)

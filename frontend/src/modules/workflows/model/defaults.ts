@@ -14,6 +14,8 @@ export function createFanIn(analyses: readonly AnalysisTask[] = []): FanInConfig
     system_prompt: null,
     input_prompt: null,
     user_prompt: '',
+    agent_mode: false,
+    agent_tools: null,
     reuse_from: defaultFanInModelSource(analyses),
     mark_incomplete: true,
   }
