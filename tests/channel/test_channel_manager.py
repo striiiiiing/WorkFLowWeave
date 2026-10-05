@@ -1116,11 +1116,11 @@ async def test_start_that_swallows_cancellation_cannot_send():
 async def test_readonly_registry_wrappers_do_not_recreate_unchanged_instances(tmp_path):
     from logagent.config import PluginRegistry
     from logagent.models import SystemConfig
-    from plugins.mock_file.channel import MockFileChannelType
-    registry = PluginRegistry([], builtin_channels=[MockFileChannelType()])
+    from plugins.channel.file.channel import FileChannelType
+    registry = PluginRegistry([], builtin_channels=[FileChannelType()])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     manager = ChannelManager(registry.channelRegister)
-    config = ChannelConfig(id="file", channel="mock", options={"path": str(tmp_path / "out.txt")})
+    config = ChannelConfig(id="file", channel="file", options={"path": str(tmp_path / "out.txt")})
     assert (await manager.send(config, _notification("first"))).status == "success"
     original = next(iter(manager._entries.values()))
     await manager.replace_register(registry.channelRegister)
@@ -1276,14 +1276,14 @@ async def test_release_drain_timeout_does_not_fail_waiting_send():
 async def test_stop_waits_for_send_completion_not_caller_task_lifetime(tmp_path):
     from logagent.config import PluginRegistry
     from logagent.models import SystemConfig
-    from plugins.mock_file.channel import MockFileChannelType
+    from plugins.channel.file.channel import FileChannelType
 
-    registry = PluginRegistry([], builtin_channels=[MockFileChannelType()])
+    registry = PluginRegistry([], builtin_channels=[FileChannelType()])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     manager = ChannelManager(registry.channelRegister)
     path = tmp_path / "notifications.txt"
     path.write_text("existing\n", encoding="utf-8")
-    config = ChannelConfig(id="file", channel="mock", options={"path": str(path)})
+    config = ChannelConfig(id="file", channel="file", options={"path": str(path)})
     sent = asyncio.Event()
     finish_caller = asyncio.Event()
 
@@ -1301,7 +1301,9 @@ async def test_stop_waits_for_send_completion_not_caller_task_lifetime(tmp_path)
         await asyncio.wait_for(sent.wait(), 1.0)
         await asyncio.wait_for(manager.stop(), 1.0)
         assert not task.done()
-        assert path.read_text(encoding="utf-8") == "existing\n验收\n第一行\n第二行\n"
+        output = path.read_text(encoding="utf-8")
+        assert output.startswith("existing\n")
+        assert "channel=file session=acceptance output=report title=验收\n第一行\n第二行\n" in output
         assert not (tmp_path / "wrong.txt").exists()
     finally:
         finish_caller.set()

@@ -654,8 +654,8 @@ async def test_invalid_global_settings_leave_previous_published_view_intact(tmp_
 
 async def test_string_config_values_normalize_through_readers_and_store(tmp_path):
     from logagent.config.store import ResourceStore
-    from plugins.mock.collector import MockCollector
-    from plugins.mock_file.channel import MockFileChannelType
+    from plugins.channel.file.channel import FileChannelType
+    from tests.fixtures.collectors import MockCollector
 
     system = tmp_path / "system.json"
     system.write_text('{"port": "4300"}')
@@ -664,7 +664,7 @@ async def test_string_config_values_normalize_through_readers_and_store(tmp_path
     plugins.write_text('{"collector": {"demo": {"enabled": "false"}}}')
     config = await ConfigurationReader().load_plugin_config(plugins)
     assert config["collector"]["demo"].enabled is False
-    registry = PluginRegistry([MockCollector()], builtin_channels=[MockFileChannelType()])
+    registry = PluginRegistry([MockCollector()], builtin_channels=[FileChannelType()])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     store = ResourceStore(tmp_path / "resources.json", collector_register=registry.collectorRegister, channel_register=registry.channelRegister)
     source = store.save("sources", {"id": "source", "call": {
@@ -672,7 +672,7 @@ async def test_string_config_values_normalize_through_readers_and_store(tmp_path
     }, "timeout": "2.5"})
     assert source.timeout == 2.5
     assert store.list("sources")[0].timeout == 2.5
-    channel = store.save("channels", {"id": "channel", "channel": "mock", "enabled": "false", "options": {"path": "out.txt"}})
+    channel = store.save("channels", {"id": "channel", "channel": "file", "enabled": "false", "options": {"path": "out.txt"}})
     assert channel.enabled is False
     ai = store.save("ai", {"id": "ai", "provider": "mock", "models": {"mock": {}}, "retries": "3"})
     assert ai.retries == 3

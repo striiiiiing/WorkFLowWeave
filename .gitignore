@@ -15,7 +15,10 @@ htmlcov/
 Typora_Hook_Log.txt
 /config.json
 /data/
-/frontend/node_modules/
+/frontend/node_modules
+/botpy.log
+/backup/
+/compose.override.yaml
 .env
 master.key
 master.key.initialized
