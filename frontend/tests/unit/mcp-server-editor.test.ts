@@ -21,15 +21,15 @@ function editor() {
   })
 }
 
-describe('MCP server Cursor JSON editor', () => {
+describe('MCP server JSON editor', () => {
   it('keeps the field form as the default mode', () => {
     const wrapper = editor()
     expect(wrapper.text()).toContain('服务名称')
-    expect(wrapper.text()).not.toContain('Cursor MCP 配置 JSON')
+    expect(wrapper.text()).not.toContain('MCP 配置 JSON')
     wrapper.unmount()
   })
 
-  it('imports the Cursor envelope and preserves a hyphenated server name', async () => {
+  it('imports the named envelope and preserves a hyphenated server name', async () => {
     const wrapper = editor()
     await wrapper.get('button').trigger('click')
     await wrapper.find('textarea').setValue(
@@ -61,12 +61,23 @@ describe('MCP server Cursor JSON editor', () => {
     wrapper.unmount()
   })
 
-  it('allows switching an empty Cursor envelope back to fields', async () => {
+  it('allows switching an empty envelope back to fields', async () => {
     const wrapper = editor()
     await wrapper.get('button').trigger('click')
     await wrapper.get('button').trigger('click')
     expect(wrapper.text()).toContain('服务名称')
-    expect(wrapper.text()).not.toContain('Cursor MCP 配置 JSON')
+    expect(wrapper.text()).not.toContain('MCP 配置 JSON')
+    wrapper.unmount()
+  })
+
+  it('keeps automatic probing disabled by default and exposes minute interval when enabled', async () => {
+    const wrapper = editor()
+    expect(wrapper.text()).toContain('关闭')
+    const switches = wrapper.findAllComponents({ name: 'ElSwitch' })
+    expect(switches).toHaveLength(2)
+    await switches[0].vm.$emit('update:modelValue', true)
+    expect(wrapper.text()).toContain('探测间隔 / 分钟')
+    expect(wrapper.find('input[aria-label="探测间隔 / 分钟"]').exists()).toBe(false)
     wrapper.unmount()
   })
 })

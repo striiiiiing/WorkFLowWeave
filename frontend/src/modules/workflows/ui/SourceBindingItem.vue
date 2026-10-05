@@ -10,6 +10,7 @@ defineProps<{
   sharedCount: number
   hasShared: boolean
   pending: boolean
+  refreshing?: boolean
   restoreError?: string
 }>()
 const emit = defineEmits<{
@@ -18,6 +19,7 @@ const emit = defineEmits<{
   detach: []
   restore: []
   publish: []
+  refresh: []
   remove: []
 }>()
 </script>
@@ -105,7 +107,10 @@ const emit = defineEmits<{
     </template>
     <template v-else>
       <el-alert title="数据源不存在，请恢复资源或从工作流移除。" type="error" :closable="false" />
-      <el-button type="danger" @click="emit('remove')">移除</el-button>
+      <div class="flex flex-wrap gap-2 mt-3">
+        <el-button :loading="refreshing" @click="emit('refresh')">重新加载资源目录</el-button>
+        <el-button type="danger" @click="emit('remove')">移除</el-button>
+      </div>
     </template>
   </article>
 </template>
