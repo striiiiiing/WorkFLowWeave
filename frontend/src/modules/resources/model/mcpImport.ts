@@ -2,7 +2,7 @@ import type { JsonObject } from '@/shared/types'
 import { createResource } from './resources'
 import type { Credential, MCPServerConfig } from './types'
 
-export interface CursorMcpConfig {
+export interface McpConfig {
   servers: Record<string, Record<string, unknown>>
 }
 
@@ -15,17 +15,17 @@ function text(value: unknown, fallback: string | null = null): string | null {
   return value === undefined || value === null ? fallback : typeof value === 'string' ? value : null
 }
 
-export function parseCursorMcpConfig(input: string): CursorMcpConfig {
+export function parseMcpConfig(input: string): McpConfig {
   let parsed: unknown
   try {
     parsed = JSON.parse(input)
   } catch {
     throw new Error('JSON 格式不正确，请检查双引号、逗号和括号是否完整。')
   }
-  const root = record(parsed, 'Cursor 配置必须是 JSON 对象。')
+  const root = record(parsed, '配置必须是 JSON 对象。')
   const serversValue = root.servers ?? root.mcpServers
-  const servers = record(serversValue, 'Cursor 配置必须包含 servers 对象。')
-  const normalized: CursorMcpConfig['servers'] = {}
+  const servers = record(serversValue, '配置必须包含 servers 对象。')
+  const normalized: McpConfig['servers'] = {}
   for (const [name, value] of Object.entries(servers)) {
     if (!/^[A-Za-z0-9_-]{1,80}$/.test(name)) {
       throw new Error(`MCP 服务名称无效：${name}`)
@@ -35,9 +35,10 @@ export function parseCursorMcpConfig(input: string): CursorMcpConfig {
   return { servers: normalized }
 }
 
-export function cursorServerToResource(
+export function serverToResource(
   name: string,
   value: Record<string, unknown>,
+  health?: Pick<MCPServerConfig, 'health_check_enabled' | 'health_check_interval_minutes'>,
 ): MCPServerConfig {
   const type = value.type === undefined ? 'stdio' : value.type
   const transport = type === 'http' ? 'streamable_http' : type
@@ -54,6 +55,8 @@ export function cursorServerToResource(
     id: name,
     transport: transport as MCPServerConfig['transport'],
     enabled: value.enabled !== false,
+    health_check_enabled: health?.health_check_enabled ?? false,
+    health_check_interval_minutes: health?.health_check_interval_minutes ?? 30,
     command: text(value.command),
     args: [...args],
     cwd: text(value.cwd),
@@ -64,7 +67,7 @@ export function cursorServerToResource(
   }
 }
 
-export function resourceToCursorMcpConfig(value: MCPServerConfig): CursorMcpConfig {
+export function resourceToMcpConfig(value: MCPServerConfig): McpConfig {
   const server: Record<string, unknown> = {
     type: value.transport === 'streamable_http' ? 'http' : value.transport,
     enabled: value.enabled,
@@ -82,8 +85,8 @@ export function resourceToCursorMcpConfig(value: MCPServerConfig): CursorMcpConf
   return { servers: { [value.id]: server } }
 }
 
-export function cursorMcpExample(): CursorMcpConfig {
+export function mcpExample(): McpConfig {
   return { servers: {} }
 }
 
-export type CursorMcpJson = CursorMcpConfig & JsonObject
+export type McpJson = McpConfig & JsonObject

@@ -4,14 +4,16 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import time
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
 from logagent.errors import LogAgentError
-from logagent.models import MCPServerConfig, copy_model
+from logagent.models import ErrorInfo, MCPHealthReport, MCPServerConfig, copy_model
 from logagent.schema import validate_instance
 
 
@@ -44,6 +46,8 @@ class MCPRuntime:
         self._catalogs: dict[str, list[dict]] = {}
         self._active: dict[str, int] = {}
         self._errors: dict[str, str] = {}
+        self._health: dict[str, MCPHealthReport] = {}
+        self._probe_locks: dict[str, asyncio.Lock] = {}
 
     @staticmethod
     def _bound(scope, server):
@@ -76,8 +80,61 @@ class MCPRuntime:
             state = ("connected" if self._active.get(key) else "failed" if key in self._errors
                      else "cached" if cached is not None else "unloaded")
             entries.append({"server": server, "version": key, "state": state,
-                            "enabled": config.enabled, "error": self._errors.get(key)})
+                            "enabled": config.enabled, "error": self._errors.get(key),
+                            "health": self._health.get(key, MCPHealthReport(
+                                server=server, status="unknown",
+                            )).model_dump(mode="json")})
         return entries
+
+    async def probe(self, scope, server) -> MCPHealthReport:
+        """Connect to one configured server and refresh its catalog as a health check."""
+        config = scope.get(server)
+        if config is None or config.id != server:
+            raise LogAgentError("mcp_out_of_scope", "MCP 服务不在本次绑定范围", {"server": server})
+        key = version(config)
+        if not config.enabled:
+            report = MCPHealthReport(server=server, status="disabled")
+            self._health[key] = report
+            return report
+
+        lock = self._probe_locks.setdefault(key, asyncio.Lock())
+        async with lock:
+            started = time.perf_counter()
+            checked_at = datetime.now(UTC)
+            try:
+                tools = await self.load(scope, server, refresh=True)
+            except asyncio.CancelledError:
+                raise
+            except LogAgentError as exc:
+                report = MCPHealthReport(
+                    server=server,
+                    status="unhealthy",
+                    checked_at=checked_at,
+                    latency_ms=(time.perf_counter() - started) * 1000,
+                    error=exc.info,
+                )
+            except Exception as exc:
+                report = MCPHealthReport(
+                    server=server,
+                    status="unhealthy",
+                    checked_at=checked_at,
+                    latency_ms=(time.perf_counter() - started) * 1000,
+                    error=ErrorInfo(
+                        code="mcp_probe_failed",
+                        message="MCP 服务探测失败",
+                        details={"exception_type": type(exc).__name__},
+                    ),
+                )
+            else:
+                report = MCPHealthReport(
+                    server=server,
+                    status="healthy",
+                    checked_at=checked_at,
+                    latency_ms=(time.perf_counter() - started) * 1000,
+                    tool_count=len(tools),
+                )
+            self._health[key] = report
+            return report
 
     async def _refresh(self, session, config):
         tools, cursor, seen = [], None, set()
@@ -143,9 +200,19 @@ class MCPRuntime:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            self._errors[key] = type(exc).__name__
+            cause = exc
+            while isinstance(cause, BaseExceptionGroup) and len(cause.exceptions) == 1:
+                cause = cause.exceptions[0]
+            self._errors[key] = type(cause).__name__
+            details = {"server": server, "exception_type": type(cause).__name__}
+            if config.transport == "stdio" and isinstance(cause, FileNotFoundError):
+                details["reason"] = (
+                    f"找不到命令 {config.command} 或配置的工作目录；"
+                    "请在运行 LogAgent 后端的环境中安装该程序，"
+                    "或填写可执行文件的绝对路径，并检查 cwd 和 PATH"
+                )
             raise LogAgentError("mcp_directory_failed", "MCP 工具目录加载失败",
-                                {"server": server, "exception_type": type(exc).__name__}) from exc
+                                details) from exc
 
     def listing(self, scope, *, server=None, query="", cursor=0, page_size=20):
         if type(cursor) is not int or cursor < 0 or not 1 <= page_size <= 100:

@@ -9,7 +9,7 @@ import type {
   SourceOverride,
   AIConfig,
 } from '../model/types'
-import type { CursorMcpConfig } from '../model/cursor'
+import type { McpConfig } from '../model/mcpImport'
 
 export function createResourcesApi(http: HttpClient) {
   return {
@@ -20,7 +20,13 @@ export function createResourcesApi(http: HttpClient) {
         data: override ?? {},
         signal,
       }),
-    mcpStatus: () => http.request<MCPServerStatus[]>({ url: '/mcp/catalog/status' }),
+    mcpStatus: (signal?: AbortSignal) =>
+      http.request<MCPServerStatus[]>({ url: '/mcp/catalog/status', signal }),
+    probeMcpServer: (server: string) =>
+      http.request<MCPHealthReport>({
+        url: `/mcp_servers/${segment(server)}/probe`,
+        method: 'POST',
+      }),
     mcpCatalog: (server?: string, query = '', cursor = 0) =>
       http.request<MCPToolCatalog>({
         url: '/mcp/catalog',
@@ -54,7 +60,7 @@ export function createResourcesApi(http: HttpClient) {
       http.request<ResourceMap[K]>({ url: `/${kind}/${segment(id)}`, signal }),
     create: <K extends ResourceKind>(kind: K, value: ResourceMap[K]) =>
       http.request<ResourceMap[K]>({ url: `/${kind}`, method: 'POST', data: value }),
-    importMcpServers: (value: CursorMcpConfig) =>
+    importMcpServers: (value: McpConfig) =>
       http.request<MCPServerConfig[]>({ url: '/mcp_servers/import', method: 'POST', data: value }),
     replace: <K extends ResourceKind>(kind: K, id: string, value: ResourceMap[K]) =>
       http.request<ResourceMap[K]>({ url: `/${kind}/${segment(id)}`, method: 'PUT', data: value }),
@@ -68,6 +74,15 @@ export interface MCPServerStatus {
   enabled: boolean
   error: string | null
   version: string
+  health: MCPHealthReport
+}
+export interface MCPHealthReport {
+  server: string
+  status: 'unknown' | 'healthy' | 'unhealthy' | 'disabled'
+  checked_at: string | null
+  latency_ms: number | null
+  tool_count: number | null
+  error: { code: string; message: string; details: Record<string, unknown> } | null
 }
 export interface MCPToolCatalog {
   entries: { server: string; tool: string; description: string }[]

@@ -8,6 +8,7 @@ const props = defineProps<{
   sources: readonly SourceConfig[]
   usage?: (id: string) => readonly SourceUsageView[] | undefined
   pending: boolean
+  refreshing?: boolean
   restoreErrors: Readonly<Record<string, string>>
 }>()
 const emit = defineEmits<{
@@ -16,6 +17,7 @@ const emit = defineEmits<{
   detach: [sourceId: string]
   restore: [sourceId: string]
   publish: [sourceId: string]
+  refresh: []
   remove: [sourceId: string]
 }>()
 
@@ -44,12 +46,14 @@ function hasShared(id: string) {
     :shared-count="sharedCount(sourceId)"
     :has-shared="hasShared(sourceId)"
     :pending="pending"
+    :refreshing="refreshing"
     :restore-error="restoreErrors[sourceId]"
     @move="emit('move', index, $event)"
     @edit="emit('edit', sourceId)"
     @detach="emit('detach', sourceId)"
     @restore="emit('restore', sourceId)"
     @publish="emit('publish', sourceId)"
+    @refresh="emit('refresh')"
     @remove="emit('remove', sourceId)"
   />
 </template>

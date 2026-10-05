@@ -4,11 +4,11 @@ import { useResourceTransport } from '../composables/useResourceTransport'
 import type { Credential, MCPServerConfig } from '../model/types'
 import { createResource } from '../model/resources'
 import {
-  cursorMcpExample,
-  cursorServerToResource,
-  parseCursorMcpConfig,
-  resourceToCursorMcpConfig,
-} from '../model/cursor'
+  mcpExample,
+  parseMcpConfig,
+  resourceToMcpConfig,
+  serverToResource,
+} from '../model/mcpImport'
 
 const props = defineProps<{ initial?: MCPServerConfig }>()
 const emit = defineEmits<{ saved: []; cancel: [] }>()
@@ -21,7 +21,7 @@ const envText = ref(JSON.stringify(draft.value.env, null, 2))
 const headersText = ref(JSON.stringify(draft.value.headers, null, 2))
 const jsonMode = ref(false)
 const jsonText = ref(
-  JSON.stringify(props.initial ? resourceToCursorMcpConfig(draft.value) : cursorMcpExample(), null, 2),
+  JSON.stringify(props.initial ? resourceToMcpConfig(draft.value) : mcpExample(), null, 2),
 )
 const error = ref('')
 const pending = ref(false)
@@ -35,10 +35,10 @@ function toggleJsonMode() {
   error.value = ''
   if (jsonMode.value) {
     try {
-      const config = parseCursorMcpConfig(jsonText.value)
+      const config = parseMcpConfig(jsonText.value)
       const entries = Object.entries(config.servers)
       if (entries.length === 1) {
-        syncFieldDraft(cursorServerToResource(entries[0][0], entries[0][1]))
+        syncFieldDraft(serverToResource(entries[0][0], entries[0][1], draft.value))
       }
       jsonMode.value = false
     } catch (cause) {
@@ -47,7 +47,7 @@ function toggleJsonMode() {
     return
   }
   jsonText.value = JSON.stringify(
-    props.initial ? resourceToCursorMcpConfig(draft.value) : cursorMcpExample(),
+    props.initial ? resourceToMcpConfig(draft.value) : mcpExample(),
     null,
     2,
   )
@@ -58,7 +58,7 @@ async function save() {
   pending.value = true
   try {
     if (jsonMode.value) {
-      const config = parseCursorMcpConfig(jsonText.value)
+      const config = parseMcpConfig(jsonText.value)
       const entries = Object.entries(config.servers)
       if (props.initial) {
         if (entries.length !== 1 || entries[0][0] !== props.initial.id) {
@@ -67,7 +67,7 @@ async function save() {
         await api.replace(
           'mcp_servers',
           props.initial.id,
-          cursorServerToResource(entries[0][0], entries[0][1]),
+          serverToResource(entries[0][0], entries[0][1], draft.value),
         )
       } else {
         await api.importMcpServers(config)
@@ -107,7 +107,7 @@ async function save() {
       </el-button>
     </div>
     <template v-if="jsonMode">
-      <el-form-item label="Cursor MCP 配置 JSON">
+      <el-form-item label="MCP 配置 JSON">
         <el-input v-model="jsonText" type="textarea" :rows="14" />
       </el-form-item>
     </template>
@@ -141,6 +141,21 @@ async function save() {
     </template>
     <el-form-item label="连接超时 / 秒">
       <el-input-number v-model="draft.timeout" :min="0.001" :step="0.001" />
+    </el-form-item>
+    <el-form-item label="自动探测">
+      <el-switch
+        v-model="draft.health_check_enabled"
+        active-text="开启"
+        inactive-text="关闭"
+      />
+    </el-form-item>
+    <el-form-item v-if="draft.health_check_enabled" label="探测间隔 / 分钟">
+      <el-input-number
+        v-model="draft.health_check_interval_minutes"
+        :min="1"
+        :step="1"
+        controls-position="right"
+      />
     </el-form-item>
     <el-switch v-model="draft.enabled" active-text="启用服务" />
     <div class="flex justify-end gap-2 mt-5">

@@ -5,12 +5,14 @@ from pathlib import Path
 import pytest
 
 from logagent.ai import AIService
-from logagent.channel import ChannelManager, MockFileChannelType
-from logagent.collection import CollectorManager, MockCollector
+from logagent.channel import ChannelManager
+from logagent.collection import CollectorManager
 from logagent.config import PluginRegistry, ResourceStore
 from logagent.errors import LogAgentError
 from logagent.models import AIConfig, ChannelConfig, SourceConfig, SystemConfig, WorkflowDefinition
 from logagent.workflow.execution.runner import WorkflowRunner
+from plugins.mock.collector import MockCollector
+from plugins.mock_file.channel import MockFileChannelType
 from tests.workflow_ai_helpers import TestChannelFactory
 
 

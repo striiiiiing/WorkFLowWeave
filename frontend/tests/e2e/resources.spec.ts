@@ -1,4 +1,82 @@
 import { expect, test } from '@playwright/test'
+import { createServer } from 'node:http'
+import { once } from 'node:events'
+
+test('discovered models appear asynchronously and can be selected and saved in bulk', async ({
+  page,
+  request,
+}) => {
+  // Only a disposable backend and a local provider fixture are used by this test.
+  const models = Array.from({ length: 35 }, (_, index) => `vendor/model-${index + 1}`)
+  let releaseCatalog!: () => void
+  const catalogReady = new Promise<void>((resolve) => {
+    releaseCatalog = resolve
+  })
+  const requests: { path: string | undefined; authorization: string | undefined }[] = []
+  const upstream = createServer(async (req, response) => {
+    requests.push({ path: req.url, authorization: req.headers.authorization })
+    await catalogReady
+    response.writeHead(200, { 'Content-Type': 'application/json' })
+    response.end(JSON.stringify({ data: models.map((id) => ({ id })) }))
+  })
+  upstream.listen(0, '127.0.0.1')
+  await once(upstream, 'listening')
+  const address = upstream.address()
+  if (!address || typeof address === 'string') throw new Error('Missing fixture address')
+  let savedId: string | undefined
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  try {
+    await page.goto('/resources?kind=ai')
+    await page.getByRole('button', { name: '添加供应商渠道' }).click()
+    await page.getByLabel('服务地址', { exact: true }).fill(`http://127.0.0.1:${address.port}/v1`)
+    await page.getByLabel('API 密钥', { exact: true }).fill('discovery-test-key')
+    const region = page.getByRole('region', { name: '渠道模型', exact: true })
+    const select = region.locator('.el-select').first()
+    await select.click()
+    await expect(page.getByRole('status').filter({ hasText: '正在读取模型列表' })).toBeVisible()
+    releaseCatalog()
+    await expect(page.getByText('发现 35 个模型', { exact: true })).toBeVisible()
+    const options = page.getByRole('listbox').getByRole('option')
+    await expect(options).toHaveCount(35)
+    await page.getByRole('option', { name: 'vendor/model-1', exact: true }).click()
+    await page.getByRole('option', { name: 'vendor/model-2', exact: true }).click()
+    await expect(page.getByRole('option', { name: 'vendor/model-1', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    await expect(page.getByRole('option', { name: 'vendor/model-2', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    await region.getByRole('button', { name: '添加模型', exact: true }).click()
+    await expect(
+      region.getByRole('button', { name: '移除模型 vendor/model-1', exact: true }),
+    ).toBeVisible()
+    await expect(
+      region.getByRole('button', { name: '移除模型 vendor/model-2', exact: true }),
+    ).toBeVisible()
+    const savedResponse = page.waitForResponse(
+      (response) => response.url().endsWith('/api/ai') && response.request().method() === 'POST',
+    )
+    await page.getByRole('button', { name: '保存渠道', exact: true }).click()
+    const response = await savedResponse
+    expect(response.ok(), await response.text()).toBe(true)
+    const saved = await response.json()
+    savedId = saved.id
+    expect(saved.models).toEqual({ 'vendor/model-1': {}, 'vendor/model-2': {} })
+    expect((await (await request.get(`/api/ai/${savedId}`)).json()).models).toEqual(saved.models)
+    expect(requests).toEqual([{ path: '/v1/models', authorization: 'Bearer discovery-test-key' }])
+    expect(errors).toEqual([])
+  } finally {
+    releaseCatalog()
+    if (savedId) await request.delete(`/api/ai/${savedId}`)
+    upstream.closeAllConnections()
+    await new Promise<void>((resolve, reject) =>
+      upstream.close((error) => (error ? reject(error) : resolve())),
+    )
+  }
+})
 
 test('resource editor shares catalogs and saves a retained draft at 375px', async ({
   page,

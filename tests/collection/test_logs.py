@@ -13,11 +13,11 @@ from threading import Event
 
 import pytest
 
-from logagent.collection import logs
-from logagent.collection.logs import LogsCollector
 from logagent.errors import LogAgentError
 from logagent.models import CollectionContext
 from logagent.schema import validate_schema
+from plugins.logs import collector as logs
+from plugins.logs.collector import LogsCollector
 
 
 def context(path: Path | str | None) -> CollectionContext:
