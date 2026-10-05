@@ -16,6 +16,8 @@ export interface AgentSession {
   title?: string
   model: string | null
   workflow_session_id: string | null
+  session_kind?: 'standalone' | 'workflow_continue' | 'workflow_subtask'
+  workflow_task_id?: string | null
   created_at: string
   updated_at: string
   status: string

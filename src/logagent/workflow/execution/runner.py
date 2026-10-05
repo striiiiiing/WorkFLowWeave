@@ -57,6 +57,7 @@ class WorkflowRunner:
         max_concurrent_runs=4,
         credentials=None,
         log_path=None,
+        agent_service=None,
     ):
         """绑定业务依赖、存储和运行协调器。
 
@@ -66,6 +67,7 @@ class WorkflowRunner:
         self.collector_manager, self.ai_service = collector_manager, ai_service
         self.channel_manager, self.resource_store = channel_manager, resource_store
         self.credentials, self.log_path = credentials, log_path
+        self.agent_service = agent_service
         location = Path(database or "data/workflows.sqlite3")
         if str(location) == ":memory:":
             raise LogAgentError("invalid_argument", "可恢复 Workflow 必须使用持久化文件")
@@ -479,6 +481,7 @@ class WorkflowRunner:
                 ai_service=self.ai_service,
                 channel_manager=self.channel_manager,
                 finalize=self._cleanup.finalize,
+                agent_service=self.agent_service,
             )
             await run_graph(
                 graph,

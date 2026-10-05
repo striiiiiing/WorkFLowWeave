@@ -22,5 +22,7 @@ async def analyze(state, runtime: Runtime[WorkflowContext]):
             task.id,
             context,
             task.model,
+            agent_service=runtime.context.agent_service,
+            execution_epoch=state["execution_epoch"],
         )
     return {"analysis_items": {task.id: result.model_dump(mode="json")}}

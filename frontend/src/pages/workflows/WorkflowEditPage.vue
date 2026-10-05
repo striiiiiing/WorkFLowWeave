@@ -5,6 +5,7 @@ import { ElMessage, type FormInstance } from 'element-plus'
 import PageHeader from '@/shared/ui/PageHeader.vue'
 import { useAsyncTask } from '@/shared/async/useAsyncTask'
 import { useQuery } from '@/shared/async/useQuery'
+import { useAgentsApi } from '@/modules/agents/public'
 import { useCapabilities, useSystemApi } from '@/modules/system/public'
 import {
   ChannelEditor,
@@ -32,6 +33,8 @@ const id = computed(() => (route.params.id ? String(route.params.id) : undefined
 const workflowsApi = useWorkflowsApi()
 const resourcesApi = useResourcesApi()
 const systemApi = useSystemApi()
+const agentsApi = useAgentsApi()
+const agentTools = useQuery((signal) => agentsApi.tools(signal))
 const workflowQuery = useQuery(
   (signal) => (id.value ? workflowsApi.get(id.value, signal) : Promise.resolve(undefined)),
   [id],
@@ -52,12 +55,18 @@ const save = useAsyncTask()
 const resourceSavePending = ref(false)
 const form = ref<FormInstance>()
 const advanced = ref(false)
-watch(() => editor.draft.value?.backup, (backup) => {
-  if (backup && hasLegacyRetention(backup)) advanced.value = true
-}, { immediate: true })
+watch(
+  () => editor.draft.value?.backup,
+  (backup) => {
+    if (backup && hasLegacyRetention(backup)) advanced.value = true
+  },
+  { immediate: true },
+)
 const channelEditor = ref<{ initial?: ChannelConfig }>()
 const draft = computed(() => editor.draft.value!)
-const catalogValue = computed(() => catalog.data.value ?? { sources: [], channels: [], configs: [] })
+const catalogValue = computed(
+  () => catalog.data.value ?? { sources: [], channels: [], configs: [] },
+)
 const gateway: SourceConfigEditorGateway = {
   resolve: resourcesApi.resolveSource,
   async save(target, value) {
@@ -94,6 +103,7 @@ async function submit() {
 }
 function refreshCatalog() {
   void catalog.refresh()
+  void agentTools.refresh()
   void workflowList.refresh()
 }
 onMounted(() => window.addEventListener('focus', refreshCatalog))
@@ -171,8 +181,22 @@ onScopeDispose(() => window.removeEventListener('focus', refreshCatalog))
             :gateway="gateway"
             :advanced="advanced"
           />
-          <FanOutTaskCard :editor="editor" :configs="catalogValue.configs" :advanced="advanced" />
-          <FanInCard :editor="editor" :configs="catalogValue.configs" :advanced="advanced" />
+          <div v-if="advanced && agentTools.error.value" role="alert">
+            <p class="text-red-700">{{ agentTools.error.value }}</p>
+            <el-button size="small" @click="agentTools.refresh">重新加载工具</el-button>
+          </div>
+          <FanOutTaskCard
+            :editor="editor"
+            :configs="catalogValue.configs"
+            :advanced="advanced"
+            :tools="agentTools.data.value"
+          />
+          <FanInCard
+            :editor="editor"
+            :configs="catalogValue.configs"
+            :advanced="advanced"
+            :tools="agentTools.data.value"
+          />
           <NotificationCard
             :editor="editor"
             :channels="catalogValue.channels"

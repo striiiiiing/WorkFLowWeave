@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { sessionKind, sessionKindLabels } from '../model/sessionKind'
 import type { AgentSession } from '../model/types'
 import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 
@@ -9,15 +10,19 @@ const emit = defineEmits<{
   branches: []
 }>()
 const search = ref('')
+const kind = ref('all')
 const visible = computed(() => {
   const query = search.value.trim().toLowerCase()
+  const sessions = props.sessions.filter(
+    (session) => kind.value === 'all' || sessionKind(session) === kind.value,
+  )
   return query
-    ? props.sessions.filter((session) =>
+    ? sessions.filter((session) =>
         [session.title ?? '', session.session_id, session.branch_id, session.model ?? ''].some(
           (value) => value.toLowerCase().includes(query),
         ),
       )
-    : props.sessions
+    : sessions
 })
 </script>
 
@@ -26,6 +31,15 @@ const visible = computed(() => {
     <el-input v-model="search" placeholder="搜索会话与分支" aria-label="搜索会话" clearable>
       <template #prefix><AppIcon name="search" size="sm" /></template>
     </el-input>
+    <el-select v-model="kind" aria-label="会话类型">
+      <el-option value="all" label="全部会话" />
+      <el-option
+        v-for="(label, value) in sessionKindLabels"
+        :key="value"
+        :value="value"
+        :label="label"
+      />
+    </el-select>
     <nav aria-label="会话列表" class="agent-session-list">
       <button
         v-for="session in visible"
@@ -38,6 +52,10 @@ const visible = computed(() => {
         <AppIcon :name="session.parent_session_id ? 'fork' : 'bot'" size="sm" />
         <span>
           <strong>{{ session.title || session.branch_id || 'main' }}</strong>
+          <small>
+            {{ sessionKindLabels[sessionKind(session)] }}
+            <template v-if="session.workflow_task_id">· {{ session.workflow_task_id }}</template>
+          </small>
           <small>{{ session.session_id }}</small>
         </span>
         <i :class="session.status" />

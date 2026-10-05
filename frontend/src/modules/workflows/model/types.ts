@@ -1,7 +1,11 @@
 import type { SourcePolicy, SourceOverride, ChannelOverride } from '@/modules/resources/public'
 
 export type ContinuePolicy = 'stop' | 'continue'
-export interface AnalysisTask {
+export interface AgentTaskConfig {
+  agent_mode?: boolean
+  agent_tools?: string[] | null
+}
+export interface AnalysisTask extends AgentTaskConfig {
   id: string
   ai: string
   system_prompt: string | null
@@ -9,7 +13,7 @@ export interface AnalysisTask {
   user_prompt: string
   model: string
 }
-export interface FanInConfig {
+export interface FanInConfig extends AgentTaskConfig {
   order: string[]
   separator: string
   ai: string | null

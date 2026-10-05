@@ -83,9 +83,16 @@ function copy() {
           <p v-if="item.error" class="text-red-700 mb-2" role="alert">{{ item.error }}</p>
           <p v-if="item.processingStatus" class="muted text-sm mb-2">
             处理状态：{{ resultStatus(item.processingStatus, 'collect') }}
-            <span v-if="item.truncated"> · 内容已截取</span>
-            <span v-if="item.omitted"> · 未进入分析输入</span>
+            <span v-if="item.truncated">· 内容已截取</span>
+            <span v-if="item.omitted">· 未进入分析输入</span>
           </p>
+          <router-link
+            v-if="item.agentSessionId"
+            :to="{ name: 'agent-session', params: { sessionId: item.agentSessionId } }"
+            class="text-blue-600 block mb-2"
+          >
+            查看 Agent 过程 / 继续会话
+          </router-link>
           <ReportText v-if="item.text" :text="item.text" />
           <details v-if="item.processedText && item.processedText !== item.text" class="mt-3">
             <summary class="report-disclosure muted">查看提供给分析的正文</summary>

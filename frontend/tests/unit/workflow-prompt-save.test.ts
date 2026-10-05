@@ -12,6 +12,7 @@ import { resourcesApiKey } from '@/modules/resources/public'
 import type { AIConfig, ResourcesApi } from '@/modules/resources/public'
 import { systemApiKey } from '@/modules/system/public'
 import type { SystemApi } from '@/modules/system/public'
+import { agentsApiKey, type AgentsApi } from '@/modules/agents/public'
 
 const navigate = vi.hoisted(() => vi.fn())
 vi.mock('vue-router', () => ({
@@ -70,6 +71,7 @@ it('saves layered prompts and reopens the same workflow without legacy prompt fi
     protectCredential: vi.fn(),
   } as unknown as ResourcesApi
   const systemApi = { plugins: vi.fn().mockResolvedValue([]) } as unknown as SystemApi
+  const agentsApi = { tools: vi.fn().mockResolvedValue([]) } as unknown as AgentsApi
   const options = {
     global: {
       plugins: [ElementPlus],
@@ -77,6 +79,7 @@ it('saves layered prompts and reopens the same workflow without legacy prompt fi
         [workflowsApiKey as symbol]: workflowsApi,
         [resourcesApiKey as symbol]: resourcesApi,
         [systemApiKey as symbol]: systemApi,
+        [agentsApiKey as symbol]: agentsApi,
       },
       stubs: {
         RouterLink: { template: '<a><slot /></a>' },

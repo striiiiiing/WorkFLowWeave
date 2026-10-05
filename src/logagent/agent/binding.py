@@ -8,6 +8,17 @@ from dataclasses import dataclass
 from logagent.errors import LogAgentError
 
 
+def workflow_mcp_binding(snapshot) -> dict:
+    """Project the frozen Workflow scope for running and archived Agent handoffs."""
+    return {
+        "servers": {key: value.model_dump(mode="json") for key, value in snapshot.mcp_servers.items()},
+        "sources": [{"source": source.id, "server": source.call.server, "tool": source.call.tool,
+                     "arguments": source.call.arguments}
+                    for source in snapshot.sources.values()
+                    if source.call is not None and source.call.kind == "mcp"],
+    }
+
+
 @dataclass(frozen=True, slots=True)
 class MCPBinding:
     agent_id: str

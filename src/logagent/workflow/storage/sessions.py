@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 
+from logagent.agent.binding import workflow_mcp_binding
 from logagent.errors import LogAgentError
 from logagent.models import ArtifactInfo, SessionRecord, SessionStatus
 from logagent.workflow.storage.progress import active_phases, project_progress
@@ -27,13 +28,7 @@ class SessionView:
             snapshot = WorkflowSnapshot.model_validate(entry["body"]["snapshot"])
         except ValueError:
             return {"error": "原 Workflow 使用旧版来源配置，MCP 绑定不可恢复"}
-        return {
-            "servers": {key: value.model_dump(mode="json") for key, value in snapshot.mcp_servers.items()},
-            "sources": [{"source": source.id, "server": source.call.server, "tool": source.call.tool,
-                         "arguments": source.call.arguments}
-                        for source in snapshot.sources.values()
-                        if source.call is not None and source.call.kind == "mcp"],
-        }
+        return workflow_mcp_binding(snapshot)
 
     @staticmethod
     def _record(header: dict, entries: list[dict]) -> SessionRecord:

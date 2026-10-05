@@ -27,6 +27,7 @@ export function createAgentsApi(http: HttpClient) {
     model?: string
     workflow_session_id?: string
     workflow_id?: string
+    task_id?: string
     turn_id?: string
     message_id?: string
   }) =>
@@ -42,6 +43,7 @@ export function createAgentsApi(http: HttpClient) {
       model?: string
       workflow_session_id?: string
       workflow_id?: string
+      task_id?: string
     }) =>
       (
         await commandRequest<AgentSession>({
@@ -56,6 +58,7 @@ export function createAgentsApi(http: HttpClient) {
     source: (id: string, signal?: AbortSignal) =>
       http.request<{
         workflow_session_id: string | null
+        workflow_task_id: string | null
         input: unknown
         created_at: string
       }>({ url: `${sessionPath(id)}/source`, signal }),

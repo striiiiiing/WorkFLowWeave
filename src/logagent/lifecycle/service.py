@@ -271,6 +271,7 @@ class ApplicationLifecycle:
                 )
                 await agent.initialize()
                 self._agent = agent
+                workflow.agent_service = agent
 
                 stage = "channel_agent_port"
                 agent_channel = AgentChannel(agent, session_view=session_view)

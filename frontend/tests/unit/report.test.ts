@@ -33,6 +33,10 @@ const ReportHarness = defineComponent({
   },
   template: '<PhaseReport :report="report" :active="active" :advanced="advanced" />',
 })
+const RouterLinkStub = defineComponent({
+  props: { to: { type: [String, Object], required: true } },
+  template: '<a><slot /></a>',
+})
 import ReportText from '@/shared/ui/ReportText.vue'
 import type { PhaseContent } from '@/modules/runs/public'
 
@@ -57,7 +61,7 @@ it('renders readable output by default, exposes JSON only in advanced mode, and 
   vi.mocked(runsApi.phase).mockResolvedValue(phase)
   const wrapper = mount(ReportHarness, {
     props: { id: 'run', version: 3, stage: 'aggregate', active: false, advanced: false },
-    global: { plugins: [ElementPlus] },
+    global: { plugins: [ElementPlus], stubs: { RouterLink: RouterLinkStub } },
   })
   wrappers.push(wrapper)
   await vi.dynamicImportSettled()
@@ -82,6 +86,36 @@ it('renders readable output by default, exposes JSON only in advanced mode, and 
   expect(wrapper.find('pre').exists()).toBe(false)
 })
 
+it('links an Agent analysis report to its session', async () => {
+  vi.mocked(runsApi.phase).mockResolvedValue({
+    ...phase,
+    stage: 'analyze',
+    content: {
+      analyses: [
+        {
+          task_id: 'agent-task',
+          text: '分析结果',
+          status: 'success',
+          agent_session_id: 'agent-session-1',
+        },
+      ],
+    },
+  })
+  const wrapper = mount(ReportHarness, {
+    props: { id: 'run', version: 3, stage: 'analyze', active: false, advanced: false },
+    global: { plugins: [ElementPlus], stubs: { RouterLink: RouterLinkStub } },
+  })
+  wrappers.push(wrapper)
+  await vi.dynamicImportSettled()
+  await flushPromises()
+  const link = wrapper.findComponent(RouterLinkStub)
+  expect(link.props('to')).toEqual({
+    name: 'agent-session',
+    params: { sessionId: 'agent-session-1' },
+  })
+  expect(link.text()).toContain('查看 Agent 过程 / 继续会话')
+})
+
 it('renders CLI raw output and processing state without inventing a count', async () => {
   vi.mocked(runsApi.phase).mockResolvedValue({
     ...phase,
@@ -94,12 +128,14 @@ it('renders CLI raw output and processing state without inventing a count', asyn
           raw: { stdout: '原始输出', stderr: '诊断信息', exit_code: 0 },
         },
       ],
-      input_views: [{ source_id: 'logs', status: 'success', text: '分析输入', truncated: true, omitted: false }],
+      input_views: [
+        { source_id: 'logs', status: 'success', text: '分析输入', truncated: true, omitted: false },
+      ],
     },
   })
   const wrapper = mount(ReportHarness, {
     props: { id: 'run', version: 3, stage: 'collect', active: false, advanced: false },
-    global: { plugins: [ElementPlus] },
+    global: { plugins: [ElementPlus], stubs: { RouterLink: RouterLinkStub } },
   })
   wrappers.push(wrapper)
   await vi.dynamicImportSettled()
@@ -128,17 +164,30 @@ it('renders CLI raw output and processing state without inventing a count', asyn
 it('renders MCP content, structured data, and a failed collection error', () => {
   const parsed = parsePhase('collect', {
     collection: [
-      { source_id: 'tool', status: 'success', raw: {
-        content: [{ type: 'text', text: '工具正文' }], structuredContent: { result: 2 },
-      } },
-      { source_id: 'missing', status: 'failed', raw: null,
-        error: { code: 'mcp_failed', message: '服务不可用' } },
+      {
+        source_id: 'tool',
+        status: 'success',
+        raw: {
+          content: [{ type: 'text', text: '工具正文' }],
+          structuredContent: { result: 2 },
+        },
+      },
+      {
+        source_id: 'missing',
+        status: 'failed',
+        raw: null,
+        error: { code: 'mcp_failed', message: '服务不可用' },
+      },
     ],
     input_views: [{ source_id: 'missing', status: 'skipped', omitted: true }],
   })
   expect(parsed.items[0].text).toContain('工具正文')
   expect(parsed.items[0].text).toContain('"result": 2')
-  expect(parsed.items[1]).toMatchObject({ error: '服务不可用', omitted: true, processingStatus: 'skipped' })
+  expect(parsed.items[1]).toMatchObject({
+    error: '服务不可用',
+    omitted: true,
+    processingStatus: 'skipped',
+  })
 })
 
 it('does not execute HTML or unsafe URLs inside reports', () => {

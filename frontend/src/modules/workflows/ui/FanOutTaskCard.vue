@@ -3,12 +3,14 @@ import type { AIConfig } from '@/modules/resources/public'
 import type { AnalysisTask } from '../model/types'
 import type { WorkflowEditorController } from '../composables/useWorkflowEditor'
 import AIModelSelect from './AIModelSelect.vue'
+import AgentTaskOptions from './AgentTaskOptions.vue'
 import PromptOverrides from './PromptOverrides.vue'
 import SectionCard from '@/shared/ui/SectionCard.vue'
 const props = defineProps<{
   editor: WorkflowEditorController
   configs: readonly AIConfig[]
   advanced?: boolean
+  tools?: readonly { name: string; enabled: boolean }[]
 }>()
 const draft = () => props.editor.draft.value!
 function taskId(index: number, task: AnalysisTask) {
@@ -52,6 +54,12 @@ function taskId(index: number, task: AnalysisTask) {
         :ai-prop="`analyses.${index}.ai`"
         :model-prop="`analyses.${index}.model`"
         @selection="(ai, model) => editor.updateTask(index, { ai: ai ?? '', model: model ?? '' })"
+      />
+      <AgentTaskOptions
+        :task="task"
+        :advanced="advanced"
+        :tools="tools"
+        @update="editor.updateTask(index, $event)"
       />
       <el-form-item label="提示词">
         <el-input

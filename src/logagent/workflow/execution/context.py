@@ -39,6 +39,7 @@ class WorkflowContext:
     ai_service: Any
     channel_manager: Any
     finalize: Callable[[str], Awaitable[None]]
+    agent_service: Any = None
     collection_slots: asyncio.Semaphore = field(init=False)
     analysis_slots: asyncio.Semaphore = field(init=False)
     fresh_intents: set[tuple[str, str]] = field(default_factory=set, init=False)

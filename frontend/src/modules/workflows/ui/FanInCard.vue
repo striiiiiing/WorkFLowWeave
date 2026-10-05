@@ -3,17 +3,21 @@ import { ArrowDown, ArrowUp } from 'lucide-vue-next'
 import type { AIConfig } from '@/modules/resources/public'
 import type { WorkflowEditorController } from '../composables/useWorkflowEditor'
 import AIModelSelect from './AIModelSelect.vue'
+import AgentTaskOptions from './AgentTaskOptions.vue'
 import PromptOverrides from './PromptOverrides.vue'
 import SectionCard from '@/shared/ui/SectionCard.vue'
 const props = defineProps<{
   editor: WorkflowEditorController
   configs: readonly AIConfig[]
   advanced?: boolean
+  tools?: readonly { name: string; enabled: boolean }[]
 }>()
 const draft = () => props.editor.draft.value!
 const fanIn = () => props.editor.draft.value!.fan_in!
 const orderedInputs = () =>
-  fanIn().order.length ? fanIn().order : ['$input', ...draft().analyses.map((task) => task.id)]
+  fanIn().order.length
+    ? fanIn().order
+    : [...(fanIn().agent_mode ? [] : ['$input']), ...draft().analyses.map((task) => task.id)]
 function moveInput(index: number, delta: number) {
   const order = [...orderedInputs()]
   const target = index + delta
@@ -101,9 +105,22 @@ function selectModelSource(value: string) {
         :configs="configs"
         ai-prop="fan_in.ai"
         model-prop="fan_in.model"
-        optional
+        :optional="!fanIn().agent_mode"
         @selection="(ai, model) => editor.updateFanIn({ ai, model })"
       />
+      <AgentTaskOptions
+        :task="fanIn()"
+        :advanced="advanced"
+        :tools="tools"
+        @update="editor.updateFanIn($event)"
+      />
+      <p
+        v-if="fanIn().agent_mode && !fanIn().reuse_from && !fanIn().ai"
+        class="text-red-700 mb-3"
+        role="alert"
+      >
+        Agent 汇总需要选择模型，或复用一个分析任务的模型。
+      </p>
       <el-form-item label="提示词">
         <el-input
           :model-value="fanIn().user_prompt"
