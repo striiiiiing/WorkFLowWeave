@@ -8,8 +8,8 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url))
 const fixtureMode = process.argv.includes('--fixtures')
 const root = path.resolve(scriptDir, fixtureMode ? 'architecture-fixtures' : '../src')
 const layers = ['shared', 'modules', 'pages', 'app']
-// These old consumers are migrated by P2–P6; P7 removes the transition entirely.
-const legacy = new Set([
+// Retired roots must stay absent after the migration to app/pages/modules/shared.
+const retiredRoots = new Set([
   'api',
   'components',
   'composables',
@@ -22,8 +22,6 @@ const legacy = new Set([
   'App.vue',
   'assets',
 ])
-// Only the router may load old route entries while their owner packages migrate.
-const legacyRoute = (from, to) => from === 'app/router.ts' && to.startsWith('views/')
 const relative = (file) => path.relative(root, file).split(path.sep).join('/')
 const owner = (file) => relative(file).split('/')[0]
 const moduleName = (file) => (owner(file) === 'modules' ? relative(file).split('/')[1] : undefined)
@@ -110,21 +108,19 @@ function check(sourceFiles) {
     const parsed = parse(file)
     const from = owner(file)
     const rel = relative(file)
-    const old = legacy.has(from)
+    if (retiredRoots.has(from)) add(file, 'retired-source', rel)
     const edges = []
     graph.set(file, edges)
     for (const specifier of parsed.imports) {
       const target = resolveImport(file, specifier)
       if (target) edges.push(target)
-      if (old) continue
       if (specifier.startsWith('@/') || specifier.startsWith('.')) {
         if (!target) {
           add(file, 'unresolved', specifier)
           continue
         }
         const to = owner(target)
-        if (legacy.has(to) && !legacyRoute(rel, relative(target)))
-          add(file, 'legacy-import', specifier)
+        if (retiredRoots.has(to)) add(file, 'retired-import', specifier)
         if (layers.indexOf(from) < layers.indexOf(to)) add(file, 'layer-direction', specifier)
         if (to === 'modules') {
           if (moduleName(file) === moduleName(target)) {
@@ -165,7 +161,6 @@ function check(sourceFiles) {
     }
     for (const effect of parsed.effects) {
       if (effect === 'fetch') add(file, 'ordinary-http', effect)
-      if (old) continue
       if (effect === 'nonliteral-import')
         add(file, 'nonliteral-import', 'cannot resolve statically')
       if (isModel(file) && forbiddenGlobals.has(effect)) add(file, 'model-purity', effect)
@@ -175,13 +170,13 @@ function check(sourceFiles) {
       )
         add(file, 'sfc-transport', effect)
     }
-    if (!old && isModel(file) && parsed.mutable) add(file, 'model-purity', 'mutable module state')
+    if (isModel(file) && parsed.mutable) add(file, 'model-purity', 'mutable module state')
   }
   const active = new Set()
   const visited = new Set()
   function visit(file) {
     if (active.has(file)) {
-      if (!legacy.has(owner(file))) add(file, 'cycle', 'dependency cycle')
+      add(file, 'cycle', 'dependency cycle')
       return
     }
     if (visited.has(file)) return
@@ -225,6 +220,4 @@ if (fixtureMode) {
   )
   process.exit(1)
 } else
-  console.log(
-    `architecture check passed (${sourceFiles.length} files; legacy consumers expire P2–P7)`,
-  )
+  console.log(`architecture check passed (${sourceFiles.length} files; retired roots forbidden)`)

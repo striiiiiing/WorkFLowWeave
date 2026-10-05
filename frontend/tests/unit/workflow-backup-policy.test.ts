@@ -3,7 +3,6 @@ import { mount } from '@vue/test-utils'
 import ElementPlus, { ElInputNumber } from 'element-plus'
 import { expect, it } from 'vitest'
 import BackupMatrix from '@/modules/workflows/ui/BackupMatrix.vue'
-import LegacyBackupMatrix from '@/components/workflow/BackupMatrix.vue'
 import {
   classifyLegacyRetention,
   createWorkflow,
@@ -30,8 +29,9 @@ it('requires an explicit choice for old retention and keeps the four limits inde
     final_retention_days: null,
   })
   expect(validateBackupPolicy(classified)).toEqual([])
-  expect(validateBackupPolicy({ ...classified, collection_retention_days: 0 }))
-    .toContain('采集正文保留天数必须是大于 0 的整数或留空')
+  expect(validateBackupPolicy({ ...classified, collection_retention_days: 0 })).toContain(
+    '采集正文保留天数必须是大于 0 的整数或留空',
+  )
 })
 
 it('keeps checkpoint retention editable when long-term backup is disabled', async () => {
@@ -54,18 +54,4 @@ it('keeps checkpoint retention editable when long-term backup is disabled', asyn
   expect(hasLegacyRetention(editor.draft.value!.backup)).toBe(false)
   wrapper.unmount()
   scope.stop()
-})
-
-it('shows the same explicit conversion in the legacy editor', async () => {
-  const backup = { ...createWorkflow().backup, retention_days: 14, enabled: false }
-  const wrapper = mount(LegacyBackupMatrix, {
-    props: { modelValue: backup },
-    global: { plugins: [ElementPlus] },
-  })
-  expect(wrapper.text()).toContain('旧版统一保留天数')
-  expect(wrapper.findAllComponents(ElInputNumber)[0].props('disabled')).toBe(false)
-  await wrapper.get('button.el-button').trigger('click')
-  const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0]
-  expect(hasLegacyRetention(update as typeof backup)).toBe(false)
-  wrapper.unmount()
 })
