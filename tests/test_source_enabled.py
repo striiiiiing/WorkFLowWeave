@@ -2,11 +2,11 @@
 
 import pytest
 
-from logagent.channel.mock import MockFileChannelType
-from logagent.collection.mock import MockCollector
 from logagent.config import PluginRegistry, ResourceStore
 from logagent.errors import LogAgentError
 from logagent.models import AIConfig, SourceConfig, SystemConfig, WorkflowDefinition
+from plugins.mock.collector import MockCollector
+from plugins.mock_file.channel import MockFileChannelType
 
 
 @pytest.mark.asyncio

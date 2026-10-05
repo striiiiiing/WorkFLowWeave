@@ -106,9 +106,7 @@ async function submit() {
       <el-input v-model="environmentName" placeholder="OPENAI_API_KEY" />
     </el-form-item>
     <section aria-label="渠道模型发现" class="mb-5">
-      <p v-if="health.pending.value" class="muted text-sm mt-2" role="status">
-        正在读取模型列表…
-      </p>
+      <p v-if="health.pending.value" class="muted text-sm mt-2" role="status">正在读取模型列表…</p>
       <el-alert
         v-if="health.error.value"
         :title="health.error.value"
@@ -128,6 +126,7 @@ async function submit() {
       :model-value="draft.models"
       @update:model-value="updateModels"
       :candidates="discovered"
+      :loading="health.pending.value"
       @discover="discoverModels"
     />
     <el-form-item label="资源编号" prop="id" :rules="{ ...idRule, required: false }">

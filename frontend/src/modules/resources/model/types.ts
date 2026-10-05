@@ -13,7 +13,11 @@ export interface SourceConfig {
   id: string
   display_name?: string | null
   description?: string
-  call: SourceCall
+  collector?: string | null
+  call: SourceCall | null
+  options?: JsonObject
+  setters?: JsonObject
+  template?: string | null
   enabled: boolean
   limits: SourceLimits
   timeout: number
@@ -25,6 +29,8 @@ export interface MCPServerConfig {
   id: string
   transport: 'stdio' | 'streamable_http' | 'sse'
   enabled: boolean
+  health_check_enabled: boolean
+  health_check_interval_minutes: number
   command: string | null
   args: string[]
   cwd: string | null

@@ -13,8 +13,8 @@ import threading
 import pytest
 
 from logagent.channel.errors import ChannelDeliveryError
-from logagent.channel.mock import MockFileChannel
 from logagent.models import ChannelConfig, Notification
+from plugins.mock_file.channel import MockFileChannel
 
 
 def _channel(path, channel_id="mock"):
@@ -305,7 +305,7 @@ async def test_missing_write_count_cannot_report_success(tmp_path, monkeypatch):
 
 async def test_cancelled_start_is_drained_before_close(tmp_path, monkeypatch):
     from logagent.errors import LogAgentError
-    monkeypatch.setattr("logagent.channel.mock._STOP_TIMEOUT", .02)
+    monkeypatch.setattr("plugins.mock_file.channel._STOP_TIMEOUT", .02)
     channel = _channel(tmp_path / "late-start.txt")
     entered, release = threading.Event(), threading.Event()
     original = channel.handler.start
@@ -335,7 +335,7 @@ async def test_cancelled_start_is_drained_before_close(tmp_path, monkeypatch):
 
 async def test_stop_waits_for_cancelled_write_and_can_be_awaited_again(tmp_path, monkeypatch):
     from logagent.errors import LogAgentError
-    monkeypatch.setattr("logagent.channel.mock._STOP_TIMEOUT", .02)
+    monkeypatch.setattr("plugins.mock_file.channel._STOP_TIMEOUT", .02)
     path = tmp_path / "pending.txt"
     channel = _channel(path)
     await channel.start()

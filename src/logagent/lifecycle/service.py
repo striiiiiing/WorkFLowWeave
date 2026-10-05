@@ -15,7 +15,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from logagent.agent import AgentService
 from logagent.ai import AIService, ChannelFactory, OpenAIChannelFactory
 from logagent.ai.options import LEGACY_HTTP_PROVIDER, OPENAI_COMPATIBLE_PROVIDER
-from logagent.channel import ChannelManager, builtin_channels
+from logagent.channel import ChannelManager, WebChannelType
 from logagent.channel.agent import AgentChannel
 from logagent.collection import CollectorManager
 from logagent.config import (
@@ -26,7 +26,7 @@ from logagent.config import (
 )
 from logagent.errors import LogAgentError
 from logagent.lifecycle.logging import JsonLogSink
-from logagent.mcp import MCPRuntime, SDKConnector
+from logagent.mcp import MCPHealthMonitor, MCPRuntime, SDKConnector
 from logagent.models import (
     CollectionContext,
     DiscoveryReport,
@@ -96,6 +96,7 @@ class ApplicationLifecycle:
         self._channels: ChannelManager | None = None
         self._workflow: WorkflowRunner | None = None
         self._intervals: WorkflowScheduler | None = None
+        self._mcp_health: MCPHealthMonitor | None = None
         self._plugin_report = DiscoveryReport()
         self._reload_diagnostic: ErrorInfo | None = None
         self._reload_in_progress = False
@@ -184,7 +185,7 @@ class ApplicationLifecycle:
                 await checkpointer.setup()
 
                 stage = "plugins"
-                plugins = PluginRegistry((), builtin_channels=builtin_channels())
+                plugins = PluginRegistry(builtin_channels=[WebChannelType()])
                 self._plugin_report = await plugins.discover_plugins(self.config)
                 credentials = CredentialManager(
                     self.config, resources_path=Path(self.config.data_dir) / "resources.json"
@@ -230,6 +231,11 @@ class ApplicationLifecycle:
                     on_change=self._resource_view_changed,
                 )
                 self._resources = resources
+
+                stage = "mcp_health"
+                mcp_health = MCPHealthMonitor(mcp_runtime, resources)
+                self._mcp_health = mcp_health
+                mcp_health.update(resources.list("mcp_servers"))
 
                 stage = "workflow"
                 session_view = SessionView(session_store)
@@ -300,6 +306,7 @@ class ApplicationLifecycle:
                 )
                 self._services = services
                 intervals.start()
+                mcp_health.start()
                 if self._shutdown_requested:
                     raise LogAgentError("shutdown", "应用启动期间收到关闭请求")
                 workflow.resume_admission()
@@ -646,6 +653,13 @@ class ApplicationLifecycle:
             ):
                 return False
 
+        if self._mcp_health is not None:
+            if not await self._cleanup(
+                "mcp_health", self._mcp_health.stop, errors, self._shutdown_timeout
+            ):
+                return False
+            self._mcp_health = None
+
         if self._intervals is not None:
             if not await self._cleanup(
                 "intervals", self._intervals.stop, errors, self._shutdown_timeout
@@ -787,3 +801,5 @@ class ApplicationLifecycle:
             self._intervals.update(self._resources.list("workflows"))
             if self._channels is not None:
                 self._channels.request_sync(self._resources.list("channels"))
+            if self._mcp_health is not None:
+                self._mcp_health.update(self._resources.list("mcp_servers"))

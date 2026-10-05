@@ -46,6 +46,8 @@ export function createResource(kind: EditableKind): EditableResource {
       id: crypto.randomUUID(),
       transport: 'stdio',
       enabled: true,
+      health_check_enabled: false,
+      health_check_interval_minutes: 30,
       command: '',
       args: [],
       cwd: null,

@@ -7,6 +7,8 @@ import { createResource } from '@/modules/resources/model/resources'
 import { filterSources } from '@/modules/resources/model/sourceFiltering'
 import { resourcesApiKey } from '@/modules/resources/api/dependencies'
 import SourceConfigEditor from '@/modules/resources/ui/SourceConfigEditor.vue'
+import SourceSummary from '@/modules/resources/ui/SourceSummary.vue'
+import { ApiError } from '@/shared/api/errors'
 import type {
   SourceConfig,
   SourceConfigEditorGateway,
@@ -34,12 +36,12 @@ const api = {
   }),
   loadMcpCatalog: vi.fn(),
 }
-function setup(target: SourceSaveTarget, gateway: SourceConfigEditorGateway) {
+function setup(target: SourceSaveTarget, gateway: SourceConfigEditorGateway, initial = source()) {
   let editor!: ReturnType<typeof useSourceEditor>
   const wrapper = mount(
     defineComponent({
       setup() {
-        editor = useSourceEditor({ initial: source(), target }, gateway)
+        editor = useSourceEditor({ initial, target }, gateway)
         return () => h(SourceConfigEditor, { editor, target, initial: true })
       },
     }),
@@ -54,6 +56,33 @@ function setup(target: SourceSaveTarget, gateway: SourceConfigEditorGateway) {
 }
 
 describe('MCP/CLI source editor', () => {
+  it('shows the backend startup diagnosis when loading a tool catalog fails', async () => {
+    api.loadMcpCatalog.mockRejectedValueOnce(
+      new ApiError(400, {
+        code: 'mcp_directory_failed',
+        message: 'MCP 工具目录加载失败',
+        details: {
+          exception_type: 'FileNotFoundError',
+          reason: '请在运行 LogAgent 后端的环境中安装 qqmusic-mcp',
+        },
+      }),
+    )
+    const { wrapper } = setup(
+      { kind: 'shared-resource', resourceId: 'logs' },
+      { resolve: async () => source(), save: vi.fn() },
+    )
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '加载/刷新目录')!
+      .trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('请在运行 LogAgent 后端的环境中安装 qqmusic-mcp')
+    expect(wrapper.text()).toContain('FileNotFoundError')
+    expect(wrapper.text()).not.toContain('ApiError:')
+    wrapper.unmount()
+  })
+
   it('lets the save button submit when Element Plus number inputs fail native step validation', async () => {
     const { wrapper } = setup(
       { kind: 'shared-resource', resourceId: 'logs' },
@@ -115,7 +144,7 @@ describe('MCP/CLI source editor', () => {
       command: 'date',
       cwd: '/tmp',
     })
-    expect(original.call.kind).toBe('mcp')
+    expect(original.call?.kind).toBe('mcp')
     wrapper.unmount()
   })
 
@@ -148,6 +177,42 @@ describe('MCP/CLI source editor', () => {
     await flushPromises()
     expect(editor.value.value).toBeUndefined()
   })
+})
+
+it('renders and edits a collector source without a call', async () => {
+  const pluginSource: SourceConfig = {
+    ...source(),
+    collector: 'qwenpaw_flomo',
+    call: null,
+    options: { kind: 'hourly', limit: 8 },
+  }
+  const summary = mount(SourceSummary, { props: { source: pluginSource } })
+  expect(summary.text()).toContain('插件 / qwenpaw_flomo')
+  expect(filterSources([pluginSource], 'qwenpaw_flomo', 'all', () => undefined)).toEqual([
+    pluginSource,
+  ])
+  summary.unmount()
+
+  const saved = vi.fn()
+  const { wrapper, editor } = setup(
+    { kind: 'shared-resource', resourceId: pluginSource.id },
+    { resolve: async () => pluginSource, save: saved },
+    pluginSource,
+  )
+  await flushPromises()
+  expect(wrapper.text()).toContain('采集插件')
+  editor.updateOptions({ kind: 'hourly', limit: 10 })
+  await wrapper.get('form').trigger('submit')
+  await flushPromises()
+  expect(saved).toHaveBeenCalledWith(
+    { kind: 'shared-resource', resourceId: pluginSource.id },
+    expect.objectContaining({
+      collector: 'qwenpaw_flomo',
+      call: null,
+      options: { kind: 'hourly', limit: 10 },
+    }),
+  )
+  wrapper.unmount()
 })
 
 it('keeps source usage filtering independent of resource kind', () => {
