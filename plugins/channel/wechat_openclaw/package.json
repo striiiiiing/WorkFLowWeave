@@ -1,0 +1,12 @@
+{
+  "name": "logagent-wechat-openclaw-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=22.22.3 <23 || >=24.15.0 <25 || >=25.9.0"},
+  "scripts": {"test": "node --test bridge.test.mjs"},
+  "dependencies": {
+    "@tencent-weixin/openclaw-weixin": "2.4.9",
+    "openclaw": "2026.8.1"
+  }
+}
