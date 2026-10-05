@@ -3,7 +3,7 @@
 import asyncio
 import hashlib
 
-from logagent.agent.binding import workflow_mcp_binding
+from logagent.agent.integrations.workflow import workflow_mcp_binding
 from logagent.errors import LogAgentError
 from logagent.models import AnalysisResult, ExecutionContext, copy_model
 from logagent.workflow.agent_tasks import execute_agent_task

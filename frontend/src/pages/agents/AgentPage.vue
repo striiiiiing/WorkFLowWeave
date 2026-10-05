@@ -37,7 +37,7 @@ const runsApi = useRunsApi()
 const sessions = useQuery((signal) => api.list(signal))
 const settings = useAgentSettings(api)
 const session = useAgentSession(api)
-const commands = useAgentCommands(api)
+const commands = useAgentCommands(api, { submit: session.submit, cancel: session.cancel })
 const files = useAgentFiles(api)
 const branches = useAgentBranches(api)
 const action = useAsyncTask()
@@ -166,7 +166,10 @@ async function stop() {
 async function fork(target: AgentSession | AgentEvent = selected.value as AgentSession) {
   if (!target) return
   const result = await action.run(() =>
-    api.fork(target.session_id, 'data' in target ? { turn_id: target.turn_id ?? undefined } : {}),
+    session.fork(
+      target.session_id,
+      'data' in target ? { turn_id: target.turn_id ?? undefined } : {},
+    ),
   )
   if (isTaskSuccess(result)) {
     await sessions.refresh()
@@ -177,7 +180,7 @@ async function fork(target: AgentSession | AgentEvent = selected.value as AgentS
 async function compact() {
   if (!selected.value) return
   const id = selected.value.session_id
-  const result = await action.run(() => api.compact(id))
+  const result = await action.run(() => session.compact(id))
   if (!isTaskSuccess(result) || selected.value?.session_id !== id) return
   if (result.value.status === 'queued') {
     ElMessage.info('压缩已排队，将在模型安全边界处理')
@@ -421,6 +424,7 @@ const slashCommands = computed<SlashCommand[]>(() => [
           </div>
           <AgentTranscript
             :events="session.events.value"
+            :messages="session.messages.value"
             :tools="settings.query.data.value?.tools"
             :session-id="selected.session_id"
             :running="running"
