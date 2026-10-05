@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import shutil
+from collections.abc import AsyncIterator
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, Query, Response, status
+from fastapi.sse import EventSourceResponse, ServerSentEvent
 from pydantic import Field
 
 from logagent.agent.config import AgentConfig as AgentRuntimeConfig
@@ -15,7 +17,12 @@ from logagent.errors import LogAgentError
 from logagent.lifecycle import ApplicationServices
 from logagent.models import ID, StrictModel
 
-from .channel_routers import dispatch_web, stream_agent_events
+from .channel_routers import (
+    AgentEventStream,
+    dispatch_web,
+    prepare_agent_events,
+    stream_agent_events,
+)
 from .dependencies import Lifecycle as LifecycleProtocol
 from .dependencies import get_lifecycle, get_services
 
@@ -148,14 +155,12 @@ def build_agent_router():
             channel="web", session=session_id, action="compact",
         )))["result"]
 
-    @router.get("/sessions/{session_id}/events")
-    async def agent_events(session_id: ID,
-                           services: Services, after: int = Query(0, ge=0),
-                           last_event_id: str | None = Header(None)):
-        return await stream_agent_events(
-            services.channels.web_channel, session_id,
-            after=after, last_event_id=last_event_id,
-        )
+    @router.get("/sessions/{session_id}/events", response_class=EventSourceResponse)
+    async def agent_events(
+        stream: Annotated[AgentEventStream, Depends(prepare_agent_events)],
+    ) -> AsyncIterator[ServerSentEvent]:
+        async for event in stream_agent_events(stream):
+            yield event
 
     @router.get("/sessions/{session_id}/files")
     @router.get("/files")
