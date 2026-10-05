@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from typing import Protocol
 
@@ -122,7 +123,14 @@ class OpenAIChannel:
         headers = {"Authorization": f"Bearer {credential}"} if credential is not None else {}
         response = await self.client.get(self.base_url + "models", headers=headers, timeout=None)
         response.raise_for_status()
-        body = response.json()
+        try:
+            body = response.json()
+        except json.JSONDecodeError as exc:
+            raise ModelError(
+                "invalid_response",
+                "模型列表接口返回的不是有效 JSON；请检查服务地址是否包含正确的 API 路径（如 /v1）",
+                status_code=response.status_code, response_body=response.text,
+            ) from exc
         if not isinstance(body, dict) or not isinstance(body.get("data"), list):
             raise ModelError("invalid_response", "模型列表响应缺少 data 数组",
                              response_body=response.text)

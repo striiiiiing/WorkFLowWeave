@@ -261,13 +261,11 @@ def _failure(
 class PluginRegistry:
     def __init__(
         self,
-        builtin_collectors: Iterable[Collector] | None = None,
+        builtin_collectors: Iterable[Collector] = (),
         *,
         builtin_channels: Iterable[ChannelType] = (),
     ) -> None:
-        self._builtin_collectors = (
-            tuple(builtin_collectors) if builtin_collectors is not None else None
-        )
+        self._builtin_collectors = tuple(builtin_collectors)
         self._builtin_channels = tuple(builtin_channels)
         self._collector_register = CollectorRegister()
         self._channel_register = ChannelRegister()
@@ -361,15 +359,12 @@ class PluginRegistry:
         *,
         reload_owners: frozenset[str] | None = None,
     ) -> tuple[CollectorRegister, ChannelRegister, ToolRegister, DiscoveryReport]:
-        builtins = self._builtin_collectors
-        if builtins is None:
-            from logagent.collection import builtin_collectors
-
-            builtins = tuple(builtin_collectors())
         entries: dict[PluginKind, dict[str, _Registration]] = {
             "collector": {}, "channel": {}, "tool": {},
         }
-        for kind, capabilities in (("collector", builtins), ("channel", self._builtin_channels)):
+        for kind, capabilities in (
+            ("collector", self._builtin_collectors), ("channel", self._builtin_channels),
+        ):
             if not capabilities:
                 continue
             transaction = _RegistrationTransaction(kind, "builtin", entries[kind])

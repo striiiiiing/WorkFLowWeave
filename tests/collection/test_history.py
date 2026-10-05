@@ -11,13 +11,14 @@ import orjson
 import pytest
 from sqlmodel import select
 
-from logagent.collection import HistoryCollector, builtin_collectors
 from logagent.config import PluginRegistry, ResourceStore
 from logagent.errors import LogAgentError
 from logagent.models import BackupPolicy, CollectionContext, SourceConfig, SystemConfig
 from logagent.workflow.storage.facts import SessionStore
 from logagent.workflow.storage.models import SessionEntry
 from logagent.workflow.storage.sessions import SessionView
+from plugins.history.collector import HistoryCollector
+from tests.plugin_helpers import install_plugins
 
 
 @pytest.fixture
@@ -41,8 +42,9 @@ def context(store, sid="current", reader=None):
 
 async def test_real_view_registration_and_content_agree_without_recollection(store, tmp_path):
     save(store)
-    registry = PluginRegistry(builtin_collectors())
-    report = await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
+    registry = PluginRegistry()
+    plugin_dir = install_plugins(tmp_path / "plugins")
+    report = await registry.discover_plugins(SystemConfig(plugin_dir=str(plugin_dir)))
     assert not report.errors
     assert {x.name for x in report.registered if x.kind == "collector"} == {
         "history", "logs", "mock",

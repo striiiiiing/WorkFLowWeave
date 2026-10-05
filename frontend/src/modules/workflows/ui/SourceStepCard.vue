@@ -19,6 +19,7 @@ const props = withDefaults(
     usage?: (id: string) => readonly SourceUsageView[] | undefined
     gateway: SourceConfigEditorGateway
     advanced?: boolean
+    catalogRefreshing?: boolean
   }>(),
   { workflows: () => [] },
 )
@@ -97,12 +98,14 @@ function publish(id: string) {
       :sources="sources"
       :usage="usage"
       :pending="editor.sourcePending.value"
+      :refreshing="catalogRefreshing"
       :restore-errors="restoreErrors"
       @move="editor.reorderSource"
       @edit="(sourceId) => openSource(sourceId, !!draft().source_overrides[sourceId]?.source)"
       @detach="detach"
       @restore="restore"
       @publish="publish"
+      @refresh="$emit('refresh')"
       @remove="(sourceId) => select(draft().sources.filter((id) => id !== sourceId))"
     />
     <div v-if="advanced" class="form-grid">
@@ -118,7 +121,7 @@ function publish(id: string) {
         <el-select
           :model-value="draft().on_all_empty"
           @update:model-value="editor.update({ on_all_empty: $event })"
-        >
+  >
           <el-option value="stop" label="停止" />
           <el-option value="notice" label="提示" />
           <el-option value="skip" label="跳过" />

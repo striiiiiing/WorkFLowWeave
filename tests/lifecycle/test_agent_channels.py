@@ -1,4 +1,4 @@
-"""Lifecycle and HTTP integration coverage for the builtin Agent test channel."""
+"""Lifecycle and HTTP integration coverage for the Agent test channel plugin."""
 
 import asyncio
 import json
@@ -9,11 +9,10 @@ from langchain_core.messages import AIMessage
 from pydantic import Field
 
 from logagent.agent.commands import AgentCommand
-from logagent.channel import builtin_channels
+from logagent.channel import WebChannelType
 from logagent.channel.bindings import ChannelBindings
 from logagent.channel.conversation import ChannelAddress, InboundMessage
 from logagent.channel.manager import ChannelManager
-from logagent.collection import builtin_collectors
 from logagent.config import PluginRegistry, ResourceStore
 from logagent.errors import LogAgentError
 from logagent.interaction.app import create_app
@@ -24,10 +23,7 @@ from tests.agent.test_admission import GatedModel
 
 
 async def _seed_channel(config, *, agent_enabled=True):
-    registry = PluginRegistry(
-        builtin_collectors(),
-        builtin_channels=builtin_channels(),
-    )
+    registry = PluginRegistry(builtin_channels=[WebChannelType()])
     await registry.discover_plugins(config)
     resources = ResourceStore(
         f"{config.data_dir}/resources.json",
@@ -123,7 +119,9 @@ async def test_lifecycle_resources_reload_plugin_reload_and_test_channel_http(tm
 
             await lifecycle.reload("plugins")
             reloaded_receiver = services.channels.receiver(active_config)
-            assert reloaded_receiver is original_receiver
+            assert reloaded_receiver is not original_receiver
+            assert original_receiver.handler is None
+            assert original_receiver.started is False
             assert reloaded_receiver.handler is not None
             previous_outbox_size = len(reloaded_receiver.outbox())
 
@@ -143,7 +141,7 @@ async def test_lifecycle_resources_reload_plugin_reload_and_test_channel_http(tm
             }
             assert reloaded_receiver.outbox()[-1]["notification"]["text"] \
                 == "one-way workflow output"
-            assert len(original_receiver.outbox()) == previous_outbox_size + 1
+            assert len(reloaded_receiver.outbox()) == previous_outbox_size + 1
 
     assert reloaded_receiver.handler is None
     assert reloaded_receiver.started is False

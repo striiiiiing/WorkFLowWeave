@@ -13,8 +13,6 @@ from pathlib import Path
 import orjson
 import pytest
 
-from logagent.channel.mock import MockFileChannelType
-from logagent.collection.mock import MockCollector
 from logagent.config import PluginRegistry, ResourceStore
 from logagent.config.migrations import RESOURCE_FORMAT_VERSION
 from logagent.errors import LogAgentError
@@ -26,6 +24,8 @@ from logagent.models import (
     SystemConfig,
     WorkflowDefinition,
 )
+from plugins.mock.collector import MockCollector
+from plugins.mock_file.channel import MockFileChannelType
 
 
 @pytest.fixture

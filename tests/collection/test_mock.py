@@ -10,10 +10,10 @@ from copy import deepcopy
 
 import pytest
 
-from logagent.collection.mock import MockCollector
 from logagent.errors import LogAgentError
 from logagent.models import CollectionContext
 from logagent.schema import validate_schema
+from plugins.mock.collector import MockCollector
 
 CONTEXT = CollectionContext(workflow_id="workflow", session_id="session")
 

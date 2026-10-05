@@ -19,12 +19,13 @@ from logagent.models import (
     ChannelConfig,
     CollectionContext,
     CollectionResult,
-    CursorMCPConfig,
     DiscoveryReport,
     EncryptedCredential,
     HealthReport,
     JSONObject,
+    MCPHealthReport,
     MCPServerConfig,
+    MCPServerImportConfig,
     PhaseContent,
     RecoveryAvailability,
     ResourceKind,
@@ -145,7 +146,7 @@ async def create_mcp_server(payload: MCPServerConfig, services: Services):
     response_model=list[MCPServerConfig],
     status_code=status.HTTP_201_CREATED,
 )
-async def import_mcp_servers(payload: CursorMCPConfig, services: Services):
+async def import_mcp_servers(payload: MCPServerImportConfig, services: Services):
     values = payload.to_resources()
     if not values:
         raise LogAgentError("invalid_argument", "配置至少需要一个 MCP 服务")
@@ -158,6 +159,13 @@ async def replace_mcp_server(ident: ID, payload: MCPServerConfig, services: Serv
     if ident != payload.id:
         raise LogAgentError("invalid_argument", "路径 ID 与资源 ID 不一致")
     return await _save_resource(services, "mcp_servers", payload, mode="replace")
+
+
+@router.post("/mcp_servers/{ident}/probe", response_model=MCPHealthReport)
+@router.post("/mcp_servers/{ident}/check-connection", response_model=MCPHealthReport)
+async def probe_mcp_server(ident: ID, services: Services, response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    return await services.collectors.mcp.probe(_mcp_scope(services), ident)
 
 
 def _mcp_scope(services: ApplicationServices) -> dict[str, MCPServerConfig]:

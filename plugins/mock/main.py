@@ -1,4 +1,4 @@
-from logagent.collection.mock import MockCollector
+from .collector import MockCollector
 
 
 class Plugin:

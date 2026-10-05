@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import type { FormInstance } from 'element-plus'
+import { useErrorFormatter } from '@/shared/async/errorFormatter'
 import ParameterField from '@/shared/schema/ParameterField.vue'
+import JsonField from '@/shared/schema/JsonField.vue'
 import {
   useResourceTransport,
   type MCPToolCatalog,
@@ -17,16 +20,18 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ saved: [value: SourceConfig]; cancel: [] }>()
 const api = useResourceTransport()
+const formatError = useErrorFormatter()
 const value = computed(() => props.editor.value.value)
 const servers = ref<MCPServerConfig[]>([])
 const catalog = ref<MCPToolCatalog>()
 const description = ref<MCPToolDescription>()
 const catalogError = ref('')
 const loading = ref(false)
+const form = ref<FormInstance>()
 const argvText = ref('')
 const selectedState = computed(() =>
   catalog.value?.servers.find(
-    (item) => item.server === (value.value?.call.kind === 'mcp' ? value.value.call.server : ''),
+    (item) => item.server === (value.value?.call?.kind === 'mcp' ? value.value.call.server : ''),
   ),
 )
 
@@ -34,7 +39,7 @@ async function loadServers() {
   try {
     servers.value = await api.list('mcp_servers')
   } catch (error) {
-    catalogError.value = String(error)
+    catalogError.value = formatError(error)
   }
 }
 async function loadCatalog(server: string, refresh = false) {
@@ -51,7 +56,7 @@ async function loadCatalog(server: string, refresh = false) {
     }
     catalog.value = { ...page, entries }
   } catch (error) {
-    catalogError.value = String(error)
+    catalogError.value = formatError(error)
   } finally {
     loading.value = false
   }
@@ -63,7 +68,7 @@ async function describe(server: string, tool: string) {
     description.value = await api.describeMcpTool(server, tool)
     if (catalog.value?.load_servers.includes(server)) await loadCatalog(server)
   } catch (error) {
-    catalogError.value = String(error)
+    catalogError.value = formatError(error)
   }
 }
 watch(
@@ -106,7 +111,7 @@ function switchKind(kind: 'mcp' | 'cli') {
   )
 }
 function switchMode(mode: 'argv' | 'shell') {
-  const cwd = value.value?.call.kind === 'cli' ? value.value.call.cwd : null
+  const cwd = value.value?.call?.kind === 'cli' ? value.value.call.cwd : null
   props.editor.updateCall(
     mode === 'argv'
       ? { kind: 'cli', mode, executable: '', argv: [], cwd }
@@ -121,6 +126,8 @@ async function submit() {
   const result = await props.editor.submit(async () => {
     const source = value.value
     if (!source) return false
+    if (!(await form.value?.validate().catch(() => false))) return false
+    if (!source.call) return !!source.collector
     if (source.call.kind === 'mcp') return !!source.call.server && !!source.call.tool
     return source.call.mode === 'argv' ? !!source.call.executable : !!source.call.command
   })
@@ -128,7 +135,14 @@ async function submit() {
 }
 </script>
 <template>
-  <el-form v-if="value" novalidate :model="value" label-position="top" @submit.prevent="submit">
+  <el-form
+    ref="form"
+    v-if="value"
+    novalidate
+    :model="value"
+    label-position="top"
+    @submit.prevent="submit"
+  >
     <el-alert
       v-if="editor.save.error.value"
       :title="editor.save.error.value"
@@ -156,7 +170,10 @@ async function submit() {
         @update:model-value="editor.updateBasic({ description: $event })"
       />
     </el-form-item>
-    <el-form-item label="来源方式">
+    <el-form-item v-if="!value.call" label="采集插件">
+      <el-input :model-value="value.collector ?? ''" disabled />
+    </el-form-item>
+    <el-form-item v-else label="来源方式">
       <el-radio-group
         :model-value="value.call.kind"
         @update:model-value="switchKind($event as 'mcp' | 'cli')"
@@ -165,7 +182,14 @@ async function submit() {
         <el-radio-button value="cli">CLI</el-radio-button>
       </el-radio-group>
     </el-form-item>
-    <template v-if="value.call.kind === 'mcp'">
+    <JsonField
+      v-if="!value.call"
+      :model-value="value.options ?? {}"
+      label="插件选项（JSON）"
+      prop="options"
+      @update:model-value="editor.updateOptions($event)"
+    />
+    <template v-else-if="value.call.kind === 'mcp'">
       <div class="form-grid">
         <el-form-item label="MCP 服务">
           <el-select

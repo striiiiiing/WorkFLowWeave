@@ -1,3 +1,5 @@
+"""MCP 目录、派发与 stdio 契约；真实子进程验证协议及启动失败的诊断。"""
+
 import asyncio
 import sys
 from contextlib import asynccontextmanager
@@ -73,6 +75,37 @@ async def test_dispatched_failure_is_unknown_and_not_replayed():
     assert result.context == {"session_id": "s"}
 
 
+async def test_probe_refreshes_catalog_and_records_health():
+    connector = Connector()
+    runtime = MCPRuntime(connector)
+    report = await runtime.probe({"one": config()}, "one")
+    assert report.status == "healthy"
+    assert report.tool_count == 1
+    assert report.checked_at is not None
+    status = runtime.status({"one": config()})[0]
+    assert status["health"]["status"] == "healthy"
+
+
+async def test_probe_returns_unhealthy_report_without_hiding_failure():
+    class BrokenConnector(Connector):
+        async def list_tools(self, cursor=None):
+            raise ConnectionError("offline")
+
+    runtime = MCPRuntime(BrokenConnector())
+    report = await runtime.probe({"one": config()}, "one")
+    assert report.status == "unhealthy"
+    assert report.error is not None
+    assert report.error.code == "mcp_directory_failed"
+
+
+async def test_probe_reports_disabled_server_without_connecting():
+    connector = Connector()
+    runtime = MCPRuntime(connector)
+    report = await runtime.probe({"one": config(enabled=False)}, "one")
+    assert report.status == "disabled"
+    assert connector.opens == 0
+
+
 async def test_real_stdio_mcp_roundtrip(tmp_path):
     runtime = MCPRuntime(SDKConnector(None), cache_dir=tmp_path)
     scope = {"one": config(args=[str(Path(__file__).with_name("stdio_server.py"))])}
@@ -84,3 +117,18 @@ async def test_real_stdio_mcp_roundtrip(tmp_path):
         assert result.raw["structuredContent"] == {"value": "actual", "count": 0}
         failed = await runtime.call(scope, "one", "fail", {}, context={})
         assert failed.status == "tool_error" and failed.raw["isError"]
+
+
+async def test_missing_stdio_command_has_actionable_diagnostic(tmp_path):
+    runtime = MCPRuntime(SDKConnector(None))
+    missing = str(tmp_path / "missing-mcp-command")
+    scope = {"one": MCPServerConfig(id="one", transport="stdio", command=missing)}
+    with pytest.raises(LogAgentError) as caught:
+        await runtime.load(scope, "one")
+    error = caught.value.info
+    assert error.code == "mcp_directory_failed"
+    assert error.details["exception_type"] == "FileNotFoundError"
+    assert missing in error.details["reason"]
+    assert "后端" in error.details["reason"]
+    assert runtime.status(scope)[0]["state"] == "failed"
+    assert runtime.listing(scope)["load_servers"] == ["one"]

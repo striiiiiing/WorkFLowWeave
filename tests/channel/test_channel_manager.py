@@ -1114,9 +1114,9 @@ async def test_start_that_swallows_cancellation_cannot_send():
 
 
 async def test_readonly_registry_wrappers_do_not_recreate_unchanged_instances(tmp_path):
-    from logagent.channel import MockFileChannelType
     from logagent.config import PluginRegistry
     from logagent.models import SystemConfig
+    from plugins.mock_file.channel import MockFileChannelType
     registry = PluginRegistry([], builtin_channels=[MockFileChannelType()])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     manager = ChannelManager(registry.channelRegister)
@@ -1274,9 +1274,9 @@ async def test_release_drain_timeout_does_not_fail_waiting_send():
 
 
 async def test_stop_waits_for_send_completion_not_caller_task_lifetime(tmp_path):
-    from logagent.channel import MockFileChannelType
     from logagent.config import PluginRegistry
     from logagent.models import SystemConfig
+    from plugins.mock_file.channel import MockFileChannelType
 
     registry = PluginRegistry([], builtin_channels=[MockFileChannelType()])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))

@@ -20,6 +20,7 @@ from logagent.models import (
     CapabilityDescription,
     DiscoveryReport,
     HealthReport,
+    MCPHealthReport,
     PhaseContent,
     SessionRecord,
 )
@@ -137,6 +138,22 @@ class Registry:
         return [self.item] if self.item is not None else []
 
 
+class MCPProbe:
+    async def probe(self, scope, server):
+        if server not in scope:
+            raise LogAgentError("mcp_out_of_scope", "MCP 服务不存在")
+        return MCPHealthReport(
+            server=server,
+            status="healthy",
+            checked_at=datetime(2026, 1, 1, tzinfo=UTC),
+            latency_ms=2.5,
+            tool_count=1,
+        )
+
+    def status(self, scope):
+        return []
+
+
 class Lifecycle:
     def __init__(self) -> None:
         self.resources = MemoryResources()
@@ -166,6 +183,7 @@ class Lifecycle:
             resources=self.resources,
             workflow=self.workflow,
             session_view=self.session_view,
+            collectors=SimpleNamespace(mcp=MCPProbe()),
             plugins=SimpleNamespace(
                 collectorRegister=Registry(capability),
                 channelRegister=Registry(),
@@ -278,7 +296,7 @@ def test_lifespan_and_successful_resource_trigger_session_flow():
     assert lifecycle.shutdowns == 1
 
 
-def test_cursor_mcp_import_uses_server_name_and_hyphen():
+def test_mcp_import_uses_server_name_and_hyphen():
     lifecycle = Lifecycle()
     with _client(lifecycle) as client:
         response = client.post(
@@ -305,6 +323,32 @@ def test_cursor_mcp_import_uses_server_name_and_hyphen():
         )
         assert duplicate.status_code == 409
         assert client.get("/api/mcp_servers").json() == saved
+
+
+def test_mcp_server_probe_returns_health_report():
+    lifecycle = Lifecycle()
+    with _client(lifecycle) as client:
+        created = client.post(
+            "/api/mcp_servers",
+            json={"id": "demo", "transport": "stdio", "command": "server"},
+        )
+        assert created.status_code == 201, created.text
+        assert created.json()["health_check_enabled"] is False
+        assert created.json()["health_check_interval_minutes"] == 30
+        updated = client.put(
+            "/api/mcp_servers/demo",
+            json={
+                **created.json(),
+                "health_check_enabled": True,
+                "health_check_interval_minutes": 10_000_001,
+            },
+        )
+        assert updated.status_code == 200, updated.text
+        assert updated.json()["health_check_interval_minutes"] == 10_000_001
+        response = client.post("/api/mcp_servers/demo/probe")
+        assert response.status_code == 200, response.text
+        assert response.json()["status"] == "healthy"
+        assert response.json()["tool_count"] == 1
 
 
 def test_transport_validation_rejects_unknown_fields_and_invalid_query_values():

@@ -68,8 +68,8 @@ async def test_external_plugin_cannot_override_disabled_builtin_id(tmp_path):
 
 
 async def test_collectors_default_to_exclusive_unless_declared():
-    from logagent.collection.mock import MockCollector
     from logagent.config.views import CollectorRegister, collector_registration
+    from plugins.mock.collector import MockCollector
 
     class Undeclared:
         name = "legacy"

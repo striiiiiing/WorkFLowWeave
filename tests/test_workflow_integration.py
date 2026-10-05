@@ -13,9 +13,8 @@ from sqlalchemy import URL, inspect
 from sqlmodel import Session, create_engine, func, select
 
 from logagent.ai import AIService
-from logagent.channel import ChannelManager, MockFileChannelType
+from logagent.channel import ChannelManager
 from logagent.collection.manager import CollectorManager
-from logagent.collection.mock import MockCollector
 from logagent.config import PluginRegistry, ResourceStore, expand_source
 from logagent.models import (
     AIConfig,
@@ -29,6 +28,8 @@ from logagent.models import (
 )
 from logagent.workflow.execution.runner import WorkflowRunner
 from logagent.workflow.storage.models import SessionHeader
+from plugins.mock.collector import MockCollector
+from plugins.mock_file.channel import MockFileChannelType
 from tests.workflow.helpers import archived
 from tests.workflow_ai_helpers import TestChannelFactory
 

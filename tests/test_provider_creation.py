@@ -11,6 +11,8 @@ from logagent.interaction.app import create_app
 from logagent.lifecycle import ApplicationLifecycle
 from logagent.models import AIConfig, SystemConfig
 
+pytestmark = pytest.mark.usefixtures("installed_plugins")
+
 
 def test_save_without_models_and_check_failure_do_not_block_persistence(tmp_path, monkeypatch):
     calls = []

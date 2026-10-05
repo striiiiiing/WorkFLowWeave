@@ -19,8 +19,7 @@ import pytest
 from sqlalchemy import URL
 from sqlmodel import Session, create_engine, func, select
 
-from logagent.channel import builtin_channels
-from logagent.collection import LogsCollector, builtin_collectors
+from logagent.channel import WebChannelType
 from logagent.config import PluginRegistry, ResourceStore
 from logagent.errors import LogAgentError
 from logagent.lifecycle import ApplicationLifecycle, JsonLogSink
@@ -34,6 +33,8 @@ from logagent.models import (
     WorkflowDefinition,
 )
 from logagent.workflow.storage.models import SessionEntry, SessionHeader
+from plugins.logs.collector import LogsCollector
+from tests.plugin_helpers import install_plugins
 from tests.workflow_ai_helpers import TestChannelFactory
 
 _COLLECTOR_PLUGIN = """
@@ -178,10 +179,7 @@ async def _seed_resources(
     interval: float = 10.0,
     enabled: bool = True,
 ) -> None:
-    registry = PluginRegistry(
-        builtin_collectors(),
-        builtin_channels=builtin_channels(),
-    )
+    registry = PluginRegistry(builtin_channels=[WebChannelType()])
     await registry.discover_plugins(config)
     store = ResourceStore(
         Path(config.data_dir) / "resources.json",
@@ -284,6 +282,7 @@ async def test_start_failure_retains_diagnostic_and_cleans_owned_resources(tmp_p
 async def test_temporary_config_full_assembly_health_and_idempotent_shutdown(tmp_path):
     config_dir = tmp_path / "configuration"
     config_dir.mkdir()
+    install_plugins(config_dir / "plugins")
     system_file = config_dir / "system.json"
     system_file.write_text(
         json.dumps(

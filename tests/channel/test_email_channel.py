@@ -12,12 +12,14 @@ from email.parser import BytesParser
 
 import pytest
 
-from logagent.channel import ChannelManager, EmailChannel, EmailChannelType, builtin_channels
+from logagent.channel import ChannelManager, WebChannelType
 from logagent.channel.errors import ChannelDeliveryError
 from logagent.config import PluginRegistry, ResourceStore
 from logagent.errors import LogAgentError
 from logagent.models import ChannelConfig, Notification, SystemConfig
 from logagent.schema import validate_instance
+from plugins.email.channel import EmailChannel, EmailChannelType
+from tests.plugin_helpers import install_plugins
 
 
 class SMTPServer:
@@ -139,8 +141,9 @@ def test_reject_invalid_options_without_network(changes):
         validate_instance(options(**changes), EmailChannelType.options_schema)
 
 
-async def test_builtin_registration_defaults_and_credential_normalization(tmp_path):
-    registry = PluginRegistry([], builtin_channels=builtin_channels())
+async def test_plugin_registration_defaults_and_credential_normalization(tmp_path):
+    install_plugins(tmp_path / "plugins")
+    registry = PluginRegistry(builtin_channels=[WebChannelType()])
     report = await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     assert not report.errors
     assert {item.name for item in report.registered if item.kind == "channel"} == {

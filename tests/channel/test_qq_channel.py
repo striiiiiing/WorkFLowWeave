@@ -14,10 +14,10 @@ from logagent.channel.context import delivery_deadline
 from logagent.channel.conversation import ChannelAddress, InboundMessage
 from logagent.channel.errors import ChannelDeliveryError
 from logagent.channel.manager import ChannelManager
-from logagent.channel.qq import QQChannel, QQChannelType
 from logagent.config import PluginRegistry
 from logagent.errors import LogAgentError
 from logagent.models import ChannelConfig, Notification, SystemConfig
+from plugins.qq.channel import QQChannel, QQChannelType
 from tests.agent.helpers import ScriptedModel
 
 

@@ -6,17 +6,26 @@ import ParameterField from '@/shared/schema/ParameterField.vue'
 const models = defineModel<Record<string, JsonObject>>({ required: true })
 const props = defineProps<{
   candidates: string[]
+  loading: boolean
 }>()
 const emit = defineEmits<{ discover: [] }>()
-const name = ref('')
+const names = ref<string[]>([])
+const query = ref('')
 const addError = ref('')
 const error = computed(
-  () => addError.value || (name.value ? '请添加正在填写的模型，或清空模型名称' : ''),
+  () =>
+    addError.value ||
+    (names.value.length || query.value ? '请添加已选或正在填写的模型，或清空选择' : ''),
 )
 const expanded = ref<string[]>([])
 const hasModel = (candidate: string) =>
   Object.prototype.hasOwnProperty.call(models.value, candidate)
-const candidates = computed(() => props.candidates.filter((candidate) => !hasModel(candidate)))
+const candidates = computed(() =>
+  props.candidates.filter(
+    (candidate) =>
+      !hasModel(candidate) && candidate.toLowerCase().includes(query.value.toLowerCase()),
+  ),
+)
 // These optional fields follow ai/options.py; unset fields use the provider's defaults.
 const parameterSchema: JsonObject = {
   type: 'object',
@@ -30,25 +39,27 @@ const parameterSchema: JsonObject = {
   },
 }
 function add() {
-  const selected = name.value.trim()
-  if (!selected) {
+  const selected = [...new Set([...names.value, query.value.trim()].filter(Boolean))]
+  if (!selected.length) {
     addError.value = '请输入或选择模型名称'
     return
   }
-  if (hasModel(selected)) {
+  if (selected.some(hasModel)) {
     addError.value = '此渠道已添加该模型'
     return
   }
-  models.value = { ...models.value, [selected]: {} }
-  name.value = ''
+  models.value = { ...models.value, ...Object.fromEntries(selected.map((name) => [name, {}])) }
+  names.value = []
+  query.value = ''
   addError.value = ''
 }
-function suggestModels(query: string, callback: (items: { value: string }[]) => void) {
-  callback(
-    candidates.value
-      .filter((candidate) => candidate.toLowerCase().includes(query.toLowerCase()))
-      .map((value) => ({ value })),
-  )
+function filterModels(value: string) {
+  query.value = value
+  addError.value = ''
+}
+function selectModels() {
+  query.value = ''
+  addError.value = ''
 }
 function remove(selected: string) {
   models.value = Object.fromEntries(
@@ -76,17 +87,31 @@ function validate(_rule: unknown, _value: unknown, callback: (error?: Error) => 
     </div>
     <el-form-item prop="models" :rules="{ validator: validate }">
       <div class="flex gap-2 w-full min-w-0">
-        <el-autocomplete
-          v-model="name"
-          :fetch-suggestions="suggestModels"
+        <el-select
+          v-model="names"
+          multiple
+          filterable
+          allow-create
+          default-first-option
+          :reserve-keyword="false"
+          :filter-method="filterModels"
+          :loading="loading"
+          loading-text="正在读取模型列表…"
+          no-data-text="暂无可选模型，可输入模型名称"
           clearable
           aria-label="模型名称"
-          placeholder="输入或选择模型名称"
+          placeholder="搜索或输入模型名称（可多选）"
           class="min-w-0 flex-1"
-          @click="emit('discover')"
-          @update:model-value="addError = ''"
-          @keydown.enter.prevent
-        />
+          @click.capture="emit('discover')"
+          @change="selectModels"
+        >
+          <el-option
+            v-for="candidate in candidates"
+            :key="candidate"
+            :label="candidate"
+            :value="candidate"
+          />
+        </el-select>
         <el-button @click="add">添加模型</el-button>
       </div>
     </el-form-item>

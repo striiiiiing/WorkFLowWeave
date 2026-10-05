@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from shutil import copytree, ignore_patterns
 from tempfile import TemporaryDirectory
 
 import uvicorn
@@ -57,6 +58,8 @@ class SmokeModel(BaseChatModel):
 
 class SmokeLifecycle(ApplicationLifecycle):
     def __init__(self, root: Path):
+        copytree(Path(__file__).resolve().parents[2] / "plugins", root / "plugins",
+                 ignore=ignore_patterns("__pycache__", "*.pyc", "config.json"))
         super().__init__(
             SystemConfig(
                 data_dir=str(root / "data"),

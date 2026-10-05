@@ -6,6 +6,7 @@
 
 import os
 from pathlib import Path
+from shutil import copytree, ignore_patterns
 from tempfile import TemporaryDirectory
 
 import uvicorn
@@ -16,6 +17,8 @@ from logagent.models import SystemConfig
 
 with TemporaryDirectory(prefix="logagent-frontend-test-") as temporary:
     root = Path(temporary)
+    copytree(Path(__file__).resolve().parents[2] / "plugins", root / "plugins",
+             ignore=ignore_patterns("__pycache__", "*.pyc", "config.json"))
     port = int(os.environ.get("LOGAGENT_E2E_BACKEND_PORT", "14300"))
     config = SystemConfig(
         data_dir=str(root / "data"),

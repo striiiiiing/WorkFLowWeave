@@ -653,9 +653,9 @@ async def test_invalid_global_settings_leave_previous_published_view_intact(tmp_
 
 
 async def test_string_config_values_normalize_through_readers_and_store(tmp_path):
-    from logagent.channel.mock import MockFileChannelType
-    from logagent.collection.mock import MockCollector
     from logagent.config.store import ResourceStore
+    from plugins.mock.collector import MockCollector
+    from plugins.mock_file.channel import MockFileChannelType
 
     system = tmp_path / "system.json"
     system.write_text('{"port": "4300"}')

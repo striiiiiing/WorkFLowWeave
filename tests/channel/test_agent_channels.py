@@ -12,8 +12,7 @@ from logagent.agent.config import AgentConfig
 from logagent.agent.service import AgentService
 from logagent.channel import ChannelManager
 from logagent.channel.bindings import ChannelBindings
-from logagent.channel.testing import TestChannelType
-from logagent.collection import CollectorManager, MockCollector
+from logagent.collection import CollectorManager
 from logagent.config import PluginRegistry
 from logagent.errors import LogAgentError
 from logagent.models import (
@@ -28,6 +27,8 @@ from logagent.models import (
     WorkflowSnapshot,
 )
 from logagent.workflow.execution.runner import WorkflowRunner
+from plugins.mock.collector import MockCollector
+from plugins.test_channel.channel import TestChannelType
 from tests.agent.helpers import ScriptedModel
 
 

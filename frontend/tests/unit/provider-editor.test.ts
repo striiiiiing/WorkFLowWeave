@@ -103,7 +103,7 @@ describe('AI provider editor', () => {
     await wrapper.find('form').trigger('submit')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('请添加正在填写的模型，或清空模型名称')
+    expect(wrapper.text()).toContain('请添加已选或正在填写的模型，或清空选择')
     expect(resourcesApi.replace).not.toHaveBeenCalled()
     wrapper.unmount()
   })

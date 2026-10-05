@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, shallowRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useQuery } from '@/shared/async/useQuery'
 import { useCapabilities } from '@/modules/system/public'
 import { useSourceUsage } from '../integrations/useSourceUsage'
 import {
@@ -20,10 +21,13 @@ import {
   type ChannelConfig,
   type SourceConfig,
   type MCPServerConfig,
+  type MCPHealthReport,
   type SourceFilter,
   type SourceConfigEditorGateway,
   MCPServerEditor,
+  useResourcesApi,
 } from '@/modules/resources/public'
+import { useErrorFormatter } from '@/shared/async/errorFormatter'
 import PageHeader from '@/shared/ui/PageHeader.vue'
 const route = useRoute()
 const router = useRouter()
@@ -34,6 +38,13 @@ const kind = computed<EditableKind>({
   },
 })
 const list = useResourceList(kind)
+const resourcesApi = useResourcesApi()
+const mcpStatus = useQuery(
+  (signal) =>
+    kind.value === 'mcp_servers' ? resourcesApi.mcpStatus(signal) : Promise.resolve([]),
+  [() => kind.value === 'mcp_servers'],
+)
+const formatError = useErrorFormatter()
 const usage = useSourceUsage()
 const capabilities = useCapabilities()
 const channels = computed(
@@ -49,6 +60,9 @@ const sourceEditor = shallowRef<{
 const providerEditor = shallowRef<{ initial?: AIConfig }>()
 const channelEditor = shallowRef<{ initial?: ChannelConfig }>()
 const mcpEditor = shallowRef<{ initial?: MCPServerConfig }>()
+const mcpProbeReports = ref<Record<string, MCPHealthReport>>({})
+const mcpProbePending = ref<Record<string, boolean>>({})
+const mcpProbeError = ref('')
 let sourceEditorSequence = 0
 function openSource(initial?: SourceConfig) {
   sourceEditor.value = {
@@ -65,6 +79,7 @@ function open() {
 }
 function refresh() {
   void list.refresh()
+  if (kind.value === 'mcp_servers') void mcpStatus.refresh()
   void capabilities.refresh()
   void usage.refresh()
 }
@@ -75,7 +90,49 @@ function savedSource() {
 }
 function savedMcpServer() {
   mcpEditor.value = undefined
+  mcpProbeReports.value = {}
   void list.refresh()
+  void mcpStatus.refresh()
+}
+async function removeMcpServer(id: string) {
+  await list.remove(id)
+  const reports = { ...mcpProbeReports.value }
+  delete reports[id]
+  mcpProbeReports.value = reports
+}
+function mcpHealth(server: MCPServerConfig): MCPHealthReport {
+  return (
+    mcpProbeReports.value[server.id] ??
+    mcpStatus.data.value?.find((item) => item.server === server.id)?.health ?? {
+      server: server.id,
+      status: 'unknown',
+      checked_at: null,
+      latency_ms: null,
+      tool_count: null,
+      error: null,
+    }
+  )
+}
+function mcpHealthLabel(status: MCPHealthReport['status']): string {
+  return {
+    unknown: '未探测',
+    healthy: '健康',
+    unhealthy: '异常',
+    disabled: '已停用',
+  }[status]
+}
+async function probeMcpServer(server: MCPServerConfig) {
+  mcpProbeError.value = ''
+  mcpProbePending.value = { ...mcpProbePending.value, [server.id]: true }
+  try {
+    const report = await resourcesApi.probeMcpServer(server.id)
+    mcpProbeReports.value = { ...mcpProbeReports.value, [server.id]: report }
+    await mcpStatus.refresh()
+  } catch (cause) {
+    mcpProbeError.value = formatError(cause)
+  } finally {
+    mcpProbePending.value = { ...mcpProbePending.value, [server.id]: false }
+  }
 }
 function openWorkflow(id: string) {
   void router.push({ name: 'workflow-edit', params: { id } })
@@ -113,6 +170,13 @@ function openWorkflow(id: string) {
       <el-button @click="capabilities.refresh">重新加载插件选项</el-button>
     </template>
   </el-alert>
+  <el-alert
+    v-if="kind === 'mcp_servers' && (mcpStatus.error.value || mcpProbeError)"
+    :title="mcpStatus.error.value || mcpProbeError"
+    type="error"
+    :closable="false"
+    show-icon
+  />
   <el-card shadow="never">
     <ResourceCategoryNavigation :value="kind" @change="kind = $event" />
     <template v-if="kind === 'sources'">
@@ -150,10 +214,25 @@ function openWorkflow(id: string) {
           <p class="muted text-sm">
             {{ server.transport }} · {{ server.enabled ? '已启用' : '已停用' }}
           </p>
+          <p class="muted text-sm">
+            健康：{{ mcpHealthLabel(mcpHealth(server).status) }}
+            <template v-if="mcpHealth(server).latency_ms !== null">
+              · {{ Math.round(mcpHealth(server).latency_ms ?? 0) }} ms
+            </template>
+            <template v-if="server.health_check_enabled">
+              · 自动探测 {{ server.health_check_interval_minutes }} 分钟
+            </template>
+          </p>
         </div>
         <div class="flex gap-2">
+          <el-button
+            :loading="mcpProbePending[server.id]"
+            @click="probeMcpServer(server)"
+          >
+            探测健康
+          </el-button>
           <el-button @click="mcpEditor = { initial: server }">编辑</el-button>
-          <el-popconfirm title="删除此 MCP 服务？" @confirm="list.remove(server.id)">
+          <el-popconfirm title="删除此 MCP 服务？" @confirm="removeMcpServer(server.id)">
             <template #reference><el-button type="danger" plain>删除</el-button></template>
           </el-popconfirm>
         </div>

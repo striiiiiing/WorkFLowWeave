@@ -217,6 +217,8 @@ class MCPServerConfig(StrictModel):
     id: ID
     transport: Literal["stdio", "streamable_http", "sse"]
     enabled: bool = True
+    health_check_enabled: bool = False
+    health_check_interval_minutes: int = Field(default=30, strict=True, ge=1)
     command: str | None = None
     args: list[str] = Field(default_factory=list)
     cwd: str | None = None
@@ -237,8 +239,8 @@ class MCPServerConfig(StrictModel):
         return self
 
 
-class CursorMCPServerConfig(StrictModel):
-    """One server entry from a Cursor-compatible configuration envelope."""
+class MCPServerImportEntry(StrictModel):
+    """One server entry from the named MCP configuration envelope."""
 
     type: Literal["stdio", "streamable_http", "sse", "http"] = "stdio"
     enabled: bool = True
@@ -266,20 +268,20 @@ class CursorMCPServerConfig(StrictModel):
         )
 
 
-class CursorMCPConfig(StrictModel):
-    """Cursor's named-server envelope, kept at the API boundary only."""
+class MCPServerImportConfig(StrictModel):
+    """Named-server envelope accepted at the MCP import boundary."""
 
-    servers: dict[ID, CursorMCPServerConfig]
+    servers: dict[ID, MCPServerImportEntry]
 
     @model_validator(mode="before")
     @classmethod
-    def accept_cursor_alias(cls, value: Any) -> Any:
+    def accept_mcp_servers_alias(cls, value: Any) -> Any:
         if not isinstance(value, dict):
             return value
         has_servers = "servers" in value
         has_mcp_servers = "mcpServers" in value
         if has_servers and has_mcp_servers:
-            raise ValueError("Cursor 配置不能同时包含 servers 和 mcpServers")
+            raise ValueError("配置不能同时包含 servers 和 mcpServers")
         if has_mcp_servers:
             value = {**value, "servers": value["mcpServers"]}
             value.pop("mcpServers", None)
@@ -287,6 +289,18 @@ class CursorMCPConfig(StrictModel):
 
     def to_resources(self) -> list[MCPServerConfig]:
         return [server.to_resource(name) for name, server in self.servers.items()]
+
+
+MCPHealthStatus = Literal["unknown", "healthy", "unhealthy", "disabled"]
+
+
+class MCPHealthReport(StrictModel):
+    server: ID
+    status: MCPHealthStatus
+    checked_at: UTCDateTime | None = None
+    latency_ms: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    tool_count: NonNegativeInt | None = None
+    error: ErrorInfo | None = None
 
 
 ModelName = Annotated[str, Field(min_length=1, pattern=r"\S")]
