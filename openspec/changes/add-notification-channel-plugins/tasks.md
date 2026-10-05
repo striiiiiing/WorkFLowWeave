@@ -106,8 +106,9 @@
 - [x] 校准分组插件安装 fixture、插件启停/重载和生命周期回归测试；证据为
   `796feb6`、`3d56fa3` 及本轮 57 项定向回归。
 - [x] 完成合并提交，将 `3d56fa3` 同步到两个远端的集成分支；以根目录交接记录为依据。
-- [ ] 统一两个远端的通知功能分支；GitHub 为 `66f151a`，workflow 为 `2354a5f`，
-  历史不同，待用户明确历史基准后处理，不能强制覆盖文件诊断修复。
+- [x] 统一实现线：用户确认只保留一条版本，采用 `main` /
+  `refactor/frontend-architecture`；两个远端的 `change/notification-channel-plugins`
+  已删除，旧提交保存为本地 backup refs。
 
 运行数据 `data-v4`、临时补丁 `.remote-workflow-patch`、`frontend/1.json`、
 依赖目录 `node_modules` 和嵌套 IDE 工作区状态不作为源码同步；保留在本地。
@@ -128,3 +129,18 @@ IDE 项目配置中的通知 worktree 虚拟环境排除项已单独提交为 `0
   更新其干净的 main 工作目录，不替换现有运行数据。
 - 验收比较三处 main 与 refactor 的完整 SHA、workflow 工作目录 HEAD 和跟踪文件状态，
   并核对最终提交只有一个父提交。最终 SHA 记录到根目录本地交接文件。
+
+## 2026-10-05 分支收敛
+
+用户确认只保留一条实现线。比较依据：当前主线已包含 GitHub
+`change/notification-channel-plugins` 的完整祖先链；workflow `2354a5f` 只是在另一条旧
+历史上重复提交 file 写入诊断，其 `plugins/channel/file/channel.py` 补丁与主线 `1eba111`
+的文件补丁一致，而主线还包含 QQ 诊断改进及后续 MCP/CLI 模块化资源。因此采用
+`main` / `refactor/frontend-architecture` 作为唯一实现线，统一提交为
+`08ae107da6e541f29754905e7bcc5b6fb492a3f2`。
+
+- [x] 删除 GitHub 和 workflow 的 `change/notification-channel-plugins` 远端分支。
+- [x] 删除本地同名功能分支及冗余 worktree；保留主线 worktree。
+- [x] 将旧功能分支提交保存为本地
+  `refs/backup/notification-{github,workflow}-before-prune-20261005-2739c65a`，
+  不作为活动版本或发布入口。
