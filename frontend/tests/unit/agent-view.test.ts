@@ -2,17 +2,21 @@ import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { agentsApi, type AgentEvent, type AgentSession, type AgentSettings } from '@/app/services'
-import { runsApi } from '@/app/services'
-import type { SessionRecord } from '@/shared/types'
-import AgentsView from '@/views/AgentsView.vue'
-import AgentContinueButton from '@/components/agent/AgentContinueButton.vue'
-import { agentsApiKey, AgentModelSelect } from '@/modules/agents/public'
-import AgentHeader from '@/components/agent/AgentHeader.vue'
-import { saveDefaultAgentModel } from '@/modules/agents/public'
+import { services } from '@/app/services'
+import type { AgentEvent, AgentSession, AgentSettings } from '@/modules/agents/public'
+import type { SessionRecord } from '@/modules/runs/public'
+import AgentPage from '@/pages/agents/AgentPage.vue'
+import ContinueInAgent from '@/pages/integrations/ContinueInAgent.vue'
+import {
+  agentsApiKey,
+  AgentHeader,
+  AgentModelSelect,
+  saveDefaultAgentModel,
+} from '@/modules/agents/public'
 import { runsApiKey } from '@/modules/runs/public'
 import { ApiError } from '@/shared/api/errors'
 import { errorFormatterKey } from '@/shared/async/errorFormatter'
+const { agentsApi, runsApi } = services
 const wrappers: ReturnType<typeof mount>[] = []
 const session = (id: string, status = 'completed'): AgentSession => ({
   session_id: id,
@@ -77,12 +81,12 @@ async function setup(status = 'completed') {
     history: createMemoryHistory(),
     routes: [
       { path: '/agents/:sessionId?', component: { template: '<div />' } },
-      { path: '/agent-demo', component: { template: '<div />' } },
+      { path: '/runs/:sessionId', component: { template: '<div />' } },
     ],
   })
   await router.push('/agents/parent')
   await router.isReady()
-  const wrapper = mount(AgentsView, {
+  const wrapper = mount(AgentPage, {
     attachTo: document.body,
     global: {
       plugins: [ElementPlus, router],
@@ -130,11 +134,12 @@ it('offers compact during a running turn and sends append through the command en
   await wrapper.get('textarea[aria-label="Agent 消息"]').setValue('/append extra')
   await wrapper.get('form').trigger('submit')
   await flushPromises()
-  expect(command).toHaveBeenCalledWith('parent', '/append extra', expect.any(String))
+  expect(command).toHaveBeenCalledWith('parent', '/append extra', expect.any(String), undefined)
   await wrapper.get('textarea[aria-label="Agent 消息"]').setValue('/compact')
   await wrapper.get('form').trigger('submit')
   await flushPromises()
   expect(compact).toHaveBeenCalledWith('parent')
+  vi.mocked(agentsApi.get).mockResolvedValueOnce(session('parent', 'cancelled'))
   wrapper
     .get('button[title="停止生成 (Stop)"]')
     .element.dispatchEvent(new MouseEvent('click', { bubbles: true }))
@@ -162,7 +167,7 @@ it('continues the newest Workflow result directly with a valid default model', a
     history: createMemoryHistory(),
     routes: [{ path: '/:pathMatch(.*)*', component: { template: '<div />' } }],
   })
-  const wrapper = mount(AgentContinueButton, {
+  const wrapper = mount(ContinueInAgent, {
     props: { workflowId: 'wf' },
     attachTo: document.body,
     global: {
@@ -177,6 +182,7 @@ it('continues the newest Workflow result directly with a valid default model', a
   wrappers.push(wrapper)
   button('从最新结果继续').click()
   await flushPromises()
+  expect(runsApi.list).toHaveBeenCalledWith({ workflow_id: 'wf', limit: 1000 })
   expect(create).toHaveBeenCalledWith({ workflow_session_id: 'preview', model: 'local:one' })
   expect(router.currentRoute.value.path).toBe('/agents/continued')
   expect(wrapper.findComponent(AgentModelSelect).exists()).toBe(false)
@@ -199,7 +205,7 @@ it('asks for a model when the saved default is no longer available', async () =>
     history: createMemoryHistory(),
     routes: [{ path: '/:pathMatch(.*)*', component: { template: '<div />' } }],
   })
-  const wrapper = mount(AgentContinueButton, {
+  const wrapper = mount(ContinueInAgent, {
     props: { workflowId: 'wf' },
     attachTo: document.body,
     global: {
@@ -323,7 +329,12 @@ it('queues plain input while running and retains running state on a queued recei
   await wrapper.get('textarea[aria-label="Agent 消息"]').setValue('补充日志范围')
   await wrapper.get('form').trigger('submit')
   await flushPromises()
-  expect(command).toHaveBeenCalledWith('parent', '/append 补充日志范围', expect.any(String))
+  expect(command).toHaveBeenCalledWith(
+    'parent',
+    '/append 补充日志范围',
+    expect.any(String),
+    undefined,
+  )
   expect(wrapper.get('[aria-label="追加到队列"]').exists()).toBe(true)
 })
 

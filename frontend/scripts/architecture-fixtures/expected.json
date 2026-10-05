@@ -1,4 +1,6 @@
 {
+  "app/router.ts": ["retired-import"],
+  "views/RetiredPage.vue": ["retired-source"],
   "shared/types.ts": [],
   "shared/relative.ts": ["layer-direction"],
   "shared/reexport.ts": ["layer-direction"],

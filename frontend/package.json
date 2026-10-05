@@ -13,8 +13,7 @@
     "format:check": "prettier --check src tests scripts *.ts *.json index.html README.md",
     "architecture:check": "node scripts/check-architecture.mjs && node scripts/check-architecture.mjs --fixtures",
     "test:e2e": "playwright test",
-    "test:live": "playwright test --config playwright.live.config.ts",
-    "screenshot:tabbit": "node scripts/capture_tabbit.mjs"
+    "test:live": "playwright test --config playwright.live.config.ts"
   },
   "dependencies": {
     "ajv": "^8.20.0",

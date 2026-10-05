@@ -1,7 +1,10 @@
 import { effectScope, type EffectScope } from 'vue'
 import { afterEach, expect, it, vi } from 'vitest'
-import { agentsApi, type AgentEvent, type AgentSession } from '@/app/services'
-import { mergeAgentEvents, useAgentStream } from '@/composables/useAgentStream'
+import { services } from '@/app/services'
+import { useAgentSession, type AgentEvent, type AgentSession } from '@/modules/agents/public'
+import { createAgentEventSource } from '@/modules/agents/api/agentEventSource'
+import { mergeAgentEvents } from '@/modules/agents/model/events'
+const { agentsApi } = services
 class FakeEventSource {
   static instances: FakeEventSource[] = []
   onopen?: () => void
@@ -38,7 +41,10 @@ function setup() {
   const callback = vi.fn()
   const scope = effectScope()
   scopes.push(scope)
-  return { stream: scope.run(() => useAgentStream(callback))!, callback }
+  return {
+    stream: scope.run(() => useAgentSession(agentsApi, createAgentEventSource(), callback))!,
+    callback,
+  }
 }
 afterEach(() => {
   scopes.splice(0).forEach((scope) => scope.stop())
