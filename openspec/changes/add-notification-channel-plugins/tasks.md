@@ -103,9 +103,28 @@
 - [x] 删除冲突中遗留的旧顶层插件入口与 manifest，避免重复注册和失效导入。
 - [x] 渠道实现以 `plugins/channel/<id>` 为唯一来源，测试能力移至 fixtures。
 - [x] 更新插件目录说明，明确 file 能力名、单/双向矩阵和零 Collector 预配置。
-- [ ] 校准分组插件安装 fixture、插件启停/重载和生命周期回归测试。
-- [ ] 完成合并提交，将同一最终提交推送到两个远端的集成分支和通知功能分支。
+- [x] 校准分组插件安装 fixture、插件启停/重载和生命周期回归测试；证据为
+  `796feb6`、`3d56fa3` 及本轮 57 项定向回归。
+- [x] 完成合并提交，将 `3d56fa3` 同步到两个远端的集成分支；以根目录交接记录为依据。
+- [ ] 统一两个远端的通知功能分支；GitHub 为 `66f151a`，workflow 为 `2354a5f`，
+  历史不同，待用户明确历史基准后处理，不能强制覆盖文件诊断修复。
 
 运行数据 `data-v4`、临时补丁 `.remote-workflow-patch`、`frontend/1.json`、
 依赖目录 `node_modules` 和嵌套 IDE 工作区状态不作为源码同步；保留在本地。
 IDE 项目配置中的通知 worktree 虚拟环境排除项已单独提交为 `04b9e65`。
+
+## 2026-10-05 主分支统一依据
+
+用户明确要求以一直作为主线使用的 `refactor/frontend-architecture` 替代 `main`，
+本地、GitHub 和 workflow 三处都采用该提交链，不创建主分支合并提交。
+本轮不修改 proposal/design 或应用代码；先提交已完成的验收任务记录，再直接移动分支引用。
+
+- 权威基线为 `3d56fa3`；验收文档提交必须只有该基线一个父提交。
+  已有 refactor 历史保持原样，不把旧 main 历史合入这条链。
+- 更新前将三处旧 main 保存到本地 `refs/backup/main-{local,github,workflow}-before-refactor-20261005-2739c65a`。
+  更新两个远端时同时推送 main/refactor，使用 atomic 与明确旧 SHA 的 force-with-lease；
+  引用变化或拒绝应显式失败，不覆盖并发更新。
+- 本地最终检出 main 并跟踪 origin/main；workflow 使用现有 updateInstead 接收策略，
+  更新其干净的 main 工作目录，不替换现有运行数据。
+- 验收比较三处 main 与 refactor 的完整 SHA、workflow 工作目录 HEAD 和跟踪文件状态，
+  并核对最终提交只有一个父提交。最终 SHA 记录到根目录本地交接文件。
