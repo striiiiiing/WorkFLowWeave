@@ -5,10 +5,10 @@ import pytest
 from langchain_core.messages import AIMessage
 from pydantic import Field
 
-from logagent.agent.builtin.declaration import ToolDeclaration
 from logagent.agent.config import AgentConfig
-from logagent.agent.scheduling import ToolScheduler
-from logagent.agent.service import AgentService
+from logagent.agent.tools.declaration import ToolDeclaration
+from logagent.agent.tools.scheduling import ToolScheduler
+from logagent.interaction.fastapi.agent import create_agent_service
 from logagent.models import AIConfig
 from tests.agent.helpers import ScriptedModel
 
@@ -57,7 +57,7 @@ async def test_config_prompt_tools_and_output_limit_are_captured_per_turn(tmp_pa
             leases.append(kwargs["max_output_tokens"])
             yield model
 
-    service = AgentService(
+    service = create_agent_service(
         tmp_path / "workspace", tmp_path / "runtime", config=initial, ai_service=AI(),
         ai_config=AIConfig(id="ai", provider="mock", models={"test": {}}),
         declarations=[ToolDeclaration("probe", "Probe snapshot", schema, "read", invoke)],
@@ -84,7 +84,7 @@ async def test_config_prompt_tools_and_output_limit_are_captured_per_turn(tmp_pa
 
 
 async def test_config_update_and_new_turn_keep_the_workspace_lock(tmp_path):
-    service = AgentService(
+    service = create_agent_service(
         tmp_path / "workspace", tmp_path / "runtime",
         model_provider=lambda _: ScriptedModel(responses=[AIMessage(content="done")]),
     )

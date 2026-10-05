@@ -20,7 +20,7 @@ async def test_builtin_tools_are_filtered_before_import_and_capture_read_only_vi
     report = await registry.discover_plugins(config)
     assert not report.errors
     assert {item.name for item in registry.toolRegister.describe()} == {"mcp", "read", "write", "grep"}
-    assert "logagent.agent.builtin.shell" not in imports
+    assert "logagent.agent.tools.builtin.shell" not in imports
     read = registry.toolRegister.get("read")
     read.input_schema["properties"].clear()
     assert "path" in registry.toolRegister.get("read").input_schema["properties"]
@@ -43,7 +43,7 @@ def external_plugin(root, owner, code):
 
 async def test_tool_registration_rolls_back_on_name_conflict(tmp_path):
     external_plugin(tmp_path, "external", '''
-from logagent.agent.builtin.declaration import ToolDeclaration, schema
+from logagent.agent.tools.declaration import ToolDeclaration, schema
 async def invoke(arguments, context): return {}
 class Plugin:
     def register(self, api):

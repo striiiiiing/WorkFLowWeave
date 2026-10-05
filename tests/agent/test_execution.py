@@ -6,11 +6,11 @@ from pathlib import Path
 
 import pytest
 
-import logagent.agent.sandbox as sandbox_module
+import logagent.agent.workspace.sandbox as sandbox_module
 from logagent.agent.config import AgentConfig, SandboxConfig
-from logagent.agent.sandbox import ShellSandbox
-from logagent.agent.scheduling import ToolScheduler
+from logagent.agent.tools.scheduling import ToolScheduler
 from logagent.agent.workspace import WorkspaceBackend
+from logagent.agent.workspace.sandbox import ShellSandbox
 from logagent.errors import LogAgentError
 
 

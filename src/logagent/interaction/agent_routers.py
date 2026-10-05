@@ -10,9 +10,9 @@ from fastapi import APIRouter, Depends, Header, Query, Response, status
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from pydantic import Field
 
+from logagent.agent.commands import AgentCommand
 from logagent.agent.config import AgentConfig as AgentRuntimeConfig
-from logagent.agent.workspace import RuntimeIdentity
-from logagent.channel.agent import AgentCommand
+from logagent.agent.contracts import RuntimeIdentity
 from logagent.errors import LogAgentError
 from logagent.lifecycle import ApplicationServices
 from logagent.models import ID, StrictModel
@@ -69,7 +69,7 @@ def _workspace(service, session_id: str):
     session = service.sessions.get(session_id)
     if session is None:
         raise LogAgentError("session_not_found", "Agent session 不存在")
-    resources = service._session_view(session).get("active_resources") or {}
+    resources = service.repository.document(session).get("active_resources") or {}
     identity = RuntimeIdentity(
         session.session_id, session.turn_id or "management", session.branch_id,
         workflow_session_id=session.workflow_session_id,
@@ -200,7 +200,7 @@ def build_agent_router():
                 expected_hash=expected, sandbox=True,
             )
         response.headers["ETag"] = f'"{result["hash"]}"'
-        await service.sessions[session_id].log.append("file.changed", path=path, hash=result["hash"])
+        await service.repository.log(session_id).append("file.changed", path=path, hash=result["hash"])
         return result
 
     @router.get("/models")

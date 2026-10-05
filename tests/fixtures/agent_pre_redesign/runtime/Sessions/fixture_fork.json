@@ -1,0 +1,21 @@
+{
+  "session_id": "fixture_fork",
+  "branch_id": "branch_fbe83e9e249540aaae12246425008bc2",
+  "title": "",
+  "model": null,
+  "workflow_session_id": "workflow_fixture",
+  "parent_session_id": "fixture_completed",
+  "parent_turn_id": "turn_b2520390747d470bbe597ab220238a5d",
+  "parent_branch_id": "branch_ac6996a283a9405eaa579a83c9cc2fe5",
+  "parent_event_id": 10,
+  "created_at": "2026-10-05T18:41:06.302205+00:00",
+  "updated_at": "2026-10-05T18:41:06.306761+00:00",
+  "status": "created",
+  "turn_id": null,
+  "context_budget": null,
+  "active_resources": null,
+  "history_path": "Runtime/History/fixture_fork/events.jsonl",
+  "continuable": true,
+  "continuation_error": null,
+  "last_checkpoint_at": null
+}

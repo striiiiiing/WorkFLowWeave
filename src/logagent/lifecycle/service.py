@@ -12,11 +12,11 @@ from typing import Any, Literal
 
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-from logagent.agent import AgentService
+from logagent.agent.commands import CommandDispatcher
+from logagent.agent.service import AgentService
 from logagent.ai import AIService, ChannelFactory, OpenAIChannelFactory
 from logagent.ai.options import LEGACY_HTTP_PROVIDER, OPENAI_COMPATIBLE_PROVIDER
 from logagent.channel import ChannelManager, WebChannelType
-from logagent.channel.agent import AgentChannel
 from logagent.collection import CollectorManager
 from logagent.config import (
     ConfigurationReader,
@@ -25,6 +25,7 @@ from logagent.config import (
     ResourceStore,
 )
 from logagent.errors import LogAgentError
+from logagent.interaction.fastapi.agent import create_agent_service
 from logagent.lifecycle.logging import JsonLogSink
 from logagent.mcp import MCPHealthMonitor, MCPRuntime, SDKConnector
 from logagent.models import (
@@ -256,7 +257,7 @@ class ApplicationLifecycle:
                 await workflow.reconcile_interrupted()
 
                 stage = "agent"
-                agent = AgentService(
+                agent = create_agent_service(
                     Path(self.config.data_dir) / "agents" / "workspace",
                     Path(self.config.data_dir) / "agents" / "runtime",
                     ai_service=ai,
@@ -269,12 +270,12 @@ class ApplicationLifecycle:
                         "agent", session.session_id, self.config.log_file, credentials, session_view,
                     ),
                 )
-                await agent.initialize()
                 self._agent = agent
+                await agent.initialize()
                 workflow.agent_service = agent
 
                 stage = "channel_agent_port"
-                agent_channel = AgentChannel(agent, session_view=session_view)
+                agent_channel = CommandDispatcher(agent, session_view=session_view)
                 await channels.configure_agent(
                     agent_channel,
                     Path(self.config.data_dir) / "agents" / "channels.sqlite3",
