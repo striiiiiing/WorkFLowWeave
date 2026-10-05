@@ -13,6 +13,19 @@ import type { McpConfig } from '../model/mcpImport'
 
 export function createResourcesApi(http: HttpClient) {
   return {
+    channelConversation: (id: string, signal?: AbortSignal) =>
+      http.request<ChannelConversation>({
+        url: `/channels/${segment(id)}/conversation`,
+        signal,
+      }),
+    bindChannelConversation: (id: string, sessionId: string | null) =>
+      http.request<ChannelConversation>({
+        url: `/channels/${segment(id)}/conversation`,
+        method: 'PUT',
+        data: { session_id: sessionId },
+      }),
+    conversationOptions: (signal?: AbortSignal) =>
+      http.request<ConversationOption[]>({ url: '/agents/sessions', signal }),
     resolveSource: (id: string, override?: SourceOverride, signal?: AbortSignal) =>
       http.request<SourceConfig>({
         url: `/sources/${segment(id)}/resolve`,
@@ -67,6 +80,14 @@ export function createResourcesApi(http: HttpClient) {
     delete: (kind: ResourceKind, id: string) =>
       http.request<void>({ url: `/${kind}/${segment(id)}`, method: 'DELETE' }),
   }
+}
+export interface ChannelConversation {
+  session_id: string | null
+}
+export interface ConversationOption {
+  session_id: string
+  title: string
+  status: string
 }
 export interface MCPServerStatus {
   server: string

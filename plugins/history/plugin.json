@@ -1,9 +1,0 @@
-{
-  "id": "history",
-  "version": "0.1.0",
-  "kind": "collector",
-  "api_version": 1,
-  "entry": {
-    "backend": "main.py"
-  }
-}

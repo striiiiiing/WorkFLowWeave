@@ -24,13 +24,13 @@ from logagent.models import (
     SystemConfig,
     WorkflowDefinition,
 )
-from plugins.mock.collector import MockCollector
-from plugins.mock_file.channel import MockFileChannelType
+from plugins.channel.file.channel import FileChannelType
+from tests.fixtures.collectors import MockCollector
 
 
 @pytest.fixture
 async def resources(tmp_path):
-    registry = PluginRegistry([MockCollector()], builtin_channels=[MockFileChannelType()])
+    registry = PluginRegistry([MockCollector()], builtin_channels=[FileChannelType()])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     store = ResourceStore(
         tmp_path / "resources.json", collector_register=registry.collectorRegister,
@@ -44,7 +44,7 @@ def seed(store):
         "kind": "cli", "mode": "argv", "executable": "printf", "argv": ["%s", "example"],
     }))
     store.save("ai", AIConfig(id="ai", provider="mock", models={"model": {}}))
-    store.save("channels", ChannelConfig(id="channel", channel="mock", options={"path": "out.txt"}))
+    store.save("channels", ChannelConfig(id="channel", channel="file", options={"path": "out.txt"}))
     definition = WorkflowDefinition(
         id="workflow", sources=["source"], analyses=[{"id": "analysis", "ai": "ai", "model": "model"}],
         channels=["channel"],
@@ -304,14 +304,14 @@ async def test_injected_validation_sees_final_options_once(resources):
     store.update_dependencies(collector_register=registry.collectorRegister,
                               channel_register=registry.channelRegister,
                               validators={"channels": validate})
-    result = store.save("channels", ChannelConfig(id="channel", channel="mock", options={"path": "relative.txt"}))
+    result = store.save("channels", ChannelConfig(id="channel", channel="file", options={"path": "relative.txt"}))
     assert len(seen) == 1
     assert seen[0]["path"] == str(Path(store.location).parent / "relative.txt")
     assert result.options == seen[0]
 
     before = read(store)
     with pytest.raises(LogAgentError):
-        store.save("channels", ChannelConfig(id="channel", channel="mock", options={"path": "relative.txt", "unknown": True}))
+        store.save("channels", ChannelConfig(id="channel", channel="file", options={"path": "relative.txt", "unknown": True}))
     assert read(store) == before
 
 

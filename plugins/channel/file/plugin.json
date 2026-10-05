@@ -1,0 +1,7 @@
+{
+  "id": "file",
+  "version": "1.0.0",
+  "kind": "channel",
+  "api_version": 1,
+  "entry": {"backend": "main.py"}
+}

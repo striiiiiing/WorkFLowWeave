@@ -19,7 +19,7 @@ import pytest
 from sqlalchemy import URL
 from sqlmodel import Session, create_engine, func, select
 
-from logagent.channel import WebChannelType
+from logagent.channel import builtin_channels
 from logagent.config import PluginRegistry, ResourceStore
 from logagent.errors import LogAgentError
 from logagent.lifecycle import ApplicationLifecycle, JsonLogSink
@@ -27,14 +27,12 @@ from logagent.models import (
     AIConfig,
     AnalysisTask,
     ChannelConfig,
-    CollectionContext,
     SourceConfig,
     SystemConfig,
     WorkflowDefinition,
 )
 from logagent.workflow.storage.models import SessionEntry, SessionHeader
-from plugins.logs.collector import LogsCollector
-from tests.plugin_helpers import install_plugins
+from tests.fixtures.plugin_helpers import install_channel_plugin
 from tests.workflow_ai_helpers import TestChannelFactory
 
 _COLLECTOR_PLUGIN = """
@@ -179,7 +177,12 @@ async def _seed_resources(
     interval: float = 10.0,
     enabled: bool = True,
 ) -> None:
-    registry = PluginRegistry(builtin_channels=[WebChannelType()])
+    if channel == "file":
+        install_channel_plugin("file", config.plugin_dir)
+    registry = PluginRegistry(
+        [],
+        builtin_channels=builtin_channels(),
+    )
     await registry.discover_plugins(config)
     store = ResourceStore(
         Path(config.data_dir) / "resources.json",
@@ -282,7 +285,6 @@ async def test_start_failure_retains_diagnostic_and_cleans_owned_resources(tmp_p
 async def test_temporary_config_full_assembly_health_and_idempotent_shutdown(tmp_path):
     config_dir = tmp_path / "configuration"
     config_dir.mkdir()
-    install_plugins(config_dir / "plugins")
     system_file = config_dir / "system.json"
     system_file.write_text(
         json.dumps(
@@ -302,7 +304,7 @@ async def test_temporary_config_full_assembly_health_and_idempotent_shutdown(tmp
 
     services = await lifecycle.start()
     assert services.collectors.describe() == []
-    assert {item.name for item in services.channels.describe()} >= {"email", "mock"}
+    assert {item.name for item in services.channels.describe()} == {"web"}
     assert services.channels._entries == {}
     health = await lifecycle.health()
     assert health.status == "ready"
@@ -391,7 +393,7 @@ async def test_shutdown_waits_for_admitted_interval_archive_before_stopping(tmp_
     notifications = tmp_path / "notifications.txt"
     await _seed_resources(
         config,
-        channel="mock",
+        channel="file",
         channel_path=notifications,
         interval=0.05,
     )
@@ -578,7 +580,7 @@ async def test_plugin_reload_unloads_old_owner_and_injects_new_view(tmp_path):
     await lifecycle.shutdown()
 
 
-async def test_json_logging_rotates_redacts_and_logs_collector_reads(tmp_path):
+async def test_json_logging_rotates_and_redacts(tmp_path):
     path = tmp_path / "app.jsonl"
     sink = JsonLogSink(path, max_bytes=260, backup_count=1)
     sink.start()
@@ -607,15 +609,6 @@ async def test_json_logging_rotates_redacts_and_logs_collector_reads(tmp_path):
     for line in content.splitlines():
         event = json.loads(line)
         assert {"time", "level", "module", "event", "message"} <= event.keys()
-
-    result = await LogsCollector().collect(
-        {"max_lines": 100, "max_bytes": 4096},
-        {},
-        CollectionContext("workflow", "session-1", str(path)),
-    )
-    assert result.status == "success"
-    assert result.count > 0
-
 
 async def test_log_file_none_disables_logging_without_default_path(tmp_path):
     config = _config(tmp_path).model_copy(update={"log_file": None})

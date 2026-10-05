@@ -11,14 +11,14 @@ from logagent.config import PluginRegistry, ResourceStore
 from logagent.errors import LogAgentError
 from logagent.models import AIConfig, ChannelConfig, SourceConfig, SystemConfig, WorkflowDefinition
 from logagent.workflow.execution.runner import WorkflowRunner
-from plugins.mock.collector import MockCollector
-from plugins.mock_file.channel import MockFileChannelType
+from plugins.channel.file.channel import FileChannelType
+from tests.fixtures.collectors import MockCollector
 from tests.workflow_ai_helpers import TestChannelFactory
 
 
 @pytest.mark.asyncio
 async def test_disabled_bindings_are_preserved_and_reenabled_in_snapshot(tmp_path: Path):
-    registry = PluginRegistry([MockCollector()], builtin_channels=[MockFileChannelType()])
+    registry = PluginRegistry([MockCollector()], builtin_channels=[FileChannelType()])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     store = ResourceStore(
         tmp_path / "resources.json",
@@ -27,7 +27,7 @@ async def test_disabled_bindings_are_preserved_and_reenabled_in_snapshot(tmp_pat
     )
     source = SourceConfig(id="source", collector="mock", enabled=True)
     channel = ChannelConfig(
-        id="channel", channel="mock", options={"path": str(tmp_path / "out.txt")}, enabled=True
+        id="channel", channel="file", options={"path": str(tmp_path / "out.txt")}, enabled=True
     )
     store.save("sources", source)
     store.save("channels", channel)
@@ -68,7 +68,7 @@ async def test_disabled_bindings_are_preserved_and_reenabled_in_snapshot(tmp_pat
 
 @pytest.mark.asyncio
 async def test_disabled_bindings_change_real_execution_scope_and_restore(tmp_path: Path):
-    registry = PluginRegistry([MockCollector()], builtin_channels=[MockFileChannelType()])
+    registry = PluginRegistry([MockCollector()], builtin_channels=[FileChannelType()])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     store = ResourceStore(
         tmp_path / "resources.json",
@@ -82,7 +82,7 @@ async def test_disabled_bindings_change_real_execution_scope_and_restore(tmp_pat
         enabled=True,
     )
     channel = ChannelConfig(
-        id="channel", channel="mock", options={"path": str(tmp_path / "out.txt")}, enabled=True
+        id="channel", channel="file", options={"path": str(tmp_path / "out.txt")}, enabled=True
     )
     store.save("sources", source)
     store.save("channels", channel)

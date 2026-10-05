@@ -11,7 +11,7 @@ from typing import Any
 
 from logagent.agent.commands import AgentCommand
 from logagent.channel.base import BaseConversationChannel
-from logagent.channel.bindings import ChannelBindings
+from logagent.channel.bindings import ChannelBindings, InstanceBinding
 from logagent.channel.context import delivery_deadline
 from logagent.channel.conversation import ChannelAddress, InboundHandler, InboundMessage
 from logagent.channel.errors import ChannelDeliveryError
@@ -55,6 +55,12 @@ class _ActiveSend:
     finished: asyncio.Event = field(default_factory=asyncio.Event)
 
 
+@dataclass(frozen=True)
+class _Admission:
+    result: asyncio.Future
+    duplicate: bool
+
+
 class ChannelManager:
     def __init__(
         self,
@@ -85,6 +91,7 @@ class ChannelManager:
         self._conversation_base: BaseConversationChannel | None = None
         self.bindings: ChannelBindings | None = None
         self.configs: dict[str, ChannelConfig] = {}
+        self._agent_configs: dict[str, ChannelConfig] = {}
         self.errors: dict[str, dict] = {}
         self._sync_lock = asyncio.Lock()
         self._sync_task: asyncio.Task[None] | None = None
@@ -131,23 +138,22 @@ class ChannelManager:
         if self.bindings is None:
             raise LogAgentError("not_ready", "Agent 渠道处理端口尚未装配")
         await self.bindings.start()
+        configs = list(configs)
+        for config in configs:
+            session_id = self.bindings.instance(config.id).session_id
+            if session_id is not None:
+                await self._agent_processor.get_session(session_id)
         await self._reconcile_agent_operations()
         await self.configure(configs)
 
     async def _reconcile_agent_operations(self) -> None:
         for peer, request, operation_id, channel_id, operation in await self.bindings.recovery_candidates():
-            if channel_id != "web" and operation in {"message", "append"}:
-                created_session = await self._agent_processor.recover_initial_session(operation_id)
-                if created_session is not None:
-                    await self.bindings.bind(peer, created_session)
             evidence = await self._agent_processor.recover_request(
                 operation_id, channel=channel_id, operation=operation,
             )
             if evidence is None:
                 continue
             response, status = evidence
-            if response["kind"] == "session" and channel_id != "web":
-                await self.bindings.bind(peer, response["result"]["session_id"])
             await self.bindings.complete(
                 peer, request, response,
                 status="interrupted" if status == "cancelled" else status,
@@ -180,6 +186,8 @@ class ChannelManager:
             _LOGGER.error("channel_configuration_failed", exc_info=error)
 
     async def configure(self, configs) -> None:
+        configs = list(configs)
+        self._agent_configs = {config.id: config.model_copy(deep=True) for config in configs}
         desired = {config.id: config.model_copy(deep=True) for config in configs
                    if config.enabled and config.agent_enabled}
         async with self._sync_lock:
@@ -208,6 +216,27 @@ class ChannelManager:
                     raise
             self.errors.pop("configuration", None)
 
+    def _conversation_config(self, channel_id: str, config=None) -> ChannelConfig:
+        if self.bindings is None or self.bindings._db is None:
+            raise LogAgentError("not_ready", "Agent 渠道处理端口尚未装配")
+        config = config or self._agent_configs.get(channel_id)
+        if config is None or config.id != channel_id:
+            raise LogAgentError("channel_not_found", "渠道实例不存在")
+        channel = self._register.get(config.channel)
+        if channel is None or "conversation" not in channel.capabilities:
+            raise LogAgentError("channel_not_conversation", "渠道不支持双向对话")
+        return config
+
+    async def conversation(self, channel_id: str, *, config=None) -> dict:
+        self._conversation_config(channel_id, config)
+        return {"session_id": self.bindings.instance(channel_id).session_id}
+
+    async def bind_conversation(self, channel_id: str, session_id: str | None, *,
+                                config=None) -> dict:
+        self._conversation_config(channel_id, config)
+        binding = await self._conversation_processor.bind(channel_id, session_id)
+        return {"session_id": binding.session_id}
+
     @staticmethod
     def _digest(value: Any) -> str:
         encoded = json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)
@@ -230,11 +259,11 @@ class ChannelManager:
     def _agent_request_id(cls, channel: str, peer: str, request: str) -> str:
         return f"channel:{cls._digest([channel, peer, request])}"
 
-    async def _interrupt_request(self, payload, *, peer=None):
+    async def _interrupt_request(self, payload):
         error = LogAgentError("message_interrupted", "渠道输入在处理前已中断")
         if "command" in payload:
             command = payload["command"]
-            peer = peer or (f"web:session:{command.session}" if command.session else
+            peer = (f"web:session:{command.session}" if command.session else
                             f"web:create:{command.request_id}")
             await self.bindings.complete(peer, command.request_id, {
                 "kind": "error", "error": error.info.model_dump(),
@@ -243,14 +272,14 @@ class ChannelManager:
             return error
         message = payload["message"]
         config = payload["config"]
-        peer = peer or payload["peer"]
+        peer = payload["peer"]
         response = {"channel": config.id, "kind": "error", "error": error.info.model_dump()}
         await self.bindings.complete(peer, message.request_id, response)
         await self.bindings.delivered(peer, message.request_id, {"status": "not_started"})
         return response
 
     async def _admit_request(self, key, identity, digest, payload, handler, *, switch=False,
-                             stop=False):
+                             stop=False) -> _Admission:
         if self.bindings is None:
             raise LogAgentError("not_ready", "Agent 渠道处理端口尚未装配")
         peer, request = identity
@@ -265,7 +294,9 @@ class ChannelManager:
             else:
                 previous = await self.bindings.lookup(peer, request, digest)
                 if previous is not None:
-                    return {**previous, "deduplicated": True}
+                    future = asyncio.get_running_loop().create_future()
+                    future.set_result({**previous, "deduplicated": True})
+                    return _Admission(future, True)
                 duplicate = False
                 generation_key = key[:2]
 
@@ -285,7 +316,7 @@ class ChannelManager:
                     payload["generation"] = self._stop_generations.get(generation_key, 0)
 
                 async def interrupt(older):
-                    return await self._interrupt_request(older, peer=peer)
+                    return await self._interrupt_request(older)
 
                 try:
                     future = await self._input_queue.admit(
@@ -310,8 +341,7 @@ class ChannelManager:
                         future.exception()
 
                 future.add_done_callback(done)
-        result = await asyncio.shield(future)
-        return {**result, "deduplicated": True} if duplicate else result
+        return _Admission(future, duplicate)
 
     @staticmethod
     def _queue_error(code: str) -> LogAgentError:
@@ -342,14 +372,16 @@ class ChannelManager:
             "normal" if operation in {"message", "invalid"} else "command"
         )
         peer = await self._migrate_legacy_peer(config, message)
-        return await self._admit_request(
-            ("channel", peer, priority), (peer, message.request_id),
+        admitted = await self._admit_request(
+            ("channel", config.id, priority), (peer, message.request_id),
             self._digest(message.model_dump(mode="json")),
-            {"config": config, "message": message, "peer": peer, "operation": operation},
+            {"config": config, "message": message, "peer": peer, "operation": operation,
+             "binding": self.bindings.instance(config.id)},
             self._consume_inbound,
             switch=operation in {"new", "resume", "fork", "workflow"},
             stop=operation == "stop",
         )
+        return {"status": "duplicate" if admitted.duplicate else "accepted"}
 
     async def _consume_inbound(self, value) -> QueueOutcome:
         config, message, peer, operation = (
@@ -360,15 +392,21 @@ class ChannelManager:
             request_id=self._agent_request_id(config.id, peer, message.request_id),
             text=message.text,
         )
+        binding = value["binding"]
         def valid():
-            return value["generation"] == self._stop_generations.get(("channel", peer), 0)
+            return value["generation"] == self._stop_generations.get(("channel", config.id), 0)
         try:
             if operation != "stop" and not valid():
                 raise LogAgentError("message_interrupted", "消息因更高优先级的停止命令而取消")
             await self.bindings.processing(peer, message.request_id)
-            response = (await self._conversation_processor.stop(peer, command)
+            processed = (await self._conversation_processor.stop(
+                config.id, command, binding=binding,
+            )
                         if operation == "stop" else
-                        await self._conversation_processor.process(peer, command, valid=valid))
+                        await self._conversation_processor.process(
+                            config.id, command, binding=binding, valid=valid,
+                        ))
+            response, binding = processed.response, processed.binding
         except LogAgentError as exc:
             response = {"channel": config.id, "kind": "error", "error": exc.info.model_dump()}
         result = response.get("result", {})
@@ -379,13 +417,15 @@ class ChannelManager:
             status="processing" if has_turn or queued_command else None,
         )
         if queued_command:
-            settle = self._finish_command(config, message, peer, command, response)
+            settle = self._finish_command(config, message, peer, command, response, binding)
         elif has_turn and operation in {"message", "append", "compact"}:
-            settle = self._finish_inbound(config, message, peer, response["result"])
+            settle = self._finish_inbound(config, message, peer, response["result"], binding)
         else:
             text = (f"{response['error']['code']}: {response['error']['message']}"
                     if response["kind"] == "error" else self._command_text(response))
-            settle = self._reply_inbound(config, message, peer, "channel_command", text)
+            settle = self._reply_inbound(
+                config, message, peer, binding.session_id or "channel_command", text, binding,
+            )
         return QueueOutcome(response, settle)
 
     @staticmethod
@@ -395,12 +435,12 @@ class ChannelManager:
             return f"会话 {result['session_id']}（{result.get('status', 'created')}）"
         return json.dumps(result, ensure_ascii=False, default=str)
 
-    async def _finish_inbound(self, config, message, peer, accepted):
+    async def _finish_inbound(self, config, message, peer, accepted, binding):
         result = await self._conversation_base.finish_turn(accepted["turn_id"])
         await self.bindings.set_status(peer, message.request_id, result.status)
-        await self._reply_inbound(config, message, peer, accepted["session_id"], result.text)
+        await self._reply_inbound(config, message, peer, accepted["session_id"], result.text, binding)
 
-    async def _finish_command(self, config, message, peer, command, response):
+    async def _finish_command(self, config, message, peer, command, response, binding):
         result = response["result"]
         outcome = await self._conversation_base.finish_command(
             result["session_id"],
@@ -409,9 +449,9 @@ class ChannelManager:
             event_id=result["event_id"] if not result.get("turn_id") else None,
         )
         await self.bindings.set_status(peer, message.request_id, outcome.status)
-        await self._reply_inbound(config, message, peer, result["session_id"], outcome.text)
+        await self._reply_inbound(config, message, peer, result["session_id"], outcome.text, binding)
 
-    async def _reply_inbound(self, config, message, peer, session, text):
+    async def _reply_inbound(self, config, message, peer, session, text, binding):
         outcome = await self.bindings.outcome(peer, message.request_id)
         result = outcome["response"].get("result") if outcome["response"] else None
         receipt = await self.send(
@@ -421,6 +461,7 @@ class ChannelManager:
                           "turn_id": result.get("turn_id") if isinstance(result, dict) else None},
             ),
             reply_to=message.address,
+            binding=binding,
         )
         await self.bindings.delivered(peer, message.request_id, receipt.model_dump(mode="json"))
         if receipt.status != "success":
@@ -477,11 +518,13 @@ class ChannelManager:
             return QueueOutcome(response, settle)
 
         payload = {"command": command.model_copy(deep=True), "operation": operation}
-        return await self._admit_request(
+        admission = await self._admit_request(
             key, (peer, command.request_id), self._digest(command.model_dump(mode="json")),
             payload, consume, switch=operation in {"new", "resume", "fork", "workflow"},
             stop=operation == "stop",
         )
+        result = await asyncio.shield(admission.result)
+        return {**result, "deduplicated": True} if admission.duplicate else result
 
     async def _finish_web_turn(self, peer, request_id, turn_id):
         outcome = await self._conversation_base.finish_turn(turn_id)
@@ -738,7 +781,8 @@ class ChannelManager:
         return entry.instance
 
     async def send(self, config: ChannelConfig, notification: Notification, *,
-                   reply_to: ChannelAddress | None = None) -> DeliveryResult:
+                   reply_to: ChannelAddress | None = None,
+                   binding: InstanceBinding | None = None) -> DeliveryResult:
         config, notification = deepcopy(config), deepcopy(notification)
         if not config.enabled:
             return self._receipt(config, notification, status="skipped", attempts=0)
@@ -765,6 +809,17 @@ class ChannelManager:
                 entry = await self._entry(key, channel, config, deadline=deadline)
                 preparing = False
                 async with entry.send_lock:
+                    if binding is not None and (
+                        self.bindings.instance(config.id) != binding
+                        or self._agent_configs.get(config.id) != config
+                    ):
+                        return self._receipt(
+                            config, notification, status="failed", attempts=0,
+                            error=ErrorInfo(
+                                code="channel_binding_changed",
+                                message="渠道绑定或接收配置已变更，旧输出未发送",
+                            ),
+                        )
                     if reply_to is not None and "conversation" not in channel.capabilities:
                         raise LogAgentError("channel_not_conversation", "渠道不支持回复")
                     if asyncio.get_running_loop().time() >= deadline:
