@@ -49,7 +49,7 @@ def parse_command(text: str) -> tuple[str, str]:
     return actions.get(head, "message"), argument if head in actions else text
 
 
-class AgentChannel:
+class CommandDispatcher:
     """Shared Agent command boundary for Web, QQ, and test transports."""
 
     def __init__(self, service, session_view=None):
@@ -185,12 +185,12 @@ class AgentChannel:
     async def recover_request(self, operation_id: str, *, channel: str,
                               operation: str) -> tuple[dict, str] | None:
         for session in self.service.sessions.values():
-            for event in session.log.events:
+            for event in self.service.repository.log(session.session_id).events:
                 if event["type"] == "session.created" and event.get("operation_id") == operation_id:
                     return ({"channel": channel, "kind": "session", "priority": "command",
                              "result": await self.service.get_session(session.session_id)}, "completed")
                 if event["type"] == "request.accepted" and event.get("request_id") == operation_id:
-                    terminal = next((fact for fact in reversed(session.log.events)
+                    terminal = next((fact for fact in reversed(self.service.repository.log(session.session_id).events)
                                      if fact.get("turn_id") == event["turn_id"]
                                      and fact["type"] in {"turn.completed", "turn.failed",
                                                           "turn.cancelled", "turn.interrupted"}), None)
@@ -206,7 +206,7 @@ class AgentChannel:
         created_id = f"{operation_id}:new"
         for session in self.service.sessions.values():
             if any(event["type"] == "session.created" and
-                   event.get("operation_id") == created_id for event in session.log.events):
+                   event.get("operation_id") == created_id for event in self.service.repository.log(session.session_id).events):
                 return session.session_id
         return None
 

@@ -9,12 +9,12 @@ from pydantic import Field
 
 from logagent.agent.commands import AgentCommand
 from logagent.agent.config import AgentConfig
-from logagent.agent.service import AgentService
 from logagent.channel import ChannelManager
 from logagent.channel.bindings import ChannelBindings
 from logagent.collection import CollectorManager
 from logagent.config import PluginRegistry
 from logagent.errors import LogAgentError
+from logagent.interaction.fastapi.agent import create_agent_service
 from logagent.models import (
     AIConfig,
     AnalysisResult,
@@ -50,7 +50,7 @@ async def _registry(tmp_path):
 
 
 async def _agent(tmp_path, model):
-    service = AgentService(
+    service = create_agent_service(
         tmp_path / "workspace",
         tmp_path / "runtime",
         config=AgentConfig(),
@@ -113,9 +113,9 @@ class _AgentCommands:
     """Production command adapter, keeping tests on real AgentService operations."""
 
     def __init__(self, service):
-        from logagent.channel.agent import AgentChannel
+        from logagent.agent.commands import CommandDispatcher
 
-        self._channel = AgentChannel(service)
+        self._channel = CommandDispatcher(service)
 
     async def dispatch(self, command, *, valid=None):
         return await self._channel.dispatch(command, valid=valid)
@@ -371,9 +371,9 @@ async def test_stop_prevents_first_message_after_session_binding(tmp_path):
         assert queued["error"]["code"] == "message_interrupted"
         session = service.sessions[bound_session]
         assert session.status == "created"
-        assert session.task is None
+        assert service.turns.current(bound_session).task is None
         assert model.seen == []
-        assert not any(not task.done() for task in service._turns.values())
+        assert not any(not task.done() for task in service.turns.tasks.values())
     finally:
         release_submit.set()
         await _close(service, channels, runtime)

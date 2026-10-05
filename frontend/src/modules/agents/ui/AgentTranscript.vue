@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import type { BaseMessage } from '@langchain/core/messages'
 import type { AgentEvent, AgentTool } from '../model/types'
 import ReportText from '@/shared/ui/ReportText.vue'
 import AgentToolCall from './AgentToolCall.vue'
@@ -9,6 +10,7 @@ import { ElMessage } from 'element-plus'
 
 const props = defineProps<{
   events: AgentEvent[]
+  messages?: BaseMessage[]
   running: boolean
   sessionId: string
   tools?: AgentTool[]
@@ -39,7 +41,7 @@ async function scrollToLatest() {
   if (el) el.scrollTop = el.scrollHeight
 }
 watch(
-  () => props.events,
+  () => [props.events, props.messages],
   () => {
     if (following.value) void scrollToLatest()
   },
@@ -48,7 +50,7 @@ watch(() => props.sessionId, scrollToLatest, { immediate: true })
 
 const groups = computed(() => {
   const result: Array<{ key: string; rows: TranscriptRow[]; read: boolean }> = []
-  for (const row of transcriptRows(props.events)) {
+  for (const row of transcriptRows(props.events, props.messages)) {
     const read = row.role === 'tool' && row.event.data.execution === 'read'
     const last = result[result.length - 1]
     if (

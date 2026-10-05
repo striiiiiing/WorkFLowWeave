@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from logagent.agent.scheduling import ToolScheduler
+from logagent.agent.tools.scheduling import ToolScheduler
 
 
 async def test_read_capacity_queues_until_a_slot_is_released():

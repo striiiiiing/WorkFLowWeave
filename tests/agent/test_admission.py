@@ -4,8 +4,8 @@ import pytest
 from langchain_core.messages import AIMessage
 from pydantic import Field
 
-from logagent.agent.service import AgentService
 from logagent.errors import LogAgentError
+from logagent.interaction.fastapi.agent import create_agent_service
 from tests.agent.helpers import ScriptedModel
 
 
@@ -25,7 +25,7 @@ async def services(tmp_path):
 
     def create(**kwargs):
         root = tmp_path / str(len(owned))
-        service = AgentService(root / "workspace", root / "runtime", **kwargs)
+        service = create_agent_service(root / "workspace", root / "runtime", **kwargs)
         owned.append(service)
         return service
 
@@ -44,7 +44,7 @@ async def test_racing_request_ids_share_one_durable_admission(services, method, 
         await service.submit(sid, "already running", request_id="first")
         await asyncio.wait_for(model.entered.wait(), 1)
 
-    async with service._admission_lock:
+    async with service.turns.admission_lock:
         first = asyncio.create_task(getattr(service, method)(sid, "hello", request_id="shared"))
         second = asyncio.create_task(getattr(service, method)(
             sid, "hello" if same_text else "different", request_id="shared",
@@ -62,7 +62,7 @@ async def test_racing_request_ids_share_one_durable_admission(services, method, 
     events = await service.events(sid)
     assert sum(event.get("request_id") == "shared" for event in events) == 1
     if method == "append":
-        assert len(service.sessions[sid].pending_appends) == 1
+        assert len(service.turns.current(sid).pending_appends) == 1
 
 
 @pytest.mark.parametrize("queued", [True, False])
@@ -73,7 +73,7 @@ async def test_failed_admission_does_not_publish_an_in_memory_success(services, 
     if queued:
         await service.submit(sid, "running", request_id="first")
         await asyncio.wait_for(model.entered.wait(), 1)
-    log = service.sessions[sid].log
+    log = service.repository.log(sid)
     original = log.append
 
     async def fail_admission(event_type, **fields):
@@ -84,8 +84,8 @@ async def test_failed_admission_does_not_publish_an_in_memory_success(services, 
     monkeypatch.setattr(log, "append", fail_admission)
     with pytest.raises(OSError, match="disk full"):
         await service.append(sid, "new", request_id="rejected")
-    assert "rejected" not in service.sessions[sid].request_ids
-    assert not service.sessions[sid].pending_appends
+    assert "rejected" not in service.repository.requests(sid)
+    assert not service.turns.current(sid).pending_appends
     assert not any(event.get("request_id") == "rejected" for event in await service.events(sid))
 
 
@@ -109,7 +109,7 @@ async def test_sessions_generate_concurrently_but_each_accepts_only_one_turn(ser
 
 async def test_request_id_and_thread_timestamps_survive_restart(tmp_path):
     paths = (tmp_path / "workspace", tmp_path / "runtime")
-    first = AgentService(*paths, model_provider=lambda _: ScriptedModel(
+    first = create_agent_service(*paths, model_provider=lambda _: ScriptedModel(
         responses=[AIMessage(content="answer")],
     ))
     try:
@@ -121,7 +121,7 @@ async def test_request_id_and_thread_timestamps_survive_restart(tmp_path):
         assert completed["updated_at"] == (await first.events(sid))[-1]["at"]
     finally:
         await first.close()
-    restored = AgentService(*paths)
+    restored = create_agent_service(*paths)
     try:
         await restored.initialize()
         assert await restored.get_session(sid) == completed
@@ -131,14 +131,14 @@ async def test_request_id_and_thread_timestamps_survive_restart(tmp_path):
         with pytest.raises(LogAgentError) as error:
             await restored.submit(sid, "different", request_id="r1")
         assert error.value.code == "request_conflict"
-        assert not restored._turns
+        assert not restored.turns.tasks
     finally:
         await restored.close()
 
 
 async def test_concurrent_session_creation_publishes_only_one_session(services):
     service = services()
-    async with service._admission_lock:
+    async with service.turns.admission_lock:
         requests = [asyncio.create_task(service.create_session(session_id="shared"))
                     for _ in range(2)]
         await asyncio.sleep(0)

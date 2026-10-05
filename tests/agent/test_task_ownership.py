@@ -6,8 +6,8 @@ from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-from logagent.agent.builtin.declaration import ToolDeclaration, schema
-from logagent.agent.service import AgentService
+from logagent.agent.tools.declaration import ToolDeclaration, schema
+from logagent.interaction.fastapi.agent import create_agent_service
 from tests.agent.helpers import ScriptedModel
 from tests.agent.test_admission import GatedModel
 from tests.agent.test_admission import services as services
@@ -19,7 +19,7 @@ async def test_disconnected_admission_and_waiter_do_not_cancel_the_owned_turn(se
     sid = (await service.create_session(model="test"))["session_id"]
     writing = asyncio.Event()
     finish_write = asyncio.Event()
-    log = service.sessions[sid].log
+    log = service.repository.log(sid)
     original = log.append
 
     async def blocked_append(event_type, **fields):
@@ -43,7 +43,7 @@ async def test_disconnected_admission_and_waiter_do_not_cancel_the_owned_turn(se
     waiter.cancel()
     with pytest.raises(asyncio.CancelledError):
         await waiter
-    assert not service.sessions[sid].task.done()
+    assert not service.turns.current(sid).task.done()
     model.release.set()
     assert (await service.wait(duplicate["turn_id"]))["status"] == "completed"
     events = await service.events(sid)
@@ -60,7 +60,7 @@ async def test_immediate_stop_records_terminal_state_before_acknowledgement(serv
     with pytest.raises(asyncio.CancelledError):
         await service.wait(accepted["turn_id"])
     assert (await service.events(sid))[-1]["type"] == "turn.cancelled"
-    assert not any(not task.done() for task in service._turns.values())
+    assert not any(not task.done() for task in service.turns.tasks.values())
 
 
 async def test_model_lease_spans_model_tool_model_and_exits_after_completion(services):
@@ -254,7 +254,7 @@ async def test_agent_sqlite_thread_is_independent_of_workflow_and_resumes_contex
         )
         await workflow_graph.ainvoke({"messages": [HumanMessage(content="workflow question")]}, config)
         before = await workflow.aget_tuple(config)
-        first = AgentService(*paths, model_provider=lambda _: ScriptedModel(
+        first = create_agent_service(*paths, model_provider=lambda _: ScriptedModel(
             responses=[AIMessage(content="agent answer")],
         ))
         try:
@@ -269,7 +269,7 @@ async def test_agent_sqlite_thread_is_independent_of_workflow_and_resumes_contex
         finally:
             await first.close()
         model = ScriptedModel(responses=[AIMessage(content="continued")])
-        restored = AgentService(*paths, model_provider=lambda _: model)
+        restored = create_agent_service(*paths, model_provider=lambda _: model)
         try:
             await restored.initialize()
             accepted = await restored.submit(sid, "follow up", request_id="r2")

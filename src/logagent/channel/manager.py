@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from logagent.agent.commands import AgentCommand
+from logagent.channel.agent import AgentChannelProcessor
 from logagent.channel.base import BaseConversationChannel
 from logagent.channel.bindings import ChannelBindings, InstanceBinding
 from logagent.channel.context import delivery_deadline
@@ -125,7 +126,6 @@ class ChannelManager:
 
     async def configure_agent(self, processor: Any, bindings_path) -> None:
         """Attach the Agent processing port and durable channel binding store."""
-        from logagent.agent.channel import AgentChannelProcessor
         from logagent.channel.web import WebChannel
 
         self._agent_processor = processor

@@ -9,7 +9,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, Query
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
-from logagent.channel.agent import AgentCommand
+from logagent.agent.commands import AgentCommand
 from logagent.channel.web import WebChannel
 from logagent.errors import LogAgentError
 from logagent.lifecycle import ApplicationServices

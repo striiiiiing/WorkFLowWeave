@@ -1,3 +1,5 @@
+"""HTTP/SSE Agent API contract tests."""
+
 import asyncio
 import json
 from types import SimpleNamespace
@@ -6,12 +8,12 @@ import httpx
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
 
-from logagent.agent.service import AgentService
-from logagent.channel.agent import AgentChannel
+from logagent.agent.commands import CommandDispatcher
 from logagent.channel.web import WebChannel
 from logagent.errors import LogAgentError
 from logagent.interaction.app import create_app
 from logagent.interaction.errors import status_for_code
+from logagent.interaction.fastapi.agent import create_agent_service
 from tests.agent.helpers import ScriptedModel
 from tests.agent.test_admission import GatedModel
 
@@ -70,12 +72,12 @@ class Lifecycle:
         self.services = SimpleNamespace(
             agent=FakeAgent(), plugins=SimpleNamespace(generation=1),
         )
-        self.services.agent_channel = AgentChannel(self.services.agent)
+        self.services.agent_channel = CommandDispatcher(self.services.agent)
         self.services.channels = _TestChannelManager(self.services)
 
     def use_agent(self, agent):
         self.services.agent = agent
-        self.services.agent_channel = AgentChannel(agent, self.services.session_view if hasattr(self.services, "session_view") else None)
+        self.services.agent_channel = CommandDispatcher(agent, self.services.session_view if hasattr(self.services, "session_view") else None)
 
     async def start(self):
         return self.services
@@ -153,7 +155,7 @@ def test_agent_tool_switch_uses_lifecycle_reload_boundary():
 
 
 async def test_topic_patch_is_persisted_and_rejects_ambiguous_updates(tmp_path):
-    service = AgentService(tmp_path / "workspace", tmp_path / "runtime",
+    service = create_agent_service(tmp_path / "workspace", tmp_path / "runtime",
                            model_provider=lambda _: ScriptedModel(responses=[]))
     owner = Lifecycle()
     owner.use_agent(service)
@@ -180,7 +182,7 @@ async def test_topic_patch_is_persisted_and_rejects_ambiguous_updates(tmp_path):
 
 async def test_real_sse_disconnect_keeps_turn_running_and_replays_its_completion(tmp_path):
     model = GatedModel(responses=[AIMessage(content="answer after disconnect")])
-    service = AgentService(
+    service = create_agent_service(
         tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model,
     )
     owner = Lifecycle()
@@ -223,7 +225,7 @@ async def test_real_sse_disconnect_keeps_turn_running_and_replays_its_completion
                 "server": ("test", 80),
             }, receive, send), 2)
             assert chunks and disconnected.is_set()
-            assert not service.sessions[sid].task.done()
+            assert not service.turns.current(sid).task.done()
             cursor = max(int(line[4:]) for chunk in chunks for line in chunk.splitlines()
                          if line.startswith("id: "))
             model.release.set()
@@ -244,7 +246,7 @@ async def test_real_sse_disconnect_keeps_turn_running_and_replays_its_completion
 
 
 async def test_files_enforce_conditional_writes_and_preserve_external_changes(tmp_path):
-    service = AgentService(tmp_path / "workspace", tmp_path / "runtime")
+    service = create_agent_service(tmp_path / "workspace", tmp_path / "runtime")
     owner = Lifecycle()
     owner.use_agent(service)
     app = create_app(owner)
@@ -279,7 +281,7 @@ async def test_files_enforce_conditional_writes_and_preserve_external_changes(tm
 
 async def test_slow_sse_consumer_does_not_block_turn_and_gets_terminal_racing_batch(tmp_path):
     model = GatedModel(responses=[AIMessage(content="completed independently")])
-    service = AgentService(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model)
+    service = create_agent_service(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model)
     owner = Lifecycle()
     owner.use_agent(service)
     app = create_app(owner)
@@ -330,7 +332,7 @@ async def test_workflow_source_is_frozen_and_command_stop_has_independent_priori
     from unittest.mock import AsyncMock
 
     model = GatedModel(responses=[AIMessage(content="answer")])
-    service = AgentService(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model)
+    service = create_agent_service(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model)
     owner = Lifecycle()
     owner.services.agent = service
     record = SimpleNamespace(session_id="run-old", workflow_id="workflow", status="completed",
@@ -339,7 +341,7 @@ async def test_workflow_source_is_frozen_and_command_stop_has_independent_priori
         list_sessions=AsyncMock(return_value=[record]), get_session=AsyncMock(return_value=record),
         get_phase_content=AsyncMock(return_value=SimpleNamespace(availability="available", content={"outputs": {"answer": "frozen"}})),
     )
-    owner.services.agent_channel = AgentChannel(service, owner.services.session_view)
+    owner.services.agent_channel = CommandDispatcher(service, owner.services.session_view)
     app = create_app(owner)
     try:
         async with app.router.lifespan_context(app), httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:

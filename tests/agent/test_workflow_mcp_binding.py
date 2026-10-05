@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from logagent.agent.binding import resolve_mcp_binding
+from logagent.agent.integrations.workflow import resolve_mcp_binding
 from logagent.errors import LogAgentError
 
 

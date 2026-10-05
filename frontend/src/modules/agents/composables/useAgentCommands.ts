@@ -2,6 +2,7 @@ import { computed, reactive, ref } from 'vue'
 import { ApiError } from '@/shared/api/errors'
 import { useErrorFormatter } from '@/shared/async/errorFormatter'
 import type { AgentsApi } from '../api/agentsApi'
+import type { TurnAccepted } from '../model/types'
 
 type CommandResult = Awaited<ReturnType<AgentsApi['command']>>
 
@@ -26,7 +27,20 @@ interface InputState {
 
 const unsafeRetry = /^\/(?:workflow\s+\S|(?:new|fork|compact)(?:\s|$))/
 
-export function useAgentCommands(api: Pick<AgentsApi, 'command' | 'cancel'>) {
+interface AgentStreamCommands {
+  submit?: (
+    sessionId: string,
+    text: string,
+    requestId: string,
+    append: boolean,
+  ) => Promise<TurnAccepted>
+  cancel?: (sessionId: string) => Promise<Awaited<ReturnType<AgentsApi['cancel']>>>
+}
+
+export function useAgentCommands(
+  api: Pick<AgentsApi, 'command' | 'cancel'>,
+  streamCommands: AgentStreamCommands = {},
+) {
   const formatError = useErrorFormatter()
   const states = reactive<Record<string, InputState>>(commandStateStore)
   const selectedId = ref<string | null>(null)
@@ -89,7 +103,19 @@ export function useAgentCommands(api: Pick<AgentsApi, 'command' | 'cancel'>) {
     state.pending = true
     state.error = ''
     try {
-      const result = await api.command(input.session, input.text, input.requestId, input.model)
+      const result =
+        !input.text.trim().startsWith('/') && streamCommands.submit
+          ? {
+              kind: 'turn' as const,
+              priority: running ? 'command' : 'conversation',
+              result: await streamCommands.submit(
+                input.session ?? '',
+                input.text,
+                input.requestId,
+                running,
+              ),
+            }
+          : await api.command(input.session, input.text, input.requestId, input.model)
       if (state.pendingInput === input) {
         state.pendingInput = undefined
         state.uncertain = false
@@ -115,7 +141,7 @@ export function useAgentCommands(api: Pick<AgentsApi, 'command' | 'cancel'>) {
     state.stopPending = true
     state.stopError = ''
     try {
-      return await api.cancel(id)
+      return await (streamCommands.cancel ?? api.cancel)(id)
     } catch (cause) {
       state.stopError = formatError(cause)
     } finally {

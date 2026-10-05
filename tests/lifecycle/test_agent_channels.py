@@ -717,7 +717,7 @@ async def test_lifecycle_shutdown_drains_cancelled_agent_reply_before_channel_an
         assert services.channels.configs == {}
         assert receiver.handler is None
         assert accepted["result"]["session_id"] in services.agent.sessions
-        assert not any(not task.done() for task in services.agent._turns.values())
+        assert not any(not task.done() for task in services.agent.turns.tasks.values())
         assert order.index("agent_paused") < order.index("inbound_suspended")
         assert order.index("inbound_suspended") < order.index("agent_closed")
         assert order.index("agent_closed") < order.index("runtime_drained_and_database_closed")

@@ -1,0 +1,37 @@
+{
+  "session_id": "fixture_completed",
+  "branch_id": "branch_ac6996a283a9405eaa579a83c9cc2fe5",
+  "title": "",
+  "model": null,
+  "workflow_session_id": "workflow_fixture",
+  "parent_session_id": null,
+  "parent_turn_id": null,
+  "parent_branch_id": null,
+  "parent_event_id": null,
+  "created_at": "2026-10-05T18:41:06.191355+00:00",
+  "updated_at": "2026-10-05T18:41:06.283479+00:00",
+  "status": "completed",
+  "turn_id": "turn_b2520390747d470bbe597ab220238a5d",
+  "context_budget": {
+    "turn_id": "turn_b2520390747d470bbe597ab220238a5d",
+    "messages": 53,
+    "system": 164,
+    "tools": 740,
+    "output": 4096,
+    "total": 5053,
+    "window": 200000,
+    "trigger": 180000,
+    "remaining": 194947,
+    "estimated": true,
+    "token_counter": "framework_approximate"
+  },
+  "active_resources": {
+    "turn_id": "turn_b2520390747d470bbe597ab220238a5d",
+    "model": null,
+    "tools_generation": null
+  },
+  "history_path": "Runtime/History/fixture_completed/events.jsonl",
+  "continuable": true,
+  "continuation_error": null,
+  "last_checkpoint_at": "2026-10-05T18:41:06.283479+00:00"
+}

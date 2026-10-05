@@ -1,0 +1,21 @@
+{
+  "session_id": "fixture_interrupted",
+  "branch_id": "branch_e6f8f76e2c974ca8a94bc68155e0ee4e",
+  "title": "",
+  "model": null,
+  "workflow_session_id": null,
+  "parent_session_id": null,
+  "parent_turn_id": null,
+  "parent_branch_id": null,
+  "parent_event_id": null,
+  "created_at": "2026-10-05T18:41:06.325666+00:00",
+  "updated_at": "2026-10-05T18:41:06.325666+00:00",
+  "status": "created",
+  "turn_id": null,
+  "context_budget": null,
+  "active_resources": null,
+  "history_path": "Runtime/History/fixture_interrupted/events.jsonl",
+  "continuable": true,
+  "continuation_error": null,
+  "last_checkpoint_at": null
+}
