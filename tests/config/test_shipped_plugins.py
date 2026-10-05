@@ -19,14 +19,14 @@ async def test_shipped_plugins_publish_real_owners_without_conflicts(installed_p
     assert not report.errors
     assert {(item.kind, item.name, item.plugin) for item in report.registered
             if item.kind != "tool"} == {
-        ("collector", "mock", "mock"),
-        ("collector", "logs", "logs"),
-        ("collector", "history", "history"),
         ("channel", "email", "email"),
-        ("channel", "mock", "mock_file"),
+        ("channel", "file", "file"),
         ("channel", "qq", "qq"),
-        ("channel", "test", "test_channel"),
+        ("channel", "wechat_openclaw", "wechat_openclaw"),
+        ("channel", "feishu", "feishu"),
+        ("channel", "telegram", "telegram"),
     }
+    assert registry.collectorRegister.describe() == []
 
 
 async def test_disabled_adapters_are_not_imported_and_targeted_reload_retains_others(
@@ -42,15 +42,14 @@ async def test_disabled_adapters_are_not_imported_and_targeted_reload_retains_ot
         return original_import(directory, entry, prefix)
 
     monkeypatch.setattr(registry_module, "_import_entry", record_import)
-    registry.update_plugin_setting(config, "collector", "mock", False)
+    registry.update_plugin_setting(config, "channel", "file", False)
     registry.update_plugin_setting(config, "channel", "email", False)
     report = await registry.discover_plugins(config)
     assert not report.errors
-    assert "mock" not in imported and "email" not in imported
-    assert registry.collectorRegister.get("mock") is None
+    assert "file" not in imported and "email" not in imported
+    assert registry.collectorRegister.describe() == []
     assert registry.channelRegister.get("email") is None
-    file_factory = registry.channelRegister.get("mock").create
-    history_collect = registry.collectorRegister.get("history").collect
+    qq_factory = registry.channelRegister.get("qq").create
 
     registry.update_plugin_setting(config, "channel", "email", True)
     imported.clear()
@@ -58,9 +57,8 @@ async def test_disabled_adapters_are_not_imported_and_targeted_reload_retains_ot
     assert not report.errors
     assert imported == ["email"]
     assert registry.channelRegister.get("email") is not None
-    assert registry.channelRegister.get("mock").create is file_factory
-    assert registry.collectorRegister.get("history").collect is history_collect
-    assert registry.collectorRegister.get("mock") is None
+    assert registry.channelRegister.get("qq").create is qq_factory
+    assert registry.collectorRegister.describe() == []
 
     registry.update_plugin_setting(config, "channel", "email", False)
     imported.clear()
@@ -68,4 +66,4 @@ async def test_disabled_adapters_are_not_imported_and_targeted_reload_retains_ot
     assert not report.errors
     assert imported == []
     assert registry.channelRegister.get("email") is None
-    assert registry.channelRegister.get("mock").create is file_factory
+    assert registry.channelRegister.get("qq").create is qq_factory

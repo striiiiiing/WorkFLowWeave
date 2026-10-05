@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import shutil
 from pathlib import Path
 
 import httpx
@@ -733,8 +732,6 @@ async def test_lifecycle_shutdown_drains_cancelled_agent_reply_before_channel_an
 
 async def test_conversation_http_unbind_resume_and_one_way_rejection(tmp_path):
     config = SystemConfig(data_dir=str(tmp_path / "data"), plugin_dir=str(tmp_path / "plugins"))
-    file_plugin = Path(__file__).parents[2] / "plugins" / "channel" / "file"
-    shutil.copytree(file_plugin, Path(config.plugin_dir) / "channel" / "file")
     await _seed_channel(config)
     lifecycle = ApplicationLifecycle(config, channel_factories={})
     app = create_app(lifecycle)
