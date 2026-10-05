@@ -158,7 +158,10 @@ test('resource editor saves CLI calls and advanced settings through the real API
   await page.getByRole('button', { name: '添加数据源', exact: true }).click()
   await page.getByLabel('资源编号', { exact: true }).fill('cli_editor_created')
   await page.locator('.el-radio-button__inner').filter({ hasText: /^CLI$/ }).click()
-  await page.locator('.el-radio-button__inner').filter({ hasText: /^Shell 命令$/ }).click()
+  await page
+    .locator('.el-radio-button__inner')
+    .filter({ hasText: /^Shell 命令$/ })
+    .click()
   const command = page.getByLabel('命令', { exact: true })
   await command.fill('printf created')
   await page.getByRole('button', { name: '保存资源', exact: true }).click()
@@ -178,7 +181,10 @@ test('CLI source validation, create and edit use the real API', async ({ page, r
   await page.getByRole('button', { name: '添加数据源' }).click()
   await page.getByLabel('资源编号', { exact: true }).fill('browser_source')
   await page.locator('.el-radio-button__inner').filter({ hasText: /^CLI$/ }).click()
-  await page.locator('.el-radio-button__inner').filter({ hasText: /^Shell 命令$/ }).click()
+  await page
+    .locator('.el-radio-button__inner')
+    .filter({ hasText: /^Shell 命令$/ })
+    .click()
   const command = page.getByLabel('命令', { exact: true })
   await page.getByRole('button', { name: '保存资源' }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
@@ -390,10 +396,10 @@ test('provider models are configured in the channel and selected by workflows', 
   await expect(key).toHaveAttribute('type', 'text')
   await page.locator('.el-input__password').click()
   const models = page.getByRole('region', { name: '渠道模型', exact: true })
-  await models.getByRole('textbox', { name: '模型名称', exact: true }).fill('openai/test.v1')
+  await models.getByRole('combobox', { name: '模型名称', exact: true }).fill('openai/test.v1')
   await models.getByRole('button', { name: '添加模型', exact: true }).click()
   await expect(models.getByText('openai/test.v1', { exact: true })).toBeVisible()
-  await models.getByRole('textbox', { name: '模型名称', exact: true }).fill('openai/backup.v2')
+  await models.getByRole('combobox', { name: '模型名称', exact: true }).fill('openai/backup.v2')
   await models.getByRole('button', { name: '添加模型', exact: true }).click()
   await page.locator('summary').filter({ hasText: '高级配置' }).click()
   await page.getByLabel('超时 / 秒', { exact: true }).fill('1')
@@ -415,7 +421,7 @@ test('provider models are configured in the channel and selected by workflows', 
   const healthResponse = page.waitForResponse((response) =>
     response.url().endsWith('/discover-models'),
   )
-  await models.getByRole('textbox', { name: '模型名称', exact: true }).click()
+  await models.locator('.el-select__wrapper').click()
   expect((await healthResponse).ok()).toBe(false)
   await expect(
     page.getByRole('region', { name: '渠道模型发现' }).locator('.el-alert--error'),
@@ -486,7 +492,9 @@ test('provider models are configured in the channel and selected by workflows', 
     .getByRole('button', { name: '编辑', exact: true })
     .click()
   const providerModels = providerPage.getByRole('region', { name: '渠道模型', exact: true })
-  await providerModels.getByRole('textbox', { name: '模型名称', exact: true }).fill('openai/new.v3')
+  await providerModels
+    .getByRole('combobox', { name: '模型名称', exact: true })
+    .fill('openai/new.v3')
   await providerModels.getByRole('button', { name: '添加模型', exact: true }).click()
   const addedModelResponse = providerPage.waitForResponse(
     (response) =>
