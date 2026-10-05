@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Path, Query, Response, status
+from fastapi.sse import EventSourceResponse, ServerSentEvent
 
 from logagent.collection.invocation import CollectionArguments, CollectorInvocation
 from logagent.errors import LogAgentError
@@ -55,7 +58,6 @@ from .schemas import (
     TriggerRequest,
     TriggerResponse,
 )
-from .sse import HEARTBEAT, SSEMessage, sse_response
 
 router = APIRouter()
 Services = Annotated[ApplicationServices, Depends(get_services)]
@@ -436,13 +438,17 @@ async def delete_resource(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-_WORKFLOW_SSE_HEARTBEAT_SECONDS = 15
 _WORKFLOW_TERMINAL = {"completed", "partial", "failed", "cancelled", "interrupted"}
 
 
-@router.get("/sessions/{session_id}/events")
-async def workflow_events(session_id: ID, services: Services):
-    """只注册观察者；ready 后客户端查询同一投影以补齐连接窗口。"""
+@dataclass(frozen=True, slots=True)
+class WorkflowEventStream:
+    initial: SessionRecord
+    queue: asyncio.Queue
+
+
+async def prepare_workflow_events(session_id: ID, services: Services):
+    """订阅并捕获首帧，确保响应开始前完成会话校验。"""
     subscription = services.workflow.progress_hub.subscribe(session_id)
     queue = await subscription.__aenter__()
     try:
@@ -450,24 +456,23 @@ async def workflow_events(session_id: ID, services: Services):
     except BaseException:
         await subscription.__aexit__(None, None, None)
         raise
+    try:
+        yield WorkflowEventStream(initial, queue)
+    finally:
+        await subscription.__aexit__(None, None, None)
 
-    async def stream():
-        try:
-            current = initial
-            yield SSEMessage(data=current.model_dump(mode="json"), event="snapshot")
-            while current.status not in _WORKFLOW_TERMINAL:
-                try:
-                    item = await asyncio.wait_for(queue.get(), _WORKFLOW_SSE_HEARTBEAT_SECONDS)
-                except TimeoutError:
-                    yield HEARTBEAT
-                    continue
-                if item is None:
-                    return
-                if item.version <= current.version:
-                    continue
-                current = item
-                yield SSEMessage(data=current.model_dump(mode="json"), event="snapshot")
-        finally:
-            await subscription.__aexit__(None, None, None)
 
-    return sse_response(stream())
+@router.get("/sessions/{session_id}/events", response_class=EventSourceResponse)
+async def workflow_events(
+    stream: Annotated[WorkflowEventStream, Depends(prepare_workflow_events)],
+) -> AsyncIterator[ServerSentEvent]:
+    current = stream.initial
+    yield ServerSentEvent(data=current.model_dump(mode="json"), event="snapshot")
+    while current.status not in _WORKFLOW_TERMINAL:
+        item = await stream.queue.get()
+        if item is None:
+            return
+        if item.version <= current.version:
+            continue
+        current = item
+        yield ServerSentEvent(data=current.model_dump(mode="json"), event="snapshot")

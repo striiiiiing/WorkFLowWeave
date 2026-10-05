@@ -1331,7 +1331,7 @@ requires-dist = [
     { name = "apscheduler", specifier = ">=3.11,<4" },
     { name = "cron-descriptor", specifier = ">=2,<3" },
     { name = "cryptography", specifier = ">=44,<47" },
-    { name = "fastapi", specifier = ">=0.115,<1" },
+    { name = "fastapi", specifier = ">=0.135.1,<1" },
     { name = "httpx", specifier = ">=0.27,<1" },
     { name = "ison-py", specifier = "==1.2.0" },
     { name = "jsonschema", extras = ["format"], specifier = ">=4.23,<5" },

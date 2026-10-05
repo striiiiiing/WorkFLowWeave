@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Query
-from fastapi.responses import StreamingResponse
+from fastapi.sse import EventSourceResponse, ServerSentEvent
 
 from logagent.channel.agent import AgentCommand
 from logagent.channel.web import WebChannel
@@ -15,9 +16,28 @@ from logagent.lifecycle import ApplicationServices
 from logagent.models import ID
 
 from .dependencies import get_services
-from .sse import HEARTBEAT, SSEItem, SSEMessage, sse_response
 
 Services = Annotated[ApplicationServices, Depends(get_services)]
+
+
+@dataclass(frozen=True, slots=True)
+class AgentEventStream:
+    channel: WebChannel
+    session_id: str
+    cursor: int
+
+
+async def prepare_agent_events(
+    session_id: ID,
+    services: Services,
+    after: int = Query(0, ge=0),
+    last_event_id: str | None = Header(None),
+) -> AgentEventStream:
+    cursor = max(after, int(last_event_id)) if last_event_id and last_event_id.isdigit() else after
+    channel = services.channels.web_channel
+    await channel.get_session(session_id)
+    await channel.events(session_id, after=cursor)
+    return AgentEventStream(channel, session_id, cursor)
 
 
 async def dispatch_web(services: ApplicationServices, command: AgentCommand):
@@ -42,49 +62,32 @@ def build_channel_router() -> APIRouter:
     async def outcome(request_id: str, services: Services, session: ID | None = None):
         return await services.channels.web_channel.outcome(request_id, session=session)
 
-    @router.get("/sessions/{session_id}/events")
+    @router.get("/sessions/{session_id}/events", response_class=EventSourceResponse)
     async def events(
-        session_id: ID,
-        services: Services,
-        after: int = Query(0, ge=0),
-        last_event_id: str | None = Header(None),
-    ):
-        return await stream_agent_events(
-            services.channels.web_channel, session_id,
-            after=after, last_event_id=last_event_id,
-        )
+        stream: Annotated[AgentEventStream, Depends(prepare_agent_events)],
+    ) -> AsyncIterator[ServerSentEvent]:
+        async for event in stream_agent_events(stream):
+            yield event
 
     return router
 
 
 async def stream_agent_events(
-    channel: WebChannel,
-    session_id: str,
-    *,
-    after: int = 0,
-    last_event_id: str | None = None,
-) -> StreamingResponse:
-    cursor = max(after, int(last_event_id)) if last_event_id and last_event_id.isdigit() else after
-    await channel.get_session(session_id)
-    await channel.events(session_id, after=cursor)
-
-    async def stream() -> AsyncIterator[SSEItem]:
-        nonlocal cursor
-        while True:
-            batch = await channel.wait_events(session_id, after=cursor, wait_seconds=0.5)
-            for event in batch:
-                cursor = event["id"]
-                yield SSEMessage(data=event, id=str(cursor))
-            session = await channel.get_session(session_id)
-            if session["status"] in {"completed", "failed", "cancelled", "interrupted"}:
-                for event in await channel.events(session_id, after=cursor):
-                    if event["id"] > cursor:
-                        cursor = event["id"]
-                        yield SSEMessage(data=event, id=str(cursor))
-                break
-            yield HEARTBEAT
-
-    return sse_response(stream())
+    stream: AgentEventStream,
+) -> AsyncIterator[ServerSentEvent]:
+    cursor = stream.cursor
+    while True:
+        batch = await stream.channel.wait_events(stream.session_id, after=cursor, wait_seconds=15.0)
+        for event in batch:
+            cursor = event["id"]
+            yield ServerSentEvent(data=event, id=str(cursor))
+        session = await stream.channel.get_session(stream.session_id)
+        if session["status"] in {"completed", "failed", "cancelled", "interrupted"}:
+            for event in await stream.channel.events(stream.session_id, after=cursor):
+                if event["id"] > cursor:
+                    cursor = event["id"]
+                    yield ServerSentEvent(data=event, id=str(cursor))
+            break
 
 
 channel_router = build_channel_router()
