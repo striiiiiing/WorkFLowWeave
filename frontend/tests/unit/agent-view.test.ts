@@ -230,14 +230,10 @@ it('asks for a model when the saved default is no longer available', async () =>
 })
 
 it('keeps the same request ID when a send response is lost and the user explicitly retries', async () => {
-  const command = vi
-    .spyOn(agentsApi, 'command')
+  const send = vi
+    .spyOn(agentsApi, 'send')
     .mockRejectedValueOnce(new TypeError('network lost'))
-    .mockResolvedValueOnce({
-      kind: 'turn',
-      priority: 'conversation',
-      result: { session_id: 'parent', turn_id: 't', deduplicated: true },
-    })
+    .mockResolvedValueOnce({ session_id: 'parent', turn_id: 't', deduplicated: true })
   const { wrapper } = await setup()
   await wrapper.get('textarea[aria-label="Agent 消息"]').setValue('input with uncertain receipt')
   await wrapper.get('form').trigger('submit')
@@ -248,7 +244,7 @@ it('keeps the same request ID when a send response is lost and the user explicit
   ).toBe('input with uncertain receipt')
   await wrapper.get('form').trigger('submit')
   await flushPromises()
-  expect(command.mock.calls[0][2]).toBe(command.mock.calls[1][2])
+  expect(send.mock.calls[0][1]).toBe(send.mock.calls[1][1])
   expect(wrapper.text()).not.toContain('发送结果未知')
 })
 
@@ -350,19 +346,15 @@ it('preselects the persistent default in new sessions without linking to the dem
 })
 
 it('keeps drafts and unknown send receipts with their originating session during navigation', async () => {
-  const command = vi
-    .spyOn(agentsApi, 'command')
+  const send = vi
+    .spyOn(agentsApi, 'send')
     .mockRejectedValueOnce(new TypeError('network lost'))
-    .mockResolvedValueOnce({
-      kind: 'turn',
-      priority: 'conversation',
-      result: { session_id: 'parent', turn_id: 't', deduplicated: true },
-    })
+    .mockResolvedValueOnce({ session_id: 'parent', turn_id: 't', deduplicated: true })
   const { wrapper, router } = await setup()
   await wrapper.get('textarea[aria-label="Agent 消息"]').setValue('parent draft')
   await wrapper.get('form').trigger('submit')
   await flushPromises()
-  const requestId = command.mock.calls[0][2]
+  const requestId = send.mock.calls[0][1]
   await router.push('/agents/another')
   await flushPromises()
   expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe('')
@@ -374,12 +366,12 @@ it('keeps drafts and unknown send receipts with their originating session during
   expect(wrapper.text()).toContain('发送结果未知')
   await wrapper.get('form').trigger('submit')
   await flushPromises()
-  expect(command.mock.calls[1][2]).toBe(requestId)
+  expect(send.mock.calls[1][1]).toBe(requestId)
 })
 
 it('treats an HTTP gateway timeout as unknown and retries with the same request ID', async () => {
-  const command = vi
-    .spyOn(agentsApi, 'command')
+  const send = vi
+    .spyOn(agentsApi, 'send')
     .mockRejectedValueOnce(
       new ApiError(504, {
         code: 'gateway_timeout',
@@ -387,11 +379,7 @@ it('treats an HTTP gateway timeout as unknown and retries with the same request 
         details: {},
       }),
     )
-    .mockResolvedValueOnce({
-      kind: 'turn',
-      priority: 'conversation',
-      result: { session_id: 'parent', turn_id: 't', deduplicated: true },
-    })
+    .mockResolvedValueOnce({ session_id: 'parent', turn_id: 't', deduplicated: true })
   const { wrapper } = await setup()
   await wrapper.get('textarea[aria-label="Agent 消息"]').setValue('gateway timeout input')
   await wrapper.get('form').trigger('submit')
@@ -399,7 +387,7 @@ it('treats an HTTP gateway timeout as unknown and retries with the same request 
   expect(wrapper.text()).toContain('发送结果未知')
   await wrapper.get('form').trigger('submit')
   await flushPromises()
-  expect(command.mock.calls[1]).toEqual(command.mock.calls[0])
+  expect(send.mock.calls[1]).toEqual(send.mock.calls[0])
 })
 
 it('asks to inspect sessions instead of retrying an uncertain workflow creation', async () => {

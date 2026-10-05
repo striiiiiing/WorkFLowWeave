@@ -47,7 +47,7 @@ from logagent.protocols import ChannelType, Collector, Tool
 
 _Registration = _CollectorRegistration | _ChannelRegistration | _ToolRegistration
 BUILTIN_TOOLS = {
-    "agent_" + name: "logagent.agent.builtin." + name
+    "agent_" + name: "logagent.agent.tools.builtin." + name
     for name in ("mcp", "read", "write", "grep", "shell")
 }
 _IDENTIFIER = re.compile(r"[A-Za-z0-9_-]{1,80}\Z")
