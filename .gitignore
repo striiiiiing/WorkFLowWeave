@@ -22,3 +22,6 @@ Typora_Hook_Log.txt
 .env
 master.key
 master.key.initialized
+
+# Local handoff notes are intentionally kept outside version control.
+/notification-channel-plugins-handoff.md
