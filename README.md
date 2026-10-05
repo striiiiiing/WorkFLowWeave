@@ -73,7 +73,13 @@ flowchart LR
 
 ## 快速开始
 
-当前提供从源码启动的方式，需要同时运行 Python 后端和前端开发服务。
+可以使用 Docker 部署，或从源码分别启动 Python 后端和前端开发服务。
+
+```bash
+docker compose up -d --build
+```
+
+打开 **http://localhost:3000**。数据保存在命名卷中；停止、更新、备份、微信登录和 Docker Hub 上传方式见 [Docker 启动说明](docs/docker.md)。
 
 ### 1. 准备环境
 
@@ -82,8 +88,8 @@ flowchart LR
 - Git；实际使用 MCP 或 CLI 来源时，还需要安装对应服务或命令。
 
 ```bash
-git clone https://github.com/striiiiiing/LogAgent.git
-cd LogAgent
+git clone https://github.com/striiiiiing/WorkFLowWeave.git
+cd WorkFLowWeave
 uv sync --group dev
 ```
 
@@ -121,11 +127,11 @@ curl -i http://localhost:3000/api/health
 
 1. **添加来源**：在资源管理中配置 MCP 服务和工具来源，或添加后端可执行的 CLI 命令。
 2. **配置模型**：添加 `OpenAI Compatible API` 服务，填写 `base_url`、模型名称及凭据。
-3. **选择通知渠道**：新资源库提供 `default_file` 本地文件渠道，也可以配置邮件等外部渠道。
+3. **选择通知渠道**：新资源库不预置通知渠道；从 `plugins/channel/` 中启用并配置 Email、文件、QQ、微信、飞书或 Telegram 插件。
 4. **创建工作流**：绑定来源，添加分析任务，分别选择模型和提示词，按需启用汇总，设置通知和运行计划。
 5. **手动运行**：在运行记录中检查采集、分析和最终结果。需要深入讨论时，从当次运行结果创建 Agent 会话。
 
-新资源库的来源列表为空，需要自行添加；默认文件通知写入 `data/notifications.txt`。选择其他 `data_dir` 后，通知文件随之调整。
+新资源库的来源和通知列表为空，需要自行添加。文件渠道使用 `file` 能力并将可读日志追加到你配置的路径。
 
 ### 先验证一次采集
 
@@ -164,11 +170,11 @@ uv run logagent collect host_info --api-url http://127.0.0.1:4300
 | `data/resources.json` | 来源、MCP 服务、模型、渠道和工作流等资源 |
 | `data/workflows.sqlite3` | 工作流 checkpoint 与业务归档 |
 | `data/agents/` | Agent 工作区、运行记录、checkpoint 和渠道状态 |
-| `plugins/` | 具体 Collector 与通知 / QQ / Test 渠道插件 |
+| `plugins/channel/` | Email、文件、QQ、微信 OpenClaw、飞书和 Telegram 渠道插件 |
 
 以上为默认数据位置；系统配置中的相对路径以 `config.json` 所在目录为基准。凭据支持环境变量引用或受保护的加密值，备份与迁移时需要同时保留资源、运行数据和对应的原主密钥。
 
-MCP 支持 stdio、Streamable HTTP 和 SSE。CLI 命令在**后端所在环境**执行；stdio MCP 同样需要后端能够找到其可执行文件。自定义 `plugin_dir` 时，需要将所用插件包放入该目录，插件发现和启停方式见 [插件说明](plugins/README.md)。
+MCP 支持 stdio、Streamable HTTP 和 SSE。CLI 命令在**后端所在环境**执行；stdio MCP 同样需要后端能够找到其可执行文件。自定义 `plugin_dir` 时，需要将所用插件包放入该目录，平台依赖与配置见 [通知插件说明](plugins/channel/README.md)。
 
 修改后端端口后，通过前端 `API_TARGET` 指向相同地址，例如：
 
@@ -197,7 +203,7 @@ docs/          项目状态与架构说明
 | --- | --- |
 | [项目近况与架构](docs/project-status-and-architecture.md) | 模块职责、当前实现、设计演进与尚未完成的验收 |
 | [前端开发](frontend/README.md) | 代理配置、代码组织、验证命令与环境排查 |
-| [插件说明](plugins/README.md) | 插件目录、能力名称和启停配置 |
+| [通知插件说明](plugins/channel/README.md) | 六个渠道的目录、依赖、能力与微信登录步骤 |
 | [测试导航](tests/README.md) | 按模块运行测试、网络依赖和 60 秒硬超时 |
 | [OpenSpec 导航](openspec/README.md) | 产品需求、设计与实施记录 |
 | [独立采集示例](examples/collect.py) | 不启动 API 服务，直接运行一个 CLI 来源 |
@@ -239,8 +245,8 @@ npm run build
 | P1 | 已验证环境 | 已明确运行时依赖。请补充已测试的操作系统、Python / Node.js 版本及最低 CPU / 内存要求。 | — |
 | P1 | 模型兼容清单 | 后端支持 OpenAI 兼容 API。请列出实际验证过的服务、模型及能力限制。 | — |
 | P1 | MCP 接入示例 | 已支持三种传输。请补充实际验证过的 MCP 服务、安装方式和工具来源配置。 | — |
-| P1 | 渠道联调结果 | 已有文件、邮件和 QQ 实现；真实 QQ 联调待完成。请补充配置步骤、测试平台与限制。 | — |
-| P1 | 部署与升级 | 本文提供源码开发启动；仓库没有 Docker / Compose 配置。请补充已验证的常驻部署、升级、数据备份及恢复步骤。 | — |
+| P1 | 渠道联调结果 | 六个通知插件均有契约测试；平台账号认证后的真实联调需自行配置。请补充测试平台与限制。 | — |
+| P1 | 部署与升级 | 已提供 [Docker / Compose 启动、更新与备份](docs/docker.md)；生产平台账号认证与实际投递仍需部署者验收。 | — |
 | P1 | 成本与效果 | 尚无统一对比数据。请提供同一任务的模型、输入、运行频率、调用次数、token / 费用及质量对比。 | — |
 | P2 | 贡献与反馈 | 尚无独立贡献规范。请确认问题反馈入口、PR 流程、沟通渠道及安全问题报告方式。 | — |
 | P2 | 路线图 | 已有 Agent 分析任务等设计方向。请确认近期优先级、验收目标和预计版本，或注明暂无时间承诺。 | — |
