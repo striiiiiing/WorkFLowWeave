@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import inspect
 import json
 import logging
@@ -33,8 +34,10 @@ from logagent.agent.graph import AgentToolContext, create_graph
 from logagent.agent.sandbox import ShellSandbox
 from logagent.agent.scheduling import ToolScheduler
 from logagent.agent.workspace import RuntimeIdentity, WorkspaceBackend
+from logagent.ai.errors import ModelError, error_info
+from logagent.ai.prompts import build_messages
 from logagent.errors import LogAgentError
-from logagent.models import CollectionContext
+from logagent.models import AIConfig, CollectionContext
 
 ModelProvider = Callable[["AgentSession"], Any]
 logger = logging.getLogger(__name__)
@@ -66,6 +69,18 @@ class AgentSession:
     parent_event_id: int | None = None
     pending_appends: list[tuple[str, str, str, str]] = field(default_factory=list)
     mcp_binding: dict = field(default_factory=dict)
+    workflow_task_id: str | None = None
+    ai_config: AIConfig | None = None
+    system_prompt: str = ""
+    input_prompt: str = "{input}"
+    user_prompt: str = ""
+    tool_names: list[str] | None = None
+
+    @property
+    def session_kind(self) -> str:
+        if self.workflow_session_id is None:
+            return "standalone"
+        return "workflow_subtask" if self.workflow_task_id is not None else "workflow_continue"
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,7 +202,8 @@ class AgentService:
                 continue
             workflow = next((event for event in log.events if event["type"] == "workflow.input"), None)
             terminal = next((event for event in reversed(log.events)
-                             if event["type"].startswith("turn.")), None)
+                             if event["type"] in {"turn.started", "turn.completed", "turn.failed",
+                                                  "turn.cancelled", "turn.interrupted"}), None)
             status = "interrupted" if terminal and terminal["type"] in {
                 "turn.started", "turn.interrupted"
             } else "created"
@@ -216,6 +232,12 @@ class AgentService:
                 parent_branch_id=created.get("parent_branch_id"),
                 parent_event_id=created.get("parent_event_id"),
                 mcp_binding=self._read_mcp_binding(directory.name),
+                workflow_task_id=created.get("workflow_task_id"),
+                ai_config=self._read_invocation(directory.name) if created.get("has_ai_config") else None,
+                system_prompt=created.get("system_prompt", ""),
+                input_prompt=created.get("input_prompt", "{input}"),
+                user_prompt=created.get("user_prompt", ""),
+                tool_names=created.get("tool_names"),
             )
             started_turns = {
                 event.get("turn_id") for event in log.events
@@ -250,6 +272,8 @@ class AgentService:
             changed_model = next((event.get("model") for event in reversed(log.events)
                                   if event["type"] == "session.model.changed"), session.model)
             session.model = changed_model
+            if any(event["type"] == "session.model.changed" for event in log.events):
+                session.ai_config = None
             session.title = next((event.get("title", "") for event in reversed(log.events)
                                   if event["type"] == "session.title.changed"), "")
             self.sessions[directory.name] = session
@@ -274,6 +298,12 @@ class AgentService:
     async def create_session(self, *, model: str | None = None,
                              workflow_session_id: str | None = None,
                              workflow_result: Any = None,
+                             workflow_task_id: str | None = None,
+                             ai_config: AIConfig | None = None,
+                             system_prompt: str | None = None,
+                             input_prompt: str | None = None,
+                             user_prompt: str = "",
+                             tool_names: list[str] | None = None,
                              session_id: str | None = None,
                              operation_id: str | None = None,
                              parent_session_id: str | None = None,
@@ -286,7 +316,14 @@ class AgentService:
             if not self._accepting:
                 raise LogAgentError("agent_busy", "Agent 当前暂停接收新会话")
             await self.initialize()
-            sid = session_id or _new_id("agent_")
+            if workflow_task_id is not None and workflow_session_id is None:
+                raise LogAgentError("invalid_argument", "task_id 需要 workflow_session_id")
+            system_prompt = system_prompt if system_prompt is not None else (
+                ai_config.system_prompt if ai_config is not None else ""
+            )
+            input_prompt = "{input}" if input_prompt is None else input_prompt
+            sid = session_id or ("agent_" + hashlib.sha256(operation_id.encode()).hexdigest()[:32]
+                                 if operation_id is not None else _new_id("agent_"))
             if sid in self.sessions:
                 created = next((event for event in self.sessions[sid].log.events
                                 if event["type"] == "session.created"), None)
@@ -314,7 +351,15 @@ class AgentService:
                 parent_session_id=parent_session_id,
                 parent_turn_id=parent_turn_id,
                 parent_branch_id=parent_branch_id, parent_event_id=parent_event_id,
+                workflow_task_id=workflow_task_id,
+                ai_config=deepcopy(ai_config),
+                system_prompt=system_prompt,
+                input_prompt=input_prompt,
+                user_prompt=user_prompt,
+                tool_names=deepcopy(tool_names),
             )
+            if ai_config is not None:
+                self._write_invocation(sid, ai_config)
             await session.log.initialize()
             if initial_messages is not None:
                 await self._projection_graph().aupdate_state(
@@ -324,17 +369,39 @@ class AgentService:
                 "session.created", branch_id=session.branch_id,
                 operation_id=operation_id,
                 model=session.model, workflow_session_id=workflow_session_id,
+                workflow_task_id=workflow_task_id, session_kind=session.session_kind,
+                has_ai_config=ai_config is not None, system_prompt=system_prompt,
+                input_prompt=input_prompt, user_prompt=user_prompt, tool_names=tool_names,
                 parent_session_id=parent_session_id, parent_turn_id=parent_turn_id,
                 parent_branch_id=parent_branch_id, parent_event_id=parent_event_id,
             )
             if workflow_result is not None:
                 await session.log.append("workflow.input", workflow_session_id=workflow_session_id,
                                          input=workflow_result)
+                if initial_messages is not None:
+                    await session.log.append("workflow.input.used", inherited=True)
             session.created_at = created["created_at"]
             session.updated_at = session.log.events[-1]["created_at"]
             self.sessions[sid] = session
             await self._persist_session(session)
             return self._session_view(session)
+
+    def _read_invocation(self, sid: str) -> AIConfig:
+        # Missing frozen credentials/configuration must never select a live model instead.
+        return AIConfig.model_validate_json(
+            (self.runtime.parent / "invocations" / f"{sid}.json").read_text()
+        )
+
+    def _write_invocation(self, sid: str, config: AIConfig) -> None:
+        root = self.runtime.parent / "invocations"
+        root.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(mode="w", dir=root, delete=False) as out:
+            out.write(config.model_dump_json())
+            temporary = Path(out.name)
+        try:
+            os.replace(temporary, root / f"{sid}.json")
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def _read_mcp_binding(self, sid):
         path = self.runtime.parent / "mcp-bindings" / f"{sid}.json"
@@ -415,6 +482,12 @@ class AgentService:
             session_id=child_session_id, operation_id=operation_id,
             workflow_session_id=source.workflow_session_id,
             workflow_result=source.workflow_input, mcp_binding=deepcopy(source.mcp_binding),
+            workflow_task_id=source.workflow_task_id,
+            ai_config=source.ai_config if model is None else None,
+            system_prompt=source.system_prompt,
+            input_prompt=source.input_prompt,
+            user_prompt=source.user_prompt,
+            tool_names=source.tool_names,
             parent_session_id=source.session_id, parent_turn_id=selected_turn,
             parent_branch_id=source.branch_id,
             parent_event_id=user["id"] - 1 if user else terminal["id"],
@@ -447,6 +520,8 @@ class AgentService:
             in {"checkpoint_missing", "checkpoint_corrupt"}), None)
         return {"session_id": session.session_id, "branch_id": session.branch_id,
                 "title": session.title,
+                "session_kind": session.session_kind,
+                "workflow_task_id": session.workflow_task_id,
                 "model": session.model, "workflow_session_id": session.workflow_session_id,
                 "parent_session_id": session.parent_session_id,
                 "parent_turn_id": session.parent_turn_id,
@@ -475,6 +550,7 @@ class AgentService:
         async with session.lock:
             event = await session.log.append("session.model.changed", model=model)
             session.model, session.updated_at = model, event["at"]
+            session.ai_config = None
             await self._persist_session(session)
         return self._session_view(session)
 
@@ -501,6 +577,7 @@ class AgentService:
         if session.parent_session_id:
             return await self.source(session.parent_session_id)
         return {"workflow_session_id": session.workflow_session_id,
+                "workflow_task_id": session.workflow_task_id,
                 "input": session.workflow_input, "created_at": session.created_at}
 
     async def get_session(self, session_id: str) -> dict[str, Any]:
@@ -649,9 +726,17 @@ class AgentService:
 
     async def wait(self, turn_id: str) -> dict[str, Any]:
         task = self._turns.get(turn_id)
-        if task is None:
-            raise LogAgentError("turn_not_found", "Agent turn 不存在或已过期")
-        return await asyncio.shield(task)
+        if task is not None:
+            return await asyncio.shield(task)
+        for session in self.sessions.values():
+            terminal = next((event for event in reversed(session.log.events)
+                             if event.get("turn_id") == turn_id and event["type"] in {
+                                 "turn.completed", "turn.failed", "turn.cancelled", "turn.interrupted",
+                             }), None)
+            if terminal is not None:
+                return {"turn_id": turn_id, "status": terminal["type"].removeprefix("turn."),
+                        "text": terminal.get("text", ""), "error": terminal.get("error")}
+        raise LogAgentError("turn_not_found", "Agent turn 不存在或已过期")
 
     async def cancel(self, session_id: str) -> dict[str, Any]:
         session = self._session(session_id)
@@ -808,19 +893,29 @@ class AgentService:
         ) as model:
             yield model
 
-    def _tool_declarations(self) -> tuple[ToolDeclaration, ...]:
+    def _tool_declarations(self, session: AgentSession | None = None) -> tuple[ToolDeclaration, ...]:
         """Project the published tool registry into graph declarations."""
         if self.plugins is None:
-            return tuple(self._declarations)
-        declarations: list[ToolDeclaration] = []
-        for description in self.plugins.toolRegister.describe():
-            tool = self.plugins.toolRegister.get(description.name)
-            if tool is None:
-                continue
-            declarations.append(ToolDeclaration(
-                tool.name, tool.description, tool.input_schema, tool.execution, tool.invoke,
-            ))
-        return tuple(declarations)
+            declarations = tuple(self._declarations)
+        else:
+            declarations_list: list[ToolDeclaration] = []
+            for description in self.plugins.toolRegister.describe():
+                tool = self.plugins.toolRegister.get(description.name)
+                if tool is None:
+                    continue
+                declarations_list.append(ToolDeclaration(
+                    tool.name, tool.description, tool.input_schema, tool.execution, tool.invoke,
+                ))
+            declarations = tuple(declarations_list)
+        if session is None or session.tool_names is None:
+            return declarations
+        allowed = set(session.tool_names)
+        available = {item.name for item in declarations}
+        unknown = sorted(allowed - available)
+        if unknown:
+            raise LogAgentError("tool_unavailable", "Workflow Agent 请求了未注册工具",
+                                {"tools": unknown})
+        return tuple(item for item in declarations if item.name in allowed)
 
     def _resolve_model(self, selected: str | None, snapshot: dict[str, Any]) -> tuple[Any, str]:
         """Resolve a model reference against one ResourceStore publication.
@@ -858,11 +953,11 @@ class AgentService:
     def _capture_turn_resources(self, session: AgentSession) -> _TurnResources:
         config = self.config.model_copy(deep=True)
         declarations = tuple(replace(item, input_schema=deepcopy(item.input_schema))
-                             for item in self._tool_declarations())
+                             for item in self._tool_declarations(session))
         if self.resources is None:
             gateway = (self.gateway_factory(session) if self.gateway_factory is not None else
                        MCPGateway(self.mcp_runtime, session.mcp_binding) if self.mcp_runtime else None)
-            return _TurnResources(config, deepcopy(self.ai_config), session.model,
+            return _TurnResources(config, deepcopy(session.ai_config or self.ai_config), session.model,
                                   None, None, None, declarations, gateway)
         snapshot = self.resources.invocation_snapshot()
         ai_config = None
@@ -870,7 +965,10 @@ class AgentService:
         summary_ai_config = None
         summary_model = None
         if self.model_provider is None:
-            ai_config, model_name = self._resolve_model(session.model, snapshot)
+            if session.ai_config is not None:
+                ai_config, model_name = deepcopy(session.ai_config), session.model
+            else:
+                ai_config, model_name = self._resolve_model(session.model, snapshot)
             if config.summary_ai is not None:
                 summary_ai_config, summary_model = self._resolve_summary_model(
                     config.summary_ai, model_name, snapshot,
@@ -1082,6 +1180,8 @@ class AgentService:
                 turn_id=turn_id, workspace=str(view.root),
                 workflow_session_id=session.workflow_session_id, now=datetime.now(ZoneInfo(config.timezone)),
             )
+            if session.system_prompt:
+                system_prompt += "\n\n" + session.system_prompt
             context = AgentToolContext(
                 workspace=view, sandbox=ShellSandbox(view), gateway=turn_resources.gateway,
                 config=config,
@@ -1097,8 +1197,13 @@ class AgentService:
             if not compact_only and session.workflow_input is not None and not any(
                 event["type"] == "workflow.input.used" for event in log.events
             ):
-                messages.append(HumanMessage(content=json.dumps(
-                    {"input": session.workflow_input}, ensure_ascii=False, sort_keys=True)))
+                if session.workflow_task_id is not None:
+                    input_text = (session.workflow_input if isinstance(session.workflow_input, str)
+                                  else json.dumps(session.workflow_input, ensure_ascii=False, sort_keys=True))
+                    messages.append(build_messages("", session.input_prompt, input_text)[1])
+                else:
+                    messages.append(HumanMessage(content=json.dumps(
+                        {"input": session.workflow_input}, ensure_ascii=False, sort_keys=True)))
                 await log.append("workflow.input.used", turn_id=turn_id)
             if not compact_only:
                 messages.append(HumanMessage(content=text, id=message_id))
@@ -1206,6 +1311,8 @@ class AgentService:
             published = bool(getattr(exc, "_agent_published", published or publication[0]))
             await self._cancel_pending_commands(session)
             error = (exc.info.model_dump(mode="json") if isinstance(exc, LogAgentError)
+                     else (exc.report or error_info(exc)).model_dump(mode="json")
+                     if isinstance(exc, ModelError)
                      else {"type": type(exc).__name__, "message": str(exc)})
             await log.append("turn.failed", turn_id=turn_id,
                              error=error, partial=published)

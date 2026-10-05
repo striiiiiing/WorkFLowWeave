@@ -23,6 +23,7 @@ class AgentCommand(StrictModel):
     action: Literal["message", "new", "resume", "stop", "append", "compact", "fork", "workflow"] | None = None
     workflow_session_id: ID | None = None
     workflow_id: ID | None = None
+    task_id: ID | None = None
     workflow_result: object | None = None
     turn_id: ID | None = None
     message_id: ID | None = None
@@ -156,14 +157,17 @@ class AgentChannel:
     async def _create(self, envelope: AgentCommand, *, workflow_session_id: str | None = None):
         workflow_session_id = workflow_session_id or envelope.workflow_session_id
         workflow_result = envelope.workflow_result
+        if envelope.task_id is not None and workflow_session_id is None:
+            raise LogAgentError("invalid_argument", "task_id 需要 workflow_session_id")
         if workflow_session_id is not None:
             if workflow_result is not None:
                 raise LogAgentError("invalid_argument", "绑定 Workflow 时由服务读取原始结果，不接受覆盖")
-            workflow_result = await self._workflow_result(workflow_session_id)
+            workflow_result = await self._workflow_result(workflow_session_id, task_id=envelope.task_id)
         return await self.service.create_session(
             model=envelope.model,
             workflow_session_id=workflow_session_id,
             workflow_result=workflow_result,
+            workflow_task_id=envelope.task_id,
             session_id=self._operation_session(envelope),
             operation_id=self._operation_id(envelope),
         )
@@ -206,10 +210,12 @@ class AgentChannel:
                 return session.session_id
         return None
 
-    async def _workflow_result(self, session_id: str) -> dict:
+    async def _workflow_result(self, session_id: str, *, task_id: str | None = None) -> dict:
         if self.session_view is None:
             raise LogAgentError("not_ready", "Workflow 会话读取服务尚未装配")
         record = await self.session_view.get_session(session_id)
+        if task_id is not None:
+            return await self._workflow_task_result(session_id, task_id, record)
         if record.status not in {"completed", "partial"}:
             raise LogAgentError("workflow_result_unavailable", "Workflow 运行尚无最终结果")
         phase = await self.session_view.get_phase_content(session_id, "aggregate", version=record.version)
@@ -221,6 +227,25 @@ class AgentChannel:
             "workflow_id": record.workflow_id,
             "finished_at": (record.finished_at or record.updated_at).isoformat(),
         }
+
+    async def _workflow_task_result(self, session_id: str, task_id: str, record) -> dict:
+        stage = "aggregate" if task_id == "final" else "analyze"
+        phase = await self.session_view.get_phase_content(session_id, stage, version=record.version)
+        if phase.availability != "available" or phase.content is None:
+            raise LogAgentError("workflow_result_unavailable", "Workflow Task 结果正文不可用")
+        if task_id == "final":
+            result = phase.content.get("aggregate")
+            text = phase.content.get("outputs", {}).get("final")
+        else:
+            result = next((item for item in phase.content.get("analyses", [])
+                           if item.get("task_id") == task_id), None)
+            text = result.get("text") if result else None
+        if result is not None and result.get("status") != "success":
+            raise LogAgentError("workflow_result_unavailable", "Workflow Task 尚无成功结果")
+        if not isinstance(text, str) or not text.strip():
+            raise LogAgentError("workflow_result_unavailable", "Workflow Task 尚无成功结果")
+        return {"task_id": task_id, "text": text, "workflow_id": record.workflow_id,
+                "finished_at": (record.finished_at or record.updated_at).isoformat()}
 
     async def _latest_workflow_session(self, workflow_id: str) -> str:
         if self.session_view is None:
