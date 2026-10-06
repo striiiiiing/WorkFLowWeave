@@ -4,14 +4,16 @@ import asyncio
 import hashlib
 
 from logagent.agent.binding import workflow_mcp_binding
+from logagent.ai.prompts import resolve_prompts
 from logagent.errors import LogAgentError
 from logagent.models import AnalysisResult, ExecutionContext, copy_model
-from logagent.workflow.agent_tasks import execute_agent_task
+from logagent.workflow.agent_tasks import LEGACY_TASK_MESSAGE, execute_agent_task
 
 
 async def analyze_call(snapshot, ai_service, config, item, text, task_id, result, model, *,
                        agent_service=None, execution_epoch=None, messages=None):
     workflow = snapshot.workflow
+    system_prompt, input_prompt = resolve_prompts(workflow, item)
     if item.agent_mode:
         if agent_service is None:
             raise LogAgentError("not_ready", "Workflow Agent 服务尚未装配")
@@ -26,22 +28,24 @@ async def analyze_call(snapshot, ai_service, config, item, text, task_id, result
             ai_config=copy_model(config),
             model=model,
             workflow_result=text,
-            system_prompt=workflow.system_prompt if item.system_prompt is None else item.system_prompt,
-            input_prompt=workflow.input_prompt if item.input_prompt is None else item.input_prompt,
+            system_prompt=system_prompt,
+            input_prompt=input_prompt,
             user_prompt=item.user_prompt,
             tool_names=item.agent_tools,
             mcp_binding=workflow_mcp_binding(snapshot),
+            # Only historical snapshots can contain an empty difference prompt.
+            request_text=LEGACY_TASK_MESSAGE if not item.user_prompt else None,
         )
     raw = await ai_service.execute(
         copy_model(config),
-        workflow.input_prompt if item.input_prompt is None else item.input_prompt,
+        input_prompt,
         text,
         model=model,
         task_id=task_id,
         context=ExecutionContext(
             workflow_id=result.workflow_id, session_id=result.session_id, stage=result.stage
         ),
-        system_prompt=workflow.system_prompt if item.system_prompt is None else item.system_prompt,
+        system_prompt=system_prompt,
         user_prompt=item.user_prompt,
         **({"messages": messages} if messages is not None else {}),
     )

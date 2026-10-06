@@ -15,9 +15,7 @@ const props = defineProps<{
 const draft = () => props.editor.draft.value!
 const fanIn = () => props.editor.draft.value!.fan_in!
 const orderedInputs = () =>
-  fanIn().order.length
-    ? fanIn().order
-    : [...(fanIn().agent_mode ? [] : ['$input']), ...draft().analyses.map((task) => task.id)]
+  fanIn().order.length ? fanIn().order : ['$input', ...draft().analyses.map((task) => task.id)]
 function moveInput(index: number, delta: number) {
   const order = [...orderedInputs()]
   const target = index + delta

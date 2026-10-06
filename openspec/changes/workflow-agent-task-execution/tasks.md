@@ -38,3 +38,7 @@
 ## 本地契约修订验收（2026-10-04）
 
 Task 独立 System/Input 优先，否则继承 Workflow；Human 输入模板和差异必填。新 Agent 首轮三层消息不追加固定执行指令，汇总始终常规三层并隐藏优化选项；旧首轮恢复保留历史请求身份。前端切换 Agent 模式不生成或清空差异。实际消息、持久化、分支、旧首轮恢复与浏览器保存行为已经验证；范围和结果见 [契约修订验收](../align-workflow-prompt-contract/tasks.md)。上方 2026-10-02 源端记录及其限制为历史依据，本地默认顺序、Prompt 和恢复身份以本次修订为准。
+
+## 2026-10-06 本地契约核验补齐
+
+用户最新确认的空 order 默认 `$input` 加 Task 顺序适用于普通与 Agent 汇总；Human 输入模板及差异必填。此次设计修订与实现、迁移及恢复验证见 [Prompt 契约核验](../align-workflow-prompt-contract/tasks/2026-10-06-prompt-contract-audit/task.md)。历史验收文字保留，默认顺序以此次修订为准。

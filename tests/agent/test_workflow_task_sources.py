@@ -15,7 +15,7 @@ from tests.workflow.helpers import AI, Channel, Collector, snapshot
 async def test_http_session_creation_reads_selected_workflow_source(tmp_path, task_id):
     agent = AgentService(tmp_path / "workspace", tmp_path / "agent")
     workflow = WorkflowRunner(Collector(), AI(), Channel(), database=tmp_path / "runs.sqlite3")
-    snap = snapshot(tasks=("first",), channels=False, fan_in=FanInConfig())
+    snap = snapshot(tasks=("first",), channels=False, fan_in=FanInConfig(user_prompt="summarize results", ))
     try:
         result = await workflow.wait(await workflow.trigger(snap, session_id="run"))
         owner = Lifecycle()

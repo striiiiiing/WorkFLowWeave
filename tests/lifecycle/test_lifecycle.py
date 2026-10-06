@@ -209,7 +209,7 @@ async def _seed_resources(
         WorkflowDefinition(
             id="timed",
             sources=["source"],
-            analyses=[AnalysisTask(id="task", ai="ai", model="model")],
+            analyses=[AnalysisTask(user_prompt="analyze input", id="task", ai="ai", model="model")],
             channels=["channel"] if channel else [],
             schedule={"type": "every", "every_seconds": interval} if interval else None,
             enabled=enabled,

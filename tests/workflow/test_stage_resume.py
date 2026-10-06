@@ -15,7 +15,7 @@ from tests.workflow.test_workflow_recovery import close, run, service
 async def test_analyze_and_notify_rerun_to_finish_without_recollecting(tmp_path):
     w, store, collector, ai, channel = service(tmp_path / "runs.sqlite3")
     try:
-        first = await run(w, snapshot(fan_in=FanInConfig()))
+        first = await run(w, snapshot(fan_in=FanInConfig(user_prompt="summarize results", )))
         original = await w.get_session("run")
         cp = await w._checkpointer.aget_tuple({"configurable": {"thread_id": "run"}})
         epoch = cp.checkpoint["channel_values"]["execution_epoch"]

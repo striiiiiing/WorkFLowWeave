@@ -35,7 +35,7 @@ async def test_disabled_bindings_are_preserved_and_reenabled_in_snapshot(tmp_pat
     workflow = WorkflowDefinition(
         id="workflow",
         sources=["source"],
-        analyses=[{"id": "task", "ai": "ai", "model": "model"}],
+        analyses=[{"user_prompt": "analyze input", "id": "task", "ai": "ai", "model": "model"}],
         channels=["channel"],
         source_overrides={"source": {"options": {"records": [{"message": "kept"}]}}},
         channel_overrides={"channel": {"options": {}}},
@@ -92,7 +92,7 @@ async def test_disabled_bindings_change_real_execution_scope_and_restore(tmp_pat
         WorkflowDefinition(
             id="workflow",
             sources=["source"],
-            analyses=[{"id": "task", "ai": "ai", "model": "model"}],
+            analyses=[{"user_prompt": "analyze input", "id": "task", "ai": "ai", "model": "model"}],
             channels=["channel"],
             source_overrides={"source": {"options": {"records": [{"message": "kept"}]}}},
             channel_overrides={"channel": {"options": {}}},

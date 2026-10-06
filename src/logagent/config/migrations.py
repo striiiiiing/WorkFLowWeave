@@ -90,6 +90,48 @@ def _input_prompt(value: Any) -> str:
 
 
 def _migrate_workflow_prompts(workflow: dict, ai: dict) -> None:
+    """Upgrade editable resources without discarding user-supplied overrides."""
+    analyses = workflow.get("analyses")
+    if not isinstance(analyses, list):
+        raise LogAgentError("invalid_config", "旧 Workflow analyses 必须是列表")
+    workflow.setdefault("system_prompt", "")
+    workflow.setdefault("input_prompt", "{input}")
+    for task in analyses:
+        task = _object(task, "analysis")
+        config = _object(ai.get(task.get("ai")), "analysis AI")
+        task.setdefault("system_prompt", config.get("system_prompt", ""))
+        _migrate_resource_prompt(task, required=True)
+    fan_in = workflow.get("fan_in")
+    if fan_in is None:
+        return
+    fan_in = _object(fan_in, "fan_in")
+    if fan_in.get("ai") is not None:
+        config = _object(ai.get(fan_in["ai"]), "fan_in AI")
+        fan_in.setdefault("system_prompt", config.get("system_prompt", ""))
+    fan_in.setdefault("reuse_from", None)
+    fan_in.setdefault("single_task_optimization", False)
+    _migrate_resource_prompt(
+        fan_in, required=fan_in.get("ai") is not None or fan_in.get("reuse_from") is not None,
+    )
+    if not fan_in.get("order"):
+        fan_in["order"] = [task.get("id") for task in analyses]
+
+
+def _migrate_resource_prompt(item: dict, *, required: bool) -> None:
+    legacy = item.pop("prompt", "{input}")
+    if not isinstance(legacy, str):
+        raise LogAgentError("invalid_config", "旧 prompt 必须是字符串")
+    item.setdefault("input_prompt", "{input}")
+    item.setdefault("user_prompt", legacy.replace("{input}", "").strip())
+    difference = item["user_prompt"]
+    if required and (not isinstance(difference, str) or not difference.strip()):
+        raise LogAgentError(
+            "prompt_migration_required", "旧任务没有可迁移的差异指令，请补齐 user_prompt",
+        )
+
+
+def _migrate_historical_prompts(workflow: dict, ai: dict) -> None:
+    """Historical runs retain their original two-message request semantics."""
     analyses = workflow.get("analyses")
     if not isinstance(analyses, list):
         raise LogAgentError("invalid_config", "旧 Workflow analyses 必须是列表")
@@ -196,5 +238,5 @@ def migrate_legacy_snapshot(data: Any) -> Any:
     has_legacy_prompt = any(isinstance(task, dict) and "prompt" in task for task in analyses or [])
     has_legacy_prompt |= isinstance(fan_in, dict) and "prompt" in fan_in
     if has_legacy_prompt:
-        _migrate_workflow_prompts(workflow, _object(migrated.get("ai"), "ai"))
+        _migrate_historical_prompts(workflow, _object(migrated.get("ai"), "ai"))
     return migrated

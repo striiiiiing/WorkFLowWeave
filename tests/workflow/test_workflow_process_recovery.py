@@ -140,7 +140,7 @@ async def main():
         snapshot = WorkflowSnapshot(
             workflow=WorkflowDefinition(
                 id="demo", sources=["source"],
-                analyses=[AnalysisTask(id=key, ai="ai", model="original-model") for key in tasks],
+                analyses=[AnalysisTask(id=key, ai="ai", model="original-model", user_prompt="analyze input") for key in tasks],
                 channels=channels, analysis_concurrency=1,
             ),
             sources={"source": SourceConfig(id="source", collector="mock")},

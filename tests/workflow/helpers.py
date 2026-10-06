@@ -26,7 +26,7 @@ def snapshot(*, channels=True, fan_in=None, tasks=("first", "second"), **options
         id="demo",
         sources=["source"],
         analyses=[
-            AnalysisTask(id=key, ai="ai", model="offline", input_prompt=f"{key}: {{input}}")
+            AnalysisTask(user_prompt="analyze input", id=key, ai="ai", model="offline", input_prompt=f"{key}: {{input}}")
             for key in tasks
         ],
         channels=["one", "two"] if channels else [],
