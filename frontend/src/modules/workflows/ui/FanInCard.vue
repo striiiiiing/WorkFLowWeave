@@ -114,6 +114,19 @@ function selectModelSource(value: string) {
         :tools="tools"
         @update="editor.updateFanIn($event)"
       />
+      <el-form-item v-if="advanced && !fanIn().agent_mode && (fanIn().reuse_from || fanIn().ai)">
+        <el-checkbox
+          :model-value="fanIn().single_task_optimization ?? true"
+          aria-label="采用单任务优化"
+          @update:model-value="editor.updateFanIn({ single_task_optimization: Boolean($event) })"
+        >
+          采用单任务优化
+        </el-checkbox>
+        <p class="muted">
+          仅一个分析任务且使用相同 AI 配置和模型时，沿用分析提示词和回复，再追加汇总指令。
+          关闭后使用汇总自身的系统提示词和输入模板。是否降低成本取决于模型的前缀缓存。
+        </p>
+      </el-form-item>
       <p
         v-if="fanIn().agent_mode && !fanIn().reuse_from && !fanIn().ai"
         class="text-red-700 mb-3"

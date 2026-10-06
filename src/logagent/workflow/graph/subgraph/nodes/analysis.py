@@ -10,7 +10,7 @@ from logagent.workflow.agent_tasks import execute_agent_task
 
 
 async def analyze_call(snapshot, ai_service, config, item, text, task_id, result, model, *,
-                       agent_service=None, execution_epoch=None):
+                       agent_service=None, execution_epoch=None, messages=None):
     workflow = snapshot.workflow
     if item.agent_mode:
         if agent_service is None:
@@ -43,6 +43,7 @@ async def analyze_call(snapshot, ai_service, config, item, text, task_id, result
         ),
         system_prompt=workflow.system_prompt if item.system_prompt is None else item.system_prompt,
         user_prompt=item.user_prompt,
+        **({"messages": messages} if messages is not None else {}),
     )
     if asyncio.current_task().cancelling():
         raise asyncio.CancelledError

@@ -29,6 +29,8 @@ Agent Task 所有权属于 `WorkflowContext.agent_service` 与 `src/logagent/wor
 
 本次落实 `align-workflow-prompt-contract` 中与 Agent Task 有关的部分：Task 覆盖优先、Workflow 继承、输入模板单次展开、真实差异作为首轮 Human、保留 Prompt 的恢复/fork、切换模式不填充或清空 Prompt、Agent 汇总使用自身 Prompt 和分析声明顺序。普通 LLM 的单任务消息优化及旧分支资源版本 1→2 迁移属于历史实现，不移入当前资源版本 4；当前 LLM 行为继续以当前主线契约为准。
 
+后续范围补充：用户在移植提交 `3381e04` 后再次明确普通 LLM 单任务优化默认开启、可关闭，Agent 汇总保持三层。普通 LLM 的遗漏项按原有 design 补充实现，详见 [单任务优化修复记录](../../../align-workflow-prompt-contract/tasks/2026-10-06-single-task-optimization/task.md)；旧资源版本迁移仍不属于该补充范围。
+
 ### 验证进度
 
 - 适配器、会话和现有 Workflow 定向测试 33 项通过，单进程 60 秒硬超时。
