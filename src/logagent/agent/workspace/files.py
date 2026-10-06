@@ -18,6 +18,7 @@ from logagent.agent.storage.io import file_io
 from logagent.agent.workspace.process import run_process
 from logagent.agent.workspace.views import RuntimeSelfView
 from logagent.errors import LogAgentError
+from logagent.storage_primitives.digest import sha256_bytes
 
 _DIRECTORY = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 _READ = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
@@ -26,7 +27,7 @@ _RUNTIME_ROOTS = frozenset({"Catalog", "Artifacts", "Sessions"})
 
 
 def _hash(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+    return sha256_bytes(data)
 
 
 @contextmanager

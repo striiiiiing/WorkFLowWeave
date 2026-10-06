@@ -86,3 +86,63 @@ Diff review 特别核对：是否只是搬迁巨型对象、是否产生第二�
 3. 后续实施时使用 `openspec instructions apply --change redesign-agent-module` 获取根任务；按阶段完成并在本文件追加真实证据。CLI artifact 完成不等于代码已验收。
 4. 不改 design 的实现修正更新本任务；设计改变须取得相应授权并新建任务记录，业务行为改变还须补 capability/specs，不沿用 skip_specs 掩盖变化。
 5. 全部实现和验证任务完成后才执行 `openspec archive redesign-agent-module`；本次文档交付不执行 apply 或 archive。
+
+## 6. 2026-10-06 实施交接记录
+
+用户已授权采用独立 worktree 基于最新 commit 实现，随后要求先交接。本轮停在结构拆分和最新基线整合之后，最终验收前。可直接接续的状态、路径、验证、设计差距和下一步见 [docs 交接文档](../../../../../docs/redesign-agent-module-handoff.md)。根 tasks.md 已按实际证据更新为 14 / 22 项；本文件不维护第二份复选框。
+
+### 6.1 基线与实现
+
+- worktree：`/mnt/d/code/LogAgent/.worktree/redesign-agent-module`；分支 `implement/redesign-agent-module`。
+- 原基线 `e71341c`；发现主分支新增 `3381e04` 后保存实现检查点并完成 rebase。实现检查点 `a5bd9fc` 基于 `3381e04`，其后的存储原语接入、测试迁移和交接文档已固定；主工作区的未提交文件未带入。
+- 最新基线已有 Workflow Agent Task 功能，整合时保留其会话种类/task/source、AI invocation 持久化、prompt/tool 选择、历史 turn 查询及 `workflow.agent_service` 接线。新增 `storage/invocations.py` 是提取最新基线既有职责，不是另造业务事实源；路径仍为原 `agents/invocations/<sid>.json`。
+- `AgentService` 只接受已装配依赖；`TurnCoordinator` 拥有任务与准入；`SessionView` 只有会话值；真实 ToolRuntime 进入唯一 executor。EventLog/file I/O/workspace digest 已接入共享原语，最后这批接线和新增测试迁移仍未提交。
+- `model_provider` 属性代理保留原嵌入/测试入口，原因是 lifecycle 测试在启动后注入模型；不恢复具体依赖构造。
+- 前端最终产物来自 `207dbfc`，已全部整合，包括 SDK hydration 修复、adapter 测试和删除旧 EventSource 模块。旧早期拷贝的失败不代表当前状态。
+
+### 6.2 完成项证据
+
+| 完成项 | 实施依据与验证 |
+| --- | --- |
+| 1.1 | design §7 的旧职责/导入盘点；原基线 Agent 122 passed；新增 `3381e04` Workflow 调用方已迁移 |
+| 2.1、2.2、2.3、2.4 | design §3/§5/§6；contracts/ports、工具声明、七类原语、workspace 和 storage/checkpointer 提取；最新 Agent + primitives 176 passed，包含架构、存储、文件与旧数据测试 |
+| 3.2、3.3、3.5 | design §3.3；真实 LangGraph ToolNode/ToolRuntime、单条 v2 stream、官方 saver、context/recovery/fork；framework/task ownership/final contracts/context/legacy fixture 都在 176 项回归内通过 |
+| 4.1、4.2 | design §3.2 与 §4；session/turn 所有权分离，资源深冻结、AI 租约及 MCP/Workflow 适配；turn_config/binding/admission 与最新 Workflow 25 项通过 |
+| 4.3、4.4、4.5 | design §7 与 references A2/A3/A10/A11；processor/CommandDispatcher、唯一应用资源图、registry 切换；旧基线 Agent channel 20、platform 5、Agent API 10、lifecycle 21 项通过；最新 lifecycle Agent channel 13 项与 Agent API/SSE 14 项通过，旧 flat 导入扫描已清理 |
+| 4.6 | design §3.4；真实 `@langchain/vue` useStream/v2 adapter，替代旧 EventSource composable；当前 worktree 的 adapter/stream/protocol/view 24 passed，原前端子分支全量 254 passed |
+
+### 6.3 最新基线回归
+
+```text
+timeout 60s pytest tests/agent tests/storage_primitives -q
+176 passed, 1 warning in 40.74s，退出码 0
+
+timeout 60s pytest tests/workflow/test_agent_task_integration.py tests/workflow/test_agent_tasks.py -q
+25 passed in 28.94s，退出码 0
+
+npm --prefix frontend test -- --run tests/unit/agent-adapter.test.ts tests/unit/agent-stream.test.ts tests/unit/agent-protocol.test.ts tests/unit/agent-view.test.ts
+4 files / 24 passed，退出码 0
+
+timeout 60s pytest tests/lifecycle/test_agent_channels.py -q
+13 passed in 38.95s，退出码 0
+
+timeout 60s pytest tests/interaction/test_agent_api.py tests/interaction/test_sse.py -q
+14 passed in 21.68s，退出码 0
+
+ruff check src tests：通过
+Python wheel/sdist build：通过；产物 /tmp/logagent-agent-module-dist-final/
+frontend typecheck：通过
+frontend build：通过；4209 modules transformed，49.45s，退出码 0
+openspec validate redesign-agent-module --strict --no-interactive：通过
+```
+
+临时输出保存在 `/tmp/logagent-redesign-handoff-{agent,workflow,frontend,lifecycle,interaction}.log`；长期依据是上面的命令/汇总与对应测试，不能依赖临时文件永远存在。Vue scope 测试有 inject warning，但无未处理 rejection；生产构建有依赖 Zod 的注释位置 warning。当前 Python wheel/sdist、前端 typecheck/build 已通过；真实应用 smoke、全部跨模块回归与最终 diff review 仍未完成。
+
+### 6.4 未完成与限制
+
+- 未勾选 1.2：旧夹具已有完成/中断/fork/MCP/Workflow，仍需 CLI 来源组合证据；1.3：references §4 的原有偏差尚未逐项闭环。
+- 未勾选 3.1、3.4：当前每轮编译 `create_agent`，graph topology 复用未落地；命令边界仍通过 middleware update/jump_to，需实现并验证设计要求的明确 Command/Runtime 边界。
+- 未勾选 5.1–5.4：测试目标目录迁移、全部跨边界回归、真实应用与前端 smoke、最终 diff/接口清理和整体验收/归档未完成；构建本身已通过。
+- `ports.py` 部分协议使用范围与 `ModelLease.lease` 返回注解需最终 review，不能让抽象层成为没有实际消费方的预留接口。
+- Backend 合并大批命令曾被 60 秒终止，不算通过；Feishu 测试超时、SMTP 短预算偶发失败需区分基线环境问题与迁移回归，不扩大本次功能范围。
+- 用户要求在此交接，不继续扩展实现，不修改 proposal/design，不合入 main，不归档本 change。

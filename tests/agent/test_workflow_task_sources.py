@@ -3,8 +3,8 @@
 import httpx
 import pytest
 
-from logagent.agent.service import AgentService
 from logagent.interaction.app import create_app
+from logagent.interaction.fastapi.agent import create_agent_service
 from logagent.models import FanInConfig
 from logagent.workflow.execution.runner import WorkflowRunner
 from tests.interaction.test_agent_api import Lifecycle
@@ -13,7 +13,7 @@ from tests.workflow.helpers import AI, Channel, Collector, snapshot
 
 @pytest.mark.parametrize("task_id", ["first", "final", None])
 async def test_http_session_creation_reads_selected_workflow_source(tmp_path, task_id):
-    agent = AgentService(tmp_path / "workspace", tmp_path / "agent")
+    agent = create_agent_service(tmp_path / "workspace", tmp_path / "agent")
     workflow = WorkflowRunner(Collector(), AI(), Channel(), database=tmp_path / "runs.sqlite3")
     snap = snapshot(tasks=("first",), channels=False, fan_in=FanInConfig())
     try:
@@ -45,7 +45,7 @@ async def test_http_session_creation_reads_selected_workflow_source(tmp_path, ta
 
 
 async def test_task_source_rejects_missing_result_or_source_override(tmp_path):
-    agent = AgentService(tmp_path / "workspace", tmp_path / "agent")
+    agent = create_agent_service(tmp_path / "workspace", tmp_path / "agent")
     workflow = WorkflowRunner(Collector(), AI(fail={"second"}), Channel(),
                               database=tmp_path / "runs.sqlite3")
     try:
