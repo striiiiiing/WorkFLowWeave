@@ -28,7 +28,7 @@ ENV UV_LINK_MODE=copy
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --extra channels --no-install-project
-COPY README.md ./
+COPY README.md LICENSE ./
 COPY src/ ./src/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --extra channels --no-editable
