@@ -3,9 +3,9 @@ import json
 
 from langchain_core.messages import AIMessage
 
-from logagent.agent.builtin import mcp, read
 from logagent.agent.config import AgentConfig
-from logagent.agent.service import AgentService
+from logagent.agent.tools.builtin import mcp, read
+from logagent.interaction.fastapi.agent import create_agent_service
 from tests.agent.helpers import ScriptedModel
 
 
@@ -26,14 +26,14 @@ async def test_graph_uses_gateway_execution_and_persists_bounded_artifact(tmp_pa
         "id": "collector-1", "name": "mcp", "args": {"action": "call", "server": "logs", "tool": "read"},
     }]), AIMessage(content="done")])]
     gateway = Gateway()
-    service = AgentService(tmp_path / "workspace", tmp_path / "runtime",
+    service = create_agent_service(tmp_path / "workspace", tmp_path / "runtime",
                            config=AgentConfig(preview_tokens=200),
                            model_provider=lambda _: models[0], declarations=[mcp.plugin, read.plugin])
     # The gateway is injected directly for this isolated graph integration.
-    original = service._capture_turn_resources
+    original = service.resource_provider.capture
     from dataclasses import replace
     gateway.catalog = lambda *args, **kwargs: asyncio.sleep(0)
-    service._capture_turn_resources = lambda session: replace(original(session), gateway=gateway)
+    service.resource_provider.capture = lambda session: replace(original(session), gateway=gateway)
     try:
         sid = (await service.create_session())["session_id"]
         async with service.scheduler.acquire("read"):
@@ -56,7 +56,7 @@ async def test_graph_uses_gateway_execution_and_persists_bounded_artifact(tmp_pa
 
 
 async def test_append_enters_same_turn_only_after_complete_tool_group(tmp_path):
-    from logagent.agent.builtin.declaration import ToolDeclaration, schema
+    from logagent.agent.tools.declaration import ToolDeclaration, schema
     started = asyncio.Event()
     release = asyncio.Event()
 
@@ -68,7 +68,7 @@ async def test_append_enters_same_turn_only_after_complete_tool_group(tmp_path):
     model = ScriptedModel(responses=[AIMessage(content="", tool_calls=[{
         "id": "call-1", "name": "held", "args": {},
     }]), AIMessage(content="answer to appended input")])
-    service = AgentService(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model,
+    service = create_agent_service(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model,
                            declarations=[ToolDeclaration("held", "held", schema({}), "read", invoke)])
     try:
         sid = (await service.create_session())["session_id"]
@@ -93,7 +93,7 @@ async def test_append_enters_same_turn_only_after_complete_tool_group(tmp_path):
 async def test_stop_discards_queued_commands_without_starting_another_model(tmp_path):
     from tests.agent.test_admission import GatedModel
     model = GatedModel(responses=[AIMessage(content="never")])
-    service = AgentService(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model)
+    service = create_agent_service(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model)
     try:
         sid = (await service.create_session())["session_id"]
         await service.submit(sid, "original", request_id="first")
@@ -105,14 +105,14 @@ async def test_stop_discards_queued_commands_without_starting_another_model(tmp_
         assert len([event for event in events if event["type"] == "command.cancelled"]) == 2
         assert not any(event["type"] == "context.compacted" for event in events)
         assert not any(event["type"] == "message.user" and event["text"] == "queued" for event in events)
-        assert not service.sessions[sid].pending_appends
+        assert not service.turns.current(sid).pending_appends
     finally:
         await service.close()
 
 
 async def test_idle_manual_compact_uses_official_summary_and_keeps_history(tmp_path):
     model = ScriptedModel(responses=[AIMessage(content="answer " * 100), AIMessage(content="summary")])
-    service = AgentService(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model,
+    service = create_agent_service(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model,
                            config=AgentConfig(trigger_tokens=180000, keep_tokens=10))
     try:
         sid = (await service.create_session())["session_id"]
@@ -134,7 +134,7 @@ async def test_idle_manual_compact_uses_official_summary_and_keeps_history(tmp_p
 async def test_fork_from_old_turn_and_edited_message_never_inherits_future(tmp_path):
     model = ScriptedModel(responses=[AIMessage(content="first answer"), AIMessage(content="future answer"),
                                     AIMessage(content="branch answer"), AIMessage(content="edited answer")])
-    service = AgentService(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model)
+    service = create_agent_service(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model)
     try:
         sid = (await service.create_session())["session_id"]
         first = await service.submit(sid, "first question", request_id="first")
@@ -158,7 +158,7 @@ async def test_fork_from_old_turn_and_edited_message_never_inherits_future(tmp_p
 
 
 async def test_running_compact_waits_for_tool_receipt_and_summarizes_once(tmp_path):
-    from logagent.agent.builtin.declaration import ToolDeclaration, schema
+    from logagent.agent.tools.declaration import ToolDeclaration, schema
     started, release = asyncio.Event(), asyncio.Event()
 
     async def invoke(arguments, context):
@@ -169,7 +169,7 @@ async def test_running_compact_waits_for_tool_receipt_and_summarizes_once(tmp_pa
     model = ScriptedModel(responses=[AIMessage(content="old answer " * 100), AIMessage(content="", tool_calls=[{
         "id": "held", "name": "held", "args": {},
     }]), AIMessage(content="official summary"), AIMessage(content="final answer")])
-    service = AgentService(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model,
+    service = create_agent_service(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model,
                            config=AgentConfig(keep_tokens=40),
                            declarations=[ToolDeclaration("held", "held", schema({}), "read", invoke)])
     try:
@@ -198,7 +198,7 @@ async def test_settings_persist_and_disabled_tool_metadata_does_not_register(tmp
     plugin_config = SystemConfig(plugin_dir=str(tmp_path / "plugins"))
     registry.update_plugin_setting(plugin_config, "tool", "agent_shell", False)
     await registry.discover_plugins(plugin_config)
-    service = AgentService(tmp_path / "workspace", tmp_path / "runtime", plugins=registry)
+    service = create_agent_service(tmp_path / "workspace", tmp_path / "runtime", plugins=registry)
     try:
         await service.initialize()
         config = service.config.model_copy(update={"timezone": "Asia/Shanghai", "trigger_tokens": 170000})
@@ -208,7 +208,7 @@ async def test_settings_persist_and_disabled_tool_metadata_does_not_register(tmp
         assert registry.toolRegister.get("shell") is None
     finally:
         await service.close()
-    restored = AgentService(tmp_path / "workspace", tmp_path / "runtime")
+    restored = create_agent_service(tmp_path / "workspace", tmp_path / "runtime")
     try:
         await restored.initialize()
         assert restored.config.timezone == "Asia/Shanghai" and restored.config.trigger_tokens == 170000
@@ -218,7 +218,7 @@ async def test_settings_persist_and_disabled_tool_metadata_does_not_register(tmp
 
 async def test_empty_compact_keeps_source_and_can_accept_first_message(tmp_path):
     model = ScriptedModel(responses=[AIMessage(content="ready")])
-    service = AgentService(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model)
+    service = create_agent_service(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model)
     try:
         sid = (await service.create_session(workflow_session_id="run", workflow_result={"result": "frozen"}))["session_id"]
         compact = await service.compact(sid)
@@ -244,7 +244,7 @@ async def test_failed_boundary_summary_allows_explicit_next_message(tmp_path):
     model = GatedModel(responses=[AIMessage(content="first " * 100), AIMessage(content="second " * 100),
                                   AIMessage(content=""), AIMessage(content="continued")])
     model.release.set()
-    service = AgentService(tmp_path / "workspace", tmp_path / "runtime",
+    service = create_agent_service(tmp_path / "workspace", tmp_path / "runtime",
                            config=AgentConfig(keep_tokens=1), model_provider=lambda _: model)
     try:
         sid = (await service.create_session())["session_id"]

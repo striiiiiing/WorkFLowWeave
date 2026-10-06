@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 
-from logagent.agent.binding import workflow_mcp_binding
+from logagent.agent.integrations.workflow import workflow_mcp_binding
 from logagent.errors import LogAgentError
 from logagent.models import ArtifactInfo, SessionRecord, SessionStatus
 from logagent.workflow.storage.progress import active_phases, project_progress
