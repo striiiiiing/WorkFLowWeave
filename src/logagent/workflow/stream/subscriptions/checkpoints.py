@@ -39,7 +39,9 @@ class CheckpointArchive:
         ]
         if not roots:
             return
-        snapshot = WorkflowSnapshot.model_validate(roots[0]["snapshot"])
+        snapshot = WorkflowSnapshot.model_validate(
+            roots[0]["snapshot"], context={"historical_snapshot": True}
+        )
         epochs = {values["execution_epoch"]: values for values in roots}
         for item in sorted(saved, key=lambda item: item.checkpoint["id"]):
             values = item.checkpoint["channel_values"]
@@ -217,7 +219,7 @@ class CheckpointArchive:
             "snapshot",
             policy,
             {"layout": progress_layout(snapshot)},
-            {"snapshot": snapshot.model_dump(mode="json")},
+            {"snapshot": values["snapshot"]},
             None,
         )
         await self._write(
@@ -266,7 +268,7 @@ class CheckpointArchive:
                     reused = fan.reused_task(tasks)
                     ai_id = reused.ai if reused else fan.ai
                     provenance.update(
-                        fan_in=fan.model_dump(mode="json"),
+                        fan_in=values["snapshot"]["workflow"]["fan_in"],
                         prompts=self._prompts(snapshot, fan),
                         ai=snapshot.ai[ai_id].model_dump(mode="json") if ai_id else None,
                         model=reused.model if reused else fan.model,
