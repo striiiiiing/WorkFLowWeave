@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { Credential } from '../model/types'
-import type { CredentialProtector } from '../model/types'
+import type { Credential } from '../model/public'
+import type { CredentialProtector } from '../model/public'
 import { useCredentialEditor } from '../composables/useCredentialEditor'
 const props = withDefaults(
   defineProps<{ modelValue: Credential | null; label?: string; protect: CredentialProtector }>(),

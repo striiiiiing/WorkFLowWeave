@@ -2,9 +2,9 @@ import { onScopeDispose, ref, shallowRef } from 'vue'
 import { useErrorFormatter } from '@/shared/async/errorFormatter'
 import type { AgentsApi } from '../api/agentsApi'
 import { createAgentEventSource, type AgentEventTransport } from '../api/agentEventSource'
-import { mergeAgentEvents, parseAgentEvent, terminalTurnEvents } from '../model/events'
-import { projectAgentSession } from '../model/sessionProjection'
-import type { AgentEvent, AgentSession } from '../model/types'
+import { mergeAgentEvents, parseAgentEvent, terminalTurnEvents } from '../model/runtime/events'
+import { projectAgentSession } from '../model/runtime/sessionProjection'
+import type { AgentEvent, AgentSession } from '../model/public'
 
 type SessionApi = Pick<AgentsApi, 'history' | 'get'>
 

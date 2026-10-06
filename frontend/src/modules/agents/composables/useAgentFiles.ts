@@ -2,7 +2,7 @@ import { computed, ref } from 'vue'
 import { ApiError } from '@/shared/api/errors'
 import { useErrorFormatter } from '@/shared/async/errorFormatter'
 import type { AgentsApi } from '../api/agentsApi'
-import type { AgentFile } from '../model/types'
+import type { AgentFile } from '../model/public'
 
 type FileApi = Pick<AgentsApi, 'readFile' | 'writeFile'>
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { AgentTaskConfig } from '../model/types'
-import { changeAgentMode } from '../model/agentTask'
+import type { AgentTaskConfig } from '../model/public'
+import { changeAgentMode } from '../model/create/stages/agentTask'
 const props = defineProps<{
   task: AgentTaskConfig & { user_prompt: string }
   advanced?: boolean

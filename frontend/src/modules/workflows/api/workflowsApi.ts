@@ -1,5 +1,5 @@
 import { segment, type HttpClient } from '@/shared/api'
-import type { WorkflowDefinition } from '../model/types'
+import type { WorkflowDefinition } from '../model/public'
 export interface CronPreview {
   description: string
   timezone: string

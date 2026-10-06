@@ -6,11 +6,12 @@ import WorkflowEditPage from '@/pages/workflows/WorkflowEditPage.vue'
 import { resourcesApiKey } from '@/modules/resources/public'
 import { systemApiKey } from '@/modules/system/public'
 import { workflowsApiKey } from '@/modules/workflows/public'
-import { createResource } from '@/modules/resources/model/resources'
+import { createResource } from '@/modules/resources/model/public'
 import type { ResourcesApi } from '@/modules/resources/api/resourcesApi'
 import type { SystemApi } from '@/modules/system/api/systemApi'
 import type { WorkflowsApi } from '@/modules/workflows/api/workflowsApi'
 import type { WorkflowEditorController } from '@/modules/workflows/public'
+import { agentsApiKey } from '@/modules/agents/public'
 
 const router = { push: vi.fn(), replace: vi.fn() }
 vi.mock('vue-router', () => ({
@@ -59,6 +60,7 @@ function setup(options: { replace?: () => Promise<unknown> } = {}) {
         [workflowsApiKey as symbol]: workflowsApi,
         [resourcesApiKey as symbol]: resourcesApi,
         [systemApiKey as symbol]: systemApi,
+        [agentsApiKey as symbol]: { tools: vi.fn().mockResolvedValue([]) },
       },
       stubs: {
         RouterLink: { template: '<a><slot /></a>' },

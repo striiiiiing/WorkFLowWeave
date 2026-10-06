@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { services } from '@/app/services'
 import { useAgentSession, type AgentEvent, type AgentSession } from '@/modules/agents/public'
 import { createAgentEventSource } from '@/modules/agents/api/agentEventSource'
-import { mergeAgentEvents } from '@/modules/agents/model/events'
+import { mergeAgentEvents } from '@/modules/agents/model/public'
 const { agentsApi } = services
 class FakeEventSource {
   static instances: FakeEventSource[] = []

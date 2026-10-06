@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { SourceConfig, SourceUsageView } from '@/modules/resources/public'
-import type { WorkflowDefinition } from '../model/types'
+import type { WorkflowDefinition } from '../model/public'
 import SourceBindingItem from './SourceBindingItem.vue'
 
 const props = defineProps<{

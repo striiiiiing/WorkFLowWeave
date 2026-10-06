@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
-import type { AgentConfig } from '../model/types'
+import type { AgentConfig } from '../model/public'
 import type { useAgentSettings } from '../composables/useAgentSettings'
 import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 import { ElMessage } from 'element-plus'

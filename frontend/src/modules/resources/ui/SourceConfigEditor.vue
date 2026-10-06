@@ -9,7 +9,7 @@ import {
   type MCPToolCatalog,
   type MCPToolDescription,
 } from '../composables/useResourceTransport'
-import type { MCPServerConfig, SourceCall, SourceConfig, SourceSaveTarget } from '../model/types'
+import type { MCPServerConfig, SourceCall, SourceConfig, SourceSaveTarget } from '../model/public'
 import type { SourceEditorController } from '../composables/useSourceEditor'
 import SourceAdvancedFields from './SourceAdvancedFields.vue'
 

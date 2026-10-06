@@ -2,9 +2,9 @@ import { computed, ref, shallowRef, toRaw, watch } from 'vue'
 import { useResourcesApi } from '../api/dependencies'
 import type { ResourcesApi } from '../api/resourcesApi'
 import { useAsyncTask } from '@/shared/async/useAsyncTask'
-import { createResource, credentialPropertyNames, generatedResourceId } from '../model/resources'
+import { createResource, credentialPropertyNames, generatedResourceId } from '../model/public'
 import { optionSchema } from '@/shared/schema/capabilities'
-import type { Credential, ChannelConfig } from '../model/types'
+import type { Credential, ChannelConfig } from '../model/public'
 import type { SchemaCapability } from '@/shared/schema/types'
 export function useChannelEditor(
   props: { initial?: ChannelConfig; capabilities: readonly SchemaCapability[] },

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { SourceConfig, SourceUsageView } from '../model/types'
-import { filterSources, type SourceFilter } from '../model/sourceFiltering'
+import type { SourceConfig, SourceUsageView } from '../model/public'
+import { filterSources, type SourceFilter } from '../model/source/filtering'
 import SourceCard from './SourceCard.vue'
 const props = defineProps<{
   sources: readonly SourceConfig[]
