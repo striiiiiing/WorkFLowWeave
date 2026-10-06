@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { parseAgentEvent } from '@/modules/agents/model/events'
-import { projectAgentSession } from '@/modules/agents/model/sessionProjection'
-import type { AgentEvent, AgentSession } from '@/modules/agents/model/types'
+import { parseAgentEvent } from '@/modules/agents/model/runtime/events'
+import { projectAgentSession } from '@/modules/agents/model/runtime/sessionProjection'
+import type { AgentEvent, AgentSession } from '@/modules/agents/model/public'
 
 const session = (status = 'running', turnId = 'current'): AgentSession => ({
   session_id: 's',

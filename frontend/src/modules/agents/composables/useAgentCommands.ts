@@ -2,7 +2,7 @@ import { computed, reactive, ref } from 'vue'
 import { ApiError } from '@/shared/api/errors'
 import { useErrorFormatter } from '@/shared/async/errorFormatter'
 import type { AgentsApi } from '../api/agentsApi'
-import type { TurnAccepted } from '../model/types'
+import type { TurnAccepted } from '../model/public'
 
 type CommandResult = Awaited<ReturnType<AgentsApi['command']>>
 

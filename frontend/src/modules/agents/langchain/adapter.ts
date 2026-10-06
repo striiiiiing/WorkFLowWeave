@@ -9,8 +9,8 @@ import type {
 } from '@langchain/vue'
 import { createEventSource, type EventConnection } from '@/shared/api/eventSource'
 import type { AgentsApi } from '../api/agentsApi'
-import { mergeAgentEvents, parseAgentEvent } from '../model/events'
-import type { AgentEvent, AgentSession, TurnAccepted } from '../model/types'
+import { mergeAgentEvents, parseAgentEvent } from '../model/public'
+import type { AgentEvent, AgentSession, TurnAccepted } from '../model/public'
 
 type AdapterCommand = Parameters<LangGraphAgentServerAdapter['send']>[0]
 type AdapterResponse = Awaited<ReturnType<LangGraphAgentServerAdapter['send']>>

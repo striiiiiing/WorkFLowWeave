@@ -433,14 +433,14 @@ async def test_stop_receiving_releases_runtime_without_websocket():
 
 @pytest.mark.asyncio
 async def test_real_lark_websocket_client_private_lifecycle_contract(monkeypatch):
-    try:
-        sdk = await asyncio.to_thread(importlib.import_module, "lark_oapi")
-        sdk_ws = await asyncio.to_thread(importlib.import_module, "lark_oapi.ws.client")
-    except ImportError:
+    if importlib.util.find_spec("lark_oapi") is None:
         pytest.skip("lark-oapi optional dependency is not installed")
 
     FeishuChannel, _ = _load_channel()
-    sdk_client = sdk_ws.Client
+    loader_channel = FeishuChannel(_config(), _Credentials())
+    sdk = await loader_channel._load_sdk()
+    sdk_client = sdk.ws.Client
+    sdk_ws = sys.modules[sdk_client.__module__]
     endpoint = "wss://example.invalid/callback?device_id=device-one&service_id=42"
 
     class Connection:

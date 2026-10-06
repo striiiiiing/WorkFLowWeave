@@ -8,6 +8,7 @@ model so the suite never contacts a configured provider.
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 from shutil import copytree, ignore_patterns
 from tempfile import TemporaryDirectory
@@ -42,9 +43,15 @@ class SmokeModel(BaseChatModel):
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
         prompt = self._prompt(messages)
-        return ChatResult(generations=[ChatGeneration(message=AIMessage(
-            content="已完成：" + prompt,
-        ))])
+        return ChatResult(
+            generations=[
+                ChatGeneration(
+                    message=AIMessage(
+                        content="已完成：" + prompt,
+                    )
+                )
+            ]
+        )
 
     async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
         return self._generate(messages, stop, run_manager, **kwargs)
@@ -58,15 +65,25 @@ class SmokeModel(BaseChatModel):
 
 class SmokeLifecycle(ApplicationLifecycle):
     def __init__(self, root: Path):
-        copytree(Path(__file__).resolve().parents[2] / "plugins", root / "plugins",
-                 ignore=ignore_patterns("__pycache__", "*.pyc", "config.json"))
+        repository = Path(__file__).resolve().parents[2]
+        plugin_dir = root / "plugins"
+        copytree(
+            repository / "plugins",
+            plugin_dir,
+            ignore=ignore_patterns("__pycache__", "*.pyc", "config.json"),
+        )
+        copytree(
+            repository / "tests" / "fixtures" / "plugins" / "test_channel",
+            plugin_dir / "test_channel",
+            ignore=ignore_patterns("__pycache__", "*.pyc"),
+        )
         super().__init__(
             SystemConfig(
                 data_dir=str(root / "data"),
-                plugin_dir=str(root / "plugins"),
+                plugin_dir=str(plugin_dir),
                 master_key_file=str(root / "master.key"),
                 host="127.0.0.1",
-                port=14301,
+                port=int(os.environ.get("WORKFLOWWEAVE_E2E_BACKEND_PORT", "14301")),
             ),
             channel_factories={},
         )
@@ -74,10 +91,10 @@ class SmokeLifecycle(ApplicationLifecycle):
     async def start(self):
         services = await super().start()
         services.agent.model_provider = lambda _session: SmokeModel()
-        services.agent.config = AgentConfig(idle_timeout=60)
+        services.agent.update_config(AgentConfig(idle_timeout=60))
         return services
 
 
 with TemporaryDirectory(prefix="workflowweave-agent-browser-") as temporary:
     lifecycle = SmokeLifecycle(Path(temporary))
-    uvicorn.run(create_app(lifecycle), host="127.0.0.1", port=14301)
+    uvicorn.run(create_app(lifecycle), host="127.0.0.1", port=lifecycle.config.port)
