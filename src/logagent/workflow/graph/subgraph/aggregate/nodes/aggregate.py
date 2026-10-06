@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from langgraph.runtime import Runtime
 
+from logagent.ai.prompts import optimized_summary_messages
 from logagent.workflow.execution.context import WorkflowContext
 from logagent.workflow.graph.subgraph.nodes.analysis import analyze_call
 from logagent.workflow.graph.subgraph.nodes.state import phase
@@ -46,6 +47,7 @@ async def aggregate(state, runtime: Runtime[WorkflowContext]):
                 model,
                 agent_service=runtime.context.agent_service,
                 execution_epoch=state["execution_epoch"],
+                messages=optimized_summary_messages(wf, items, state["shared_input"]),
             )
             model_result = result.model_dump(mode="json", exclude={"text"})
             if result.status != "success":

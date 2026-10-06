@@ -9,6 +9,7 @@ import {
   validateWorkflow,
 } from '@/modules/workflows/public'
 import FanOutTaskCard from '@/modules/workflows/ui/FanOutTaskCard.vue'
+import FanInCard from '@/modules/workflows/ui/FanInCard.vue'
 import AgentTaskOptions from '@/modules/workflows/ui/AgentTaskOptions.vue'
 import { changeAgentMode } from '@/modules/workflows/model/agentTask'
 import { parsePhase } from '@/modules/runs/model/report'
@@ -16,6 +17,36 @@ import { sessionKind } from '@/modules/agents/model/sessionKind'
 import type { AgentSession } from '@/modules/agents/public'
 
 describe('Workflow Agent tasks', () => {
+  it('enables LLM summary optimization by default and exposes it only in advanced LLM mode', async () => {
+    const scope = effectScope()
+    const editor = scope.run(() => useWorkflowEditor({ identity: 'workflow', data: undefined }))!
+    editor.replace(createWorkflow())
+    editor.addTask()
+    editor.updateTask(0, { ai: 'provider', model: 'model' })
+    editor.toggleFanIn(true)
+    expect(editor.draft.value!.fan_in!.single_task_optimization).toBe(true)
+    const wrapper = mount(FanInCard, {
+      props: { editor, configs: [], advanced: false },
+      global: { plugins: [ElementPlus] },
+    })
+    expect(wrapper.find('[aria-label="采用单任务优化"]').exists()).toBe(false)
+    await wrapper.setProps({ advanced: true })
+    await wrapper.get('[aria-label="采用单任务优化"] input').setValue(false)
+    expect(editor.draft.value!.fan_in!.single_task_optimization).toBe(false)
+    editor.updateFanIn({ agent_mode: true, single_task_optimization: true })
+    await nextTick()
+    expect(wrapper.find('[aria-label="采用单任务优化"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('采用单任务优化')
+    editor.updateFanIn({ agent_mode: false })
+    await nextTick()
+    expect(wrapper.get('[aria-label="采用单任务优化"] input').element).toHaveProperty(
+      'checked',
+      true,
+    )
+    wrapper.unmount()
+    scope.stop()
+  })
+
   it('requires a model when an aggregation task uses Agent', () => {
     const workflow = createWorkflow()
     workflow.fan_in = { ...createFanIn(), agent_mode: true }

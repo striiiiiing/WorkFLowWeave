@@ -53,7 +53,9 @@ async def prepare_recovery(
         raise LogAgentError("checkpoint_missing", "缺少原 checkpoint，无法从业务存档猜测进度")
     compatible(current.checkpoint.get("channel_values", {}))
     values = current.checkpoint["channel_values"]
-    snapshot = WorkflowSnapshot.model_validate(values["snapshot"])
+    snapshot = WorkflowSnapshot.model_validate(
+        values["snapshot"], context={"historical_snapshot": True}
+    )
     saved_path = values.get("log_path")
     latest = await graph.aget_state(config)
     selected = latest

@@ -14,6 +14,7 @@ export interface AnalysisTask extends AgentTaskConfig {
   model: string
 }
 export interface FanInConfig extends AgentTaskConfig {
+  single_task_optimization?: boolean
   order: string[]
   separator: string
   ai: string | null

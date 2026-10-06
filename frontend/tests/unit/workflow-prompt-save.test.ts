@@ -102,6 +102,7 @@ it('saves layered prompts and reopens the same workflow without legacy prompt fi
   await taskCard.findAllComponents(ElInput)[1].vm.$emit('update:modelValue', 'literal {input}')
   await fanIn.findAllComponents(ElInput)[0].vm.$emit('update:modelValue', 'summary instruction')
   await wrapper.get('[aria-label="高级模式"]').trigger('click')
+  await fanIn.get('[aria-label="采用单任务优化"] input').setValue(false)
   await basic.findAllComponents(ElInput).at(-2)!.vm.$emit('update:modelValue', 'shared system')
   await basic.findAllComponents(ElInput).at(-1)!.vm.$emit('update:modelValue', 'shared {input}')
   const first = taskCard.findAllComponents(PromptOverrides)[0]
@@ -129,6 +130,7 @@ it('saves layered prompts and reopens the same workflow without legacy prompt fi
       { system_prompt: null, input_prompt: null, user_prompt: '' },
     ],
     fan_in: {
+      single_task_optimization: false,
       input_prompt: '',
       user_prompt: 'summary instruction',
       reuse_from: '$first',

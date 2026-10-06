@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Protocol
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, BaseMessage
 from pydantic import ValidationError
 
 from logagent.ai.channels import ChannelFactory
@@ -225,6 +225,7 @@ class AIService:
         task_id: str = "task", context: ExecutionContext | None = None,
         on_cancel: Callable[[CancellationNotice], None] | None = None,
         system_prompt: str | None = None, user_prompt: str = "",
+        messages: list[BaseMessage] | None = None,
     ) -> AnalysisResult:
         """执行一次显式模型分析，返回成功、失败、超时或取消结果。
 
@@ -236,6 +237,7 @@ class AIService:
             task_id: 分析结果及诊断日志的关联标识。
             context: 可选 Workflow/session 上下文，用于日志和取消通知。
             on_cancel: 可选同步回调，取消确认后调用一次；回调异常记录到取消结果。
+            messages: 显式请求消息；用于汇总复用分析前缀，仍共用校验、预算和重试。
 
         Returns:
             AnalysisResult，包含状态、成功正文或结构化错误，以及总耗时。模型调用
@@ -246,11 +248,15 @@ class AIService:
             _check_cancelled()
             config = copy_model(config)
             self.validate(config, model)
-            messages = build_messages(
+            if messages is not None and not messages:
+                raise ValueError("AI request messages cannot be empty")
+            request_messages = messages if messages is not None else build_messages(
                 config.system_prompt if system_prompt is None else system_prompt,
                 prompt, input_text, user_prompt=user_prompt,
             )
-            result = await asyncio.create_task(self._execute(config, model, messages, task_id, context))
+            result = await asyncio.create_task(
+                self._execute(config, model, request_messages, task_id, context)
+            )
             _check_cancelled()
             return result.model_copy(update={"elapsed_ms": (time.perf_counter() - started) * 1000})
         except asyncio.CancelledError:

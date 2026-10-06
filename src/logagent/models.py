@@ -18,6 +18,7 @@ from pydantic import (
     Field,
     JsonValue,
     TypeAdapter,
+    ValidationInfo,
     model_validator,
 )
 
@@ -350,6 +351,7 @@ class AnalysisTask(StrictModel):
 class FanInConfig(StrictModel):
     agent_mode: bool = False
     agent_tools: list[ID] | None = None
+    single_task_optimization: bool = True
     order: list[str] = Field(default_factory=list)
     separator: str = "\n\n"
     ai: ID | None = None
@@ -359,6 +361,17 @@ class FanInConfig(StrictModel):
     reuse_from: ID | Literal["$first"] | None = "$first"
     model: ModelName | None = None
     mark_incomplete: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def historical_optimization(cls, value, info: ValidationInfo):
+        if (
+            info.context and info.context.get("historical_snapshot")
+            and isinstance(value, dict) and "single_task_optimization" not in value
+        ):
+            # Old checkpoints may already have released their analysis input.
+            return {**value, "single_task_optimization": False}
+        return value
 
     def ordered_inputs(self, analyses: list[AnalysisTask]) -> list[str]:
         if self.agent_mode:
