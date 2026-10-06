@@ -1,6 +1,6 @@
 import { createEventSource, type EventConnection } from '@/shared/api/eventSource'
-import type { AgentEvent } from '../model/types'
-import { parseAgentEvent } from '../model/events'
+import type { AgentEvent } from '../model/public'
+import { parseAgentEvent } from '../model/runtime/events'
 
 export type AgentEventConnection = EventConnection
 export interface AgentEventTransport {

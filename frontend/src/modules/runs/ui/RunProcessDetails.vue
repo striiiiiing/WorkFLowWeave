@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { stages } from '../model/session'
+import { stages } from '@/modules/workflows/model/public'
 import type { useRunDetail } from '../composables/useRunDetail'
 import PhaseReport from './PhaseReport.vue'
 defineProps<{

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { AIConfig } from '@/modules/resources/public'
-import type { AnalysisTask } from '../model/types'
+import type { AnalysisTask } from '../model/public'
 import type { WorkflowEditorController } from '../composables/useWorkflowEditor'
 import AIModelSelect from './AIModelSelect.vue'
 import AgentTaskOptions from './AgentTaskOptions.vue'

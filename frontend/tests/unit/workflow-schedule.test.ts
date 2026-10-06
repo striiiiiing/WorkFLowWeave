@@ -11,7 +11,7 @@ import ElementPlus, {
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import WorkflowBasicInfo from '@/modules/workflows/ui/WorkflowBasicInfo.vue'
 import { workflowsApiKey } from '@/modules/workflows/api/dependencies'
-import { parseCronPreset } from '@/modules/workflows/model/cronPresets'
+import { parseCronPreset } from '@/modules/workflows/model/public'
 import { createWorkflow, type WorkflowSchedule } from '@/modules/workflows/public'
 
 function setup(schedule?: WorkflowSchedule | null) {

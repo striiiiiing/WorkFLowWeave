@@ -5,7 +5,7 @@ import type {
   SourceConfigEditorGateway,
   SourceUsageView,
 } from '@/modules/resources/public'
-import type { WorkflowDefinition } from '../model/types'
+import type { WorkflowDefinition } from '../model/public'
 import type { WorkflowEditorController } from '../composables/useWorkflowEditor'
 import { SourceEditorSession } from '@/modules/resources/public'
 import SectionCard from '@/shared/ui/SectionCard.vue'

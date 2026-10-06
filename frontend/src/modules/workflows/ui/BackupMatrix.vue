@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { WorkflowEditorController } from '../composables/useWorkflowEditor'
-import { hasLegacyRetention, retentionFields } from '../model/backup'
+import { hasLegacyRetention, retentionFields } from '../model/create/backup'
 import SectionCard from '@/shared/ui/SectionCard.vue'
 const props = defineProps<{ editor: WorkflowEditorController }>()
 const fields = [

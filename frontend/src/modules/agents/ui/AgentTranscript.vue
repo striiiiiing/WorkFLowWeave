@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import type { AgentEvent, AgentTool } from '../model/types'
+import type { AgentEvent, AgentTool } from '../model/public'
 import ReportText from '@/shared/ui/ReportText.vue'
 import AgentToolCall from './AgentToolCall.vue'
-import { transcriptRows, type TranscriptRow } from '../model/transcript'
+import { transcriptRows, type TranscriptRow } from '../model/runtime/transcript'
 import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 import { ElMessage } from 'element-plus'
 

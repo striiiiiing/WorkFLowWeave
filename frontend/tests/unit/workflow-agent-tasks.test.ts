@@ -11,9 +11,9 @@ import {
 import FanOutTaskCard from '@/modules/workflows/ui/FanOutTaskCard.vue'
 import FanInCard from '@/modules/workflows/ui/FanInCard.vue'
 import AgentTaskOptions from '@/modules/workflows/ui/AgentTaskOptions.vue'
-import { changeAgentMode } from '@/modules/workflows/model/agentTask'
-import { parsePhase } from '@/modules/runs/model/report'
-import { sessionKind } from '@/modules/agents/model/sessionKind'
+import { changeAgentMode } from '@/modules/workflows/model/public'
+import { parsePhase } from '@/modules/workflows/model/public'
+import { sessionKind } from '@/modules/agents/model/public'
 import type { AgentSession } from '@/modules/agents/public'
 
 describe('Workflow Agent tasks', () => {

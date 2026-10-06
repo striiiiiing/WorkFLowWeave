@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AnalysisTask } from '../model/types'
+import type { AnalysisTask } from '../model/public'
 
 const props = defineProps<{
   value: Pick<AnalysisTask, 'system_prompt' | 'input_prompt'>

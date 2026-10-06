@@ -27,6 +27,7 @@ const owner = (file) => relative(file).split('/')[0]
 const moduleName = (file) => (owner(file) === 'modules' ? relative(file).split('/')[1] : undefined)
 const isModel = (file) => relative(file).includes('/model/')
 const isPublic = (file) => path.basename(file) === 'public.ts'
+const isModelPublic = (file) => /^modules\/[^/]+\/model\/public\.ts$/.test(relative(file))
 const externalEffect =
   /^(?:vue(?:-router)?|@vue\/|axios(?:\/|$)|element-plus(?:\/|$)|lucide-vue-next(?:\/|$)|node:|https?$)/
 const forbiddenGlobals = new Set([
@@ -124,7 +125,8 @@ function check(sourceFiles) {
         if (layers.indexOf(from) < layers.indexOf(to)) add(file, 'layer-direction', specifier)
         if (to === 'modules') {
           if (moduleName(file) === moduleName(target)) {
-            if (isPublic(target) && !isPublic(file)) add(file, 'own-public', specifier)
+            if (isPublic(target) && !isPublic(file) && !(isModelPublic(target) && !isModel(file)))
+              add(file, 'own-public', specifier)
           } else {
             if (
               !isPublic(target) &&
@@ -133,16 +135,24 @@ function check(sourceFiles) {
               add(file, 'module-public', specifier)
             if (
               from === 'modules' &&
-              !(moduleName(file) === 'workflows' && moduleName(target) === 'resources')
+              !(moduleName(file) === 'workflows' && moduleName(target) === 'resources') &&
+              !(
+                moduleName(file) === 'runs' &&
+                moduleName(target) === 'workflows' &&
+                isModelPublic(target)
+              )
             )
               add(file, 'module-direction', specifier)
           }
         }
         if (
           isModel(file) &&
-          (['api', 'composables', 'ui', 'async'].some((part) =>
-            relative(target).split('/').includes(part),
-          ) ||
+          ((to === 'modules' &&
+            moduleName(file) !== moduleName(target) &&
+            !isModelPublic(target)) ||
+            ['api', 'composables', 'ui', 'async'].some((part) =>
+              relative(target).split('/').includes(part),
+            ) ||
             target.endsWith('.vue'))
         )
           add(file, 'model-purity', specifier)

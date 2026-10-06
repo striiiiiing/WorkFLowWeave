@@ -1,5 +1,5 @@
 import { createEventSource, type EventConnection } from '@/shared/api/eventSource'
-import type { SessionRecord } from '../model/types'
+import type { SessionRecord } from '@/modules/workflows/model/public'
 
 export interface RunEventHandlers {
   snapshot: (record: SessionRecord) => void

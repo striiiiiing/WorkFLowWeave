@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SourceFilter } from '../model/sourceFiltering'
+import type { SourceFilter } from '../model/source/filtering'
 defineProps<{ search: string; filter: SourceFilter }>()
 const emit = defineEmits<{ search: [value: string]; filter: [value: SourceFilter] }>()
 </script>

@@ -2,9 +2,9 @@ import { effectScope } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentEventTransport } from '@/modules/agents/api/agentEventSource'
 import { useAgentSession } from '@/modules/agents/composables/useAgentSession'
-import { parseAgentEvent } from '@/modules/agents/model/events'
-import { projectAgentSession } from '@/modules/agents/model/sessionProjection'
-import type { AgentEvent, AgentSession } from '@/modules/agents/model/types'
+import { parseAgentEvent } from '@/modules/agents/model/public'
+import { projectAgentSession } from '@/modules/agents/model/public'
+import type { AgentEvent, AgentSession } from '@/modules/agents/model/public'
 
 const session = (status = 'running', turnId = 'current'): AgentSession => ({
   session_id: 's',

@@ -1,10 +1,39 @@
-export type * from './model/types'
+export type {
+  WorkflowStage,
+  SessionStatus,
+  WorkflowProgressEvent,
+  ArtifactAvailability,
+  ArtifactInfo,
+  PhaseContent,
+  WorkflowProgress,
+  SessionRecord,
+  RecoveryAvailability,
+  ReportSection,
+  SessionQuery,
+  ResumeOptions,
+  RecoveryQuery,
+  ReportItem,
+  ParsedPhase,
+} from '@/modules/workflows/model/public'
+export {
+  sessionStates,
+  stages,
+  availabilityLabels,
+  formatTime,
+  formatWorkflowName,
+  parsePhase,
+  resultStatus,
+  unavailableText,
+  progressStages,
+  progressIdentity,
+  progressItemLabel,
+  progressStatusLabel,
+  progressTagType,
+  isTerminalStatus,
+} from '@/modules/workflows/model/public'
 export * from './api/runsApi'
 export * from './api/dependencies'
 export * from './composables/useRunActions'
-export * from './model/session'
-export * from './model/report'
-export * from './model/progress'
 export * from './api/runEventSource'
 export * from './composables/useSession'
 export { default as SessionTable } from './ui/SessionTable.vue'

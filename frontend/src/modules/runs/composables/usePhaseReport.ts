@@ -1,7 +1,7 @@
 import { computed, type Ref } from 'vue'
 import { useQuery } from '@/shared/async/useQuery'
-import { parsePhase } from '../model/report'
-import type { WorkflowStage } from '../model/types'
+import { parsePhase } from '@/modules/workflows/model/public'
+import type { WorkflowStage } from '@/modules/workflows/model/public'
 import type { RunsApi } from '../api/runsApi'
 import { useRunsApi } from '../api/dependencies'
 

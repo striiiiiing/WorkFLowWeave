@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ChannelConfig } from '../model/types'
+import type { ChannelConfig } from '../model/public'
 import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 defineProps<{
   resources: readonly ChannelConfig[]

@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { isTaskSuccess, useAsyncTask } from '@/shared/async/useAsyncTask'
 import type { AgentsApi } from '../api/agentsApi'
-import type { AgentEvent, AgentSession } from '../model/types'
+import type { AgentEvent, AgentSession } from '../model/public'
 
 export function useAgentBranches(api: Pick<AgentsApi, 'fork' | 'send'>) {
   const action = useAsyncTask()

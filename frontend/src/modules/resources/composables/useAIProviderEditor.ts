@@ -3,8 +3,8 @@ import { useResourcesApi } from '../api/dependencies'
 import type { ResourcesApi } from '../api/resourcesApi'
 import { useAsyncTask } from '@/shared/async/useAsyncTask'
 import { useErrorFormatter } from '@/shared/async/errorFormatter'
-import { createResource, generatedResourceId } from '../model/resources'
-import type { AIConfig } from '../model/types'
+import { createResource, generatedResourceId } from '../model/public'
+import type { AIConfig } from '../model/public'
 
 export function useAIProviderEditor(
   props: { initial?: AIConfig },

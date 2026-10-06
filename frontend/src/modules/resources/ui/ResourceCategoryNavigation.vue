@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { resourceKinds, type EditableKind } from '../model/resources'
+import { resourceKinds, type EditableKind } from '../model/public'
 defineProps<{ value: EditableKind }>()
 const emit = defineEmits<{ change: [value: EditableKind] }>()
 </script>
