@@ -23,7 +23,7 @@ from logagent.workflow.execution.scheduler import WorkflowScheduler, schedule_tr
 def definition(schedule=None, **kwargs):
     return WorkflowDefinition(
         id="demo", sources=["source"],
-        analyses=[{"id": "task", "ai": "ai", "model": "model"}], schedule=schedule, **kwargs,
+        analyses=[{"user_prompt": "analyze input", "id": "task", "ai": "ai", "model": "model"}], schedule=schedule, **kwargs,
     )
 
 

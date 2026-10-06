@@ -25,7 +25,9 @@ class SessionView:
         if not entry or entry["availability"] != "available" or not entry["body"]:
             return {"error": "Workflow 配置快照未保存或不可用；无法恢复 MCP 范围"}
         try:
-            snapshot = WorkflowSnapshot.model_validate(entry["body"]["snapshot"])
+            snapshot = WorkflowSnapshot.model_validate(
+                entry["body"]["snapshot"], context={"historical_snapshot": True},
+            )
         except ValueError:
             return {"error": "原 Workflow 使用旧版来源配置，MCP 绑定不可恢复"}
         return workflow_mcp_binding(snapshot)

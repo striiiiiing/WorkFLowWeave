@@ -639,7 +639,7 @@ async def test_workflow_notification_uses_manager_and_test_channel_one_way_send(
             id="duplex-test",
             name="One-way workflow result",
             sources=["source"],
-            analyses=[AnalysisTask(id="analysis", ai="ai", model="offline")],
+            analyses=[AnalysisTask(user_prompt="analyze input", id="analysis", ai="ai", model="offline")],
             channels=["test"],
         ),
             sources={"source": SourceConfig(id="source", call={

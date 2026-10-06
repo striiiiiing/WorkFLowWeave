@@ -17,7 +17,7 @@ agent_tools: list[str] | None = None
 - `agent_tools=[]`：本 Task 不允许使用工具。
 - 非空列表：本 Task 只允许使用列出的已启用工具。
 
-现有 `ai`、`model`、`system_prompt`、`input_prompt` 和 `user_prompt` 保持原语义。高级模式只控制前端是否显示工具选择，不增加后端的高级模式字段。Task 独立 system_prompt/input_prompt 优先，未设置时继承 Workflow 共享字段；user_prompt 为 Task 自己的必填差异。普通与 Agent 分析均采用三层消息。
+现有 `ai`、`model`、`system_prompt`、`input_prompt` 和 `user_prompt` 保持原语义。高级模式只控制前端是否显示工具选择，不增加后端的高级模式字段。Task 独立 system_prompt/input_prompt 优先，未设置时继承 Workflow 共享字段；有效 input_prompt 与 user_prompt 均为模型请求的必填内容，user_prompt 为 Task 自己的差异。普通与 Agent 分析均采用三层消息。
 
 ## 2. 统一 Workflow 来源会话接口
 

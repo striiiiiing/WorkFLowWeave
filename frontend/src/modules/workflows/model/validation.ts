@@ -25,23 +25,24 @@ export function validateWorkflow(workflow: WorkflowDefinition): string[] {
   const idError = validateWorkflowId(workflow.id)
   if (idError) errors.push(idError)
   if (!workflow.analyses.length) errors.push('至少添加一个分析任务')
+  if (!workflow.input_prompt.trim()) errors.push('Workflow 输入模板不能为空')
   workflow.analyses.forEach((task, index) => {
     const error = validateAnalysisId(workflow, index, task.id)
     if (error) errors.push(error)
-    if (task.agent_mode && !task.user_prompt.trim())
-      errors.push(`Agent 任务 ${task.id} 需要填写差异提示词`)
-    if (task.agent_mode && !(task.input_prompt ?? workflow.input_prompt).trim())
-      errors.push(`Agent 任务 ${task.id} 的输入模板不能为空`)
+    if (!task.user_prompt.trim()) errors.push(`任务 ${task.id} 需要填写差异提示词`)
+    if (!(task.input_prompt ?? workflow.input_prompt).trim())
+      errors.push(`任务 ${task.id} 的输入模板不能为空`)
   })
   if (workflow.fan_in?.agent_mode && !workflow.fan_in.reuse_from && !workflow.fan_in.ai)
     errors.push('Agent 汇总需要选择模型，或复用一个分析任务的模型')
-  if (workflow.fan_in?.agent_mode && !workflow.fan_in.user_prompt.trim())
-    errors.push('Agent 汇总需要填写差异提示词')
   if (
-    workflow.fan_in?.agent_mode &&
-    !(workflow.fan_in.input_prompt ?? workflow.input_prompt).trim()
+    workflow.fan_in &&
+    (workflow.fan_in.ai || workflow.fan_in.reuse_from !== null) &&
+    !workflow.fan_in.user_prompt.trim()
   )
-    errors.push('Agent 汇总的输入模板不能为空')
+    errors.push('AI 汇总需要填写差异提示词')
+  if (workflow.fan_in && !(workflow.fan_in.input_prompt ?? workflow.input_prompt).trim())
+    errors.push('汇总的输入模板不能为空')
   errors.push(...validateBackupPolicy(workflow.backup))
   return errors
 }
