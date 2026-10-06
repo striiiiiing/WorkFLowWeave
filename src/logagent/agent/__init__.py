@@ -1,11 +1,6 @@
-"""File-centric conversational agents, independent of workflows."""
-
+"""Public Agent use cases, configuration and value contracts."""
 from .config import AgentConfig, SandboxConfig
-from .events import EventLog, ToolReservation
-from .service import AgentService, AgentSession
-from .workspace import RuntimeIdentity, WorkspaceBackend
+from .contracts import RuntimeIdentity, SessionView
+from .service import AgentService
 
-__all__ = [
-    "AgentConfig", "AgentService", "AgentSession", "EventLog", "RuntimeIdentity",
-    "SandboxConfig", "ToolReservation", "WorkspaceBackend",
-]
+__all__ = ["AgentConfig", "AgentService", "RuntimeIdentity", "SandboxConfig", "SessionView"]

@@ -497,7 +497,8 @@ async def test_plugin_reload_conflict_includes_active_agent_turn(tmp_path):
     services = await lifecycle.start()
     release = asyncio.Event()
     active = asyncio.create_task(release.wait())
-    services.agent._turns["agent-active"] = active
+    from logagent.agent.runtime.turns import ActiveTurn
+    services.agent.turns._turns["agent-active"] = ActiveTurn("synthetic", "agent-active", active)
     generation = services.plugins.generation
     try:
         with pytest.raises(LogAgentError) as caught:
@@ -510,7 +511,7 @@ async def test_plugin_reload_conflict_includes_active_agent_turn(tmp_path):
         release.set()
         active.cancel()
         await asyncio.gather(active, return_exceptions=True)
-        services.agent._turns.pop("agent-active", None)
+        services.agent.turns._turns.pop("agent-active", None)
         await lifecycle.shutdown()
 
 

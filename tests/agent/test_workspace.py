@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-import logagent.agent.workspace as workspace_module
+import logagent.agent.workspace.files as workspace_module
 from logagent.agent.workspace import RuntimeIdentity, WorkspaceBackend
 from logagent.errors import LogAgentError
 

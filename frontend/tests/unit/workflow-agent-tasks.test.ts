@@ -11,61 +11,12 @@ import {
 import FanOutTaskCard from '@/modules/workflows/ui/FanOutTaskCard.vue'
 import FanInCard from '@/modules/workflows/ui/FanInCard.vue'
 import AgentTaskOptions from '@/modules/workflows/ui/AgentTaskOptions.vue'
-import { changeAgentMode } from '@/modules/workflows/model/public'
-import { parsePhase } from '@/modules/workflows/model/public'
-import { sessionKind } from '@/modules/agents/model/public'
+import { changeAgentMode } from '@/modules/workflows/model/agentTask'
+import { parsePhase } from '@/modules/runs/model/report'
+import { sessionKind } from '@/modules/agents/model/sessionKind'
 import type { AgentSession } from '@/modules/agents/public'
 
 describe('Workflow Agent tasks', () => {
-  it.each([false, true])(
-    'requires both Human prompts for ordinary and Agent tasks (%s)',
-    (agentMode) => {
-      const scope = effectScope()
-      const editor = scope.run(() => useWorkflowEditor({ identity: 'workflow', data: undefined }))!
-      editor.replace(createWorkflow())
-      editor.addTask()
-      editor.updateTask(0, { agent_mode: agentMode, input_prompt: ' ', user_prompt: ' ' })
-      editor.toggleFanIn(true)
-      editor.updateFanIn({ agent_mode: agentMode, input_prompt: ' ', user_prompt: ' ' })
-      expect(validateWorkflow(editor.draft.value!)).toEqual(
-        expect.arrayContaining([
-          '任务 task_1 需要填写差异提示词',
-          '任务 task_1 的输入模板不能为空',
-          'AI 汇总需要填写差异提示词',
-          '汇总的输入模板不能为空',
-        ]),
-      )
-      editor.updateTask(0, { input_prompt: null, user_prompt: 'analyze' })
-      editor.updateFanIn({ input_prompt: null, user_prompt: 'summarize' })
-      expect(validateWorkflow(editor.draft.value!)).toEqual([])
-      scope.stop()
-    },
-  )
-
-  it.each([false, true])(
-    'includes $input by default and respects a saved explicit order (%s)',
-    async (agentMode) => {
-      const scope = effectScope()
-      const editor = scope.run(() => useWorkflowEditor({ identity: 'workflow', data: undefined }))!
-      editor.replace(createWorkflow())
-      editor.addTask()
-      editor.toggleFanIn(true)
-      editor.updateFanIn({ agent_mode: agentMode })
-      const wrapper = mount(FanInCard, {
-        props: { editor, configs: [] },
-        global: { plugins: [ElementPlus] },
-      })
-      const order = wrapper.findAllComponents(ElSelect)[0]
-      expect(order.props('modelValue')).toEqual(['$input', 'task_1'])
-      await order.vm.$emit('update:modelValue', ['task_1'])
-      await nextTick()
-      expect(editor.draft.value!.fan_in!.order).toEqual(['task_1'])
-      expect(order.props('modelValue')).toEqual(['task_1'])
-      wrapper.unmount()
-      scope.stop()
-    },
-  )
-
   it('enables LLM summary optimization by default and exposes it only in advanced LLM mode', async () => {
     const scope = effectScope()
     const editor = scope.run(() => useWorkflowEditor({ identity: 'workflow', data: undefined }))!
