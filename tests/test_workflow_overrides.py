@@ -49,7 +49,7 @@ async def bindings(tmp_path):
 
 def workflow(ident="workflow", **kwargs):
     return WorkflowDefinition(id=ident, sources=["source"],
-                              analyses=[{"id": "task", "ai": "ai", "model": "model"}],
+                              analyses=[{"user_prompt": "analyze input", "id": "task", "ai": "ai", "model": "model"}],
                               **kwargs)
 
 
@@ -156,7 +156,7 @@ async def test_detached_source_snapshot_requires_its_binding_id():
     with pytest.raises(ValidationError):
         WorkflowDefinition(
             id="workflow", sources=["source"],
-            analyses=[{"id": "task", "ai": "ai", "model": "model"}],
+            analyses=[{"user_prompt": "analyze input", "id": "task", "ai": "ai", "model": "model"}],
             source_overrides={"source": {"source": {
                 "id": "another", "collector": "mock",
             }}},

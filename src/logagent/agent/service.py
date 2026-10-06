@@ -222,6 +222,13 @@ class AgentService:
             turn_id = terminal.get("turn_id") if terminal else None
             await log.recover_interrupted()
             now = created["created_at"]
+            ai_config = self._read_invocation(directory.name) if created.get("has_ai_config") else None
+            has_prompt_layers = "input_prompt" in created
+            legacy_input_prompt = created.get("user_prompt", "{input}")
+            if not isinstance(legacy_input_prompt, str):
+                raise LogAgentError("event_log_corrupt", "旧 Agent 输入模板必须为字符串")
+            if "{input}" not in legacy_input_prompt:
+                legacy_input_prompt = f"{legacy_input_prompt}\n\n{{input}}"
             session = AgentSession(
                 directory.name, created.get("branch_id", _new_id("branch_")),
                 created.get("model"), created.get("workflow_session_id"),
@@ -233,10 +240,13 @@ class AgentService:
                 parent_event_id=created.get("parent_event_id"),
                 mcp_binding=self._read_mcp_binding(directory.name),
                 workflow_task_id=created.get("workflow_task_id"),
-                ai_config=self._read_invocation(directory.name) if created.get("has_ai_config") else None,
-                system_prompt=created.get("system_prompt", ""),
-                input_prompt=created.get("input_prompt", "{input}"),
-                user_prompt=created.get("user_prompt", ""),
+                ai_config=ai_config,
+                system_prompt=created.get(
+                    "system_prompt", ai_config.system_prompt if ai_config else "",
+                ),
+                input_prompt=(created.get("input_prompt", "{input}")
+                              if has_prompt_layers else legacy_input_prompt),
+                user_prompt=(created.get("user_prompt", "") if has_prompt_layers else ""),
                 tool_names=created.get("tool_names"),
             )
             started_turns = {
