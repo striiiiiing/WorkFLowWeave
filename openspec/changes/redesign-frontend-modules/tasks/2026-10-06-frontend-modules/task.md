@@ -134,3 +134,7 @@
 16 项实施任务均已完成。change 保持活动，便于用户审查本 worktree；本次没有合并主分支或 archive。
 
 最终 `git diff --cached --check` 退出码 0；OpenSpec apply 指令返回 `16/16 complete`、`state=all_done`。改动已暂存，便于一次审查；未创建提交。
+
+### 6.6 契约同步
+
+本次按用户确认同步 `design.md`：目标树完整表达 `agents/resources/workflows/runs` 的业务边界，以及各业务下同级保留的 `api/`、`composables/`、`ui/` 和内部 `model/` 拆分。实现目录扫描与该树一致；没有迁移或重构 API、Composable、UI、页面或路由。
