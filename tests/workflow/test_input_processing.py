@@ -19,7 +19,7 @@ from logagent.workflow.input_processing import extract, process_input
 def snapshot(*, format="none", item=None, field=None, total=None, sources=("first",)):
     return WorkflowSnapshot(
         workflow=WorkflowDefinition(id="wf", sources=list(sources),
-            analyses=[AnalysisTask(id="a", ai="ai", model="test")],
+            analyses=[AnalysisTask(user_prompt="analyze input", id="a", ai="ai", model="test")],
             input_processing={"format": format, "total_tokens": total}),
         sources={key: SourceConfig(id=key, call={"kind": "cli", "mode": "argv", "executable": "echo"},
                  limits={"item_tokens": item, "field_tokens": field}) for key in sources},

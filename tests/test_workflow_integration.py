@@ -86,11 +86,11 @@ def _save_resources(registry, resources, output_path, version):
             name=f"Report {version}",
             sources=["source"],
             analyses=[
-                AnalysisTask(id=key, ai="ai", model="model", input_prompt=f"{version}-{key}: {{input}}")
+                AnalysisTask(user_prompt="analyze input", id=key, ai="ai", model="model", input_prompt=f"{version}-{key}: {{input}}")
                 for key in ("first", "second")
             ],
             analysis_concurrency=1,
-            fan_in=FanInConfig(
+            fan_in=FanInConfig(user_prompt="summarize results",
                 ai="ai", model="model",
                 reuse_from=None,
                 order=["second", "$input", "first"],

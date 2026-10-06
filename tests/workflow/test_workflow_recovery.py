@@ -469,7 +469,7 @@ async def test_duplicate_capacity_and_shutdown(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "fan_in", [None, FanInConfig(), FanInConfig(
+    "fan_in", [None, FanInConfig(user_prompt="summarize results"), FanInConfig(user_prompt="summarize results",
         ai="ai", model="offline", reuse_from=None, order=["second", "$input", "first"],
     )]
 )
@@ -501,7 +501,7 @@ async def test_layered_prompts_and_ordered_fanin_reuse(tmp_path):
     snap.ai["ai"].system_prompt = "ignored AI system"
     snap.workflow.analyses[1].ai = "other"
     snap.workflow.analyses[1].model = "other-model"
-    snap.workflow.analyses[1].input_prompt = ""
+    snap.workflow.analyses[1].input_prompt = "{input}"
     snap.ai["other"] = AIConfig(
         id="other", provider="mock", system_prompt="ignored other system",
         models={"other-model": {}},
@@ -512,7 +512,7 @@ async def test_layered_prompts_and_ordered_fanin_reuse(tmp_path):
     assert by_id["first"] == (
         "first", "ai", "body: {input}", "first system", "first instruction"
     )
-    assert by_id["second"] == ("second", "other", "", "shared {input}", "")
+    assert by_id["second"] == ("second", "other", "{input}", "shared {input}", "analyze input")
     assert by_id["final"] == ("final", "other", "body: {input}", "", "summary {input}")
     assert ai.calls[-1] == (
         "final",
@@ -526,7 +526,7 @@ async def test_layered_prompts_and_ordered_fanin_reuse(tmp_path):
 
 async def test_default_fanin_reuses_first_model_and_declared_order(tmp_path):
     w, store, _, ai, _ = service(tmp_path / "runs.sqlite3")
-    snap = snapshot(channels=False, fan_in=FanInConfig(), system_prompt="shared system")
+    snap = snapshot(channels=False, fan_in=FanInConfig(user_prompt="summarize results"), system_prompt="shared system")
     snap.ai["ai"].system_prompt = "ignored AI system"
     result = await run(w, snap)
     assert result.status == "completed"
@@ -544,7 +544,7 @@ async def test_default_fanin_reuses_first_model_and_declared_order(tmp_path):
 async def test_fanin_without_reuse_omits_original_input_and_model_call(tmp_path):
     w, store, _, ai, _ = service(tmp_path / "runs.sqlite3")
     result = await run(w, snapshot(
-        channels=False, fan_in=FanInConfig(reuse_from=None, order=["second"]),
+        channels=False, fan_in=FanInConfig(user_prompt="summarize results", reuse_from=None, order=["second"]),
     ))
     assert result.status == "completed"
     assert result.outputs["final"] == "second([source=source; format=none]\noriginal data)"
@@ -569,7 +569,7 @@ async def test_analysis_failure_policy(tmp_path, policy, partial, status, sends)
 
 async def test_aggregate_failure_does_not_fallback_to_branch_delivery(tmp_path):
     w, store, _, a, n = service(tmp_path / "runs.sqlite3", ai=AI(fail={"final"}))
-    result = await run(w, snapshot(fan_in=FanInConfig(
+    result = await run(w, snapshot(fan_in=FanInConfig(user_prompt="summarize results",
         ai="ai", model="offline", reuse_from=None,
     )))
     assert result.status == "failed" and result.aggregate.status == "failed"
@@ -599,7 +599,7 @@ async def test_coordinator_completion_cache_is_bounded():
 async def test_failed_work_requires_explicit_stage_rerun(tmp_path, failure):
     w, store, c, _, n = service(tmp_path / "runs.sqlite3", ai=AI(fail={failure}))
     definition = snapshot(
-        analysis_failure="stop", fan_in=FanInConfig(
+        analysis_failure="stop", fan_in=FanInConfig(user_prompt="summarize results",
             ai="ai", model="offline", reuse_from=None,
         ) if failure == "final" else None
     )

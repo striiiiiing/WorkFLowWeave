@@ -46,7 +46,7 @@ def seed(store):
     store.save("ai", AIConfig(id="ai", provider="mock", models={"model": {}}))
     store.save("channels", ChannelConfig(id="channel", channel="file", options={"path": "out.txt"}))
     definition = WorkflowDefinition(
-        id="workflow", sources=["source"], analyses=[{"id": "analysis", "ai": "ai", "model": "model"}],
+        id="workflow", sources=["source"], analyses=[{"user_prompt": "analyze input", "id": "analysis", "ai": "ai", "model": "model"}],
         channels=["channel"],
     )
     store.save("workflows", definition)
@@ -144,7 +144,7 @@ async def test_lifecycle_batch_refreshes_once_after_success(resources, tmp_path)
     with pytest.raises(LogAgentError):
         store.save_many({"workflows": [WorkflowDefinition(
             id="broken", sources=["missing"],
-            analyses=[{"id": "analysis", "ai": "ai", "model": "model"}],
+            analyses=[{"user_prompt": "analyze input", "id": "analysis", "ai": "ai", "model": "model"}],
         )]})
     assert refreshed == [True]
     assert store.list("workflows") == []
@@ -322,7 +322,7 @@ async def test_removing_referenced_model_rejects_entire_resource_candidate(resou
     store.save("ai", AIConfig(id="ai", provider="mock", models={"model": {}, "summary": {}}))
     if reference == "fan_in":
         from logagent.models import FanInConfig
-        definition.fan_in = FanInConfig(ai="ai", model="summary", reuse_from=None)
+        definition.fan_in = FanInConfig(user_prompt="summarize results", ai="ai", model="summary", reuse_from=None)
         store.save("workflows", definition)
     before = await asyncio.to_thread(Path(store.location).read_bytes)
     original = store.snapshot("workflow")

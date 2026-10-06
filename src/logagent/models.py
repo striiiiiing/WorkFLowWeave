@@ -339,12 +339,13 @@ class AnalysisTask(StrictModel):
     model: ModelName
 
     @model_validator(mode="after")
-    def agent_prompts(self) -> Self:
-        if self.agent_mode:
-            if not self.user_prompt.strip():
-                raise ValueError("Agent analysis requires a nonblank user_prompt")
-            if self.input_prompt is not None and not self.input_prompt.strip():
-                raise ValueError("Agent analysis input_prompt cannot be blank")
+    def prompt_contract(self, info: ValidationInfo) -> Self:
+        if info.context and info.context.get("historical_snapshot"):
+            return self
+        if not self.user_prompt.strip():
+            raise ValueError("Analysis task requires a nonblank user_prompt")
+        if self.input_prompt is not None and not self.input_prompt.strip():
+            raise ValueError("Analysis task input_prompt cannot be blank")
         return self
 
 
@@ -374,8 +375,6 @@ class FanInConfig(StrictModel):
         return value
 
     def ordered_inputs(self, analyses: list[AnalysisTask]) -> list[str]:
-        if self.agent_mode:
-            return self.order or [task.id for task in analyses]
         return self.order or ["$input", *(task.id for task in analyses)]
 
     def reused_task(self, analyses: list[AnalysisTask]) -> AnalysisTask | None:
@@ -386,18 +385,19 @@ class FanInConfig(StrictModel):
         return next(task for task in analyses if task.id == self.reuse_from)
 
     @model_validator(mode="after")
-    def paired_model(self) -> Self:
-        if self.agent_mode:
-            if not self.user_prompt.strip():
-                raise ValueError("Agent fan-in requires a nonblank user_prompt")
-            if self.input_prompt is not None and not self.input_prompt.strip():
-                raise ValueError("Agent fan-in input_prompt cannot be blank")
+    def paired_model(self, info: ValidationInfo) -> Self:
         if self.agent_mode and self.ai is None and self.reuse_from is None:
             raise ValueError("Agent fan-in requires an AI/model or a reused analysis task")
         if (self.ai is None) != (self.model is None):
             raise ValueError("Fan-in AI and model must be specified together")
         if self.reuse_from is not None and self.ai is not None:
             raise ValueError("Fan-in model reuse and explicit AI/model are mutually exclusive")
+        historical = info.context and info.context.get("historical_snapshot")
+        if not historical and (self.ai is not None or self.reuse_from is not None):
+            if not self.user_prompt.strip():
+                raise ValueError("AI fan-in requires a nonblank user_prompt")
+        if not historical and self.input_prompt is not None and not self.input_prompt.strip():
+            raise ValueError("Fan-in input_prompt cannot be blank")
         return self
 
 
@@ -470,10 +470,10 @@ class WorkflowDefinition(StrictModel):
     backup: BackupPolicy = Field(default_factory=BackupPolicy)
 
     @model_validator(mode="after")
-    def valid_references(self) -> Self:
-        if any(task.agent_mode for task in self.analyses) or (self.fan_in and self.fan_in.agent_mode):
-            if not self.input_prompt.strip():
-                raise ValueError("Workflow Agent input_prompt cannot be blank")
+    def valid_references(self, info: ValidationInfo) -> Self:
+        historical = info.context and info.context.get("historical_snapshot")
+        if not historical and not self.input_prompt.strip():
+            raise ValueError("Workflow input_prompt cannot be blank")
         if not self.source_overrides.keys() <= set(self.sources):
             raise ValueError("Source overrides must reference selected sources")
         if any(
