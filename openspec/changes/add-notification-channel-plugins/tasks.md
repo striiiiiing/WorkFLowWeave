@@ -12,7 +12,7 @@
 
 ## 插件边界与公共接入
 
-- [x] 1.1 在 `plugins/channel/<id>` 建立六个 channel 插件的清单、入口和最小注册代码；从核心 `src/logagent/channel` 移除具体平台/文件适配器。
+- [x] 1.1 在 `plugins/channel/<id>` 建立六个 channel 插件的清单、入口和最小注册代码；从核心 `src/workflowweave/channel` 移除具体平台/文件适配器。
 - [x] 1.2 让插件发现按现有注册事务发布能力；缺失可选 SDK 只产生该插件诊断，不影响其他插件；校验 `notification` 与 `conversation` 能力矩阵。
 - [x] 1.3 复用唯一 `ChannelManager`、统一队列和 Agent 端口；验证双向 SDK 回调只入队，单向 `send` 不创建 Agent 会话。
 - [x] 1.4 为每个 SDK 建立受支持版本范围和可选依赖安装入口；不得在核心必需依赖中引入平台 SDK。

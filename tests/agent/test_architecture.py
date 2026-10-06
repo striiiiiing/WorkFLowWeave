@@ -4,9 +4,9 @@ import ast
 from dataclasses import fields
 from pathlib import Path
 
-from logagent.agent.contracts import SessionView
+from workflowweave.agent.contracts import SessionView
 
-SOURCE = Path(__file__).parents[2] / "src" / "logagent"
+SOURCE = Path(__file__).parents[2] / "src" / "workflowweave"
 
 
 def imports(path):
@@ -30,7 +30,7 @@ def test_shared_storage_primitives_have_no_domain_dependencies():
     for path in (SOURCE / "storage_primitives").rglob("*.py"):
         for name in imports(path):
             assert not name.startswith((
-                "logagent.agent", "logagent.workflow", "langgraph", "fastapi", "sqlmodel",
+                "workflowweave.agent", "workflowweave.workflow", "langgraph", "fastapi", "sqlmodel",
             )), (path, name)
 
 
@@ -38,8 +38,8 @@ def test_runtime_depends_on_ports_and_values_not_transport_or_integrations():
     for path in (SOURCE / "agent" / "runtime").rglob("*.py"):
         for name in imports(path):
             assert not name.startswith((
-                "logagent.interaction", "logagent.channel", "logagent.lifecycle",
-                "logagent.agent.integrations",
+                "workflowweave.interaction", "workflowweave.channel", "workflowweave.lifecycle",
+                "workflowweave.agent.integrations",
             )), (path, name)
 
 

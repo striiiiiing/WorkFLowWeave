@@ -9,8 +9,8 @@ import asyncio
 
 import pytest
 
-from logagent.errors import LogAgentError
-from logagent.workflow.execution.runner import WorkflowRunner
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.workflow.execution.runner import WorkflowRunner
 from tests.workflow.helpers import AI, Channel, Collector, snapshot
 
 
@@ -41,7 +41,7 @@ async def test_pause_waits_for_admitted_trigger_snapshot(tmp_path):
         assert await trigger == "admitted"
         assert await pause == 1
         assert workflow.coordinator.contains("admitted")
-        with pytest.raises(LogAgentError) as error:
+        with pytest.raises(WorkFLowWeaveError) as error:
             await workflow.trigger(snapshot(), session_id="later")
         assert error.value.code == "not_ready"
         assert await asyncio.to_thread(workflow.session_store.entry, "later", "created") is None
@@ -71,7 +71,7 @@ async def test_cancelled_shutdown_caller_does_not_abandon_owned_cleanup(tmp_path
     assert workflow.session_store.session_ids() == []
     release.set()
     await workflow.shutdown()
-    with pytest.raises(LogAgentError) as error:
+    with pytest.raises(WorkFLowWeaveError) as error:
         workflow.session_store.session_ids()
     assert error.value.code == "storage_closed"
     await workflow.shutdown()

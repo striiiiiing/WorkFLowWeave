@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pytest
 
-import logagent.agent.workspace.sandbox as sandbox_module
-from logagent.agent.config import AgentConfig, SandboxConfig
-from logagent.agent.tools.scheduling import ToolScheduler
-from logagent.agent.workspace import WorkspaceBackend
-from logagent.agent.workspace.sandbox import ShellSandbox
-from logagent.errors import LogAgentError
+import workflowweave.agent.workspace.sandbox as sandbox_module
+from workflowweave.agent.config import AgentConfig, SandboxConfig
+from workflowweave.agent.tools.scheduling import ToolScheduler
+from workflowweave.agent.workspace import WorkspaceBackend
+from workflowweave.agent.workspace.sandbox import ShellSandbox
+from workflowweave.errors import WorkFLowWeaveError
 
 
 async def backend_for(tmp_path: Path) -> WorkspaceBackend:
@@ -234,7 +234,7 @@ async def test_shell_reports_exit_code_timeout_and_output_limit(tmp_path):
 async def test_shell_uses_only_minimal_environment(tmp_path, monkeypatch):
     backend = await backend_for(tmp_path)
     sandbox = ShellSandbox(backend)
-    monkeypatch.setenv("LOGAGENT_TEST_SECRET", "must-not-cross-boundary")
+    monkeypatch.setenv("WORKFLOWWEAVE_TEST_SECRET", "must-not-cross-boundary")
 
     result = await sandbox.run("env | sort", config=config(enabled=False))
     assert result["status"] == "success"
@@ -246,7 +246,7 @@ async def test_shell_uses_only_minimal_environment(tmp_path, monkeypatch):
         "PWD": str(backend.root),
         "TMPDIR": "/tmp",
     }
-    assert "LOGAGENT_TEST_SECRET" not in result["stdout"]
+    assert "WORKFLOWWEAVE_TEST_SECRET" not in result["stdout"]
 
 
 @pytest.mark.asyncio
@@ -378,7 +378,7 @@ async def test_missing_bwrap_is_explicit_and_does_not_fallback_to_host(tmp_path,
     host_target = tmp_path / "must-not-be-created.txt"
     monkeypatch.setattr(sandbox_module.shutil, "which", lambda name: None)
 
-    with pytest.raises(LogAgentError) as exc_info:
+    with pytest.raises(WorkFLowWeaveError) as exc_info:
         await sandbox.run(f"touch {shlex.quote(str(host_target))}", config=config())
     assert exc_info.value.code == "sandbox_unavailable"
     assert not host_target.exists()

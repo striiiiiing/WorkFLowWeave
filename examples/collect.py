@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 
-from logagent.collection import CollectorManager
-from logagent.models import CollectionContext, SourceConfig
+from workflowweave.collection import CollectorManager
+from workflowweave.models import CollectionContext, SourceConfig
 
 
 async def run(executable: str, argv: list[str]) -> int:

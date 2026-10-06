@@ -10,7 +10,7 @@
 
 ## 2. 建立共享存储原语与值对象边界
 
-- [x] 2.1 设计并实现 `src/logagent/storage_primitives/` 的 atomic、locks、digest、revision、jsonl、sqlite、paths 原语；用临时目录/SQLite 的并发、崩溃和 revision 测试验证，且静态检查不得导入 agent/workflow。
+- [x] 2.1 设计并实现 `src/workflowweave/storage_primitives/` 的 atomic、locks、digest、revision、jsonl、sqlite、paths 原语；用临时目录/SQLite 的并发、崩溃和 revision 测试验证，且静态检查不得导入 agent/workflow。
 - [x] 2.2 提取 contracts、实际依赖 ports 和 ToolDeclaration，保留 config 唯一默认值；用导入检查和原配置/工具声明测试验证。
 - [x] 2.3 迁移 workspace/files、views 和进程/沙箱模块，保持路径、ETag、self.json 和取消语义；通过矩阵 A5/A7/A11 验证。
 - [x] 2.4 迁移 Agent events/artifacts/settings/bindings，使其委托 storage_primitives，提取 Sessions 投影和官方 LangGraph checkpointer 适配；通过稳定键复用、原始输出、绑定损坏和原数据布局测试验证。
@@ -30,7 +30,7 @@
 - [x] 4.3 迁移渠道侧 processor 并将 AgentChannel 改为 CommandDispatcher，更新所有调用方；用 A2/A3 验证同一队列、改绑与原路回复，删除旧转导。
 - [x] 4.4 与 FastAPI change 的唯一组合根接线，启动失败也能清理已创建资源；用 A10 验证 lifespan、原 HTTP 路径和 SSE 断开/重连，不新增第二套 heartbeat。
 - [x] 4.5 更新 registry 内置模块定位并删去 Service 的默认工具副本及旧路径；用工具关闭不导入测试、静态依赖检查和全仓旧导入扫描验证。
-- [x] 4.6 在 `frontend/src/modules/agents/langchain/` 实现 `@langchain/vue` 的 `useStream` 与 LogAgent `AgentServerAdapter`，迁移 Agent 页面流状态和测试；用真实 v2 adapter 契约、重连、fork、stop 和组件卸载验证不再存在第二套 EventSource 状态机。
+- [x] 4.6 在 `frontend/src/modules/agents/langchain/` 实现 `@langchain/vue` 的 `useStream` 与 WorkFLowWeave `AgentServerAdapter`，迁移 Agent 页面流状态和测试；用真实 v2 adapter 契约、重连、fork、stop 和组件卸载验证不再存在第二套 EventSource 状态机。
 
 ## 5. 回归与完成
 

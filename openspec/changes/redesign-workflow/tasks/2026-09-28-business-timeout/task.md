@@ -4,7 +4,7 @@
 
 用户明确要求超时和重试由业务内部处理：常见超时通常按 Skip 继续，不能仅因 NodeTimeoutError 让整张图暂停。本任务修正 design §1.1 和 workflow-stream-execution 的对应要求；此前 defer/Send timeout/RetryPolicy 任务保留其当时决策记录，defer 清理仍有效。
 
-现有 SourceConfig.timeout 默认 60 秒、AIConfig.timeout 默认 600 秒且 retries 默认 5、ChannelConfig.timeout 默认 30 秒，见 src/logagent/models.py。继续使用这些已定义配置，不另设 Workflow 统一超时或重试默认值；AIService.execute 已在总预算内依据可重试性和投递不确定性有限重试，CollectorManager.collect 与 ChannelManager.send 返回带状态的业务结果。来源 on_error、分析失败策略和通知降级策略决定图是否继续。
+现有 SourceConfig.timeout 默认 60 秒、AIConfig.timeout 默认 600 秒且 retries 默认 5、ChannelConfig.timeout 默认 30 秒，见 src/workflowweave/models.py。继续使用这些已定义配置，不另设 Workflow 统一超时或重试默认值；AIService.execute 已在总预算内依据可重试性和投递不确定性有限重试，CollectorManager.collect 与 ChannelManager.send 返回带状态的业务结果。来源 on_error、分析失败策略和通知降级策略决定图是否继续。
 
 ## 实施与验证
 

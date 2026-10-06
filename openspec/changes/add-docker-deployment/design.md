@@ -6,11 +6,11 @@
 
 多阶段 Dockerfile 提供 backend/frontend target。后端采用 Python 3.12 和 uv 0.11.2，通过 uv.lock 安装 channels extra；Node 24.15.0 满足微信官方 SDK engines，使用 package-lock.json 安装依赖。前端以相同 Node 构建 Vue，以 Nginx 提供 SPA 和 /api 代理；SSE 禁用缓存与缓冲。镜像不复制宿主虚拟环境、node_modules、配置、密钥或数据库。
 
-后端沿用 `logagent start` 的单进程生命周期，以 uid 10001 运行，工作目录为可写持久卷 /var/lib/logagent，使 QQ SDK 默认的 botpy.log 有可写位置而无需改 SDK。Compose 默认仅在本机暴露前端 3000、后端 4300，镜像名为 workflowweave-backend:local / workflowweave-frontend:local，可通过环境变量覆盖。健康检查读取真实 /api/health，前端等待后端健康。
+后端沿用 `workflowweave start` 的单进程生命周期，以 uid 10001 运行，工作目录为可写持久卷 /var/lib/workflowweave，使 QQ SDK 默认的 botpy.log 有可写位置而无需改 SDK。Compose 默认仅在本机暴露前端 3000、后端 4300，镜像名为 workflowweave-backend:local / workflowweave-frontend:local，可通过环境变量覆盖。健康检查读取真实 /api/health，前端等待后端健康。
 
 ## 状态与插件更新
 
-命名卷挂载 /var/lib/logagent。首次启动用 SystemConfig 生成容器配置：监听 0.0.0.0:4300，data_dir、plugin_dir、master_key_file 位于卷中；其它值复用现有默认值。已有配置不覆盖。
+命名卷挂载 /var/lib/workflowweave。首次启动用 SystemConfig 生成容器配置：监听 0.0.0.0:4300，data_dir、plugin_dir、master_key_file 位于卷中；其它值复用现有默认值。已有配置不覆盖。
 
 卷内 plugins/channel 是指向 /app/plugins/channel 的目录符号链接，内置插件代码随镜像更新；plugins/config.json 保存在卷内，保持现有原子替换语义。发现器已有分组目录扫描支持该链接。冲突目录显式报错。用户插件放在其它子目录。OPENCLAW_STATE_DIR 指向卷内 openclaw；凭据不进入镜像。
 

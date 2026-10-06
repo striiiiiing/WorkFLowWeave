@@ -191,7 +191,7 @@ flowchart TB
 
 ```mermaid
 mindmap
-  root((LogAgent 前端模块))
+  root((WorkFLowWeave 前端模块))
     运行监控仪表盘 (Runs Dashboard)
       活动 Session 监控
       执行状态统计

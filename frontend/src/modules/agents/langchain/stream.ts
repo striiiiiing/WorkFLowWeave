@@ -38,7 +38,7 @@ export function useAgentSession(api: AgentsApi) {
     },
   })
   const stream = useStream<AgentStreamState>({
-    assistantId: 'logagent-agent',
+    assistantId: 'workflowweave-agent',
     threadId: null,
     transport: adapter,
     initialValues: { messages: [] },

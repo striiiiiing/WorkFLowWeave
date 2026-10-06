@@ -16,4 +16,4 @@
 ## Source
 
 - [任务要求](../backendFix/任务要求.md)
-- `ssh myserver:~/opt/workflowServer/src/logagent/config/store.py` 的 `save_many` 语义。
+- `ssh myserver:~/opt/workflowServer/src/workflowweave/config/store.py` 的 `save_many` 语义。

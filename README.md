@@ -8,9 +8,9 @@
 
 通过 Workflow 模块服务接入 MCP 工具或 CLI 命令获取内容，经过筛选、分组等处理后，让多个模型从不同角度分析，再按需汇总并发送到指定渠道。流程结束后，可以在 Agent 中继续追问；需要搜索或多步处理的分析任务，也可以直接交给 Agent 执行。
 
-> 项目处于开发阶段，当前包版本为 `0.1.0`。Python 包与命令行仍使用 `LogAgent` / `logagent` 命名。
+> 项目处于开发阶段，当前包版本为 `0.1.0`。
 
-[功能特性](#功能特性) · [快速开始](#快速开始) · [创建第一个工作流](#创建第一个工作流) · [配置与数据](#配置与数据) · [开发与文档](#开发与文档)
+[功能特性](#功能特性) · [快速开始](#快速开始) · [创建第一个工作流](#创建第一个工作流) · [配置与数据](#配置与数据) · [开发与文档](#开发与文档) · [待办](#待办)
 
 ## 截图展示
 
@@ -134,8 +134,8 @@ uv sync --group dev
 首次生成系统配置；如果已有 `config.json`，直接执行启动命令。
 
 ```bash
-uv run logagent config-example --output config.json
-uv run logagent start --config config.json
+uv run workflowweave config-example --output config.json
+uv run workflowweave start --config config.json
 ```
 
 后端默认监听 `http://127.0.0.1:4300`。保持终端运行，另开终端启动前端。
@@ -190,13 +190,13 @@ curl -i http://localhost:3000/api/health
 保持后端运行，在仓库根目录执行：
 
 ```bash
-uv run logagent resource save sources source.json --create --api-url http://127.0.0.1:4300
-uv run logagent collect host_info --api-url http://127.0.0.1:4300
+uv run workflowweave resource save sources source.json --create --api-url http://127.0.0.1:4300
+uv run workflowweave collect host_info --api-url http://127.0.0.1:4300
 ```
 
 第一条命令创建来源，第二条返回采集结果 JSON；成功时 `status` 为 `success`，原始结果包含主机信息。重复创建同名来源会报错，修改已有来源可使用 `--replace` 替换 `--create`。
 
-这里显式指定 `--api-url`，因为当前 CLI 默认地址仍为 `http://127.0.0.1:8000`。也可以设置环境变量 `LOGAGENT_API_URL=http://127.0.0.1:4300`。不依赖 API 服务的采集示例见 [examples/collect.py](examples/collect.py)。
+这里显式指定 `--api-url`，因为当前 CLI 默认地址仍为 `http://127.0.0.1:8000`。也可以设置环境变量 `WORKFLOWWEAVE_API_URL=http://127.0.0.1:4300`。不依赖 API 服务的采集示例见 [examples/collect.py](examples/collect.py)。
 
 ## 配置与数据
 
@@ -228,7 +228,7 @@ API_TARGET=http://127.0.0.1:8000 npm run dev
 后端使用 Python、FastAPI、LangGraph 和 SQLite，前端使用 Vue 3、TypeScript、Element Plus 和 Vite。工作流与独立 Agent 共享模型、MCP、资源和渠道能力。
 
 ```text
-src/logagent/   后端：采集、工作流、AI、Agent、渠道、配置与 API
+src/workflowweave/   后端：采集、工作流、AI、Agent、渠道、配置与 API
 frontend/      管理界面与前端测试
 plugins/       通知与双向对话渠道适配器
 examples/      独立调用示例
@@ -253,7 +253,7 @@ OpenSpec 中的提案和设计说明目标与行为约束，实施与验收状�
 
 ```bash
 timeout 60s uv run pytest tests/config tests/collection -q
-uv run ruff check src/logagent
+uv run ruff check src/workflowweave
 ```
 
 前端检查，在 `frontend/` 中执行：

@@ -2,8 +2,8 @@ from contextlib import asynccontextmanager
 
 import pytest
 
-from logagent.mcp import MCPHealthMonitor, MCPRuntime
-from logagent.models import MCPServerConfig
+from workflowweave.mcp import MCPHealthMonitor, MCPRuntime
+from workflowweave.models import MCPServerConfig
 
 
 def server(**overrides):

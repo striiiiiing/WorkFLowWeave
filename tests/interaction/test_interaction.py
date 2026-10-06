@@ -14,9 +14,9 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from logagent.errors import LogAgentError
-from logagent.interaction.app import create_app
-from logagent.models import (
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.interaction.app import create_app
+from workflowweave.models import (
     CapabilityDescription,
     DiscoveryReport,
     HealthReport,
@@ -47,16 +47,16 @@ class MemoryResources:
     def save(self, kind: str, resource, *, mode: str = "upsert"):
         exists = resource.id in self.values[kind]
         if mode == "create" and exists:
-            raise LogAgentError("already_exists", "resource already exists")
+            raise WorkFLowWeaveError("already_exists", "resource already exists")
         if mode == "replace" and not exists:
-            raise LogAgentError("not_found", "resource does not exist")
+            raise WorkFLowWeaveError("not_found", "resource does not exist")
         stored = resource.model_copy(deep=True)
         self.values[kind][resource.id] = stored
         return stored.model_copy(deep=True)
 
     def delete(self, kind: str, ident: str) -> None:
         if ident not in self.values[kind]:
-            raise LogAgentError("not_found", "resource does not exist")
+            raise WorkFLowWeaveError("not_found", "resource does not exist")
         del self.values[kind][ident]
 
     def save_many(self, resources, *, mode: str = "upsert"):
@@ -116,7 +116,7 @@ class Sessions:
     async def get_session(self, session_id: str, *, version: int | None = None):
         self.calls.append(("get", session_id, version))
         if session_id != self.record.session_id:
-            raise LogAgentError("not_found", "session does not exist")
+            raise WorkFLowWeaveError("not_found", "session does not exist")
         return self.record
 
     async def get_phase_content(self, session_id: str, stage: str, *, version: int):
@@ -141,7 +141,7 @@ class Registry:
 class MCPProbe:
     async def probe(self, scope, server):
         if server not in scope:
-            raise LogAgentError("mcp_out_of_scope", "MCP 服务不存在")
+            raise WorkFLowWeaveError("mcp_out_of_scope", "MCP 服务不存在")
         return MCPHealthReport(
             server=server,
             status="healthy",
@@ -424,7 +424,7 @@ def test_structured_error_status_mapping(code: str, expected_status: int):
     lifecycle = Lifecycle()
 
     def fail(*_):
-        raise LogAgentError(code, "public error")
+        raise WorkFLowWeaveError(code, "public error")
 
     lifecycle.resources.get = fail
     with _client(lifecycle, raise_server_exceptions=False) as client:
@@ -440,7 +440,7 @@ def test_unknown_error_is_redacted_and_logged(caplog):
         raise RuntimeError("secret-token-and-path")
 
     lifecycle.resources.get = fail
-    with caplog.at_level(logging.ERROR, logger="logagent.interaction"):
+    with caplog.at_level(logging.ERROR, logger="workflowweave.interaction"):
         with _client(lifecycle, raise_server_exceptions=False) as client:
             response = client.get("/api/sources/missing")
     assert response.status_code == 500

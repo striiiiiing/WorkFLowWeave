@@ -24,4 +24,4 @@
 - [x] Chromium + 真实临时后端 1 条完整流程通过：关闭正文备份、工作流改名/删除后仍展示运行名称，四种字段筛选、状态徽标、重置、详情与 375px 移动端布局，无页面运行异常。
 - [x] 对照任务审查差异：状态选项复用现有字典；名称不关联当前资源或改写旧历史；过滤先于分页；失败可见；未改 proposal/design。diff 空白检查通过。
 
-浏览器验证使用临时数据目录，不访问用户的供应商或实际数据。沿用现有 `/tmp/logagent-browser-libs/root/usr/lib/x86_64-linux-gnu` 依赖路径。首跑测试定位到 Element Plus 被占位文字覆盖的内部 input，已改为点击可见选择框并通过；截图关闭动画，状态徽标可见性断言通过。截图位于 `frontend/test-results/run-history-fields.png`。
+浏览器验证使用临时数据目录，不访问用户的供应商或实际数据。沿用现有 `/tmp/workflowweave-browser-libs/root/usr/lib/x86_64-linux-gnu` 依赖路径。首跑测试定位到 Element Plus 被占位文字覆盖的内部 input，已改为点击可见选择框并通过；截图关闭动画，状态徽标可见性断言通过。截图位于 `frontend/test-results/run-history-fields.png`。

@@ -39,7 +39,7 @@ rtk proxy timeout 60s uv run pytest tests/ai/test_env.py -q
 
 单独运行模块或文件时直接指定当前路径，例如 `rtk proxy timeout 60s uv run pytest tests/channel/test_file_channel.py -q`。根目录新增包标记是为了稳定导入，不添加 sys.path 修改或全局夹具。
 
-`tests/ai/test_service.py`、`tests/ai/test_channels.py` 和 `tests/ai/test_live.py` 默认会向 `http://localhost:19026/v1` 发送真实 HTTP 请求，需要预先启动兼容服务；不是内存 MockTransport。`LOGAGENT_AI_LIVE=1` 会额外启用 Qwen 用例，环境文件由 `LOGAGENT_AI_ENV` 指定，默认 `.env`。端点不可用应表现为真实失败，不修改跳过规则掩盖环境问题。
+`tests/ai/test_service.py`、`tests/ai/test_channels.py` 和 `tests/ai/test_live.py` 默认会向 `http://localhost:19026/v1` 发送真实 HTTP 请求，需要预先启动兼容服务；不是内存 MockTransport。`WORKFLOWWEAVE_AI_LIVE=1` 会额外启用 Qwen 用例，环境文件由 `WORKFLOWWEAVE_AI_ENV` 指定，默认 `.env`。端点不可用应表现为真实失败，不修改跳过规则掩盖环境问题。
 
 网络验收分别执行，确保每条命令仍受 60 秒硬超时约束：
 

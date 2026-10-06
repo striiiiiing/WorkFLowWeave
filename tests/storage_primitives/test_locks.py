@@ -3,7 +3,7 @@ import threading
 
 import pytest
 
-from logagent.storage_primitives.locks import file_lock, run_blocking_owned
+from workflowweave.storage_primitives.locks import file_lock, run_blocking_owned
 
 
 @pytest.mark.asyncio

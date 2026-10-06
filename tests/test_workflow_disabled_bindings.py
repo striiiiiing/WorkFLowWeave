@@ -4,13 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from logagent.ai import AIService
-from logagent.channel import ChannelManager
-from logagent.collection import CollectorManager
-from logagent.config import PluginRegistry, ResourceStore
-from logagent.errors import LogAgentError
-from logagent.models import AIConfig, ChannelConfig, SourceConfig, SystemConfig, WorkflowDefinition
-from logagent.workflow.execution.runner import WorkflowRunner
+from workflowweave.ai import AIService
+from workflowweave.channel import ChannelManager
+from workflowweave.collection import CollectorManager
+from workflowweave.config import PluginRegistry, ResourceStore
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import AIConfig, ChannelConfig, SourceConfig, SystemConfig, WorkflowDefinition
+from workflowweave.workflow.execution.runner import WorkflowRunner
 from plugins.channel.file.channel import FileChannelType
 from tests.fixtures.collectors import MockCollector
 from tests.workflow_ai_helpers import TestChannelFactory
@@ -47,7 +47,7 @@ async def test_disabled_bindings_are_preserved_and_reenabled_in_snapshot(tmp_pat
     store.save("sources", source)
     store.save("channels", channel)
 
-    with pytest.raises(LogAgentError, match="没有可用的数据源"):
+    with pytest.raises(WorkFLowWeaveError, match="没有可用的数据源"):
         store.snapshot("workflow")
     saved = store.get("workflows", "workflow")
     assert saved.source_overrides["source"].options["records"] == [{"message": "kept"}]
@@ -116,7 +116,7 @@ async def test_disabled_bindings_change_real_execution_scope_and_restore(tmp_pat
 
         source.enabled = False
         store.save("sources", source)
-        with pytest.raises(LogAgentError, match="没有可用的数据源"):
+        with pytest.raises(WorkFLowWeaveError, match="没有可用的数据源"):
             await service.trigger("workflow", session_id="disabled-source")
 
         source.enabled = True

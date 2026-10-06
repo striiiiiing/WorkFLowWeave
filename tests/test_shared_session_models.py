@@ -11,7 +11,7 @@ from itertools import product
 import pytest
 from pydantic import ValidationError
 
-from logagent.models import (
+from workflowweave.models import (
     ArtifactInfo,
     BackupPolicy,
     CollectionContext,
@@ -23,7 +23,7 @@ from logagent.models import (
     SystemConfig,
     WorkflowDefinition,
 )
-from logagent.protocols import SessionReader
+from workflowweave.protocols import SessionReader
 
 
 def test_workflow_defaults_keep_every_phase_and_snapshot_without_expiry():

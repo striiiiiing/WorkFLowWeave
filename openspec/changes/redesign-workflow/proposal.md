@@ -38,7 +38,7 @@
 
 ## Impact
 
-- 主要影响 `src/logagent/workflow/`：storage 管理追加事实/查询/过期删除，graph 采用 subgraph/<阶段>/nodes 与 subgraph/nodes 共用节点，execution 管理运行及 scheduler，stream 管理原生事件分发与订阅。
+- 主要影响 `src/workflowweave/workflow/`：storage 管理追加事实/查询/过期删除，graph 采用 subgraph/<阶段>/nodes 与 subgraph/nodes 共用节点，execution 管理运行及 scheduler，stream 管理原生事件分发与订阅。
 - 必要适配涉及 lifecycle、interaction 的运行和订阅入口，以及前端 Workflow 业务进度消费；历史采集与 Agent 接续继续依赖只读查询接口。
 - 本次不新增插件协议，不强制新增事件总线、独立恢复服务、幂等服务或另一套执行状态机。
 - 已落地五阶段图、单次 astream、并行通知、阶段 resume、per-invocation 恢复与子图清理，以及前端逐项进度；当前 worktree 另有未提交的内容存储与 snapshot 适配；本轮按原生事件及四部分边界重组，不能把旧验收算作新结构已完成，也不能将已有能力列为全部未实施。旧图恢复不兼容时明确拒绝，不追加旧图兼容分支；新实现应保留已有业务归档读取能力。

@@ -6,9 +6,9 @@
 
 - 用户 2026-09-18 明确要求：以当前 `main` 为基线，保留现有外观，采用 Vue 3 / Element Plus，消除明显冗余并整理架构。
 - 依据 [前端设计](./design.md)、[总设计](../../design.md)、[提案](../../proposal.md)：保留侧栏、移动抽屉、明暗主题与无画布的纵向卡片编排。
-- 接口事实来源为 `src/logagent/models.py`、`src/logagent/interaction/routers.py`、`schemas.py`、`errors.py`。旧前端设计中的接口示例与当前实现存在偏差，以可运行后端为准；本次未修改 proposal.md 或任何 design.md。
+- 接口事实来源为 `src/workflowweave/models.py`、`src/workflowweave/interaction/routers.py`、`schemas.py`、`errors.py`。旧前端设计中的接口示例与当前实现存在偏差，以可运行后端为准；本次未修改 proposal.md 或任何 design.md。
 - 用户明确指定 Element Plus，优先于旧任务中的“自主实现原子组件”。不保留 Ant Design 或并行的静态预览实现。
-- 重构前前端源码及预览已归档至工作区外 `/tmp/logagent-frontend-before-refactor.tar.gz`。不修改用户的后端、IDE 配置或提交分支。
+- 重构前前端源码及预览已归档至工作区外 `/tmp/workflowweave-frontend-before-refactor.tar.gz`。不修改用户的后端、IDE 配置或提交分支。
 
 ## 根因与结构取舍
 
@@ -62,7 +62,7 @@
 - Playwright + Chromium 连接临时目录内的真实 FastAPI，验证资源无效 JSON 拦截与创建/编辑、工作流创建/重新加载/保存/触发/版本化正文读取、375px 导航/主题持久化及各主页面无横向溢出。离线采集器以 empty 模式在分析前结束，不调用外部模型。
 - 表单使用 `novalidate` 将交互校验交给 Element Plus，避免浏览器原生 number step 与小数最小值冲突而阻断合法提交；业务校验仍在后端。
 - Vitest 对 Element Plus 使用 Vite 内联转换，解决外部模块加载时 async-validator 的默认导出差异；同时保留真实浏览器验证。
-- 测试环境缺少 Chromium 动态库，下载并解包到 `/tmp/logagent-browser-libs`，通过 `LD_LIBRARY_PATH` 运行测试；未修改系统安装。常规环境可按 README 安装 Playwright 依赖。
+- 测试环境缺少 Chromium 动态库，下载并解包到 `/tmp/workflowweave-browser-libs`，通过 `LD_LIBRARY_PATH` 运行测试；未修改系统安装。常规环境可按 README 安装 Playwright 依赖。
 - 重构范围的 `git diff --check` 通过；仓库全量检查存在用户原有 `.idea/pyLspTools.xml` CRLF 空白差异，未修改。
 - 复查源码：无 Ant Design 引用、图标条件链、重复状态 switch、旧 store 或业务数据失败转空列表的逻辑。保留按不同表单内容展示所需的条件分支。
 
@@ -85,9 +85,9 @@
 
 后续验证（2026-09-18，本次实际环境）：
 
-- 通过 `.venv/bin/logagent config-example --output config.json` 创建本地配置，`.venv/bin/logagent start --config config.json` 启动真实后端，使用项目 `data/` 持久化。保留运行供用户继续操作；不是临时测试 API，也未触发工作流或模型请求。
+- 通过 `.venv/bin/workflowweave config-example --output config.json` 创建本地配置，`.venv/bin/workflowweave start --config config.json` 启动真实后端，使用项目 `data/` 持久化。保留运行供用户继续操作；不是临时测试 API，也未触发工作流或模型请求。
 - 经当前 Vite 的 `http://127.0.0.1:3000/api/health` 与 `/api/sources` 均返回 HTTP 200 `application/json`。健康报告 `accepting_runs=true`，整体 `degraded` 原因为可选 `plugins/mock` 与内置 mock 的 `registration_conflict`；各必需组件 available。未修改后端及插件实现来掩盖这个独立诊断。
 - 发现 WSL 挂载目录热更新遗漏，`/src/api/client.ts` 仍返回旧模块。触碰 Vite 配置触发其正常重载后，再次读取确认已提供新错误处理实现，无需终止用户进程。
 - `npm test`：19 项通过，其中 HTTP 契约 13 项，新增空 500、HTML 502、空 503、健康错误信封、成功但无效 JSON、异常错误体格式回归。`npm run typecheck`、`npm run format:check`、`npm run build` 通过；新增文件也通过 Prettier，改动范围 diff 空白检查通过。
-- 新增 `npm run test:live`，配置明确不启动任何服务器，默认直连当前 3000（环境变量 `LOGAGENT_FRONTEND_URL` 可覆盖）。Playwright Chromium 实测 1 项通过：总览实际接收健康数据，七类列表返回 JSON 数组，页面创建唯一 ID 采集源，后端读回确认并删除。无浏览器 pageerror；测试未触发工作流。
+- 新增 `npm run test:live`，配置明确不启动任何服务器，默认直连当前 3000（环境变量 `WORKFLOWWEAVE_FRONTEND_URL` 可覆盖）。Playwright Chromium 实测 1 项通过：总览实际接收健康数据，七类列表返回 JSON 数组，页面创建唯一 ID 采集源，后端读回确认并删除。无浏览器 pageerror；测试未触发工作流。
 - 此前 `npm run test:e2e` 的 3 项仍是隔离环境的历史结果；本轮新证据为上述实际链路检查，不将二者混同。实际环境测试需先按 README 启动前后端，后端停止时应直接失败，不自动补起测试服务。

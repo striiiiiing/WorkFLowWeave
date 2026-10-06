@@ -2,8 +2,8 @@ import sqlite3
 
 import pytest
 
-from logagent.storage_primitives.paths import StoragePathError, resolve_under, temporary_path
-from logagent.storage_primitives.sqlite import configure_connection, transaction
+from workflowweave.storage_primitives.paths import StoragePathError, resolve_under, temporary_path
+from workflowweave.storage_primitives.sqlite import configure_connection, transaction
 
 
 def test_resolve_under_blocks_absolute_and_symlink_escape(tmp_path):

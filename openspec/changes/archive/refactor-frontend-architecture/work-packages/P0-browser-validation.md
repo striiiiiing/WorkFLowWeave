@@ -1,7 +1,7 @@
 # P0 浏览器与格式基线补充
 
 调查日期：2026-09-24
-工作区：`/mnt/d/code/LogAgent`
+工作区：`/mnt/d/code/WorkFLowWeave`
 开始 HEAD：`643e1b5a1cf708feb4f06b09aca8a96ba8140067`
 分支：`refactor/frontend-architecture`
 
@@ -23,15 +23,15 @@
 ## 浏览器环境与调用
 
 - Tabbit 技能已读取。`tabbit-cli diagnose` 返回 `ok: true`，Tabbit Browser 152.0.7977.83 运行中，Playwright Core 1.62.1。
-- 对 `http://127.0.0.1:3000/`、`http://localhost:3000/` 及 WSL 网卡上的临时预览 `http://192.168.5.100:13002/` 均实际提交了 Tabbit `nodejs` 程序。浏览器保留了带 LogAgent 标题的页面，但程序返回的观察上下文转为 `about:blank`，按 group 恢复时出现 `CLAIM_FAILED`；没有获得可审查的 DOM 快照，故不能记为 Tabbit 浏览器验证通过。
-- Playwright 自带 Chromium 原缺 `libnspr4.so`、`libnss3.so`、`libnssutil3.so`、`libasound.so.2`。sudo 安装要求交互密码。为验证环境，在 `/tmp/logagent-p0-browser-deps-643e1b5` 下载并解包 `libnspr4`、`libnss3`、`libasound2t64` 和 `libasound2-data`，只在命令级 `LD_LIBRARY_PATH` 使用，`ldd` 已无缺失库；没有改系统包。
+- 对 `http://127.0.0.1:3000/`、`http://localhost:3000/` 及 WSL 网卡上的临时预览 `http://192.168.5.100:13002/` 均实际提交了 Tabbit `nodejs` 程序。浏览器保留了带 WorkFLowWeave 标题的页面，但程序返回的观察上下文转为 `about:blank`，按 group 恢复时出现 `CLAIM_FAILED`；没有获得可审查的 DOM 快照，故不能记为 Tabbit 浏览器验证通过。
+- Playwright 自带 Chromium 原缺 `libnspr4.so`、`libnss3.so`、`libnssutil3.so`、`libasound.so.2`。sudo 安装要求交互密码。为验证环境，在 `/tmp/workflowweave-p0-browser-deps-643e1b5` 下载并解包 `libnspr4`、`libnss3`、`libasound2t64` 和 `libasound2-data`，只在命令级 `LD_LIBRARY_PATH` 使用，`ldd` 已无缺失库；没有改系统包。
 - 本地 Playwright 随后成功访问预览首页并观察到 UI 文本、无页面异常及无失败请求，但页面加载的是上述并发替换后的 `index-BAKNaJ0k.js`，不能作为 P0 页面验收。该并发 smoke 的首次加载样本发起 4 个 API GET：`/api/workflows`、`/api/sessions`、`/api/plugins`、`/api/health`。数据来自当时已运行的 `127.0.0.1:4300`，健康状态为 `degraded`，可选 mock 插件报告 `registration_conflict`；未执行任何写入。不要将该请求数或健康状态混入 P0/P1 对比。
 - 临时 SmokeModel 后端在 `127.0.0.1:14301` 启动并返回 `ready`，但 P1 覆盖构建产物时停止了长会话用例；未发送消息或访问外部模型/邮件/QQ。
 - 调查创建的预览和 SmokeModel 服务均已停止。开始时已存在的服务 `127.0.0.1:3000`、`127.0.0.1:4300` 未停止或改写。
 
 ## 后端契约快照与未完成项
 
-开始 HEAD 为 `643e1b5a1cf708feb4f06b09aca8a96ba8140067`。当时 `git status --short` 已显示后端渠道任务有多处 tracked 修改及新增文件，包括 `src/logagent/channel/*`、`src/logagent/interaction/channel_routers.py`、渠道路由测试和相关生命周期改动。P0 不要求这些文件 hash 保持不变，也未编辑它们。正在运行的 4300 服务呈现的是启动时进程状态，不能单凭该服务健康输出断定所有当前 dirty 代码均已加载。
+开始 HEAD 为 `643e1b5a1cf708feb4f06b09aca8a96ba8140067`。当时 `git status --short` 已显示后端渠道任务有多处 tracked 修改及新增文件，包括 `src/workflowweave/channel/*`、`src/workflowweave/interaction/channel_routers.py`、渠道路由测试和相关生命周期改动。P0 不要求这些文件 hash 保持不变，也未编辑它们。正在运行的 4300 服务呈现的是启动时进程状态，不能单凭该服务健康输出断定所有当前 dirty 代码均已加载。
 
 协议核对应以 [渠道任务 §4.2–§4.3](../../redesign-agent-channel-manager/tasks.md) 为依据：HTTP 保留现有响应字段/状态码并返回真实 `turn_id`；后端契约测试使用现有前端请求，核对 `action/session/request_id`、`kind/result`、`TurnAccepted/AgentSession`、原 SSE 信封与游标。另按任务 §5.6 保持目标单测、静态检查、受影响包构建、最小 HTTP/浏览器烟测的顺序；后端单测命令硬超时 60 秒。
 

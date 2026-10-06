@@ -76,10 +76,10 @@
 
 以上审计记录保留 2026-09-24 的历史状态。本轮已按本文件任务实施后端，未修改 `frontend/`。主要证据如下：
 
-- `src/logagent/channel/manager.py` 现在拥有唯一入站队列、接收代次、去重、绑定回执、Web 投影、回复/单向发送和生命周期；旧 `AgentChannelRuntime` 已删除。
-- `src/logagent/channel/unified_queue.py` 实现每对话消费者、stop/command 屏障、容量拒绝、活动感知清理和关闭；`src/logagent/channel/base.py` 只等待 Agent 终态并呈现结果。
-- `src/logagent/channel/web.py`、`qq.py`、`testing.py` 均通过 Manager；`tests/channel/test_qq_channel.py` 新增模拟 Gateway/REST + 真实 Manager/AgentService 的闭环，验证重复消息去重及 QQ 失败回执。
-- `src/logagent/channel/bindings.py` 增加旧身份冲突校验、稳定 operation 元数据和恢复查询；Agent 事件日志只在有证据时恢复会话/轮次，未知窗口不自动重放。
+- `src/workflowweave/channel/manager.py` 现在拥有唯一入站队列、接收代次、去重、绑定回执、Web 投影、回复/单向发送和生命周期；旧 `AgentChannelRuntime` 已删除。
+- `src/workflowweave/channel/unified_queue.py` 实现每对话消费者、stop/command 屏障、容量拒绝、活动感知清理和关闭；`src/workflowweave/channel/base.py` 只等待 Agent 终态并呈现结果。
+- `src/workflowweave/channel/web.py`、`qq.py`、`testing.py` 均通过 Manager；`tests/channel/test_qq_channel.py` 新增模拟 Gateway/REST + 真实 Manager/AgentService 的闭环，验证重复消息去重及 QQ 失败回执。
+- `src/workflowweave/channel/bindings.py` 增加旧身份冲突校验、稳定 operation 元数据和恢复查询；Agent 事件日志只在有证据时恢复会话/轮次，未知窗口不自动重放。
 - 插件重载会检查渠道活动消费和发送；`tests/lifecycle/test_agent_channels.py` 覆盖回复在途冲突、多来源同 session stop 准入竞态。
 
 2026-09-26 最终复验：`timeout 60s uv run --frozen pytest -q tests/channel tests/lifecycle/test_agent_channels.py tests/interaction/test_agent_api.py tests/interaction/test_collection.py` 为 179 项通过；受影响文件 Ruff、`uv build`、`git diff --check` 和 OpenSpec 严格校验通过。stop 穿过首次 session 绑定的用例依据 [design.md 的停止竞态契约](design.md) 改为断言“提交前阻止执行”：Agent 原子准入检查 stop 代次后返回 `message_interrupted`，会话不启动模型；活动轮次取消仍由独立用例验证。真实 QQ 平台仍未联调，原因是本地没有用户凭据和平台授权；协议使用模拟 Gateway/REST 验证。下方 2026-09-24 审计仅记录实施前历史状态，不表示当前后端实现状态。
@@ -90,11 +90,11 @@
 
 证据：
 
-- [src/logagent/channel/manager.py](../../../src/logagent/channel/manager.py) 的 `start_receiving` 只把 handler 挂到渠道实例，`send` 才调用 Manager 的发送执行器；文件没有新版所需 `enqueue`/队列消费者。
-- [src/logagent/channel/runtime.py](../../../src/logagent/channel/runtime.py) 仍创建 `_incoming`、`_replies`、`_stop_fences` 和配置同步任务，并直接调用 Agent 命令端口。
-- [src/logagent/interaction/channel_routers.py](../../../src/logagent/interaction/channel_routers.py) 及 [src/logagent/interaction/agent_routers.py](../../../src/logagent/interaction/agent_routers.py) 仍调用 `AgentChannel.dispatch`，没有通过 WebChannel 入 Manager 队列。
-- [src/logagent/lifecycle/service.py](../../../src/logagent/lifecycle/service.py) 和 [src/logagent/lifecycle/services.py](../../../src/logagent/lifecycle/services.py) 仍分别装配并暴露 `agent_channel`、`agent_channels`；独立运行时尚未删除。
-- [src/logagent/channel/conversation.py](../../../src/logagent/channel/conversation.py) 的通用地址仍将 `kind` 限定为 `c2c/group/guild/dm/test`，尚未迁移为平台不透明路由。
-- [src/logagent/agent/service.py](../../../src/logagent/agent/service.py) 的普通 `submit` 仍在活动轮次时返回 `session_busy`；新版要求由 Manager 队列等待普通消息，不能将该错误作为排队行为。
+- [src/workflowweave/channel/manager.py](../../../src/workflowweave/channel/manager.py) 的 `start_receiving` 只把 handler 挂到渠道实例，`send` 才调用 Manager 的发送执行器；文件没有新版所需 `enqueue`/队列消费者。
+- [src/workflowweave/channel/runtime.py](../../../src/workflowweave/channel/runtime.py) 仍创建 `_incoming`、`_replies`、`_stop_fences` 和配置同步任务，并直接调用 Agent 命令端口。
+- [src/workflowweave/interaction/channel_routers.py](../../../src/workflowweave/interaction/channel_routers.py) 及 [src/workflowweave/interaction/agent_routers.py](../../../src/workflowweave/interaction/agent_routers.py) 仍调用 `AgentChannel.dispatch`，没有通过 WebChannel 入 Manager 队列。
+- [src/workflowweave/lifecycle/service.py](../../../src/workflowweave/lifecycle/service.py) 和 [src/workflowweave/lifecycle/services.py](../../../src/workflowweave/lifecycle/services.py) 仍分别装配并暴露 `agent_channel`、`agent_channels`；独立运行时尚未删除。
+- [src/workflowweave/channel/conversation.py](../../../src/workflowweave/channel/conversation.py) 的通用地址仍将 `kind` 限定为 `c2c/group/guild/dm/test`，尚未迁移为平台不透明路由。
+- [src/workflowweave/agent/service.py](../../../src/workflowweave/agent/service.py) 的普通 `submit` 仍在活动轮次时返回 `session_busy`；新版要求由 Manager 队列等待普通消息，不能将该错误作为排队行为。
 
 验证：`timeout 60s uv run --frozen pytest -q tests/channel/test_agent_channels.py tests/channel/test_qq_channel.py tests/lifecycle/test_agent_channels.py tests/interaction/test_agent_api.py` 为 43 项通过；针对 Web 斜线文本、QQ resident receiving、test 原路回复/单向发送的 3 项定向测试通过；`ruff check` 对相关后端模块通过。这些测试验证的是旧版实现和兼容行为，不能勾选本任务 1–5 的新版实施项。全程没有修改 `frontend/` 文件。

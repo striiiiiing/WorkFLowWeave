@@ -34,7 +34,7 @@ SessionView 只读取 SessionStore，列表返回每个 session 的最新业务�
 
 SystemMessage/HumanMessage 分离；`models[model]` 是 JSON 参数唯一来源，通过 extra_body 传递，enable_thinking 为布尔值，reasoning_effort 为 low/medium/high/xhigh/max，关闭思考不能同时指定强度。沿用 AIConfig 的默认 timeout=600 秒/retries=5，总预算覆盖渠道启动、凭据、请求及退避，SDK 重试关闭。连接前失败和 HTTP 408/429/5xx 可重试，认证/协议错误及读写中断不重试。错误结果保留异常全文、traceback 与上游 HTTP 错误正文，已解析凭据与 Authorization 脱敏；日志保留结构化摘要。取消返回 cancelled，调用可选同步 on_cancel(CancellationNotice) 并记录取消事件。无会话/结果存储；close 幂等且有界，清理错误单独报告。
 
-ChannelManager 按 x-logagent-workflow 注解分离 options，依据 channel ID、类型及实例 options 版本复用长期实例；create(config, credentials) 只接收实例 options，send(notification, *, options) 接收本次调用 options；首次发送前只初始化一次，在卸载或系统关闭时 stop。并发发送、配置替换及旧快照使用保持相应实例生命周期。每次 send 只处理一条 Notification 并返回 DeliveryResult，不排队、不缓存消息、不自动重试。Mock 专用持久 logging Handler 追加 UTF-8 标题和正文文本；不得混入应用诊断日志或将其改成 JSON 记录。
+ChannelManager 按 x-workflowweave-workflow 注解分离 options，依据 channel ID、类型及实例 options 版本复用长期实例；create(config, credentials) 只接收实例 options，send(notification, *, options) 接收本次调用 options；首次发送前只初始化一次，在卸载或系统关闭时 stop。并发发送、配置替换及旧快照使用保持相应实例生命周期。每次 send 只处理一条 Notification 并返回 DeliveryResult，不排队、不缓存消息、不自动重试。Mock 专用持久 logging Handler 追加 UTF-8 标题和正文文本；不得混入应用诊断日志或将其改成 JSON 记录。
 
 ## Workflow
 

@@ -1,15 +1,15 @@
 # 前端架构实施任务 DAG
 
-状态：**用户已明确审核 tasks；P1 基础包已完成集成验收，随本阶段提交后可启动 P2/P4/P5。** 用户随后指定所有任务只在 `/mnt/d/code/LogAgent` 内执行，不再使用或新建其他文件夹/worktree。P0 已有单测、类型与构建证据；浏览器环境等缺口继续补齐，不将其写成已通过。
+状态：**用户已明确审核 tasks；P1 基础包已完成集成验收，随本阶段提交后可启动 P2/P4/P5。** 用户随后指定所有任务只在 `/mnt/d/code/WorkFLowWeave` 内执行，不再使用或新建其他文件夹/worktree。P0 已有单测、类型与构建证据；浏览器环境等缺口继续补齐，不将其写成已通过。
 
 本文件是唯一执行清单；work-packages 仅写依据、交接和证据，不再维护复选框。架构真源为 [原设计](../design-frontend-architecture/design.md) §1–§12；本 change 的 [design.md](design.md) 是引用索引。原 proposal/design 均不修改。本轮审核事实和执行路径变更记录在本 tasks，覆盖旧 proposal/design 中与当前执行位置不一致的阶段说明；不修改原文，不改变架构决策。
 
 ## 执行边界与基线
 
-- **当前唯一工作目录为 `/mnt/d/code/LogAgent`**，branch `refactor/frontend-architecture`；主代理已将该 branch/规划提交 `643e1b5` 接回本目录，原有后端未提交修改保留；接回时主代理已逐字节核对原前端未提交内容与已接纳基线一致。所有 worker 就地工作，不创建其他工作目录/worktree，旧 `/mnt/d/code/LogAgent-frontend-architecture` 已通过 `git worktree remove` 正常移除，不再使用。这是用户审核计划后的明确约束，取代原隔离工作区安排。
-- 历史前端/设计快照为 `4e3c524f799edd079356f8c3975632b7968fccbd`，源 HEAD `cb01cd6` 加当时未提交的前端源码。P0 在旧独立工作区取得的结果保留原日期、路径和测试环境语义，不能据此声称当前目录或变化中的后端仍完全相同。旧清单 `/tmp/logagent-frontend-architecture-original-manifest.json` 仅作历史证据，不作为要求共享工作区保持全局不变的检查门槛。
+- **当前唯一工作目录为 `/mnt/d/code/WorkFLowWeave`**，branch `refactor/frontend-architecture`；主代理已将该 branch/规划提交 `643e1b5` 接回本目录，原有后端未提交修改保留；接回时主代理已逐字节核对原前端未提交内容与已接纳基线一致。所有 worker 就地工作，不创建其他工作目录/worktree，旧 `/mnt/d/code/WorkFLowWeave-frontend-architecture` 已通过 `git worktree remove` 正常移除，不再使用。这是用户审核计划后的明确约束，取代原隔离工作区安排。
+- 历史前端/设计快照为 `4e3c524f799edd079356f8c3975632b7968fccbd`，源 HEAD `cb01cd6` 加当时未提交的前端源码。P0 在旧独立工作区取得的结果保留原日期、路径和测试环境语义，不能据此声称当前目录或变化中的后端仍完全相同。旧清单 `/tmp/workflowweave-frontend-architecture-original-manifest.json` 仅作历史证据，不作为要求共享工作区保持全局不变的检查门槛。
 - 后端正由另一任务重构双向 channel，本前端任务不修改、还原、复制、暂存或提交该任务的后端文件，也不要求后端总 hash/dirty 状态不变。专职集成 worker 对本任务每一个 commit 审查暂存路径与 diff，明确排除后端和其他任务文件；不得用“工作区全局无变化”替代本任务提交边界检查。
-- 真实契约/E2E 按测试当时的后端 HEAD、dirty 路径与相关协议状态记录，使用 `/mnt/d/code/LogAgent/src`、临时数据与受控模型/外网依赖。channel 接口若与已授权前端契约不兼容，明确报告端点/信封/事件差异及受影响用例，不干预后端任务，不添加静默 fallback；可继续的前端针对性测试照常推进，不能把协议不兼容写成已通过。
+- 真实契约/E2E 按测试当时的后端 HEAD、dirty 路径与相关协议状态记录，使用 `/mnt/d/code/WorkFLowWeave/src`、临时数据与受控模型/外网依赖。channel 接口若与已授权前端契约不兼容，明确报告端点/信封/事件差异及受影响用例，不干预后端任务，不添加静默 fallback；可继续的前端针对性测试照常推进，不能把协议不兼容写成已通过。
 - 用户最新执行要求（2026-09-25）：新 worker 统一使用 **GPT-6 Astra / medium**；已在途的 xhigh 工作作为历史执行记录保留。主代理仅编排、传递任务信息和汇总，不读取 diff 或执行审查/测试；专职集成 worker 负责最终审查、验证及精确提交。所有 shell 命令前缀 `rtk`。共享目录按文件所有权并发：派工前锁定可写路径，公共文件交给唯一集成 worker 串行修改，不同 worker 不同时编辑同一文件；所有 worker **禁止切 branch、stash、reset、创建 worktree**；普通实施 worker 禁止 commit，唯一获授权的集成 worker 可提交本任务精确文件，遇到非本人修改保持原样并报告协调者。
 - 每包完成针对性检查后由专职集成 worker 审查、精确暂存并分批 commit；沿用仓库现有 post-commit 自动推送钩子，**不得设置 SKIP_WORKFLOW_PUSH 或覆盖 hooksPath 跳过**。普通实施 worker 交付可审核 diff 和证据，由唯一集成 worker 操作提交；`.venv`、运行数据及其他任务文件不得混入本任务提交。
 
@@ -46,7 +46,7 @@ flowchart TD
 | P6 | P5 | modules/agents 的 commands/files/其他 composables 与 ui、pages/agents 及测试 | 稳定路由作用域、命令/输入/文件控制器、完整 Agent 页面 | 120k–180k |
 | P7 | P3 + P4 + P6 | 中央 app/router/bootstrap、pages/integrations/ContinueInAgent.vue、剩余旧目录删除、E2E/README/最终检查 | 全路由切换、零过渡出口、验证报告与提交链 | 100k–170k |
 
-P1 完成后最多同时运行 P2/P4/P5 三名实施 worker，在同一 `/mnt/d/code/LogAgent` 目录按独占文件范围并发；公共文件需要集成 worker 时由主代理调整槽位并串行交接；P2 完成即可启动 P3，P5 完成即可启动 P6，不必等待无依赖分支。P1 前不并行移动 DTO/API；P5 与 P6 不同时编辑 Agent 实现。P4 只消费 P1 已冻结的 workflows 列表公开接口，因此与 P3 无文件或实现依赖。
+P1 完成后最多同时运行 P2/P4/P5 三名实施 worker，在同一 `/mnt/d/code/WorkFLowWeave` 目录按独占文件范围并发；公共文件需要集成 worker 时由主代理调整槽位并串行交接；P2 完成即可启动 P3，P5 完成即可启动 P6，不必等待无依赖分支。P1 前不并行移动 DTO/API；P5 与 P6 不同时编辑 Agent 实现。P4 只消费 P1 已冻结的 workflows 列表公开接口，因此与 P3 无文件或实现依赖。
 
 ## 并发与公共接口交接
 
@@ -67,7 +67,7 @@ P1 完成后最多同时运行 P2/P4/P5 三名实施 worker，在同一 `/mnt/d/
 | 运行轮询 2000ms，请求完成后计时 | 原 useSession 与原设计 §12.2；保持非重叠和终态/错误停止 |
 | SSE 500ms 指数退避，上限 5000ms | 原 useAgentStream 与原设计 §7/§12.2；关闭原连接后单一手动重连，不叠加原生重连 |
 | 不增加 300 秒无消息取消 | 原设计 §12.2；浏览器连接不拥有后台 turn 终态，不凭心跳判断业务结束 |
-| 来源 60s、渠道 30s、AI 600s/5 次重试、并发 4 | 原设计 §12.2、现有前端工厂及只读 src/logagent/models.py；显式工厂默认，不做第二层隐式补值 |
+| 来源 60s、渠道 30s、AI 600s/5 次重试、并发 4 | 原设计 §12.2、现有前端工厂及只读 src/workflowweave/models.py；显式工厂默认，不做第二层隐式补值 |
 | 首页运行 limit 5 | 原设计 §3.3 与现有页面；保持展示范围 |
 | 375px、44px 触控、AA/核心 AAA | 原设计 §9 与既有 frontend spec；实际浏览器验证，不用组件快照替代 |
 | 后端单测每命令 60s 硬超时 | 用户 AGENTS.md；纯结构修改不跑无关后端全量测试 |
@@ -81,7 +81,7 @@ P1 完成后最多同时运行 P2/P4/P5 三名实施 worker，在同一 `/mnt/d/
 - [x] 1.1 记录前端快照 commit、历史独立工作区与当前就地执行边界、后端并行任务隔离；以本文件基线段及 `4e3c524`/`643e1b5` 核对。
 - [ ] 1.2 记录基线单测、typecheck、format、build、适用 E2E/真实浏览器结果及已有失败；每项附命令、退出码和复现环境，不将未运行项写通过。
 - [ ] 1.3 记录入口 JS/chunk、首屏请求数、长会话样本及每次真实契约测试的后端 HEAD/dirty/相关协议状态；验证后续可在同环境比较，并将历史规范差异与实际端点核对入证据，不要求变化中的后端保持全局 hash 不变。
-- [x] 1.4 用户已明确审核本 tasks 并授权继续，随后指定仅在 `/mnt/d/code/LogAgent` 就地执行。P0 单测 28 文件/140 项、typecheck/build 已通过；浏览器因缺 `libnspr4.so` 尚未进入测试步骤，其他缺口留在 1.2/1.3 补齐。现有证据可支持 P1 启动，不将环境阻塞伪装为产品通过。
+- [x] 1.4 用户已明确审核本 tasks 并授权继续，随后指定仅在 `/mnt/d/code/WorkFLowWeave` 就地执行。P0 单测 28 文件/140 项、typecheck/build 已通过；浏览器因缺 `libnspr4.so` 尚未进入测试步骤，其他缺口留在 1.2/1.3 补齐。现有证据可支持 P1 启动，不将环境阻塞伪装为产品通过。
 
 ## 2. P1 — 基础边界、统一 API 与 DTO
 
@@ -153,7 +153,7 @@ P1 完成后最多同时运行 P2/P4/P5 三名实施 worker，在同一 `/mnt/d/
 
 2026-09-24：`rtk proxy openspec validate refactor-frontend-architecture --strict --no-interactive` 通过；本 change 13 个 Markdown 文件的相对链接/行尾空白检查通过；`rtk git diff --check` 通过；原设计 proposal.md/design.md 与基线 4e3c524 内容逐字一致。历史原设计中的既有缺链不在本 change 修复范围。该记录为规划阶段验证，不能替代后续代码验收。用户随后已明确审核通过；当前执行目录、共享文件所有权和后端并行任务隔离按本 tasks 的最新执行边界实施。
 
-2026-09-24 执行约束更新验证：在 `/mnt/d/code/LogAgent` 执行 OpenSpec strict 通过；本次指定文档的 `git diff --check` 通过。仅修改根 tasks、8 份工作包和原设计 tasks 的移交段，proposal/design 未修改；未操作 branch、stash、reset 或 commit。
+2026-09-24 执行约束更新验证：在 `/mnt/d/code/WorkFLowWeave` 执行 OpenSpec strict 通过；本次指定文档的 `git diff --check` 通过。仅修改根 tasks、8 份工作包和原设计 tasks 的移交段，proposal/design 未修改；未操作 branch、stash、reset 或 commit。
 
 
 2026-09-25 P1 集成验收：阶段 A `a2a5510` 已正常自动推送；阶段 B 的接口、真实规则 fixtures、32 文件/160 项单测、typecheck/format/architecture、最终 build 和真实 Chromium 两项 smoke 证据见 [P1-foundation.md](work-packages/P1-foundation.md)。本清单与代码随阶段 B 一并精确提交，普通作者不提交，专职集成 worker 执行正常 hook。P0 历史基线缺口继续保留 1.2/1.3 未完成，新增 [P0-browser-validation.md](work-packages/P0-browser-validation.md) 只登记并发/环境证据，不替代稳定 P0 性能基线。

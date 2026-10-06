@@ -23,6 +23,6 @@
 
 ## Impact
 
-涉及 `src/logagent/agent/`、现有 AI/Schema/interaction/lifecycle/plugin registry，以及 `frontend/src/`。需要成组升级 LangChain/LangGraph 1.x，并在 Workflow 数据库副本上回归旧图。当前已有实现只是基线快照；本变更的设计和任务以新的 [design.md](design.md) 为准。
+涉及 `src/workflowweave/agent/`、现有 AI/Schema/interaction/lifecycle/plugin registry，以及 `frontend/src/`。需要成组升级 LangChain/LangGraph 1.x，并在 Workflow 数据库副本上回归旧图。当前已有实现只是基线快照；本变更的设计和任务以新的 [design.md](design.md) 为准。
 
 依据、默认值和实施验收见 [tasks.md](tasks.md)，前端分解见 [frontend.md](frontend.md)，外部证据见 [references.md](references.md)。

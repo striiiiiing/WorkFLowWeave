@@ -2,7 +2,7 @@
 
 from fastapi.testclient import TestClient
 
-from logagent.interaction.app import create_app
+from workflowweave.interaction.app import create_app
 
 
 def test_openapi_is_available_with_nested_cli_call_modes():

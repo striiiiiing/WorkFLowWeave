@@ -58,7 +58,7 @@ aggregate 成功推送的后续补充见 [aggregate 推送任务](tasks/2026-09-
 
 | 决策 | 依据及理由 |
 | --- | --- |
-| 保留逐项图任务，优先沿用静态分支 | 用户最终澄清 ToolNode 是选型错误，并要求尽可能与原 fan-out 相同；当前 `src/logagent/workflow/fan.py` 已逐项注册节点，无需为统一外观更换恢复粒度 |
+| 保留逐项图任务，优先沿用静态分支 | 用户最终澄清 ToolNode 是选型错误，并要求尽可能与原 fan-out 相同；当前 `src/workflowweave/workflow/fan.py` 已逐项注册节点，无需为统一外观更换恢复粒度 |
 | 通知并行但每条仍有 intent/receipt | 用户明确要求；当前 `workflow/notification.py` 的 previous 链造成全局串行，改为分支链；图内有序不再等于外部到达有序 |
 | 保留渠道实例锁 | 当前 `channel/manager.py` 的 `_Entry.send_lock` 与共享资源生命周期有关；本次用户授权并行编排，未要求重写插件资源并发协议 |
 | astream 不接管 checkpoint | 当前 `workflow/service.py`、`graph.py` 与 `lifecycle/service.py` 已使用官方 saver；流消费替换执行观察方式，不能重复实现恢复 |
@@ -77,7 +77,7 @@ aggregate 成功推送的后续补充见 [aggregate 推送任务](tasks/2026-09-
 
 ## 文档整理记录
 
-- 原 `workflow.py`、`subgraph/collectors.py` 已移至仓库外 `/mnt/d/code/LogAgent-design-notes/redesign-workflow-2026-09-28/`，后缀改为 `.py.txt`；移动前后 SHA-256 一致。外部附有废弃说明，现行设计不引用草图作为依据。
+- 原 `workflow.py`、`subgraph/collectors.py` 已移至仓库外 `/mnt/d/code/WorkFLowWeave-design-notes/redesign-workflow-2026-09-28/`，后缀改为 `.py.txt`；移动前后 SHA-256 一致。外部附有废弃说明，现行设计不引用草图作为依据。
 - 新设计独立于旧归档文件；未修改既有 proposal/design，也未实施运行代码。
 - `openspec validate redesign-workflow --strict --no-interactive`：通过，退出码 0。
 - `openspec status --change redesign-workflow --json`：proposal/specs/design/tasks 四类文档齐备，退出码 0；此状态仅表示规划完整，不表示实施任务完成。

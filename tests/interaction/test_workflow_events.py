@@ -9,8 +9,8 @@ import httpx
 import uvicorn
 from fastapi import FastAPI
 
-from logagent.interaction.dependencies import get_services
-from logagent.interaction.routers import router
+from workflowweave.interaction.dependencies import get_services
+from workflowweave.interaction.routers import router
 from tests.workflow.helpers import AI, snapshot
 from tests.workflow.test_workflow_recovery import close, service
 

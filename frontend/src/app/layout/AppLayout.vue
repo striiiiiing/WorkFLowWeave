@@ -16,7 +16,7 @@ const title = computed(
 function toggleTheme() {
   dark.value = !dark.value
   document.documentElement.classList.toggle('dark', dark.value)
-  localStorage.setItem('logagent_theme', dark.value ? 'dark' : 'light')
+  localStorage.setItem('workflowweave_theme', dark.value ? 'dark' : 'light')
 }
 </script>
 <template>
@@ -25,13 +25,13 @@ function toggleTheme() {
       <router-link to="/" class="brand">
         <span class="brand-mark">L</span>
         <span v-if="!collapsed">
-          <strong>LogAgent</strong>
+          <strong>WorkFLowWeave</strong>
           <small>采集与 AI 分析工作流</small>
         </span>
       </router-link>
       <AppNavigation :collapsed="collapsed" />
     </aside>
-    <el-drawer v-model="drawer" title="LogAgent 导航" direction="ltr" size="260px">
+    <el-drawer v-model="drawer" title="WorkFLowWeave 导航" direction="ltr" size="260px">
       <AppNavigation @navigate="drawer = false" />
     </el-drawer>
     <div class="app-main">

@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from logagent.channel.errors import ChannelDeliveryError
-from logagent.models import ChannelConfig, Notification
+from workflowweave.channel.errors import ChannelDeliveryError
+from workflowweave.models import ChannelConfig, Notification
 
 _QQ_PLUGIN = Path(__file__).parents[2] / "plugins" / "channel" / "qq" / "channel.py"
 

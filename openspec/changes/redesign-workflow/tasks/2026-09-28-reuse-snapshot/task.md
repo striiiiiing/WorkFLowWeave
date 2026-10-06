@@ -12,12 +12,12 @@
 
 | 决策 | 当前源码与理由 |
 | --- | --- |
-| `/api/sessions/{session_id}/events`，命名 `snapshot`，完整 SessionRecord | [routers.py](../../../../../src/logagent/interaction/routers.py)、[runEventSource.ts](../../../../../frontend/src/modules/runs/api/runEventSource.ts)；保留已匹配的前后端字段与路径，正文独立按版本读取 |
+| `/api/sessions/{session_id}/events`，命名 `snapshot`，完整 SessionRecord | [routers.py](../../../../../src/workflowweave/interaction/routers.py)、[runEventSource.ts](../../../../../frontend/src/modules/runs/api/runEventSource.ts)；保留已匹配的前后端字段与路径，正文独立按版本读取 |
 | 先订阅，再查询首帧；只发送更高版本 | routers.py 的 subscription/initial/stream；队列覆盖查询窗口，版本过滤避免重复和倒退 |
 | 客户端按 session 和业务 version 替换 | [useSession.ts](../../../../../frontend/src/modules/runs/composables/useSession.ts)的 accept；execution_epoch 标识轮次，Workflow 不使用 Last-Event-ID 历史重放 |
-| 空闲心跳 15 秒 | routers.py 的 `_WORKFLOW_SSE_HEARTBEAT_SECONDS`；[sse.py](../../../../../src/logagent/interaction/sse.py)编码注释，不分配业务版本 |
+| 空闲心跳 15 秒 | routers.py 的 `_WORKFLOW_SSE_HEARTBEAT_SECONDS`；[sse.py](../../../../../src/workflowweave/interaction/sse.py)编码注释，不分配业务版本 |
 | 单一重连所有者，500ms 起步、5000ms 上限 | [shared/api/eventSource.ts](../../../../../frontend/src/shared/api/eventSource.ts)的 RECONNECT_MIN_MS/MAX_MS；先关闭旧 EventSource，指数退避，连接成功重置，坏帧显式关闭并报错 |
-| 对外观察队列容量 64；满队列关闭连接后重连同步 | [progress.py](../../../../../src/logagent/workflow/stream/subscriptions/progress.py)的 SUBSCRIBER_CAPACITY；沿用失同步标记和连接释放，容量不是业务数量上限，不适用于内部必要归档 |
+| 对外观察队列容量 64；满队列关闭连接后重连同步 | [progress.py](../../../../../src/workflowweave/workflow/stream/subscriptions/progress.py)的 SUBSCRIBER_CAPACITY；沿用失同步标记和连接释放，容量不是业务数量上限，不适用于内部必要归档 |
 | 终态发送一次完整 snapshot 后关闭 | routers.py 的 `_WORKFLOW_TERMINAL` 与 useSession.ts 的终态判断；保留现有终态行为，重跑后刷新重连，其他入口更新由主动同步取得 |
 | 离页只释放观察；旧回调隔离 | useSession.ts 的 generation/release/onScopeDispose；关闭订阅、查询和计时器不取消后台执行，仅切换标签页不新增逻辑 |
 | EventSource 不可用时明确提示、一次查询和手动同步 | useSession.ts 的 subscribe.available 分支；沿用现有行为，不增加定时轮询 |

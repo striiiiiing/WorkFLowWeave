@@ -1,8 +1,8 @@
 """Repository adapters must obey ordinary discovery, disable and reload semantics."""
 
-from logagent.config import PluginRegistry
-from logagent.config import registry as registry_module
-from logagent.models import SystemConfig
+from workflowweave.config import PluginRegistry
+from workflowweave.config import registry as registry_module
+from workflowweave.models import SystemConfig
 
 
 async def test_empty_directory_does_not_register_adapter_implementations(tmp_path):

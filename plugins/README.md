@@ -1,4 +1,4 @@
-# LogAgent Plugins
+# WorkFLowWeave Plugins
 
 通知适配器位于 `plugins/channel/<id>`，每个包包含 `plugin.json`、注册入口和实现。
 核心仅装配 Web 渠道，具体平台由统一注册器发现。Collector 无预置实现或资源；

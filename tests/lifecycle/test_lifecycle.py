@@ -19,11 +19,11 @@ import pytest
 from sqlalchemy import URL
 from sqlmodel import Session, create_engine, func, select
 
-from logagent.channel import builtin_channels
-from logagent.config import PluginRegistry, ResourceStore
-from logagent.errors import LogAgentError
-from logagent.lifecycle import ApplicationLifecycle, JsonLogSink
-from logagent.models import (
+from workflowweave.channel import builtin_channels
+from workflowweave.config import PluginRegistry, ResourceStore
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.lifecycle import ApplicationLifecycle, JsonLogSink
+from workflowweave.models import (
     AIConfig,
     AnalysisTask,
     ChannelConfig,
@@ -31,12 +31,12 @@ from logagent.models import (
     SystemConfig,
     WorkflowDefinition,
 )
-from logagent.workflow.storage.models import SessionEntry, SessionHeader
+from workflowweave.workflow.storage.models import SessionEntry, SessionHeader
 from tests.fixtures.plugin_helpers import install_channel_plugin
 from tests.workflow_ai_helpers import TestChannelFactory
 
 _COLLECTOR_PLUGIN = """
-from logagent.models import CollectorOutput
+from workflowweave.models import CollectorOutput
 
 class ExternalCollector:
     name = "external"
@@ -192,7 +192,7 @@ async def _seed_resources(
     )
     store.save("sources", SourceConfig(id="source", call={
         "kind": "cli", "mode": "argv", "executable": "printf",
-        "argv": ["%s", "external-data" if collector == "external" else "LogAgent mock record"],
+        "argv": ["%s", "external-data" if collector == "external" else "WorkFLowWeave mock record"],
     }))
     if channel is not None:
         store.save(
@@ -235,8 +235,8 @@ async def _wait_for_calls(provider: BlockingChannelFactory, count: int) -> None:
 
 def _has_lifecycle_handler() -> bool:
     return any(
-        getattr(handler, "_logagent_lifecycle_handler", False)
-        for handler in logging.getLogger("logagent").handlers
+        getattr(handler, "_workflowweave_lifecycle_handler", False)
+        for handler in logging.getLogger("workflowweave").handlers
     )
 
 
@@ -264,7 +264,7 @@ async def test_start_failure_retains_diagnostic_and_cleans_owned_resources(tmp_p
         checkpointer_context_factory=lambda _: context,
     )
 
-    with pytest.raises(LogAgentError) as caught:
+    with pytest.raises(WorkFLowWeaveError) as caught:
         await lifecycle.start()
 
     assert caught.value.code == "lifecycle_start_failed"
@@ -278,7 +278,7 @@ async def test_start_failure_retains_diagnostic_and_cleans_owned_resources(tmp_p
     health = await lifecycle.health()
     assert health.status == "unavailable"
     assert health.accepting_runs is False
-    with pytest.raises(LogAgentError, match="应用启动失败"):
+    with pytest.raises(WorkFLowWeaveError, match="应用启动失败"):
         await lifecycle.start()
 
 
@@ -315,7 +315,7 @@ async def test_temporary_config_full_assembly_health_and_idempotent_shutdown(tmp
     assert time.monotonic() - started < 60
     assert (await lifecycle.health()).status == "unavailable"
     assert (await lifecycle.health()).accepting_runs is False
-    with pytest.raises(LogAgentError) as caught:
+    with pytest.raises(WorkFLowWeaveError) as caught:
         await lifecycle.start()
     assert caught.value.code == "shutdown"
 
@@ -344,7 +344,7 @@ async def test_resources_reload_rebuilds_future_plan_and_disabled_rejects_manual
     _rewrite_workflow(config, enabled=False)
     await lifecycle.reload("resources")
     assert "timed" not in services.intervals._plans
-    with pytest.raises(LogAgentError) as caught:
+    with pytest.raises(WorkFLowWeaveError) as caught:
         await services.workflow.trigger("timed", session_id="disabled")
     assert caught.value.code == "workflow_disabled"
 
@@ -365,7 +365,7 @@ async def test_interval_and_manual_share_capacity_snapshot_and_cancel(tmp_path):
     await asyncio.wait_for(provider.started.wait(), 5)
     assert await services.intervals._execute("timed", services.intervals._plans["timed"]) is None
     assert provider.calls == 1
-    assert "LogAgent mock record" in provider.inputs[0]
+    assert "WorkFLowWeave mock record" in provider.inputs[0]
 
     await services.workflow.cancel("manual")
     assert (await services.workflow.wait("manual")).status == "cancelled"
@@ -476,7 +476,7 @@ async def test_plugin_reload_conflict_restores_admission_and_later_success_recov
 
     await services.workflow.trigger("timed", session_id="active")
     await asyncio.wait_for(provider.started.wait(), 5)
-    with pytest.raises(LogAgentError) as caught:
+    with pytest.raises(WorkFLowWeaveError) as caught:
         await lifecycle.reload("plugins")
     assert caught.value.code == "plugin_reload_conflict"
     assert services.workflow.coordinator.accepting is True
@@ -497,11 +497,11 @@ async def test_plugin_reload_conflict_includes_active_agent_turn(tmp_path):
     services = await lifecycle.start()
     release = asyncio.Event()
     active = asyncio.create_task(release.wait())
-    from logagent.agent.runtime.turns import ActiveTurn
+    from workflowweave.agent.runtime.turns import ActiveTurn
     services.agent.turns._turns["agent-active"] = ActiveTurn("synthetic", "agent-active", active)
     generation = services.plugins.generation
     try:
-        with pytest.raises(LogAgentError) as caught:
+        with pytest.raises(WorkFLowWeaveError) as caught:
             await lifecycle.reload("plugins")
         assert caught.value.code == "plugin_reload_conflict"
         assert caught.value.details["active_agent_runs"] == 1
@@ -585,7 +585,7 @@ async def test_json_logging_rotates_and_redacts(tmp_path):
     path = tmp_path / "app.jsonl"
     sink = JsonLogSink(path, max_bytes=260, backup_count=1)
     sink.start()
-    logger = logging.getLogger("logagent.lifecycle")
+    logger = logging.getLogger("workflowweave.lifecycle")
     try:
         for index in range(8):
             logger.info(
@@ -692,7 +692,7 @@ async def test_concurrent_start_and_shutdown_do_not_leak_resources(tmp_path):
         start_task, shutdown_task, return_exceptions=True
     )
 
-    assert isinstance(start_result, LogAgentError)
+    assert isinstance(start_result, WorkFLowWeaveError)
     assert shutdown_result is None
     assert context.exited
     assert lifecycle._checkpointer_context is None
@@ -724,7 +724,7 @@ async def test_cleanup_timeout_is_retried_without_closing_dependencies(tmp_path)
     lifecycle._workflow = workflow
     lifecycle._ai = ai
 
-    with pytest.raises(LogAgentError) as caught:
+    with pytest.raises(WorkFLowWeaveError) as caught:
         await lifecycle.shutdown()
     assert caught.value.code == "lifecycle_shutdown_failed"
     assert caught.value.details["errors"][0]["code"] == "cleanup_timeout"
@@ -777,7 +777,7 @@ async def test_pause_admission_timeout_does_not_stop_intervals_or_close_dependen
     lifecycle._intervals = intervals
     lifecycle._ai = ai
 
-    with pytest.raises(LogAgentError) as caught:
+    with pytest.raises(WorkFLowWeaveError) as caught:
         await lifecycle.shutdown()
     assert caught.value.code == "lifecycle_shutdown_failed"
     assert caught.value.details["errors"][0]["component"] == "workflow_pause_admission"
@@ -819,7 +819,7 @@ async def test_health_failure_rejects_runs_and_recovers_after_local_check(tmp_pa
         assert failed.status == "unavailable"
         assert failed.accepting_runs is False
         assert services.workflow.coordinator.accepting is False
-        with pytest.raises(LogAgentError) as caught:
+        with pytest.raises(WorkFLowWeaveError) as caught:
             await services.workflow.trigger("timed", session_id="rejected")
         assert caught.value.code == "not_ready"
 

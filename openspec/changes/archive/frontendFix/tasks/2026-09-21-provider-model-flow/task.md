@@ -13,11 +13,11 @@
 
 ## 接口证据与实现决策
 
-- `src/logagent/models.py::AIConfig` 已有渠道连接字段、`models` 和调用预算；`AnalysisTask` / `FanInConfig` 使用 `ai + model` 引用，`WorkflowSnapshot` 要求模型确实属于渠道。因此无需新资源类型或后端迁移。
+- `src/workflowweave/models.py::AIConfig` 已有渠道连接字段、`models` 和调用预算；`AnalysisTask` / `FanInConfig` 使用 `ai + model` 引用，`WorkflowSnapshot` 要求模型确实属于渠道。因此无需新资源类型或后端迁移。
 - 用户补充明确：“不是保存并检查健康，而是检查健康的按钮应该在编辑中”。编辑器内独立提供“检查健康”，点击只调用检查接口，不保存、不加密、不修改渠道；保存渠道是另一个独立按钮。
 - `frontend/src/api/resources.ts::checkAIConnection` 使用已保存渠道 ID，`interaction/routers.py:102` 只从资源库读取已保存配置。界面明确检查的是已保存连接；新渠道或连接字段未保存时说明需要先独立保存，不能伪装成草稿检查。保存后保留编辑器以便继续独立检查/添加模型；健康检查不作为保存或添加模型的前置条件。
-- `src/logagent/ai/service.py::list_models` 返回候选模型名且不修改配置。检查成功显示模型目录可访问及候选；用户可从候选添加，也可手动输入模型名，检查不作为添加或保存的前置条件。
-- `src/logagent/ai/channels.py::create_model` 已将 `config.models[model]` 整体作为 `extra_body`，不再嵌套同名字段。模型高级参数使用字段化编辑，给出 `enable_thinking` / `reasoning_effort` 的现有类型和枚举，其余字段由用户添加；业务校验仍由后端负责。
+- `src/workflowweave/ai/service.py::list_models` 返回候选模型名且不修改配置。检查成功显示模型目录可访问及候选；用户可从候选添加，也可手动输入模型名，检查不作为添加或保存的前置条件。
+- `src/workflowweave/ai/channels.py::create_model` 已将 `config.models[model]` 整体作为 `extra_body`，不再嵌套同名字段。模型高级参数使用字段化编辑，给出 `enable_thinking` / `reasoning_effort` 的现有类型和枚举，其余字段由用户添加；业务校验仍由后端负责。
 - 新模型参数默认 `{}`，因为上游默认行为不应被前端凭空覆盖；思考开关和强度默认不发送。渠道默认 API 格式、600 秒超时、5 次重试沿用 `models.py` 与现有 `createResource`，本次不改变执行预算。
 - 将 AI 渠道编辑从通用资源编辑器拆出；模型名称和增删在基础界面，参数及超时/重试在高级配置。资源卡片展示服务地址和已配置模型数。
 - 工作流继续传递 `ai + model`，以“供应商渠道 → 模型”明确归属；仅提供渠道内已保存模型，切换渠道清空模型，缺失/失效引用阻止提交。无模型时提供直达供应商渠道的配置入口，汇聚 AI 复用同一选择器。
@@ -41,6 +41,6 @@
 - 单测：本次全量运行覆盖 59 项，修正失败项后，最后对供应商编辑、Proxy 保存与旧编辑器的 19 项定向复验全部通过；其余 40 项在全量运行中通过。
 - 静态与构建：`npm run typecheck`、本次相关文件 Prettier 检查、`npm run build` 及本次范围 `git diff --check` 通过。工作区既有 design.md 的空白问题未修改。
 - 浏览器：4 条 Chromium 流程均通过（前 3 条全量通过，供应商模型流程修正控件定位后单独复验通过）。真实临时后端验证加密保存两个模型、独立健康检查失败不丢模型、重新编辑参数并保存、工作流刷新目录不丢草稿、选择模型并保存引用；浏览器无运行错误。
-- 本机 Chromium 所需动态库已存在于 `/tmp/logagent-browser-libs/root/usr/lib/x86_64-linux-gnu`，复验命令为 `LD_LIBRARY_PATH=/tmp/logagent-browser-libs/root/usr/lib/x86_64-linux-gnu npm run test:e2e`；没有修改系统依赖或后端代码。
+- 本机 Chromium 所需动态库已存在于 `/tmp/workflowweave-browser-libs/root/usr/lib/x86_64-linux-gnu`，复验命令为 `LD_LIBRARY_PATH=/tmp/workflowweave-browser-libs/root/usr/lib/x86_64-linux-gnu npm run test:e2e`；没有修改系统依赖或后端代码。
 - 边界：健康检查读取已保存连接；检查模型目录可访问不等于实际模型推理成功。引用中的模型删除、供应商参数业务限制仍由后端明确校验，前端显示真实错误。
 - `proposal.md` / `design.md` 的同步仍按用户要求暂欠，本任务记录作为本次实现与审查依据。

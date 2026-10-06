@@ -5,10 +5,10 @@ from copy import deepcopy
 
 import pytest
 
-from logagent.ai.errors import ModelError
-from logagent.errors import LogAgentError
-from logagent.models import AIConfig, ErrorInfo
-from logagent.workflow.agent_tasks import execute_agent_task
+from workflowweave.ai.errors import ModelError
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import AIConfig, ErrorInfo
+from workflowweave.workflow.agent_tasks import execute_agent_task
 
 
 class Agent:
@@ -151,8 +151,8 @@ async def test_independently_cancelled_agent_becomes_a_cancelled_task_result():
 
 
 @pytest.mark.parametrize("outcome, code, status", [
-    (LogAgentError("tool_failed", "工具拒绝", {"tool": "read"}), "tool_failed", "failed"),
-    (LogAgentError("ai_timeout", "模型超时"), "ai_timeout", "timeout"),
+    (WorkFLowWeaveError("tool_failed", "工具拒绝", {"tool": "read"}), "tool_failed", "failed"),
+    (WorkFLowWeaveError("ai_timeout", "模型超时"), "ai_timeout", "timeout"),
     ({"status": "failed", "error": {"code": "checkpoint_corrupt", "message": "损坏"}},
      "checkpoint_corrupt", "failed"),
     ({"status": "interrupted", "error": None}, "agent_interrupted", "failed"),
@@ -165,7 +165,7 @@ async def test_failures_preserve_structured_diagnostics_without_private_exceptio
     assert result.status == status
     assert result.error.code == code
     assert result.agent_session_id == "agent-archive-operation"
-    if isinstance(outcome, LogAgentError):
+    if isinstance(outcome, WorkFLowWeaveError):
         assert result.error == outcome.info
     if isinstance(outcome, RuntimeError):
         assert result.error.details == {"exception_type": "RuntimeError"}
@@ -184,7 +184,7 @@ async def test_provider_error_keeps_the_already_redacted_report():
 async def test_failed_cleanup_is_visible_instead_of_becoming_a_successful_cancel():
     class FailingCleanup(Agent):
         async def cancel(self, session_id):
-            raise LogAgentError("agent_cleanup_failed", "工具关闭失败")
+            raise WorkFLowWeaveError("agent_cleanup_failed", "工具关闭失败")
 
-    with pytest.raises(LogAgentError, match="工具关闭失败"):
+    with pytest.raises(WorkFLowWeaveError, match="工具关闭失败"):
         await execute_agent_task(FailingCleanup(outcome=asyncio.CancelledError()), **invocation())

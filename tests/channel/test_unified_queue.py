@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from logagent.channel.unified_queue import QueueOutcome, UnifiedQueue
+from workflowweave.channel.unified_queue import QueueOutcome, UnifiedQueue
 
 pytestmark = pytest.mark.asyncio
 
