@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { AgentServerAdapter } from '@/modules/agents/langchain/adapter'
 import type { AgentsApi } from '@/modules/agents/api/agentsApi'
-import type { AgentEvent, AgentSession } from '@/modules/agents/model/types'
+import type { AgentEvent, AgentSession } from '@/modules/agents/model/public'
 
 const session = (id: string): AgentSession =>
   ({ session_id: id, status: 'completed', turn_id: 'turn-2' }) as AgentSession
