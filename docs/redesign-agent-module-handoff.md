@@ -1,6 +1,6 @@
 # redesign-agent-module 实施交接
 
-交接日期：2026-10-06。用户要求采用独立 worktree，基于最新 commit 实现，并在此时交接。当前是**结构拆分已落地、最新基线兼容已合入、最终验收未完成**；不要宣布完成或归档 change。
+交接日期：2026-10-06。用户要求采用独立 worktree，基于最新 commit 实现，并在此时交接。当前是**结构拆分已落地、`3381e04` 基线兼容已合入、最终验收未完成**；主线后续提交 `7ab1429` 尚待整合，不要宣布完成或归档 change。
 
 ## 工作区与基线
 
@@ -10,14 +10,29 @@
 | 实现 worktree | `/mnt/d/code/LogAgent/.worktree/redesign-agent-module` |
 | 实现分支 | `implement/redesign-agent-module` |
 | 初始基线 | `e71341c` |
-| 当前基线 | `3381e04`，已完成 rebase；该提交新增 Workflow Agent Task |
+| 已整合基线 | `3381e04`，已完成 rebase；该提交新增 Workflow Agent Task |
+| 主线最新提交 | `7ab1429`，新增普通 LLM 汇总单任务优化；尚未整合到本 worktree |
 | 实现检查点 | `a5bd9fc`，`refactor(agent): checkpoint module redesign implementation`；其后的存储原语接入、测试迁移和交接文档随本次交接固定 |
+| 原交接检查点 | `e968623`，`refactor(agent): hand off module redesign checkpoint` |
 | 是否合入 main | 没有 |
 | OpenSpec | `openspec/changes/redesign-agent-module/`；未归档 |
 
 `a5bd9fc` 是实施检查点；其后的存储原语接入、新增 Workflow 测试迁移、交接文档和任务状态已随本次交接固定。下一位仍应先看 `git status` 和 `git log`，确认 worktree 没有新的并行修改。不要重新 cherry-pick 子任务分支；其产物已经整合，直接 cherry-pick 会覆盖 facade 或引入旧兼容入口。
 
 此次 rebase 保留了最新基线的 Workflow 功能，并迁移到新结构：`SessionView` 的 task/source/prompt/tool 字段、`storage/invocations.py` 的冻结 AI 配置文件、`SessionManager` 的创建/fork/source、`ResourceProvider` 的工具选择、`TurnRunner` 的输入模板/模型错误、历史 turn 查询，以及 `workflow.agent_service` 接线。数据目录仍保留原有路径，未读取真实用户数据作为夹具。
+
+## 主线后续 Prompt 契约补充
+
+用户再次确认汇总模式的差异，主线已在 `7ab1429` 实现，**本重构 worktree 尚未包含该提交**：
+
+- 普通 LLM 汇总的 `single_task_optimization` 默认开启，仅在一个分析 Task、汇总与其使用同一 AI 配置 ID 和模型、且分析成功时复用 `[Task System, Task 输入 Human, Task 差异 Human, AI(Task 回复), 汇总差异 Human]`。高级模式可以关闭；关闭或条件不满足时使用汇总自身的常规消息。
+- Agent 汇总始终使用 `[汇总 System, Human(上一阶段结果), Human(汇总差异)]`，不引入分析 Task 差异、AI 回复或额外 Human；即使只有一个 Task、同模型、保存的优化开关为 true，也忽略优化。前端不显示 Agent 汇总的优化按钮。Agent 运行规则与有效系统指令仍合入同一条 System 消息。
+- Task/FanIn 的 System/Input 覆盖分别优先于 Workflow 共享值；差异使用当前 Task/FanIn 自己的字段。仅输入层展开 `{input}`，系统和差异保持字面值。
+- 普通 LLM 优化必须保留原分析输入到汇总完成，不能因为显式 `order` 未选 `$input` 就提前释放。优化资格和输入保留共用 `ai/prompts.py::uses_single_task_optimization`。旧 checkpoint 缺少优化字段时只在历史解码边界按关闭处理，避免改变原运行；archive 继续使用 checkpoint 原始 snapshot/fan-in，保证重放摘要不因新增默认字段改变。
+
+实施依据仍为 `align-workflow-prompt-contract/design.md`，没有修改历史 proposal/design。主线补充记录：`openspec/changes/align-workflow-prompt-contract/tasks/2026-10-06-single-task-optimization/task.md`；此前移植范围记录也已注明后续补齐。这里的说明用于交接，不新增第二份进度勾选清单。
+
+`7ab1429` 的主线验证：消息契约/AI Prompt/存档 25 项、相关汇总恢复 7 项、Workflow Agent 与现有集成 11 项通过；前端相关 15 项通过，含默认开关、高级模式、Agent 隐藏及关闭状态保存重开。Ruff、Prettier、typecheck、architecture、生产 build 和 OpenSpec strict 通过。较大后端组合曾触及 60 秒硬超时，随后按相关范围拆分；没有测真实供应商缓存或计费。**这些结果不能替代本重构分支整合后的验收。**
 
 ## 已有实现
 
@@ -86,7 +101,7 @@
 
 按下面顺序继续，先恢复当前状态，不从头做一遍：
 
-1. **从已通过的最新基线继续。** 上面五批回归、lint 和构建已通过，无需原样重复。新增 Workflow 测试已改为调用组合根 factory，旧 session 的 MCP binding 断言改为 BindingStore。先 review 交接检查点与 `git status`，按剩余工作选择有针对性的检查；新的失败必须明确记录。
+1. **先整合主线后续提交，再继续剩余工作。** `3381e04` 的上面五批回归、lint 和构建已通过，无需原样重复。先 review 交接检查点与 `git status`，保存新的本地修改后显式整合 `7ab1429`；不能只补文档就声称实现已同步。重点核对 AIService 消息入口、分析输入保留、旧 checkpoint 解码和不可变 archive；迁入 `tests/workflow/test_summary_prompt_contract.py` 后，将 AgentService 创建适配到重构组合根 factory，复测实际五条/三条消息和恢复。已有 Workflow 测试已改为调用组合根 factory，旧 session 的 MCP binding 断言改为 BindingStore；保留这些适配，新的失败必须明确记录。
 2. **完成 LangGraph 结构契约（3.1、3.4）。** 当前 `runtime/builder.py` 每轮 `create_agent` 编译，runner 每轮 `create_graph`；普通 turn 的 topology 还没有复用。append/compact 使用 ContextMiddleware 的更新字典/`jump_to`，还没有明确的 `Command` 边界。`AgentState` 仅 messages/turn/branch；`Runtime`、`stream_writer` 等目标接口需要逐条审查，保留已有 `model/tools` checkpoint 节点和旧 thread 兼容。不要为了凑目录创建空 nodes/interrupts 文件，也不要人为添加用户确认中断。
 3. **最终审查注入与恢复边界（5.3）。** `ports.py` 有部分未真正用在消费方的协议，`ModelLease.lease` 返回类型也需与实际 async context manager 核对，删除未用协议并补准确注解。最新 Workflow task 的 AI invocation 恢复、fork、来源只注入一次、显式工具集，以及缺 checkpoint/未知副作用测试已在 176/25 项回归内通过。SessionStore 的终态过滤已按最新基线改为明确事件类型，不能回退到 `startswith('turn.')`，否则 `turn.resources` 会破坏重启状态。
 4. **核对夹具和疑点（1.2、1.3）。** 补 CLI 来源的旧数据证据；逐项核对 references §4 的 MCP 执行类别、已完成工具结果修复、损坏尾部和路径映射边界，将已有偏差与此次回归分开记录。遵守现有业务规范，不借重构更改权限和恢复规则。
@@ -110,6 +125,6 @@ rtk git show --stat HEAD
 
 - 中文汇报；shell 使用 `rtk`；手工改文件用 `apply_patch`；每批后端单测 60 秒硬超时。
 - 保持 `proposal.md` 和 `design.md` 原文；设计调整须用户授权。实施记录写详细 `task.md`，进度只有根 `tasks.md` 一份。
-- 主仓库仍有人在修改。当前基线 `3381e04` 已纳入；下一位如发现新的 commit，先保存本 worktree 改动再做显式整合，不能从主工作区复制未提交文件。
+- 主仓库仍有人在修改。`3381e04` 已纳入，`7ab1429` 已在主线提交但尚待本分支整合；下一位先保存本 worktree 改动，再整合已提交的变更，不能从主工作区复制未提交文件。
 - 子 agent 的工具消息在本环境会显示 `gAAAA...` 密文，无法直接读取；最终文字和 `/tmp/*handoff.md` 可读。最近 follow-up 没有可靠地产生新的实现，继续工作时优先看文件和 git，不等待密文消息。
 - 不自动合并 main，不宣称外部真实模型/MCP provider 联调通过，不在验收未完成时归档本 change。
