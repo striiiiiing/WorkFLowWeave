@@ -190,7 +190,7 @@ async def test_mcp_binding_ignores_legacy_collector_sources(store):
     legacy = WorkflowSnapshot(
         workflow=WorkflowDefinition(
             id="legacy-workflow", sources=["legacy"],
-            analyses=[{"id": "analysis", "ai": "ai", "model": "model"}],
+            analyses=[{"user_prompt": "analyze input", "id": "analysis", "ai": "ai", "model": "model"}],
         ),
         sources={"legacy": SourceConfig(id="legacy", collector="mock")},
         ai={"ai": AIConfig(id="ai", provider="mock", models={"model": {}})},

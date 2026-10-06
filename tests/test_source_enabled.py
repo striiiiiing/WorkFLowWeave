@@ -25,7 +25,7 @@ async def test_disabled_source_is_omitted_from_workflow_snapshot(tmp_path):
         WorkflowDefinition(
             id="workflow",
             sources=[source.id],
-            analyses=[{"id": "analysis", "ai": "ai", "model": "model"}],
+            analyses=[{"user_prompt": "analyze input", "id": "analysis", "ai": "ai", "model": "model"}],
         ),
     )
 
