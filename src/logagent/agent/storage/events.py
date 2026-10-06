@@ -8,10 +8,6 @@ an outcome when the file is unavailable or corrupt.
 from __future__ import annotations
 
 import asyncio
-import fcntl
-import hashlib
-import json
-import os
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -20,11 +16,13 @@ from typing import Any
 
 from logagent.agent.storage.io import file_io
 from logagent.errors import LogAgentError
+from logagent.storage_primitives.digest import digest_json
+from logagent.storage_primitives.jsonl import append_record_unlocked, read_records_unlocked
+from logagent.storage_primitives.locks import file_lock
 
 
 def _digest(value: Any) -> str:
-    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    return digest_json(value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,45 +59,15 @@ class EventLog:
 
     def _load(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self._file_lock():
+        with file_lock(self.lock_path):
             self._replace_index(self._read_events_unlocked())
         self._loaded = True
 
-    @classmethod
-    def _parse_events(cls, raw: bytes) -> list[dict[str, Any]]:
-        if raw and not raw.endswith(b"\n"):
-            raise LogAgentError("event_log_corrupt", "事件文件末尾不是完整记录")
-        events: list[dict[str, Any]] = []
-        for expected_id, line in enumerate(raw.splitlines(), 1):
-            event = json.loads(line)
-            if type(event) is not dict or type(event.get("id")) is not int:
-                raise ValueError("invalid event envelope")
-            if event["id"] != expected_id:
-                raise ValueError("event sequence gap")
-            events.append(event)
-        return events
-
     def _read_events_unlocked(self) -> list[dict[str, Any]]:
         try:
-            raw = self.path.read_bytes() if self.path.exists() else b""
-            return self._parse_events(raw)
-        except LogAgentError:
-            raise
-        except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
+            return read_records_unlocked(self.path, sequence_field="id")
+        except (UnicodeError, ValueError):
             raise LogAgentError("event_log_corrupt", "事件 JSONL 损坏，不能跳过记录继续") from None
-
-    def _file_lock(self):
-        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
-        stream = self.lock_path.open("a+b")
-        fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
-        class _Lock:
-            def __enter__(_self):
-                return stream
-
-            def __exit__(_self, *_args):
-                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
-                stream.close()
-        return _Lock()
 
     def _replace_index(self, events: list[dict[str, Any]]) -> None:
         self._events = []
@@ -190,16 +158,11 @@ class EventLog:
             self._changed.notify_all()
 
     def _append_locked(self, event: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-        with self._file_lock():
+        with file_lock(self.lock_path):
             events = self._read_events_unlocked()
-            event = {"id": len(events) + 1, **event}
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            with self.path.open("ab") as stream:
-                stream.write((json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n").encode())
-                stream.flush()
-                os.fsync(stream.fileno())
-            events.append(event)
-            return event, events
+            committed = append_record_unlocked(self.path, event, sequence_field="id")
+            events.append(committed)
+            return committed, events
 
     async def replay(self, after: int = 0) -> list[dict[str, Any]]:
         if type(after) is not int or after < 0:
@@ -212,7 +175,7 @@ class EventLog:
             return [dict(event) for event in events if event["id"] > after]
 
     def _read_locked(self) -> list[dict[str, Any]]:
-        with self._file_lock():
+        with file_lock(self.lock_path):
             return self._read_events_unlocked()
 
     async def reserve_tool(self, key: str, raw_arguments: Any, **metadata: Any) -> ToolReservation:
@@ -258,7 +221,7 @@ class EventLog:
             await asyncio.sleep(poll_interval)
 
     def _reservation_from_file(self, key: str, arguments_digest: str):
-        with self._file_lock():
+        with file_lock(self.lock_path):
             events = self._read_events_unlocked()
             item = None
             for event in events:
@@ -279,7 +242,7 @@ class EventLog:
             return ToolReservation(key, arguments_digest, "active"), events
 
     def _reserve_locked(self, key: str, arguments_digest: str, metadata: dict) -> tuple[ToolReservation, list[dict[str, Any]]]:
-        with self._file_lock():
+        with file_lock(self.lock_path):
             events = self._read_events_unlocked()
             tools: dict[str, dict[str, Any]] = {}
             for event in events:
@@ -303,13 +266,10 @@ class EventLog:
                 return ToolReservation(key, arguments_digest, "active"), events
             timestamp = self._timestamp()
             payload = {**metadata, "tool_key": key, "arguments_digest": arguments_digest}
-            event = {"id": len(events) + 1, "session_id": self.session_id,
+            event = {"session_id": self.session_id,
                      "turn_id": metadata.get("turn_id"), "type": "tool.started", "at": timestamp,
                      "data": payload, "created_at": timestamp, **payload}
-            with self.path.open("ab") as stream:
-                stream.write((json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n").encode())
-                stream.flush()
-                os.fsync(stream.fileno())
+            event = append_record_unlocked(self.path, event, sequence_field="id")
             events.append(event)
             return ToolReservation(key, arguments_digest, "started"), events
 
@@ -327,7 +287,7 @@ class EventLog:
             return dict(event)
 
     def _complete_locked(self, key: str, arguments_digest: str, result: dict[str, Any]):
-        with self._file_lock():
+        with file_lock(self.lock_path):
             events = self._read_events_unlocked()
             current = next((item for item in reversed(events)
                             if item.get("tool_key") == key and item["type"] == "tool.started"), None)
@@ -343,13 +303,10 @@ class EventLog:
             timestamp = self._timestamp()
             payload = {**current.get("data", {}), "tool_key": key, "arguments_digest": arguments_digest,
                        "result": result}
-            event = {"id": len(events) + 1, "session_id": self.session_id,
+            event = {"session_id": self.session_id,
                      "turn_id": current.get("turn_id"), "type": "tool.completed", "at": timestamp,
                      "data": payload, "created_at": timestamp, **payload}
-            with self.path.open("ab") as stream:
-                stream.write((json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n").encode())
-                stream.flush()
-                os.fsync(stream.fileno())
+            event = append_record_unlocked(self.path, event, sequence_field="id")
             events.append(event)
             return event, events, None
 
@@ -367,7 +324,7 @@ class EventLog:
             return dict(event)
 
     def _unknown_locked(self, key: str, arguments_digest: str, reason: str):
-        with self._file_lock():
+        with file_lock(self.lock_path):
             events = self._read_events_unlocked()
             current = next((item for item in reversed(events)
                             if item.get("tool_key") == key and item["type"] == "tool.started"), None)
@@ -383,13 +340,10 @@ class EventLog:
             timestamp = self._timestamp()
             payload = {**current.get("data", {}), "tool_key": key, "arguments_digest": arguments_digest,
                        "result": {"status": "outcome_unknown", "reason": reason}}
-            event = {"id": len(events) + 1, "session_id": self.session_id,
+            event = {"session_id": self.session_id,
                      "turn_id": current.get("turn_id"), "type": "tool.outcome_unknown", "at": timestamp,
                      "data": payload, "created_at": timestamp, **payload}
-            with self.path.open("ab") as stream:
-                stream.write((json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n").encode())
-                stream.flush()
-                os.fsync(stream.fileno())
+            event = append_record_unlocked(self.path, event, sequence_field="id")
             events.append(event)
             return event, events, None
 
