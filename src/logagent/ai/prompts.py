@@ -1,6 +1,38 @@
 """将系统提示词与任务输入组成独立角色消息，保持输入文本的字面含义。"""
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+
+
+def uses_single_task_optimization(workflow) -> bool:
+    fan_in = workflow.fan_in
+    if fan_in is None or fan_in.agent_mode or not fan_in.single_task_optimization:
+        return False
+    if len(workflow.analyses) != 1:
+        return False
+    task = workflow.analyses[0]
+    reused = fan_in.reused_task(workflow.analyses)
+    selection = (reused.ai, reused.model) if reused else (fan_in.ai, fan_in.model)
+    return selection == (task.ai, task.model)
+
+
+def optimized_summary_messages(workflow, analyses, shared_input):
+    """复现单任务的冻结请求前缀，Agent 汇总始终不复用。"""
+    if not uses_single_task_optimization(workflow):
+        return None
+    task = workflow.analyses[0]
+    result = analyses[task.id]
+    if result["status"] != "success":
+        return None
+    return [
+        *build_messages(
+            workflow.system_prompt if task.system_prompt is None else task.system_prompt,
+            workflow.input_prompt if task.input_prompt is None else task.input_prompt,
+            shared_input,
+            user_prompt=task.user_prompt,
+        ),
+        AIMessage(content=result["text"]),
+        HumanMessage(content=workflow.fan_in.user_prompt),
+    ]
 
 
 def build_messages(system_prompt: str, input_prompt: str, input_text: str, *, user_prompt: str = ""):
