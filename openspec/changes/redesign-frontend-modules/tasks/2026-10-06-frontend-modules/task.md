@@ -134,7 +134,3 @@
 16 项实施任务均已完成。change 保持活动，便于用户审查本 worktree；本次没有合并主分支或 archive。
 
 最终 `git diff --cached --check` 退出码 0；OpenSpec apply 指令返回 `16/16 complete`、`state=all_done`。改动已暂存，便于一次审查；未创建提交。
-
-### 6.6 目录分层复核
-
-用户复核指出目标树必须同时表达业务边界和业务内 Model 拆分，不能只展示 Model 子树。已将 `design.md` 的目标树补全为 `agents/resources/workflows/runs` 四个业务目录：每个业务的 `api/`、`composables/`、`ui/` 与 `model/` 同级，runs 继续保留 API/Composable/UI 而消费 `workflows/model`。实现扫描结果：四个业务顶层目录均与目标树一致；`agents/model`、`resources/model`、`workflows/model` 的目标子目录和公开出口全部存在；`runs/model` 不存在。此次只修正文档表达和证据，不迁移 API/UI/Composable。
