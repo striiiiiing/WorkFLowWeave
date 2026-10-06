@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ElMessage, type FormInstance } from 'element-plus'
-import type { AIConfig } from '../model/types'
+import type { AIConfig } from '../model/public'
 import { useAIProviderEditor } from '../composables/useAIProviderEditor'
-import { idRule } from '../model/forms'
+import { idRule } from '../model/source/forms'
 import AIModelList from './AIModelList.vue'
 const props = defineProps<{ initial?: AIConfig }>()
 const emit = defineEmits<{ saved: [value: AIConfig]; cancel: [] }>()

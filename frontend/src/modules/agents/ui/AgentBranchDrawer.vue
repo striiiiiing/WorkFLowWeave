@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { AgentSession } from '../model/types'
+import type { AgentSession } from '../model/public'
 import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 
 const props = defineProps<{

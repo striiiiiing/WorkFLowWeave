@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { AgentModel } from '../model/types'
+import type { AgentModel } from '../model/public'
 import { groupAgentModels } from '../composables/agentModels'
 
 const props = defineProps<{

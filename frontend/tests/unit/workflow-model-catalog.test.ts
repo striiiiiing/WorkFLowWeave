@@ -10,6 +10,7 @@ import { resourcesApiKey } from '@/modules/resources/public'
 import type { AIConfig, ResourcesApi } from '@/modules/resources/public'
 import { systemApiKey } from '@/modules/system/public'
 import type { SystemApi } from '@/modules/system/public'
+import { agentsApiKey } from '@/modules/agents/public'
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({ params: {}, query: {} }),
@@ -66,6 +67,7 @@ async function setup() {
         [resourcesApiKey as symbol]: resourcesApi,
         [workflowsApiKey as symbol]: workflowsApi,
         [systemApiKey as symbol]: systemApi,
+        [agentsApiKey as symbol]: { tools: vi.fn().mockResolvedValue([]) },
       },
       stubs: {
         RouterLink: { template: '<a><slot /></a>' },
@@ -160,6 +162,7 @@ it('shows the new workflow form while an empty resource catalog is pending', asy
         [resourcesApiKey as symbol]: resourcesApi,
         [workflowsApiKey as symbol]: workflowsApi,
         [systemApiKey as symbol]: systemApi,
+        [agentsApiKey as symbol]: { tools: vi.fn().mockResolvedValue([]) },
       },
       stubs: {
         RouterLink: { template: '<a><slot /></a>' },

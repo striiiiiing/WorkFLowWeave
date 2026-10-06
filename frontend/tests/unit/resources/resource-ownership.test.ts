@@ -4,10 +4,10 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import { useResourceList } from '@/modules/resources/composables/useResourceList'
 import { useSourceEditor } from '@/modules/resources/composables/useSourceEditor'
-import { createResource } from '@/modules/resources/model/resources'
+import { createResource } from '@/modules/resources/model/public'
 import { useSourceUsage } from '@/pages/integrations/useSourceUsage'
 import { workflowsApiKey } from '@/modules/workflows/public'
-import type { SourceConfig } from '@/modules/resources/model/types'
+import type { SourceConfig } from '@/modules/resources/model/public'
 import type { ResourcesApi } from '@/modules/resources/api/resourcesApi'
 
 const source = {

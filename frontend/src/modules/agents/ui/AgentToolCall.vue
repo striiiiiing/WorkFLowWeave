@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { AgentTool } from '../model/types'
-import type { TranscriptRow } from '../model/transcript'
+import type { AgentTool } from '../model/public'
+import type { TranscriptRow } from '../model/runtime/transcript'
 const props = defineProps<{ row: TranscriptRow; tool?: AgentTool }>()
 const emit = defineEmits<{ file: [path: string] }>()
 const result = computed(() => props.row.event.data.result as Record<string, unknown> | undefined)

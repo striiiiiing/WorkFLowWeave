@@ -1,15 +1,6 @@
-export type * from './model/types'
-export {
-  mcpExample,
-  parseMcpConfig,
-  resourceToMcpConfig,
-  serverToResource,
-} from './model/mcpImport'
-export type { McpConfig } from './model/mcpImport'
+export * from './model/public'
 export * from './api/resourcesApi'
 export * from './api/dependencies'
-export * from './model/resources'
-export type { SourceFilter } from './model/sourceFiltering'
 export { useResourceList } from './composables/useResourceList'
 export {
   useSourceEditor,

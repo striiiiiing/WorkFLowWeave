@@ -3,8 +3,8 @@ import { mount, flushPromises } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import { describe, it, expect, vi } from 'vitest'
 import { useSourceEditor } from '@/modules/resources/composables/useSourceEditor'
-import { createResource } from '@/modules/resources/model/resources'
-import { filterSources } from '@/modules/resources/model/sourceFiltering'
+import { createResource } from '@/modules/resources/model/public'
+import { filterSources } from '@/modules/resources/model/public'
 import { resourcesApiKey } from '@/modules/resources/api/dependencies'
 import SourceConfigEditor from '@/modules/resources/ui/SourceConfigEditor.vue'
 import SourceSummary from '@/modules/resources/ui/SourceSummary.vue'
@@ -14,7 +14,7 @@ import type {
   SourceConfigEditorGateway,
   SourceOverride,
   SourceSaveTarget,
-} from '@/modules/resources/model/types'
+} from '@/modules/resources/model/public'
 
 const source = (): SourceConfig => ({
   ...(createResource('sources') as SourceConfig),
