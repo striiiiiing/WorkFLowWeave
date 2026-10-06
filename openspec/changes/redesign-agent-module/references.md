@@ -4,14 +4,14 @@
 
 ## 1. QwenPaw 参考
 
-邻仓 HEAD：`4279e4920f4ccc606fb0805808ef15b5b1d68143`。路径相对其仓库根；LogAgent 文档应可独立评审，不依赖把邻仓复制到本仓。下表列出实际读取的对象与采纳范围。
+邻仓 HEAD：`4279e4920f4ccc606fb0805808ef15b5b1d68143`。路径相对其仓库根；WorkFLowWeave 文档应可独立评审，不依赖把邻仓复制到本仓。下表列出实际读取的对象与采纳范围。
 
 | 路径 / 对象 | 观察与设计依据 |
 | --- | --- |
 | `src/qwenpaw/runtime/builder.py:AgentBuilder` | 独立构建模型、提示和 toolkit；采用依赖装配分离，不复制工具 whitelist/skills 功能 |
 | `src/qwenpaw/runtime/runtime.py:Runtime.run` | 将 build 和 execute 分开；采用职责分离，不复制八阶段 hooks |
-| `src/qwenpaw/runtime/executor.py:AgentExecutor.run` | 框架事件消费与翻译独立；不复制 runtime 层 heartbeat，服从 LogAgent FastAPI SSE 方案 |
-| `src/qwenpaw/agents/react_agent.py:QwenPawAgent` | 构造依赖由 builder 注入；保持 LogAgent 使用 LangGraph |
+| `src/qwenpaw/runtime/executor.py:AgentExecutor.run` | 框架事件消费与翻译独立；不复制 runtime 层 heartbeat，服从 WorkFLowWeave FastAPI SSE 方案 |
+| `src/qwenpaw/agents/react_agent.py:QwenPawAgent` | 构造依赖由 builder 注入；保持 WorkFLowWeave 使用 LangGraph |
 | `src/qwenpaw/agents/context/base.py:ContextManager` | 上下文策略边界明确；不引入第二种压缩机制或自动 overflow 重试 |
 | `src/qwenpaw/agents/prompt_builder.py:PromptBuilder` | 提示词装配独立；不采用 provider 异常返回空字符串的处理 |
 | `src/qwenpaw/agents/offloader.py:QwenPawOffloader` | 原始输出与活跃上下文分开；其跨 session 日期归档不符合本项目事件日志边界 |
@@ -20,23 +20,23 @@
 | `src/qwenpaw/app/workspace/service_factories.py:create_driver_service` | 先登记已创建资源再 await 初始化，可避免启动中断泄漏 |
 | `src/qwenpaw/app/chats/repo/base.py:BaseChatRepository` | 查询/保存责任独立；不复制 chats.json 作为对话正文来源 |
 
-QwenPaw 的 `app/agent_context.py` 存在从请求/配置选 agent 的逻辑，但 LogAgent 当前没有要求多 agent 或 active-agent 默认回退，故不用于新增路由规则。
+QwenPaw 的 `app/agent_context.py` 存在从请求/配置选 agent 的逻辑，但 WorkFLowWeave 当前没有要求多 agent 或 active-agent 默认回退，故不用于新增路由规则。
 
-## 2. LogAgent 证据
+## 2. WorkFLowWeave 证据
 
 | 源文件 | 实际观察 | 对应决定 |
 | --- | --- | --- |
-| [service.py](../../../src/logagent/agent/service.py) | 1350 行；创建具体依赖、会话、任务、事件流、恢复、配置和绑定文件 | design §1、§3、§6 的拆分 |
-| [graph.py](../../../src/logagent/agent/graph.py) | `_langchain_tool` 同时管理调度、started、执行、artifact、completed 和任务表 | tools executor 与框架适配分离 |
-| [context.py](../../../src/logagent/agent/context.py) | token 预算、prompt、压缩、命令边界混在同文件 | context 三类职责独立，仍只有一套压缩实现 |
-| [events.py](../../../src/logagent/agent/events.py) | JSONL、文件锁、工具预留和可重建索引 | 保留原子事实边界，不因拆 executor 而移动原子预留到内存 |
-| [workspace.py](../../../src/logagent/agent/workspace.py) | `_location` 同时负责物理路径和 runtime 逻辑映射 | 分离映射，复用唯一文件边界，不双重校验 |
-| [commands.py](../../../src/logagent/agent/commands.py)、[agent/channel.py](../../../src/logagent/agent/channel.py) | AgentChannel 是命令分发；AgentChannelProcessor 实际协调渠道绑定 | 命令分发留 agent，绑定处理归 channel |
-| [channel/agent.py](../../../src/logagent/channel/agent.py) | 仅转导 AgentChannel/AgentCommand | 用实际渠道适配器替代转导，不保留长期双路径 |
-| [config/registry.py](../../../src/logagent/config/registry.py) | `BUILTIN_TOOLS` 存放五个内置工具路径 | 路径随迁移更新，Service 不再维护第二份默认工具表 |
-| [config.py](../../../src/logagent/agent/config.py) | 集中声明预算、超时、并发和沙箱默认值 | 保留默认值来源，任务记录理由 |
-| `src/logagent/workflow/graph/*`、`workflow/execution/runner.py` | Workflow 已使用 StateGraph、context_schema、`langgraph.runtime.Runtime`、Send、checkpointer 和 astream_events | Agent runtime 直接采用同一 LangGraph 原生边界，但不共享 graph/state/checkpoint |
-| `src/logagent/workflow/storage/*` | Workflow 已有 SessionStore、SessionView、SQLModel facts、retention 和 checkpoint adapter | 只抽取底层 storage primitives；业务存储继续由 Workflow 拥有 |
+| [service.py](../../../src/workflowweave/agent/service.py) | 1350 行；创建具体依赖、会话、任务、事件流、恢复、配置和绑定文件 | design §1、§3、§6 的拆分 |
+| [graph.py](../../../src/workflowweave/agent/graph.py) | `_langchain_tool` 同时管理调度、started、执行、artifact、completed 和任务表 | tools executor 与框架适配分离 |
+| [context.py](../../../src/workflowweave/agent/context.py) | token 预算、prompt、压缩、命令边界混在同文件 | context 三类职责独立，仍只有一套压缩实现 |
+| [events.py](../../../src/workflowweave/agent/events.py) | JSONL、文件锁、工具预留和可重建索引 | 保留原子事实边界，不因拆 executor 而移动原子预留到内存 |
+| [workspace.py](../../../src/workflowweave/agent/workspace.py) | `_location` 同时负责物理路径和 runtime 逻辑映射 | 分离映射，复用唯一文件边界，不双重校验 |
+| [commands.py](../../../src/workflowweave/agent/commands.py)、[agent/channel.py](../../../src/workflowweave/agent/channel.py) | AgentChannel 是命令分发；AgentChannelProcessor 实际协调渠道绑定 | 命令分发留 agent，绑定处理归 channel |
+| [channel/agent.py](../../../src/workflowweave/channel/agent.py) | 仅转导 AgentChannel/AgentCommand | 用实际渠道适配器替代转导，不保留长期双路径 |
+| [config/registry.py](../../../src/workflowweave/config/registry.py) | `BUILTIN_TOOLS` 存放五个内置工具路径 | 路径随迁移更新，Service 不再维护第二份默认工具表 |
+| [config.py](../../../src/workflowweave/agent/config.py) | 集中声明预算、超时、并发和沙箱默认值 | 保留默认值来源，任务记录理由 |
+| `src/workflowweave/workflow/graph/*`、`workflow/execution/runner.py` | Workflow 已使用 StateGraph、context_schema、`langgraph.runtime.Runtime`、Send、checkpointer 和 astream_events | Agent runtime 直接采用同一 LangGraph 原生边界，但不共享 graph/state/checkpoint |
+| `src/workflowweave/workflow/storage/*` | Workflow 已有 SessionStore、SessionView、SQLModel facts、retention 和 checkpoint adapter | 只抽取底层 storage primitives；业务存储继续由 Workflow 拥有 |
 | `frontend/package.json`、`frontend/src/modules/agents/` | 当前前端自维护 API/EventSource/composables，未使用 LangChain Vue | 引入 `@langchain/vue` `useStream` + 自定义 AgentServerAdapter，组件不再拥有第二套流状态 |
 | [交互与存储分析](../../../docs/open-spec-interaction-and-storage.md) | 区分规范/实现，介绍 workspace/runtime/归档/渠道边界 | 阅读入口；需结合后续 MCP 和 FastAPI 方案校正解释 |
 

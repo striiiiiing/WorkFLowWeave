@@ -6,7 +6,7 @@
 
 | 现状/决定 | 依据及理由 |
 | --- | --- |
-| 两条路由没有共用发送层 | [channel_routers.py](../../../../../src/logagent/interaction/channel_routers.py) 自行拼接 id/data 和心跳；[routers.py](../../../../../src/logagent/interaction/routers.py) 自行拼接 event/data 和心跳；两处分别创建相同媒体类型/响应头的 StreamingResponse |
+| 两条路由没有共用发送层 | [channel_routers.py](../../../../../src/workflowweave/interaction/channel_routers.py) 自行拼接 id/data 和心跳；[routers.py](../../../../../src/workflowweave/interaction/routers.py) 自行拼接 event/data 和心跳；两处分别创建相同媒体类型/响应头的 StreamingResponse |
 | 共用编码、响应和生命周期清理 | 这些是相同的 HTTP/SSE 传输职责，集中在 interaction/sse.py，以函数处理即可，无需建立新 Service 或事件总线 |
 | 保留 Agent 数据源适配器 | Agent 需要 after/Last-Event-ID、持久日志补发、等待新事实与终态尾部排空，不能用 Workflow 最新快照替代 |
 | 保留 Workflow 数据源适配器 | 新设计需要先订阅后读首帧、版本过滤、慢观察者边界与完整 snapshot，不复制 Agent EventLog |

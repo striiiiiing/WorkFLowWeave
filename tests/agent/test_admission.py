@@ -4,8 +4,8 @@ import pytest
 from langchain_core.messages import AIMessage
 from pydantic import Field
 
-from logagent.errors import LogAgentError
-from logagent.interaction.fastapi.agent import create_agent_service
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.interaction.fastapi.agent import create_agent_service
 from tests.agent.helpers import ScriptedModel
 
 
@@ -56,7 +56,7 @@ async def test_racing_request_ids_share_one_durable_admission(services, method, 
         assert duplicate["turn_id"] == accepted["turn_id"]
         assert duplicate["deduplicated"] is True
     else:
-        with pytest.raises(LogAgentError) as error:
+        with pytest.raises(WorkFLowWeaveError) as error:
             await second
         assert error.value.code == "request_conflict"
     events = await service.events(sid)
@@ -97,7 +97,7 @@ async def test_sessions_generate_concurrently_but_each_accepts_only_one_turn(ser
         service.submit(sid, "hello", request_id="first") for sid in sessions
     ])
     await asyncio.wait_for(asyncio.gather(*(model.entered.wait() for model in models)), 1)
-    with pytest.raises(LogAgentError) as error:
+    with pytest.raises(WorkFLowWeaveError) as error:
         await service.submit(sessions[0], "another", request_id="second")
     assert error.value.code == "session_busy"
     for model in models:
@@ -128,7 +128,7 @@ async def test_request_id_and_thread_timestamps_survive_restart(tmp_path):
         await restored.pause_admission()
         duplicate = await restored.submit(sid, "hello", request_id="r1")
         assert duplicate == {**accepted, "deduplicated": True}
-        with pytest.raises(LogAgentError) as error:
+        with pytest.raises(WorkFLowWeaveError) as error:
             await restored.submit(sid, "different", request_id="r1")
         assert error.value.code == "request_conflict"
         assert not restored.turns.tasks
@@ -144,7 +144,7 @@ async def test_concurrent_session_creation_publishes_only_one_session(services):
         await asyncio.sleep(0)
     results = await asyncio.gather(*requests, return_exceptions=True)
     assert sum(isinstance(result, dict) for result in results) == 1
-    assert [result.code for result in results if isinstance(result, LogAgentError)] == [
+    assert [result.code for result in results if isinstance(result, WorkFLowWeaveError)] == [
         "session_conflict",
     ]
     assert len(await service.events("shared")) == 1

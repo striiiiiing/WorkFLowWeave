@@ -18,16 +18,16 @@ docker compose logs -f backend
 
 Web 保存的加密凭据随卷持久化。如果使用环境变量凭据引用，需要在本地 `compose.override.yaml` 的 `backend.environment` 中明确传入对应变量；宿主环境和 `.env` 里的值不会自动成为容器环境。
 
-CLI 和 stdio MCP 在后端容器中执行，宿主机的可执行文件不会自动出现在容器内。自定义命令依赖需放入扩展镜像；用户插件可放入 `/var/lib/logagent/plugins` 的其它子目录。内置 `plugins/channel` 链接指向镜像代码，请勿替换此链接。
+CLI 和 stdio MCP 在后端容器中执行，宿主机的可执行文件不会自动出现在容器内。自定义命令依赖需放入扩展镜像；用户插件可放入 `/var/lib/workflowweave/plugins` 的其它子目录。内置 `plugins/channel` 链接指向镜像代码，请勿替换此链接。
 
 ```bash
-docker compose exec backend logagent health
-docker compose exec backend logagent plugins
+docker compose exec backend workflowweave health
+docker compose exec backend workflowweave plugins
 ```
 
 ## 状态、停止与更新
 
-命名卷 `workflowweave_state` 保存 `/var/lib/logagent`，包括 `config.json`、`data` 下的 SQLite/资源/日志、`master.key`、插件启停配置及微信登录状态。后端工作目录也在卷内，QQ SDK 默认的 `botpy.log` 写入此处。后端以 uid 10001 运行；若改成宿主 bind mount，目录需要允许该用户写入。
+命名卷 `workflowweave_state` 保存 `/var/lib/workflowweave`，包括 `config.json`、`data` 下的 SQLite/资源/日志、`master.key`、插件启停配置及微信登录状态。后端工作目录也在卷内，QQ SDK 默认的 `botpy.log` 写入此处。后端以 uid 10001 运行；若改成宿主 bind mount，目录需要允许该用户写入。
 
 ```bash
 docker compose down
@@ -53,6 +53,16 @@ docker compose up -d
 
 备份命令默认以容器用户运行，宿主 backup 目录需允许 uid 10001 写入；Linux 可在创建后 `sudo chown 10001:10001 backup`。备份目录包含凭据，不应提交 Git。
 
+## 从旧名称版本升级
+
+本次更名同时更新了 Python 包、CLI、环境变量、插件 Schema 扩展和容器状态目录。升级前完成正在执行的任务并停止服务，按上文备份持久卷及原主密钥。
+
+沿用同一个 `workflowweave_state` 卷时，卷内容无需移动，但旧配置中的绝对路径需要更新：将系统配置的 `data_dir`、`plugin_dir`、`master_key_file` 分别指向 `/var/lib/workflowweave/data`、`/var/lib/workflowweave/plugins`、`/var/lib/workflowweave/master.key`。检查渠道与 MCP 资源中显式保存的路径；微信的 `state_dir` 更新为 `/var/lib/workflowweave/openclaw`。保留原主密钥内容。
+
+使用环境变量主密钥时，将部署环境和系统配置的 `master_key_env` 一并改为 `WORKFLOWWEAVE_MASTER_KEY`；CLI 地址变量改为 `WORKFLOWWEAVE_API_URL`。自定义插件需使用 `workflowweave` import 和 `x-workflowweave-*` Schema 扩展；MCP 业务计数使用 `_meta.workflowweave_count`。
+
+历史事件与业务归档仍保留原始内容；包含旧 Python 模块类型的执行 checkpoint 不承诺跨包名恢复，升级前应完成原版本的运行。升级后重新安装项目依赖并重建镜像，再通过健康检查确认服务可用。
+
 ## 微信登录
 
 镜像包含固定版本的官方微信 SDK 和 OpenClaw CLI，登录状态写入持久卷。执行官方安装和扫码流程：
@@ -66,7 +76,7 @@ docker compose exec -w /app/plugins/channel/wechat_openclaw backend \
   npx openclaw channels login --channel openclaw-weixin
 ```
 
-从 `/var/lib/logagent/openclaw/openclaw-weixin/accounts.json` 获取账户 ID，填写微信渠道的 `account_id`；`state_dir` 使用 `/var/lib/logagent/openclaw`。同一账号由一个进程接收，停止另一个 OpenClaw Gateway 的轮询。
+从 `/var/lib/workflowweave/openclaw/openclaw-weixin/accounts.json` 获取账户 ID，填写微信渠道的 `account_id`；`state_dir` 使用 `/var/lib/workflowweave/openclaw`。同一账号由一个进程接收，停止另一个 OpenClaw Gateway 的轮询。
 
 ## Docker Hub 上传与使用
 

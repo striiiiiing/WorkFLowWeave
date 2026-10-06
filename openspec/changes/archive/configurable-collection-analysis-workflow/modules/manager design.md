@@ -11,7 +11,7 @@ Collection 与 Channel 共用四层配置边界。
 
 ## 声明与合并
 
-唯一 options_schema 描述有效 options。顶层属性标注 x-logagent-workflow=true 表示可由 Workflow 设置的调用选项；未标注属性是实例配置，Workflow 不可覆盖。标注必须为布尔值，凭据不可标注为调用选项。能力描述直接暴露此 schema，框架不根据字段名猜测层级。Setter 属于调用设置。
+唯一 options_schema 描述有效 options。顶层属性标注 x-workflowweave-workflow=true 表示可由 Workflow 设置的调用选项；未标注属性是实例配置，Workflow 不可覆盖。标注必须为布尔值，凭据不可标注为调用选项。能力描述直接暴露此 schema，框架不根据字段名猜测层级。Setter 属于调用设置。
 
 合并顺序为 schema 默认值 → 实例显式 options → Workflow 显式调用 options；同名键整体覆盖，不深度合并，空列表仍是覆盖。插件私有 JSON 不被框架解释为 options defaults；旧根配置 defaults 明确拒绝，须迁移到插件私有文件或资源 options。
 

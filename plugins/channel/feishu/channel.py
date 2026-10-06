@@ -20,11 +20,11 @@ from typing import Any
 
 from pydantic import TypeAdapter
 
-from logagent.channel.context import remaining_delivery_time
-from logagent.channel.conversation import ChannelAddress, InboundHandler, InboundMessage
-from logagent.channel.errors import ChannelDeliveryError
-from logagent.models import ChannelConfig, Credential, Notification
-from logagent.schema import (
+from workflowweave.channel.context import remaining_delivery_time
+from workflowweave.channel.conversation import ChannelAddress, InboundHandler, InboundMessage
+from workflowweave.channel.errors import ChannelDeliveryError
+from workflowweave.models import ChannelConfig, Credential, Notification
+from workflowweave.schema import (
     resource_options_schema,
     validate_instance,
     validate_workflow_options,
@@ -49,7 +49,7 @@ _OPTIONS_SCHEMA = {
         "app_secret": {
             "description": "飞书应用 App Secret 凭据引用",
             "anyOf": [_CREDENTIAL_SCHEMA, {"type": "null"}],
-            "x-logagent-credential": True,
+            "x-workflowweave-credential": True,
         },
         "target_kind": {
             "type": "string",
@@ -61,7 +61,7 @@ _OPTIONS_SCHEMA = {
             "minLength": 1,
             "pattern": r"^\S+$",
             "description": "单向通知接收者标识",
-            "x-logagent-workflow": True,
+            "x-workflowweave-workflow": True,
         },
         "receive_events": {
             "type": "boolean",

@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from logagent.channel.bindings import ChannelBindings, InstanceBinding
-from logagent.errors import LogAgentError
+from workflowweave.channel.bindings import ChannelBindings, InstanceBinding
+from workflowweave.errors import WorkFLowWeaveError
 
 
 async def test_cached_binding_restores_without_adopting_legacy_peers(tmp_path, monkeypatch):
@@ -78,7 +78,7 @@ async def test_failed_persistence_restores_session_and_invalidates_snapshots(tmp
     try:
         with monkeypatch.context() as patch:
             patch.setattr(bindings._db, "commit", AsyncMock(side_effect=sqlite3.OperationalError("disk full")))
-            with pytest.raises(LogAgentError) as error:
+            with pytest.raises(WorkFLowWeaveError) as error:
                 await bindings.bind_instance("channel", "session-b")
             assert error.value.code == "storage_failed"
             assert isinstance(error.value.__cause__, sqlite3.OperationalError)

@@ -33,7 +33,7 @@
 
 对照 Channel design 的失败诊断要求补充复核：失败回执统一写入标准 logging，仅包含 event、session/channel/output ID、错误码、状态和不确定性，不包含通知正文、凭据或原始异常。新增日志脱敏回归 1 passed（exit 0），Ruff 通过。
 
-Email 实施中复核到一处预算缺陷：常驻实例按 channel_id 与有效配置复用，timeout 被排除在缓存键之外，因此适配器若沿用创建时的 timeout，后续发送会继续使用旧快照的时限。设计第 32 行要求“每次发送的 timeout 覆盖等待实例可用、必要准备和发送”，故由 Manager 在调用 send 前把本次绝对 deadline 放入 `logagent.channel.context` 的 ContextVar，内置适配器据此读取剩余预算；插件 send(notification) 签名与语义不变，不读取该上下文也不会改变行为。Email 新增常驻连接复用下的当前快照时限回归（`tests/test_email_channel.py::test_reused_connection_obeys_current_snapshot_timeout`）。
+Email 实施中复核到一处预算缺陷：常驻实例按 channel_id 与有效配置复用，timeout 被排除在缓存键之外，因此适配器若沿用创建时的 timeout，后续发送会继续使用旧快照的时限。设计第 32 行要求“每次发送的 timeout 覆盖等待实例可用、必要准备和发送”，故由 Manager 在调用 send 前把本次绝对 deadline 放入 `workflowweave.channel.context` 的 ContextVar，内置适配器据此读取剩余预算；插件 send(notification) 签名与语义不变，不读取该上下文也不会改变行为。Email 新增常驻连接复用下的当前快照时限回归（`tests/test_email_channel.py::test_reused_connection_obeys_current_snapshot_timeout`）。
 
 主代理验证：全套 520 passed，35.07 秒，exit 0；本地 SMTP 端到端烟测一次 DATA 受理、正常收尾，exit 0。
 
@@ -48,4 +48,4 @@ Email 实施中复核到一处预算缺陷：常驻实例按 channel_id 与有�
 - [x] 新增 options/timeout 复用隔离、释放等待者超时/取消、释放排空失败隔离，以及真实 mock 追加文件与调用方生命周期隔离的回归测试。
 - 默认值沿用已有实现：stop_timeout=5 秒仍是每个清理步骤的预算，依据本任务 2026-09-17 的清理预算说明；发送预算使用本次 ChannelConfig.timeout，不引入新默认值。
 - 验证：`timeout 60s uv run pytest -q tests/test_channel_manager.py tests/test_channel_mock.py tests/test_email_channel.py tests/test_workflow_integration.py tests/test_workflow_overrides.py`：99 passed，15.48 秒，exit 0；有一条第三方 LangGraph 反序列化默认值将变更的预告警告。相关 Ruff、`git diff --check` 及 `uv build` 均通过。
-- 独立验收：真实 PluginRegistry → ChannelManager → MockFileChannel，单次发送回执为 `status=success, attempts=1, error=null`；逐字验证保留已有内容、UTF-8 标题和多行正文追加，metadata 不改变路径，重复 stop 成功。输出保留在 `/tmp/logagent-channel-acceptance-mzzzapzs/notification.txt`。
+- 独立验收：真实 PluginRegistry → ChannelManager → MockFileChannel，单次发送回执为 `status=success, attempts=1, error=null`；逐字验证保留已有内容、UTF-8 标题和多行正文追加，metadata 不改变路径，重复 stop 成功。输出保留在 `/tmp/workflowweave-channel-acceptance-mzzzapzs/notification.txt`。

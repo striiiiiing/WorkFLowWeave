@@ -62,28 +62,28 @@ flowchart TB
 
 ### 当前仍由 ApplicationLifecycle 装配
 
-依据：[当前生命周期实现](../src/logagent/lifecycle/service.py)与[HTTP app factory](../src/logagent/interaction/app.py)。[FastAPI 设计](../openspec/changes/centralize-fastapi-lifecycle-sse/design.md)属于待重新实施的方案。
+依据：[当前生命周期实现](../src/workflowweave/lifecycle/service.py)与[HTTP app factory](../src/workflowweave/interaction/app.py)。[FastAPI 设计](../openspec/changes/centralize-fastapi-lifecycle-sse/design.md)属于待重新实施的方案。
 
 | 当前文件 | 职责 |
 | --- | --- |
-| [service.py](../src/logagent/lifecycle/service.py) | 进程资源装配、启动/关闭、reload 与健康准入 |
-| [services.py](../src/logagent/lifecycle/services.py) | ApplicationServices 共享服务引用 |
-| [app.py](../src/logagent/interaction/app.py) | create_app、路由与异常处理注册；lifespan 委派 lifecycle |
-| [dependencies.py](../src/logagent/interaction/dependencies.py) | Depends 获取 lifecycle 与共享服务 |
-| [routers.py](../src/logagent/interaction/routers.py) / [agent_routers.py](../src/logagent/interaction/agent_routers.py) / [channel_routers.py](../src/logagent/interaction/channel_routers.py) | Workflow、Agent 和 Web Channel 的 HTTP/SSE 边界 |
+| [service.py](../src/workflowweave/lifecycle/service.py) | 进程资源装配、启动/关闭、reload 与健康准入 |
+| [services.py](../src/workflowweave/lifecycle/services.py) | ApplicationServices 共享服务引用 |
+| [app.py](../src/workflowweave/interaction/app.py) | create_app、路由与异常处理注册；lifespan 委派 lifecycle |
+| [dependencies.py](../src/workflowweave/interaction/dependencies.py) | Depends 获取 lifecycle 与共享服务 |
+| [routers.py](../src/workflowweave/interaction/routers.py) / [agent_routers.py](../src/workflowweave/interaction/agent_routers.py) / [channel_routers.py](../src/workflowweave/interaction/channel_routers.py) | Workflow、Agent 和 Web Channel 的 HTTP/SSE 边界 |
 
 方案二实现已撤回，独立 ApplicationLifecycle 保留。单次 Workflow run、Agent turn、MCP call 和 SSE subscriber 仍由对应服务或生成器管理。ApplicationServices 中的共享服务是进程级实例，Depends 获取它们并不会使其成为请求级对象。
 
 ## 3. Workflow：图、执行、事件流、存储
 
-依据：[最新 Workflow 设计](../openspec/changes/redesign-workflow/design.md)、[原生事件流实施任务](../openspec/changes/redesign-workflow/tasks/2026-09-28-native-events-layout/task.md)与[当前源码](../src/logagent/workflow/)。
+依据：[最新 Workflow 设计](../openspec/changes/redesign-workflow/design.md)、[原生事件流实施任务](../openspec/changes/redesign-workflow/tasks/2026-09-28-native-events-layout/task.md)与[当前源码](../src/workflowweave/workflow/)。
 
 | 当前目录    | 实际分工                                                       | 主要入口                                                                                                                                                                                                                                     |
 | ----------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `graph`     | 五阶段父图、逐项子图、局部节点、state 与 reducer               | [workflow.py](../src/logagent/workflow/graph/workflow.py)、`subgraph/collect`、`analyze`、`aggregate`、`notify`                                                                                                                              |
-| `execution` | 触发、任务生命周期、取消、恢复、阶段重跑、调度与维护           | [runner.py](../src/logagent/workflow/execution/runner.py)、[recovery.py](../src/logagent/workflow/execution/recovery.py)、[scheduler.py](../src/logagent/workflow/execution/scheduler.py)                                                    |
-| `stream`    | 消费原生执行事件，派生已提交事实与可读进度                     | [checkpoints.py](../src/logagent/workflow/stream/subscriptions/checkpoints.py)、[progress.py](../src/logagent/workflow/stream/subscriptions/progress.py)                                                                                     |
-| `storage`   | 事务、事实去重与业务版本、正文归档、session/报告查询及保留策略 | [facts.py](../src/logagent/workflow/storage/facts.py)、[reports.py](../src/logagent/workflow/storage/reports.py)、[sessions.py](../src/logagent/workflow/storage/sessions.py)、[retention.py](../src/logagent/workflow/storage/retention.py) |
+| `graph`     | 五阶段父图、逐项子图、局部节点、state 与 reducer               | [workflow.py](../src/workflowweave/workflow/graph/workflow.py)、`subgraph/collect`、`analyze`、`aggregate`、`notify`                                                                                                                              |
+| `execution` | 触发、任务生命周期、取消、恢复、阶段重跑、调度与维护           | [runner.py](../src/workflowweave/workflow/execution/runner.py)、[recovery.py](../src/workflowweave/workflow/execution/recovery.py)、[scheduler.py](../src/workflowweave/workflow/execution/scheduler.py)                                                    |
+| `stream`    | 消费原生执行事件，派生已提交事实与可读进度                     | [checkpoints.py](../src/workflowweave/workflow/stream/subscriptions/checkpoints.py)、[progress.py](../src/workflowweave/workflow/stream/subscriptions/progress.py)                                                                                     |
+| `storage`   | 事务、事实去重与业务版本、正文归档、session/报告查询及保留策略 | [facts.py](../src/workflowweave/workflow/storage/facts.py)、[reports.py](../src/workflowweave/workflow/storage/reports.py)、[sessions.py](../src/workflowweave/workflow/storage/sessions.py)、[retention.py](../src/workflowweave/workflow/storage/retention.py) |
 
 这里列的是实际实现。设计目标中出现的 `stream/publisher.py` 和 `storage/analysis.py` 当前并不存在，不能据此推断已建立额外发布服务或分析查询层。
 
@@ -111,7 +111,7 @@ flowchart TB
 
 中断续跑依据 LangGraph 官方 checkpoint 的执行位置及内容；业务归档负责固定版本的历史读取，不反向推断图该从哪一步执行。阶段重跑创建新 `execution_epoch`，并继续后续阶段，包括通知。checkpoint 有效、必要材料可用与报告仍可读取，是不同条件。
 
-[存储模型](../src/logagent/workflow/storage/models.py)已分开 `session_headers/session_entries`、checkpoint 来源索引、采集/分析/报告正文、提示词版本、结果追溯关系和轮次保留记录。checkpoint 可含执行所需正文；关闭长期备份不能解释成禁止任何正文进入 checkpoint。
+[存储模型](../src/workflowweave/workflow/storage/models.py)已分开 `session_headers/session_entries`、checkpoint 来源索引、采集/分析/报告正文、提示词版本、结果追溯关系和轮次保留记录。checkpoint 可含执行所需正文；关闭长期备份不能解释成禁止任何正文进入 checkpoint。
 
 | BackupPolicy 类别 | 当前默认   |
 | ----------------- | ---------- |
@@ -124,20 +124,20 @@ flowchart TB
 
 ## 4. 采集与 MCP：当前能力和设计差距
 
-[CollectorManager](../src/logagent/collection/manager.py)仍沿用这个类名，但新来源执行契约已是 MCP/CLI。CLI 支持 `argv` 和 `shell`，保留 stdout、stderr 与退出码；MCP 保留原始协议结果，输入转换由 Workflow 负责。旧 Collector/Setter 不应继续作为当前架构的主干。
+[CollectorManager](../src/workflowweave/collection/manager.py)仍沿用这个类名，但新来源执行契约已是 MCP/CLI。CLI 支持 `argv` 和 `shell`，保留 stdout、stderr 与退出码；MCP 保留原始协议结果，输入转换由 Workflow 负责。旧 Collector/Setter 不应继续作为当前架构的主干。
 
-[MCPRuntime](../src/logagent/mcp/runtime.py)与[transport](../src/logagent/mcp/transport.py)基于官方 SDK，支持 stdio、SSE 和 Streamable HTTP，已有按配置版本的目录缓存、`server/discover` 优先探测及 `tools/list` 兼容、JSON Schema 校验，以及 `phase/result_known` 记录。`_meta.logagent_count` 仅接受非负整数；缺失或非法为 `count_unavailable`，不从正文猜测业务条数，也不自动向模型输入追加计数。
+[MCPRuntime](../src/workflowweave/mcp/runtime.py)与[transport](../src/workflowweave/mcp/transport.py)基于官方 SDK，支持 stdio、SSE 和 Streamable HTTP，已有按配置版本的目录缓存、`server/discover` 优先探测及 `tools/list` 兼容、JSON Schema 校验，以及 `phase/result_known` 记录。`_meta.workflowweave_count` 仅接受非负整数；缺失或非法为 `count_unavailable`，不从正文猜测业务条数，也不自动向模型输入追加计数。
 
-[MCPHealthMonitor](../src/logagent/mcp/monitor.py)已接入应用生命周期。自动检查默认关闭，启用后的默认周期为 30 分钟；这不等于最新 MCP 设计中的连接保活、重连和退避机制都已实现。
+[MCPHealthMonitor](../src/workflowweave/mcp/monitor.py)已接入应用生命周期。自动检查默认关闭，启用后的默认周期为 30 分钟；这不等于最新 MCP 设计中的连接保活、重连和退避机制都已实现。
 
 结合[采集 MCP/CLI 契约](../openspec/changes/collect-from-mcp-and-cli/proposal.md)、[Cursor 导入设计](../openspec/changes/support-cursor-mcp-config/design.md)及[最新 schema-first 设计](../openspec/changes/redesign-mcp-schema-first/design.md)，目前仍有以下差距：
 
 | 最新设计要求                                      | 当前源码状态                                                                                                                         |
 | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Cursor 原始服务名作为 ID，分离 `display_name`     | [MCPServerConfig](../src/logagent/models.py)仍使用旧 `ID` 字符集约束，尚无独立服务显示名；导入界面存在不代表任意合法名称都已支持     |
-| `mcp call` 不套用文件工具的 `read/exclusive` 调度 | [MCPGateway.execution](../src/logagent/agent/gateway.py)仍返回 `read`，工具包装仍通过 `ToolScheduler`，尚未符合新边界                |
+| Cursor 原始服务名作为 ID，分离 `display_name`     | [MCPServerConfig](../src/workflowweave/models.py)仍使用旧 `ID` 字符集约束，尚无独立服务显示名；导入界面存在不代表任意合法名称都已支持     |
+| `mcp call` 不套用文件工具的 `read/exclusive` 调度 | [MCPGateway.execution](../src/workflowweave/agent/gateway.py)仍返回 `read`，工具包装仍通过 `ToolScheduler`，尚未符合新边界                |
 | keep-alive、单飞重连、有界退避                    | 当前连接主要随 load/call 建立，已有健康检查不能替代整套连接管理契约                                                                  |
-| Workflow 同时交接 MCP 调用描述和 CLI 指令         | [SessionView.mcp_binding](../src/logagent/workflow/storage/sessions.py)主要保存 MCP 来源、服务、工具及参数；CLI 指令交接尚未完整形成 |
+| Workflow 同时交接 MCP 调用描述和 CLI 指令         | [SessionView.mcp_binding](../src/workflowweave/workflow/storage/sessions.py)主要保存 MCP 来源、服务、工具及参数；CLI 指令交接尚未完整形成 |
 
 因此 MCP 应描述为“已有可用基础能力，schema-first 重设计尚未完成”，不能把最新 design 的全部内容列为已实现特性。
 
@@ -145,7 +145,7 @@ flowchart TB
 
 ### 独立 Agent 运行时
 
-当前[AgentService](../src/logagent/agent/service.py)负责 session、turn、cancel、branch、工作区、MCP 绑定及运行资源快照；[Agent 图](../src/logagent/agent/graph.py)使用 LangChain `create_agent`，底层由 LangGraph 执行。模型通过 `AIService.lease` 获取，ContextMiddleware 管理摘要与上下文预算。
+当前[AgentService](../src/workflowweave/agent/service.py)负责 session、turn、cancel、branch、工作区、MCP 绑定及运行资源快照；[Agent 图](../src/workflowweave/agent/graph.py)使用 LangChain `create_agent`，底层由 LangGraph 执行。模型通过 `AIService.lease` 获取，ContextMiddleware 管理摘要与上下文预算。
 
 内置工具是 `read/write/grep/shell/mcp`。固定 `mcp` 代理支持按需列目录、搜索、读取 schema 和调用，避免把所有工具 schema 常驻模型上下文；当前还保留 `status/load` 操作。大结果与 schema 可通过 ArtifactStore 保存。
 
@@ -155,7 +155,7 @@ flowchart TB
 
 ### 统一渠道入站，独立 Workflow 通知
 
-依据：[最新 ChannelManager 设计](../openspec/changes/redesign-agent-channel-manager/design.md)与[当前 ChannelManager](../src/logagent/channel/manager.py)。
+依据：[最新 ChannelManager 设计](../openspec/changes/redesign-agent-channel-manager/design.md)与[当前 ChannelManager](../src/workflowweave/channel/manager.py)。
 
 Web、QQ、Test 的对话输入都经 `ChannelManager → UnifiedQueue → AgentChannelProcessor → AgentService`。Manager 拥有入站队列、渠道消费与发送任务、回执及启停；AgentService 拥有模型轮次、工具执行、取消和事件日志。`unified_queue_manager.py` 当前仅为 `UnifiedQueue` 的别名，并不存在额外的独立队列服务。
 
@@ -167,7 +167,7 @@ Workflow 通知调用 `ChannelManager.send`，不进入 Agent 入站队列、不
 
 ## 6. 两种 SSE 协议
 
-后端使用 [自定义 SSE 编码与 StreamingResponse](../src/logagent/interaction/sse.py)，前端共享 [eventSource.ts](../frontend/src/shared/api/eventSource.ts) 的连接机制。传输复用不改变业务协议。
+后端使用 [自定义 SSE 编码与 StreamingResponse](../src/workflowweave/interaction/sse.py)，前端共享 [eventSource.ts](../frontend/src/shared/api/eventSource.ts) 的连接机制。传输复用不改变业务协议。
 
 | 项目       | Workflow 运行流                       | Agent / Web 对话流                                                    |
 | ---------- | ------------------------------------- | --------------------------------------------------------------------- |

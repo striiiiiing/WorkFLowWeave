@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from logagent.models import SystemConfig
+from workflowweave.models import SystemConfig
 
 initialize = runpy.run_path(
     str(Path(__file__).parents[2] / "deploy/docker/bootstrap.py")

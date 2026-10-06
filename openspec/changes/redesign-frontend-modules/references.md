@@ -43,7 +43,7 @@
 
 ## 4. Setter 边界
 
-[后端调用解析](../../../src/logagent/config/calls.py) 和 [迁移规则](../../../src/logagent/config/migrations.py) 证明旧 Collector/Setter 属于现存历史边界。此 change 不改后端，不恢复前端 Setter CRUD，不把有效调用合并算法复制到 Model。
+[后端调用解析](../../../src/workflowweave/config/calls.py) 和 [迁移规则](../../../src/workflowweave/config/migrations.py) 证明旧 Collector/Setter 属于现存历史边界。此 change 不改后端，不恢复前端 Setter CRUD，不把有效调用合并算法复制到 Model。
 
 ## 5. 验证范围
 

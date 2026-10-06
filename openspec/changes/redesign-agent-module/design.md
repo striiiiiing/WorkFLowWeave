@@ -4,7 +4,7 @@
 
 ## 1. 结论与根因
 
-保留 LangGraph 作为 Agent 的主运行时，而不是把它当成 `create_graph()` 的实现细节。Agent 组织为“用例入口 → LangGraph graph/runtime → context/tools → 存储原语与领域存储/外部依赖”。借鉴 QwenPaw 的构建与执行分离，保持 LogAgent 已有的单工作区、多会话、唯一渠道队列和事实存储语义。
+保留 LangGraph 作为 Agent 的主运行时，而不是把它当成 `create_graph()` 的实现细节。Agent 组织为“用例入口 → LangGraph graph/runtime → context/tools → 存储原语与领域存储/外部依赖”。借鉴 QwenPaw 的构建与执行分离，保持 WorkFLowWeave 已有的单工作区、多会话、唯一渠道队列和事实存储语义。
 
 这不是单纯移动文件。当前 `service.py` 约 1350 行：既创建 `WorkspaceBackend`、`ArtifactStore`、SQLite saver 和默认工具，又处理会话、任务、恢复、模型解析、流事件和配置持久化；`AgentSession` 同时携带事实字段、锁、任务、待执行命令和日志句柄；`graph.py` 同时装配图并执行去重、调度、工具调用、artifact 和结果提交。更换一个依赖或修复恢复逻辑，需要了解整个对象的隐式状态。
 
@@ -28,7 +28,7 @@
 
 参考版本：邻仓 `../qwenpaw`，HEAD `4279e4920f4ccc606fb0805808ef15b5b1d68143`。以下为阅读到的源码结构，不代表整仓经过运行验证。
 
-| QwenPaw 源码 | 有用的分工 | LogAgent 的落点与取舍 |
+| QwenPaw 源码 | 有用的分工 | WorkFLowWeave 的落点与取舍 |
 | --- | --- | --- |
 | `runtime/builder.py` / `AgentBuilder` | 每请求装配模型、prompt、toolkit，注入 Agent | `runtime/builder.py` 装配 LangGraph，输入已冻结的 turn 依赖 |
 | `runtime/runtime.py` / `Runtime` | 请求生命周期与实际执行分离 | `runtime/runner.py` 明确 prepare/build/execute/finalize 调用；不引入八阶段 hook registry |
@@ -39,14 +39,14 @@
 | `app/workspace/service_manager.py`、`service_factories.py` | 初始化失败也能找到已创建资源并释放 | FastAPI lifespan 显式持有资源，按依赖逆序关闭；不复制通用 ServiceManager |
 | `app/chats/repo/base.py` | 会话查询与保存的职责可分开 | `storage/sessions.py` 维护只读事实投影；不新增 chats.json 正文权威 |
 
-QwenPaw 的多 workspace、每 workspace ChannelManager、AgentScope、DriverCard、记忆召回工具、skills 平台、模型 fallback 和可变项目目录不在此次范围。其某些 prompt provider 失败返回空字符串的做法也不采用：LogAgent 必需输入读取或装配失败应沿现有错误通道显式报告。
+QwenPaw 的多 workspace、每 workspace ChannelManager、AgentScope、DriverCard、记忆召回工具、skills 平台、模型 fallback 和可变项目目录不在此次范围。其某些 prompt provider 失败返回空字符串的做法也不采用：WorkFLowWeave 必需输入读取或装配失败应沿现有错误通道显式报告。
 
 ## 3. 源码目录规划
 
 以下是**实施目标**，不是本次已经创建的 Python 文件。只拆出现有职责；不创建 `base/`、`common/`、`utils/` 或无实现的预留插件目录。包内 `__init__.py` 按需添加，图中仅列公共入口。
 
 ```text
-src/logagent/
+src/workflowweave/
 ├── storage_primitives/              # Agent/Workflow 共用的底层存储原语
 │   ├── atomic.py                    # 临时文件、flush/fsync、os.replace
 │   ├── locks.py                     # 文件锁、异步短临界区与释放协议
@@ -122,7 +122,7 @@ src/logagent/
 frontend/src/
 └── modules/agents/
     ├── langchain/                  # @langchain/vue 的 useStream 与自定义后端 adapter
-    │   ├── adapter.ts              # LogAgent API ↔ LangChain v2 stream adapter
+    │   ├── adapter.ts              # WorkFLowWeave API ↔ LangChain v2 stream adapter
     │   ├── stream.ts               # useStream 配置、thread/session 映射
     │   └── types.ts                # LangGraph state/message/tool 视图类型
     ├── api/                        # 非流式管理 API：session、files、settings、tools
@@ -213,7 +213,7 @@ START
 
 ### 3.4 前端采用 LangChain Vue 3 适配层
 
-前端采用已存在的 `@langchain/vue` Composition API（实施时锁定兼容版本），Agent 页面以 `useStream` 作为流状态唯一拥有者。该包默认面向 LangGraph v2 streaming protocol；LogAgent 不直接假设自己是 LangGraph Agent Server，而是实现一个窄的 `AgentServerAdapter`，将现有 `/api/agents/sessions/*`、事件游标和 command endpoint 映射到 SDK 的 thread/run/submission 语义。
+前端采用已存在的 `@langchain/vue` Composition API（实施时锁定兼容版本），Agent 页面以 `useStream` 作为流状态唯一拥有者。该包默认面向 LangGraph v2 streaming protocol；WorkFLowWeave 不直接假设自己是 LangGraph Agent Server，而是实现一个窄的 `AgentServerAdapter`，将现有 `/api/agents/sessions/*`、事件游标和 command endpoint 映射到 SDK 的 thread/run/submission 语义。
 
 前端边界为：
 
@@ -287,14 +287,14 @@ data/agents/
 
 本阶段不更改数据格式，不双读双写新旧目录，不提供自动搬迁。未来如需多工作区或格式升级，另建含版本、备份、校验和回退方案的 change。
 
-## 6. `logagent.storage_primitives` 共享设计
+## 6. `workflowweave.storage_primitives` 共享设计
 
 `storage_primitives` 是一个新的顶层基础包，目标是消除 Agent 与 Workflow 中重复的底层 I/O 保护代码；它不是新的业务存储，也不是把两个模块的数据库合并。它只提供可被两个模块独立组合的原语，所有者、表结构、事件类型和保留策略仍留在调用方。
 
 ### 6.1 原语目录与窄 API
 
 ```text
-src/logagent/storage_primitives/
+src/workflowweave/storage_primitives/
 ├── atomic.py
 ├── locks.py
 ├── digest.py
@@ -348,7 +348,7 @@ src/logagent/storage_primitives/
 | `commands.py:AgentChannel` | 同文件改为 CommandDispatcher | “渠道”和“命令分发”混用的内部类名；HTTP 不变 |
 | `config/registry.py` 内置模块字符串 | 指向 `agent.tools.builtin.*` | 旧模块定位；保持 disabled 不导入 |
 
-迁移是逐阶段的仓内调用方整体切换：阶段中保持仓库可运行，阶段完成后旧路径必须没有引用。不保留长期 re-export 兼容层；旧内部 Python import 的变化在 proposal 明示。`logagent.agent.AgentService` 保持公共用例入口；其他真实外部依赖若在实施盘点时发现，先记录其兼容需求再决定适配，不猜测存在第三方插件。
+迁移是逐阶段的仓内调用方整体切换：阶段中保持仓库可运行，阶段完成后旧路径必须没有引用。不保留长期 re-export 兼容层；旧内部 Python import 的变化在 proposal 明示。`workflowweave.agent.AgentService` 保持公共用例入口；其他真实外部依赖若在实施盘点时发现，先记录其兼容需求再决定适配，不猜测存在第三方插件。
 
 ## 8. 测试目录与验证重点
 

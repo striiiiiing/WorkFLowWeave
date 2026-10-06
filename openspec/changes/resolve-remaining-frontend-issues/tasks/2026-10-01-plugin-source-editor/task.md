@@ -1,6 +1,6 @@
 # 插件数据源目录与编辑修复
 
-依据：后端 `src/logagent/models.py` 的 `SourceConfig.one_execution_form` 允许且要求 `collector` 插件或 MCP/CLI `call` 二选一；远端 `/api/sources` 返回 23 条，`qwenpaw_hourly_flomo` 为 `collector=qwenpaw_flomo, call=null`。工作流绑定 ID 与目录一致。前端 `SourceSummary.vue` 读取 `source.call.kind` 抛错，导致 Vue 更新中断，后续资源误显示缺失，资源中心分类也无法完成渲染。本次按用户要求先修本地，再同步相同文件至远端，不改工作流数据或专门适配 QwenPaw。
+依据：后端 `src/workflowweave/models.py` 的 `SourceConfig.one_execution_form` 允许且要求 `collector` 插件或 MCP/CLI `call` 二选一；远端 `/api/sources` 返回 23 条，`qwenpaw_hourly_flomo` 为 `collector=qwenpaw_flomo, call=null`。工作流绑定 ID 与目录一致。前端 `SourceSummary.vue` 读取 `source.call.kind` 抛错，导致 Vue 更新中断，后续资源误显示缺失，资源中心分类也无法完成渲染。本次按用户要求先修本地，再同步相同文件至远端，不改工作流数据或专门适配 QwenPaw。
 
 ## 决策
 

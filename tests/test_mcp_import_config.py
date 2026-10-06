@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from logagent.models import MCPServerImportConfig
+from workflowweave.models import MCPServerImportConfig
 
 SAMPLE = {
     "servers": {

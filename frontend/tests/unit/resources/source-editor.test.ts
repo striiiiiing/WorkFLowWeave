@@ -63,7 +63,7 @@ describe('MCP/CLI source editor', () => {
         message: 'MCP 工具目录加载失败',
         details: {
           exception_type: 'FileNotFoundError',
-          reason: '请在运行 LogAgent 后端的环境中安装 qqmusic-mcp',
+          reason: '请在运行 WorkFLowWeave 后端的环境中安装 qqmusic-mcp',
         },
       }),
     )
@@ -77,7 +77,7 @@ describe('MCP/CLI source editor', () => {
       .find((button) => button.text() === '加载/刷新目录')!
       .trigger('click')
     await flushPromises()
-    expect(wrapper.text()).toContain('请在运行 LogAgent 后端的环境中安装 qqmusic-mcp')
+    expect(wrapper.text()).toContain('请在运行 WorkFLowWeave 后端的环境中安装 qqmusic-mcp')
     expect(wrapper.text()).toContain('FileNotFoundError')
     expect(wrapper.text()).not.toContain('ApiError:')
     wrapper.unmount()

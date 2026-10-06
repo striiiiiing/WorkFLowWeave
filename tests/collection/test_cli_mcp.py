@@ -2,8 +2,8 @@ import sys
 
 import pytest
 
-from logagent.collection.manager import CollectorManager
-from logagent.models import CollectionContext, SourceConfig
+from workflowweave.collection.manager import CollectorManager
+from workflowweave.models import CollectionContext, SourceConfig
 
 
 async def test_cli_preserves_false_json_and_diagnostics():

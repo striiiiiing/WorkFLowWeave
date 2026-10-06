@@ -32,4 +32,4 @@
 - `npm run typecheck`、`npm run build`、本次前端文件 Prettier 检查及 `git diff --check` 通过。
 - Playwright 本次 5 个相关用例全部通过（4 项首轮通过，工作流创建用例更新 `source: null` 默认字段预期后复验通过）。已验证工作流创建、保存、重新打开、运行及版本化正文读取。
 - 已通过真实临时后端浏览器验证：数据源数组/JSON 编辑保存、工作流独立配置保存回读、资源中心更新隔离、恢复共用，以及 375px / 390px 窄屏无横向溢出；截图确认编辑页无重复工作流选择侧栏。
-- Tabbit 页面连接中断，改用项目现有 Playwright 验证；浏览器依赖仅解包至 `/tmp/logagent-playwright-deps`，未改动项目依赖或实际资源数据。
+- Tabbit 页面连接中断，改用项目现有 Playwright 验证；浏览器依赖仅解包至 `/tmp/workflowweave-playwright-deps`，未改动项目依赖或实际资源数据。

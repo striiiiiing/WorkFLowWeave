@@ -3,9 +3,9 @@ import asyncio
 
 import pytest
 
-from logagent.config.credentials import CredentialManager
-from logagent.interaction.schemas import ProtectCredentialRequest
-from logagent.models import EncryptedCredential, SystemConfig
+from workflowweave.config.credentials import CredentialManager
+from workflowweave.interaction.schemas import ProtectCredentialRequest
+from workflowweave.models import EncryptedCredential, SystemConfig
 from tests.interaction.test_interaction import Lifecycle, _client
 
 

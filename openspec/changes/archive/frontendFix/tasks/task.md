@@ -52,7 +52,7 @@
 
 已通过：前端单元测试累计 31 项（基础与编辑器 26 项、参数表单 5 项）；凭据 HTTP 与交互测试 28 项；工作流默认/真实集成/覆写 16 项；迁移后的恢复、跨进程恢复及生命周期 39 项。其他已执行的配置、资源存储、管理器、调度与生命周期回归亦通过。所有后端运行均有 `timeout 60` 硬限制。
 
-验证环境说明：首次测试时，`tests/test_workflow_lifecycle.py` 仍采用旧的同级导入，相关批次显式设置 `PYTHONPATH=tests` 运行；并行的测试整理工作随后迁移到 `tests/workflow/`，已确认本次计数断言被保留，并在新路径下无额外 PYTHONPATH 重跑 39 项全部通过。Chromium 初次启动因缺少 libnspr4/libnss3/libasound 失败，已将发行版包解压到 `/tmp/logagent-browser-libs/root`，浏览器验证显式传入 LD_LIBRARY_PATH；不改应用代码来绕过启动失败。
+验证环境说明：首次测试时，`tests/test_workflow_lifecycle.py` 仍采用旧的同级导入，相关批次显式设置 `PYTHONPATH=tests` 运行；并行的测试整理工作随后迁移到 `tests/workflow/`，已确认本次计数断言被保留，并在新路径下无额外 PYTHONPATH 重跑 39 项全部通过。Chromium 初次启动因缺少 libnspr4/libnss3/libasound 失败，已将发行版包解压到 `/tmp/workflowweave-browser-libs/root`，浏览器验证显式传入 LD_LIBRARY_PATH；不改应用代码来绕过启动失败。
 
 浏览器验证补充根因：原 AI 表单将 base_url 标为可选，但 `ai/options.py::validate_config` 要求 http provider 提供有效服务地址。已同步为 HTTP 地址必填，避免在输入凭据后才收到笼统业务校验失败。
 

@@ -1,6 +1,6 @@
 import type { AgentModel } from '../model/public'
 
-const DEFAULT_MODEL_KEY = 'logagent.agent.default-model'
+const DEFAULT_MODEL_KEY = 'workflowweave.agent.default-model'
 
 /** Only a resource reference is stored; credentials remain in ResourceStore. */
 export function readDefaultAgentModel(): string {

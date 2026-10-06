@@ -16,10 +16,10 @@
 - 迁移前收集基线：626 项（10.00 秒），326 个未展开参数化的测试函数。初始工作区测试文件无未提交修改；保存 HEAD AST 用于比对断言行为。
 - 首批回归：interaction/lifecycle 46 passed（18.25 秒）；根目录共享契约与跨模块集成 158 passed（15.99 秒），命令均设 60 秒硬超时。
 - 前端原有 3 个单测文件共 19 passed（41.55 秒）。首次执行缺少 Rollup Linux 可选依赖，补齐本机 node_modules 后通过，未修改 package.json/package-lock.json。
-- 前端类型检查首次通过；随后构建因并发编辑的 ResourceEditor.vue、SourceStepCard.vue 引用尚不存在的 ParameterField.vue 失败。运行期间另一个工作流新增 editor.test.ts 并修改多处 frontend/src 和 src/logagent/models.py；这些不是本次修改，不覆盖或回退。构建与浏览器验收不能据此前单测结果视为通过。
+- 前端类型检查首次通过；随后构建因并发编辑的 ResourceEditor.vue、SourceStepCard.vue 引用尚不存在的 ParameterField.vue 失败。运行期间另一个工作流新增 editor.test.ts 并修改多处 frontend/src 和 src/workflowweave/models.py；这些不是本次修改，不覆盖或回退。构建与浏览器验收不能据此前单测结果视为通过。
 - OpenSpec：`openspec validate organize-test-modules --strict --no-interactive` 通过；`skip_specs: true` 被 CLI 识别为无业务行为增量。
 - 后续回归：config/collection 216 passed（13.52 秒）；channel 84 passed（4.76 秒）；workflow（不含进程强退）61 passed（15.03 秒）；进程强退 3 passed（38.43 秒）。后端命令均使用 `timeout 60s`。
-- AI 分组：env/service 23 passed、3 skipped、2 failed（23.92 秒）；channels 8 passed、2 skipped（0.65 秒）。失败原因是本地 `mock` 端点返回 `LOGAGENT_OK`，现有 `assert_success` 要求包含“测试”，与目录/导入无关；保留原断言。live 文件以及最初 AI 整组命令到 60 秒被 timeout 终止，不能报告通过。Qwen 跳过来自原有显式开关，未新增跳过策略。
+- AI 分组：env/service 23 passed、3 skipped、2 failed（23.92 秒）；channels 8 passed、2 skipped（0.65 秒）。失败原因是本地 `mock` 端点返回 `WORKFLOWWEAVE_OK`，现有 `assert_success` 要求包含“测试”，与目录/导入无关；保留原断言。live 文件以及最初 AI 整组命令到 60 秒被 timeout 终止，不能报告通过。Qwen 跳过来自原有显式开关，未新增跳过策略。
 - 迁移后收集 627 项（12.61 秒）：原 626 项逐一保留且无重复，多出并发任务新增的 `test_workflow_frontend_defaults.py::test_counts_default_on_but_explicit_saved_false_is_preserved`。该新增文件不属于本次整理范围，未移动或标注。
 - 静态审查：原 28 个后端测试文件及 4 个原辅助/包文件均有模块说明；新增包文件和 Workflow helpers 也有说明。提取的 AI/Channel/Collector/snapshot AST 与原实现一致，未复制实现。前端原 5 个测试文件及启动器补充说明；并发新增 editor.test.ts 未改动。
 - 原 326 个测试函数 AST 中，320 个不变；6 个发生并发产品变更，均为输入增加 `source: success (1)` 后对应期望调整，涉及 integration、overrides、recovery、process_recovery；子进程嵌入程序也有同类期望变更。保留这些并发编辑，不将其误判为本次说明修改；相关常规集成/恢复重跑 49 passed（24.92 秒），进程恢复验证已覆盖更新后的期望。

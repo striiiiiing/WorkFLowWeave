@@ -4,7 +4,7 @@
 
 ## 当前执行约束（用户审核后更新）
 
-本包只在 `/mnt/d/code/LogAgent` 内就地执行，按根 tasks 的文件所有权与其他 worker 并发；不新建或使用其他工作目录/worktree。新 worker 统一使用 GPT-6 Astra medium，只改获分配文件，禁止切 branch、stash、reset。普通实施 worker 禁止 commit；唯一获授权的集成 worker 串行处理公共文件、审查验证并精确提交，逐个 commit 排除后端及其他任务文件，沿用现有 post-commit 自动推送钩子，禁止 SKIP_WORKFLOW_PUSH 或覆盖 hooksPath。主代理仅编排和传递交接信息，不执行代码检查或验证。后端双向 channel 正在另一任务中演进；本包仅记录真实契约测试当时的 HEAD/dirty 与协议差异，不要求其全局不变，不干预或静默兼容不匹配的后端。前端针对性测试可独立继续。
+本包只在 `/mnt/d/code/WorkFLowWeave` 内就地执行，按根 tasks 的文件所有权与其他 worker 并发；不新建或使用其他工作目录/worktree。新 worker 统一使用 GPT-6 Astra medium，只改获分配文件，禁止切 branch、stash、reset。普通实施 worker 禁止 commit；唯一获授权的集成 worker 串行处理公共文件、审查验证并精确提交，逐个 commit 排除后端及其他任务文件，沿用现有 post-commit 自动推送钩子，禁止 SKIP_WORKFLOW_PUSH 或覆盖 hooksPath。主代理仅编排和传递交接信息，不执行代码检查或验证。后端双向 channel 正在另一任务中演进；本包仅记录真实契约测试当时的 HEAD/dirty 与协议差异，不要求其全局不变，不干预或静默兼容不匹配的后端。前端针对性测试可独立继续。
 
 ## 输入、所有权与输出
 
@@ -40,7 +40,7 @@ Axios 受控 adapter 验证 URL、0/false/空值参数、JSON 一次序列化、
 
 DTO 已分别归 modules/{resources,workflows,runs,agents,system}/model/types，shared/types 仅 JSON/ErrorInfo；ResourceMap 无 workflows，旧页面工作流 CRUD 及对应测试已改用 workflowsApi。旧 API 是 app/services 唯一实例的 re-export，无第二客户端；业务字段中文映射暂在 app/errorMessage 显式装配，shared/api 无业务词典。
 
-验证命令（cwd `/mnt/d/code/LogAgent/frontend`，均退出 0）：
+验证命令（cwd `/mnt/d/code/WorkFLowWeave/frontend`，均退出 0）：
 
 - `rtk npm test -- --reporter=dot tests/unit/api.test.ts tests/unit/runs-api.test.ts tests/unit/provider-api.test.ts tests/unit/agent-channel-api.test.ts tests/unit/schema-validation.test.ts tests/unit/query.test.ts`：6 文件、35 项通过，10.28s。
 - `rtk npm run typecheck`：通过；修复移动 ReportText 的相对引用和两个原模板匿名函数的显式输入类型。
@@ -88,7 +88,7 @@ const usages: SourceUsageView[] | undefined = workflows.data.value === undefined
 - `useWorkflowList(api:Pick<WorkflowsApi,'list'>=useWorkflowsApi())` 和 `useCapabilities(api:Pick<SystemApi,'plugins'>=useSystemApi())` 直接返回 Query。app/bootstrap 提供唯一 API 实例；缺失模块注入明确抛错。P2 页面消费 workflows/system 并把结果传入资源模块，resources 不反向导入这两个模块。
 - `sourceUsage(sourceId:string, workflows:readonly WorkflowDefinition[])` 返回 `{id,name,detached}[]`；只迁移原投影算法，当前草稿替换同 ID 服务端快照由 P3 实现。
 - `useRunActions(api:Pick<RunsApi,'trigger'|'cancel'>=useRunsApi())` 返回 `trigger(workflowId:string, signal?:AbortSignal)`、`cancel(sessionId:string)`，以及 `triggering/cancelling/triggerError/cancelError`。结果为 `success(value)` / `failure(error,message)` / `unknown(error,message)` / `busy`。
-- trigger 的真实合同依据当前 `src/logagent/interaction/routers.py` 的 `/workflows/{workflow_id}/run`：只运行已保存 Workflow ID，无业务运行选项；第二参数明确是传输 AbortSignal。另一 `/workflows/trigger` 接受 ID 或 snapshot，本包不引入 snapshot/选项第二入口，也不把 AbortSignal 描述为业务选项。P4/P3 基于本已实现合同扩展，不能要求 P3 等 P4 才能运行。
+- trigger 的真实合同依据当前 `src/workflowweave/interaction/routers.py` 的 `/workflows/{workflow_id}/run`：只运行已保存 Workflow ID，无业务运行选项；第二参数明确是传输 AbortSignal。另一 `/workflows/trigger` 接受 ID 或 snapshot，本包不引入 snapshot/选项第二入口，也不把 AbortSignal 描述为业务选项。P4/P3 基于本已实现合同扩展，不能要求 P3 等 P4 才能运行。
 - `SourceSaveTarget = {kind:'shared-resource',resourceId:string} | {kind:'workflow-draft',workflowId:string,sourceId:string}`；`SourceConfigEditorGateway` 的 `resolve(sourceId, override?, signal?):Promise<SourceConfig>` 与 `save(target,value):Promise<void>` 为 API 无关边界，实际编辑器及两种保存流程在 P2 冻结，不在此声明 UI 已实现。
 - `SourceUsageView = {id:string,name:string,detached:boolean}`；能力 DTO 的 schema 片段可结构化赋给 `SchemaCapability`（无 system 依赖），完整能力查询和解释仍由 system/page 持有。
 
@@ -104,13 +104,13 @@ P2/P4/P5 可独立修改各自 modules/pages/所属测试。必须串行交接�
 
 - 首轮针对性：`rtk npm test -- --reporter=dot tests/unit/query.test.ts tests/unit/async-task.test.ts tests/unit/api.test.ts tests/unit/http-transport.test.ts tests/unit/runs-api.test.ts tests/unit/runs-actions.test.ts tests/unit/foundation-controllers.test.ts tests/unit/agent-channel-api.test.ts tests/unit/provider-api.test.ts`，9 文件/49 项，退出 0，10.66s。随后移除一项只镜像类型形状的非必要测试，强化卸载后迟到响应的 Query 用例。
 - 最终单测：`rtk npm test -- --reporter=dot`，32 文件/160 项，退出 0，77.52s。既有 async-validator 提示为预期测试输出。
-- `rtk npm run typecheck` 退出 0；另用 `/tmp/logagent-p1-consumer-tsconfig.json` 继承项目配置，include src 与新增 foundation/runs-actions/http-transport 测试，运行 `rtk proxy npx vue-tsc --noEmit -p /tmp/logagent-p1-consumer-tsconfig.json` 退出 0，确证公开接口消费者类型。
+- `rtk npm run typecheck` 退出 0；另用 `/tmp/workflowweave-p1-consumer-tsconfig.json` 继承项目配置，include src 与新增 foundation/runs-actions/http-transport 测试，运行 `rtk proxy npx vue-tsc --noEmit -p /tmp/workflowweave-p1-consumer-tsconfig.json` 退出 0，确证公开接口消费者类型。
 - 全局 format 最初失败；核对四个旧页面相对阶段 A 无 diff，确认是此前遗留格式而非本阶段回归。Collector demo 的正则提示字符串使用等值 `\u003c`，避免 Prettier 将 `<ip>` 误当标签；三个多语句事件处理改为等义箭头函数，避免 Prettier 去分号后导致 Vue parser 失败。其余只有标准格式化，未改变 demo 路由/功能，也未提前执行 P7 删除。
 - 最终 `rtk npm run format:check` 退出 0；`rtk npm run architecture:check` 退出 0，117 源码文件和 27 fixture 通过。format 脚本已包含 scripts，防止工具代码漏检。
 - 最终 `rtk npm run build` 退出 0，3667 模块，27.29s；入口 `index-KIwTvNcT.js` 291.29 kB / gzip 108.59 kB。对比 A 的 291.32 / 108.56 kB 基本持平；P0 缺同环境稳定浏览器样本，不宣称性能改善。
-- 真实浏览器命令：`rtk proxy env LD_LIBRARY_PATH=/tmp/logagent-p0-browser-deps-643e1b5/root/usr/lib/x86_64-linux-gnu npm run test:e2e -- --grep 'workflow create, reload, run, and versioned phase reading|mobile navigation, theme and all primary routes render without overflow' --reporter=line`，退出 0，**2 passed (25.9s)**。使用既有 `serve_backend.py` 的真实 FastAPI/lifecycle/临时数据，预览 13000→后端 14300；浏览器实际经过 Axios/XHR 与同源代理完成工作流创建/回读/运行/版本报告，375px 下首页/工作流/运行/资源/插件路由无横向溢出、主题重载保留，pageerror 均为空。离线采集器在 AI 前结束，无外部模型/邮件/QQ。
+- 真实浏览器命令：`rtk proxy env LD_LIBRARY_PATH=/tmp/workflowweave-p0-browser-deps-643e1b5/root/usr/lib/x86_64-linux-gnu npm run test:e2e -- --grep 'workflow create, reload, run, and versioned phase reading|mobile navigation, theme and all primary routes render without overflow' --reporter=line`，退出 0，**2 passed (25.9s)**。使用既有 `serve_backend.py` 的真实 FastAPI/lifecycle/临时数据，预览 13000→后端 14300；浏览器实际经过 Axios/XHR 与同源代理完成工作流创建/回读/运行/版本报告，375px 下首页/工作流/运行/资源/插件路由无横向溢出、主题重载保留，pageerror 均为空。离线采集器在 AI 前结束，无外部模型/邮件/QQ。
 - 首次启动将临时库目录误写为缺少 `root/` 的路径，两个用例在浏览器 launch 阶段因 libnspr4 缺失退出 1，未进入产品步骤；更正实际解包路径后全部通过。现有 3000/4300 服务未停止或改写；测试服务由 Playwright 清理。截图为被忽略产物 `frontend/test-results/workflow-editor.png` 和 `mobile-dark.png`。
-- 浏览器启动前 HEAD 为 `a2a5510`。并行后端 dirty 快照含 `pyproject.toml`、`uv.lock`，`src/logagent/{agent/service.py,channel/__init__.py,channel/manager.py,config/calls.py,config/store.py,interaction/agent_routers.py,interaction/app.py,interaction/errors.py,interaction/routers.py,lifecycle/service.py,models.py}`，及相应 channel/interaction/config 测试；新增 `agent/channel.py`、`channel/{agent,bindings,conversation,qq,runtime,testing,unified_queue,unified_queue_manager,web}.py`、`interaction/{channel_routers,test_channel_routers}.py` 与相关测试。仅记录该事实，不要求并发状态不变；本包未改、暂存或提交任何后端路径。本次已覆盖 `/api/workflows`、`/{id}/run`、`/api/sessions`、阶段读取及健康/插件/资源真实合同。Agent SSE/commands 的变化仍由 P5 做真实契约核对，本次未把 P0 长会话或完整 Agent 协议写成已验收。
+- 浏览器启动前 HEAD 为 `a2a5510`。并行后端 dirty 快照含 `pyproject.toml`、`uv.lock`，`src/workflowweave/{agent/service.py,channel/__init__.py,channel/manager.py,config/calls.py,config/store.py,interaction/agent_routers.py,interaction/app.py,interaction/errors.py,interaction/routers.py,lifecycle/service.py,models.py}`，及相应 channel/interaction/config 测试；新增 `agent/channel.py`、`channel/{agent,bindings,conversation,qq,runtime,testing,unified_queue,unified_queue_manager,web}.py`、`interaction/{channel_routers,test_channel_routers}.py` 与相关测试。仅记录该事实，不要求并发状态不变；本包未改、暂存或提交任何后端路径。本次已覆盖 `/api/workflows`、`/{id}/run`、`/api/sessions`、阶段读取及健康/插件/资源真实合同。Agent SSE/commands 的变化仍由 P5 做真实契约核对，本次未把 P0 长会话或完整 Agent 协议写成已验收。
 - OpenSpec strict 和指定任务 diff 的空白检查通过；提交前逐项审查前端及本 change 的文件范围。阶段 B 提交标题为 `refactor(frontend): freeze foundation query actions and boundaries`，本记录与实现同一次 commit（提交 hash 由集成交接消息提供，避免文档自引用）；保留正常 post-commit 自动推送，不绕过 hook。
 
 P1 的 2.1–2.6 可退出；P2/P4/P5 可消费上述冻结接口。P1 不包含资源编辑器实体实现、P4 完整运行/首页、P5 协议生命周期、P6 真路由输入隔离或 P7 清理/全流程性能验收；这些仍由原编号承接。P0 1.2/1.3 保持未勾选。

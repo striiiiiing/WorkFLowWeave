@@ -10,9 +10,9 @@ import time
 
 import pytest
 
-from logagent.channel import ChannelDeliveryError, ChannelManager
-from logagent.errors import LogAgentError
-from logagent.models import CapabilityDescription, ChannelConfig, Notification
+from workflowweave.channel import ChannelDeliveryError, ChannelManager
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import CapabilityDescription, ChannelConfig, Notification
 
 
 class _Register:
@@ -798,7 +798,7 @@ async def test_stop_preserves_every_cleanup_error():
     await manager.send(_config(target="one"), _notification("one"))
     await manager.send(_config(target="two"), _notification("two"))
 
-    with pytest.raises(LogAgentError) as error:
+    with pytest.raises(WorkFLowWeaveError) as error:
         await manager.stop()
 
     assert error.value.code == "channel_stop_failed"
@@ -1058,7 +1058,7 @@ async def test_cleanup_timeout_retains_ownership_until_later_stop():
         return Instance()
     manager = _manager(_ChannelType(create), stop_timeout=.02)
     await manager.send(_config(), _notification("once"))
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         await manager.stop()
     assert len(manager._entries) == 1
     release.set()
@@ -1114,8 +1114,8 @@ async def test_start_that_swallows_cancellation_cannot_send():
 
 
 async def test_readonly_registry_wrappers_do_not_recreate_unchanged_instances(tmp_path):
-    from logagent.config import PluginRegistry
-    from logagent.models import SystemConfig
+    from workflowweave.config import PluginRegistry
+    from workflowweave.models import SystemConfig
     from plugins.channel.file.channel import FileChannelType
     registry = PluginRegistry([], builtin_channels=[FileChannelType()])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
@@ -1166,7 +1166,7 @@ async def test_call_options_and_budgets_reuse_instance_without_leaking_into_crea
         "type": "object",
         "properties": {
             "target": {"type": "string"},
-            "recipient": {"type": "string", "x-logagent-workflow": True},
+            "recipient": {"type": "string", "x-workflowweave-workflow": True},
         },
         "required": ["target", "recipient"],
         "additionalProperties": False,
@@ -1274,8 +1274,8 @@ async def test_release_drain_timeout_does_not_fail_waiting_send():
 
 
 async def test_stop_waits_for_send_completion_not_caller_task_lifetime(tmp_path):
-    from logagent.config import PluginRegistry
-    from logagent.models import SystemConfig
+    from workflowweave.config import PluginRegistry
+    from workflowweave.models import SystemConfig
     from plugins.channel.file.channel import FileChannelType
 
     registry = PluginRegistry([], builtin_channels=[FileChannelType()])

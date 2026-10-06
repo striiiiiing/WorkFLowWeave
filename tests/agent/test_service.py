@@ -7,14 +7,14 @@ from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from langchain_core.outputs import ChatGenerationChunk
 from pydantic import Field
 
-from logagent.agent.config import AgentConfig
-from logagent.agent.context.budget import summarization_middleware, validate_request_budget
-from logagent.agent.context.compaction import summarize_once
-from logagent.agent.runtime.stream import message_delta
-from logagent.agent.storage.events import EventLog
-from logagent.agent.tools.declaration import ToolDeclaration
-from logagent.errors import LogAgentError
-from logagent.interaction.fastapi.agent import create_agent_service
+from workflowweave.agent.config import AgentConfig
+from workflowweave.agent.context.budget import summarization_middleware, validate_request_budget
+from workflowweave.agent.context.compaction import summarize_once
+from workflowweave.agent.runtime.stream import message_delta
+from workflowweave.agent.storage.events import EventLog
+from workflowweave.agent.tools.declaration import ToolDeclaration
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.interaction.fastapi.agent import create_agent_service
 from tests.agent.helpers import ScriptedModel
 
 
@@ -123,7 +123,7 @@ async def test_topic_title_survives_restart_and_reasoning_delta_is_real(tmp_path
     created = await service.create_session(model="scripted")
     changed = await service.set_title(created["session_id"], "  生产告警复盘  ")
     assert changed["title"] == "生产告警复盘"
-    with pytest.raises(LogAgentError, match="话题名称"):
+    with pytest.raises(WorkFLowWeaveError, match="话题名称"):
         await service.set_title(created["session_id"], "  ")
     assert message_delta(AIMessageChunk(
         content="response", additional_kwargs={"reasoning_content": "thinking"},
@@ -269,7 +269,7 @@ async def test_existing_session_without_checkpoint_is_not_reconstructed(tmp_path
     )
     await restored.initialize()
     accepted = await restored.submit(session["session_id"], "continue", request_id="new-request")
-    with pytest.raises(LogAgentError) as error:
+    with pytest.raises(WorkFLowWeaveError) as error:
         await restored.wait(accepted["turn_id"])
     assert error.value.code == "checkpoint_missing"
     await restored.close()
@@ -281,14 +281,14 @@ async def test_admission_pause_blocks_new_sessions_and_racing_turns(tmp_path):
         model_provider=lambda _: ScriptedModel(responses=[AIMessage(content="answer")]),
     )
     await service.pause_admission()
-    with pytest.raises(LogAgentError) as error:
+    with pytest.raises(WorkFLowWeaveError) as error:
         await service.create_session(model="scripted")
     assert error.value.code == "agent_busy"
 
 
 async def test_context_budget_includes_fixed_prompt_and_reserved_output():
     config = AgentConfig(context_window=500, output_tokens=100)
-    with pytest.raises(LogAgentError) as error:
+    with pytest.raises(WorkFLowWeaveError) as error:
         validate_request_budget(
             [HumanMessage(content="x" * 5_000)], "fixed instructions", [{"name": "read"}], config
         )
@@ -319,7 +319,7 @@ async def test_agent_enforces_model_idle_timeout_without_sse_heartbeat(tmp_path)
     )
     session = await service.create_session(model="delayed")
     accepted = await service.submit(session["session_id"], "hello", request_id="idle-1")
-    with pytest.raises(LogAgentError) as error:
+    with pytest.raises(WorkFLowWeaveError) as error:
         await service.wait(accepted["turn_id"])
     assert error.value.code == "model_idle_timeout"
     events = await service.events(session["session_id"])
@@ -328,7 +328,7 @@ async def test_agent_enforces_model_idle_timeout_without_sse_heartbeat(tmp_path)
 
 
 async def test_agent_total_timeout_uses_ai_config_and_releases_model_turn(tmp_path):
-    from logagent.models import AIConfig
+    from workflowweave.models import AIConfig
 
     service = create_agent_service(
         tmp_path / "workspace", tmp_path / "runtime",
@@ -340,7 +340,7 @@ async def test_agent_total_timeout_uses_ai_config_and_releases_model_turn(tmp_pa
     )
     session = await service.create_session(model="delayed")
     accepted = await service.submit(session["session_id"], "hello", request_id="total-1")
-    with pytest.raises(LogAgentError) as error:
+    with pytest.raises(WorkFLowWeaveError) as error:
         await service.wait(accepted["turn_id"])
     assert error.value.code == "ai_timeout"
     assert service.sessions[session["session_id"]].status == "failed"

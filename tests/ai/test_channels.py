@@ -9,9 +9,9 @@ import asyncio
 
 import pytest
 
-from logagent.ai import AIService, OpenAIChannelFactory
-from logagent.errors import LogAgentError
-from logagent.models import AIConfig
+from workflowweave.ai import AIService, OpenAIChannelFactory
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import AIConfig
 
 
 @pytest.mark.parametrize("options", [
@@ -24,7 +24,7 @@ def test_invalid_thinking_options_are_rejected(options):
     cfg = AIConfig(id="ai", provider="http", base_url="http://localhost:19026/v1",
                    models={"mock": options})
     service = AIService(channel_factories={"http": OpenAIChannelFactory()})
-    with pytest.raises(LogAgentError) as error:
+    with pytest.raises(WorkFLowWeaveError) as error:
         service.validate(cfg)
     assert error.value.code == "invalid_config"
 

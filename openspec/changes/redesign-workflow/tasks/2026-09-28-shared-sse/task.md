@@ -20,13 +20,13 @@
 
 ## Agent 后端持久化核对（现状，不是迁移任务）
 
-默认装配根为 `<data_dir>/agents/runtime/`，依据 [lifecycle/service.py](../../../../../src/logagent/lifecycle/service.py) 的 AgentService 参数：
+默认装配根为 `<data_dir>/agents/runtime/`，依据 [lifecycle/service.py](../../../../../src/workflowweave/lifecycle/service.py) 的 AgentService 参数：
 
-- `History/<session_id>/events.jsonl`：用户消息、模型输出增量、工具执行记录与结果信封、轮次/命令状态等追加事实；[events.py](../../../../../src/logagent/agent/events.py) 分配事件 ID 并落盘，供 SSE 重放及工具结果判定。
-- `checkpoints.sqlite`：官方 AsyncSqliteSaver 保存 Agent 图状态（包括 messages）与执行进度，供上下文接续；不等于完整 SSE 事件日志。来源为 [service.py](../../../../../src/logagent/agent/service.py) 的 initialize 和图装配。
-- `Artifacts/<session_id>/…`：工具输出经相应脱敏处理后存档，图/事件可携带预览和 artifact_path；超过 output_bytes 时只保留带明确错误标记的部分内容，不能宣称始终保存全部输出。依据 [artifacts.py](../../../../../src/logagent/agent/artifacts.py)。
+- `History/<session_id>/events.jsonl`：用户消息、模型输出增量、工具执行记录与结果信封、轮次/命令状态等追加事实；[events.py](../../../../../src/workflowweave/agent/events.py) 分配事件 ID 并落盘，供 SSE 重放及工具结果判定。
+- `checkpoints.sqlite`：官方 AsyncSqliteSaver 保存 Agent 图状态（包括 messages）与执行进度，供上下文接续；不等于完整 SSE 事件日志。来源为 [service.py](../../../../../src/workflowweave/agent/service.py) 的 initialize 和图装配。
+- `Artifacts/<session_id>/…`：工具输出经相应脱敏处理后存档，图/事件可携带预览和 artifact_path；超过 output_bytes 时只保留带明确错误标记的部分内容，不能宣称始终保存全部输出。依据 [artifacts.py](../../../../../src/workflowweave/agent/artifacts.py)。
 - `Sessions/<session_id>.json`：会话查询摘要，如状态、模型、turn、上下文预算和最近 checkpoint 信息；由 `_persist_session` 写入。
-- `History/<session_id>/summaries/…md`：上下文压缩产生的摘要，依据 [graph.py](../../../../../src/logagent/agent/graph.py)。
+- `History/<session_id>/summaries/…md`：上下文压缩产生的摘要，依据 [graph.py](../../../../../src/workflowweave/agent/graph.py)。
 
 模型增量由 `_stream_graph` 消费 astream_events 后 await EventLog.append；工具结果等由各业务路径写日志，当前不是统一从 checkpoint 异步归档。事件正文和 checkpoint 中的消息可能重叠。前端共用连接不改变这些持久化职责。
 

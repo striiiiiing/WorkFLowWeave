@@ -37,4 +37,4 @@
 
 ## 5. 实施移交（2026-09-24）
 
-用户后续要求依据本设计在独立分支实施，已建立 [refactor-frontend-architecture 实施 change](../refactor-frontend-architecture/proposal.md)；唯一实施清单为 [tasks.md](../refactor-frontend-architecture/tasks.md)。原 proposal/design 保留本次设计阶段的历史内容，不因移交重写。该规划最初交付时等待用户审核；用户随后已明确审核通过并授权继续，且指定全部任务仅在 `/mnt/d/code/LogAgent` 内就地执行，不再使用或新建其他工作目录/worktree。当前 branch `refactor/frontend-architecture` 已接回该目录，按实施 tasks 管理共享文件所有权；后端双向 channel 由另一任务并行重构，本任务只通过每次提交路径审查排除后端，不要求全局 hash 不变。执行路径与协作方式以实施 tasks 的最新记录为准，原 proposal/design 的历史说明不重写。
+用户后续要求依据本设计在独立分支实施，已建立 [refactor-frontend-architecture 实施 change](../refactor-frontend-architecture/proposal.md)；唯一实施清单为 [tasks.md](../refactor-frontend-architecture/tasks.md)。原 proposal/design 保留本次设计阶段的历史内容，不因移交重写。该规划最初交付时等待用户审核；用户随后已明确审核通过并授权继续，且指定全部任务仅在 `/mnt/d/code/WorkFLowWeave` 内就地执行，不再使用或新建其他工作目录/worktree。当前 branch `refactor/frontend-architecture` 已接回该目录，按实施 tasks 管理共享文件所有权；后端双向 channel 由另一任务并行重构，本任务只通过每次提交路径审查排除后端，不要求全局 hash 不变。执行路径与协作方式以实施 tasks 的最新记录为准，原 proposal/design 的历史说明不重写。

@@ -17,10 +17,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from logagent.channel.errors import ChannelDeliveryError
-from logagent.errors import LogAgentError
-from logagent.models import ChannelConfig, Notification
-from logagent.schema import resource_options_schema, validate_instance
+from workflowweave.channel.errors import ChannelDeliveryError
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import ChannelConfig, Notification
+from workflowweave.schema import resource_options_schema, validate_instance
 
 _STOP_TIMEOUT = 5.0
 _OPTIONS_SCHEMA = {
@@ -30,7 +30,7 @@ _OPTIONS_SCHEMA = {
             "type": "string",
             "minLength": 1,
             "description": "日志文件（相对 data_dir）",
-            "x-logagent-path": True,
+            "x-workflowweave-path": True,
         }
     },
     "required": ["path"],
@@ -81,7 +81,7 @@ class _NotificationFileHandler(logging.FileHandler):
         if self.stream is None:
             raise RuntimeError("file handler is not started")
         record = logging.LogRecord(
-            name="logagent.channel.file",
+            name="workflowweave.channel.file",
             level=logging.INFO,
             pathname=__file__,
             lineno=0,
@@ -221,7 +221,7 @@ class FileChannel:
         try:
             await asyncio.wait_for(asyncio.shield(self._stop_task), _STOP_TIMEOUT)
         except TimeoutError as exc:
-            raise LogAgentError("file_stop_timeout", "文件操作尚未结束") from exc
+            raise WorkFLowWeaveError("file_stop_timeout", "文件操作尚未结束") from exc
 
     async def _finish(self) -> None:
         outcomes = await asyncio.gather(*self._pending, return_exceptions=True)
@@ -232,7 +232,7 @@ class FileChannel:
         except Exception as exc:
             failures.append(type(exc).__name__)
         if failures:
-            raise LogAgentError("file_cleanup_failed", "文件渠道清理失败", {"failures": failures})
+            raise WorkFLowWeaveError("file_cleanup_failed", "文件渠道清理失败", {"failures": failures})
 
     def _release_handler(self) -> None:
         key = str(self.path.absolute())

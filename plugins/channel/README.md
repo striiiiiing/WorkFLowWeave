@@ -45,8 +45,8 @@ npx openclaw config set plugins.entries.openclaw-weixin.enabled true
 npx openclaw channels login --channel openclaw-weixin
 ```
 
-扫码确认后，从状态目录的 `openclaw-weixin/accounts.json` 读取账号 ID，在 LogAgent 渠道 `options` 配置 `account_id`；可选 `state_dir` 指向该状态目录，`command` 可指定 Node 可执行文件路径，默认 `node`。通知的 `target_id` 为微信对端 ID，可由 Workflow 覆盖；回复从官方 SDK 存储复用对端 context token，因此需先收到对端消息建立上下文。
+扫码确认后，从状态目录的 `openclaw-weixin/accounts.json` 读取账号 ID，在 WorkFLowWeave 渠道 `options` 配置 `account_id`；可选 `state_dir` 指向该状态目录，`command` 可指定 Node 可执行文件路径，默认 `node`。通知的 `target_id` 为微信对端 ID，可由 Workflow 覆盖；回复从官方 SDK 存储复用对端 context token，因此需先收到对端消息建立上下文。
 
-目前腾讯 SDK 支持微信私信。同一账号应只由一个进程接收：使用 LogAgent 接收时，停止该账号在 OpenClaw Gateway 的轮询。入站由 Manager 持久化受理后才确认并推进官方游标；关闭时中止长轮询。未登录、依赖或 Node 版本错误会显式失败。bridge 复用固定版本包内账户、收发、上下文和游标模块；升级依赖时需重新验证这些模块契约。
+目前腾讯 SDK 支持微信私信。同一账号应只由一个进程接收：使用 WorkFLowWeave 接收时，停止该账号在 OpenClaw Gateway 的轮询。入站由 Manager 持久化受理后才确认并推进官方游标；关闭时中止长轮询。未登录、依赖或 Node 版本错误会显式失败。bridge 复用固定版本包内账户、收发、上下文和游标模块；升级依赖时需重新验证这些模块契约。
 
 平台凭据认证后的真实联网验收需要用户自己的账号；仓库测试使用 SDK contract 和本地进程，避免发送真实通知。

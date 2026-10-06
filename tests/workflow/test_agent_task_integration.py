@@ -3,18 +3,18 @@
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
-from logagent.errors import LogAgentError
-from logagent.interaction.fastapi.agent import create_agent_service
-from logagent.models import AIConfig, FanInConfig
-from logagent.workflow.execution.runner import WorkflowRunner
-from logagent.workflow.storage.facts import SessionStore
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.interaction.fastapi.agent import create_agent_service
+from workflowweave.models import AIConfig, FanInConfig
+from workflowweave.workflow.execution.runner import WorkflowRunner
+from workflowweave.workflow.storage.facts import SessionStore
 from tests.agent.helpers import ScriptedModel
 from tests.workflow.helpers import AI, Channel, Collector, snapshot
 
 
 class FailingModel(ScriptedModel):
     async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
-        raise LogAgentError("tool_failed", "工具拒绝请求", {"tool": "read"})
+        raise WorkFLowWeaveError("tool_failed", "工具拒绝请求", {"tool": "read"})
 
 
 async def test_mixed_llm_agent_tasks_and_agent_summary_keep_separate_configuration(tmp_path):
