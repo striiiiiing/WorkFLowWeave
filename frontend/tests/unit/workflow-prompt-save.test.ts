@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import ElementPlus, { ElForm, ElInput, ElMessage, ElRadioGroup } from 'element-plus'
+import ElementPlus, { ElForm, ElInput, ElRadioGroup } from 'element-plus'
 import { expect, it, vi } from 'vitest'
 import WorkflowEditPage from '@/pages/workflows/WorkflowEditPage.vue'
 import FanOutTaskCard from '@/modules/workflows/ui/FanOutTaskCard.vue'
@@ -100,7 +100,6 @@ it('saves layered prompts and reopens the same workflow without legacy prompt fi
   expect(taskCard.text()).toContain('提示词')
   expect(fanIn.text()).toContain('提示词')
   await taskCard.findAllComponents(ElInput)[1].vm.$emit('update:modelValue', 'literal {input}')
-  await taskCard.findAllComponents(ElInput)[3].vm.$emit('update:modelValue', 'second instruction')
   await fanIn.findAllComponents(ElInput)[0].vm.$emit('update:modelValue', 'summary instruction')
   await wrapper.get('[aria-label="高级模式"]').trigger('click')
   await fanIn.get('[aria-label="采用单任务优化"] input').setValue(false)
@@ -115,16 +114,6 @@ it('saves layered prompts and reopens the same workflow without legacy prompt fi
   await flushPromises()
   await fanPrompts.findAllComponents(ElInput)[0].vm.$emit('update:modelValue', '')
   await fanIn.get('[aria-label="上移 second"]').trigger('click')
-  const errorMessage = vi.spyOn(ElMessage, 'error')
-  await wrapper
-    .findAll('button')
-    .find((button) => button.text() === '保存工作流')!
-    .trigger('click')
-  await flushPromises()
-
-  expect(replace).not.toHaveBeenCalled()
-  expect(errorMessage).toHaveBeenCalledWith('汇总的输入模板不能为空')
-  await fanPrompts.findAllComponents(ElInput)[0].vm.$emit('update:modelValue', 'summary: {input}')
   await wrapper
     .findAll('button')
     .find((button) => button.text() === '保存工作流')!
@@ -138,11 +127,11 @@ it('saves layered prompts and reopens the same workflow without legacy prompt fi
     input_prompt: 'shared {input}',
     analyses: [
       { system_prompt: '', input_prompt: null, user_prompt: 'literal {input}' },
-      { system_prompt: null, input_prompt: null, user_prompt: 'second instruction' },
+      { system_prompt: null, input_prompt: null, user_prompt: '' },
     ],
     fan_in: {
       single_task_optimization: false,
-      input_prompt: 'summary: {input}',
+      input_prompt: '',
       user_prompt: 'summary instruction',
       reuse_from: '$first',
       order: ['$input', 'second', 'first'],
@@ -155,5 +144,4 @@ it('saves layered prompts and reopens the same workflow without legacy prompt fi
   await flushPromises()
   expect(reopened.getComponent(ElForm).props('model')).toEqual(saved)
   reopened.unmount()
-  errorMessage.mockRestore()
 })

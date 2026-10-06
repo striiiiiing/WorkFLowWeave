@@ -8,14 +8,13 @@ from unittest.mock import AsyncMock
 import pytest
 from langchain_core.messages import AIMessage
 
-from logagent.agent.commands import AgentCommand
+from logagent.agent.commands import AgentCommand, CommandDispatcher
 from logagent.agent.config import AgentConfig
-from logagent.agent.service import AgentService
 from logagent.channel import ChannelManager
-from logagent.channel.agent import AgentChannel
 from logagent.channel.conversation import ChannelAddress, InboundMessage
 from logagent.config import PluginRegistry
 from logagent.errors import LogAgentError
+from logagent.interaction.fastapi.agent import create_agent_service
 from logagent.models import ChannelConfig, Notification, SystemConfig
 from tests.agent.helpers import ScriptedModel
 from tests.fixtures.channels import TestChannelType
@@ -23,7 +22,7 @@ from tests.fixtures.channels import TestChannelType
 
 async def test_platform_ack_precedes_agent_processing_and_reply_uses_original_route(tmp_path):
     model = ScriptedModel(responses=[AIMessage(content="answer")])
-    service = AgentService(tmp_path / "workspace", tmp_path / "runtime", config=AgentConfig(),
+    service = create_agent_service(tmp_path / "workspace", tmp_path / "runtime", config=AgentConfig(),
                            model_provider=lambda _: model)
     await service.initialize()
     registry = PluginRegistry(builtin_channels=[TestChannelType()])
@@ -32,7 +31,7 @@ async def test_platform_ack_precedes_agent_processing_and_reply_uses_original_ro
     entered = asyncio.Event()
     release = asyncio.Event()
 
-    class PausedPort(AgentChannel):
+    class PausedPort(CommandDispatcher):
         async def dispatch(self, command, *, valid=None):
             entered.set()
             await release.wait()
@@ -53,7 +52,7 @@ async def test_platform_ack_precedes_agent_processing_and_reply_uses_original_ro
         assert receipt.status == "success"
         assert not entered.is_set() and not service.sessions
 
-        created = await AgentChannel(service).dispatch(AgentCommand(
+        created = await CommandDispatcher(service).dispatch(AgentCommand(
             channel="web", request_id="initial-session", text="/new",
         ))
         await manager.bind_conversation(config.id, created["result"]["session_id"])
@@ -120,13 +119,13 @@ async def test_each_plugin_inbound_callback_enters_manager_and_replies_once(tmp_
     registry = PluginRegistry(builtin_channels=[channel_type])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     model = ScriptedModel(responses=[AIMessage(content="reply")])
-    service = AgentService(tmp_path / "workspace", tmp_path / "runtime", config=AgentConfig(),
+    service = create_agent_service(tmp_path / "workspace", tmp_path / "runtime", config=AgentConfig(),
                            model_provider=lambda _: model)
     await service.initialize()
     manager = ChannelManager(registry.channelRegister)
-    await manager.configure_agent(AgentChannel(service), tmp_path / "bindings.sqlite3")
+    await manager.configure_agent(CommandDispatcher(service), tmp_path / "bindings.sqlite3")
     await manager.start_agent([config])
-    created = await AgentChannel(service).dispatch(AgentCommand(
+    created = await CommandDispatcher(service).dispatch(AgentCommand(
         channel="web", request_id="initial-session", text="/new",
     ))
     await manager.bind_conversation(config.id, created["result"]["session_id"])

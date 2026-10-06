@@ -3,14 +3,6 @@
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 
-def resolve_prompts(workflow, task):
-    """Resolve independent overrides identically for LLM, Agent and prefix reuse."""
-    return (
-        workflow.system_prompt if task.system_prompt is None else task.system_prompt,
-        workflow.input_prompt if task.input_prompt is None else task.input_prompt,
-    )
-
-
 def uses_single_task_optimization(workflow) -> bool:
     fan_in = workflow.fan_in
     if fan_in is None or fan_in.agent_mode or not fan_in.single_task_optimization:
@@ -31,11 +23,10 @@ def optimized_summary_messages(workflow, analyses, shared_input):
     result = analyses[task.id]
     if result["status"] != "success":
         return None
-    system_prompt, input_prompt = resolve_prompts(workflow, task)
     return [
         *build_messages(
-            system_prompt,
-            input_prompt,
+            workflow.system_prompt if task.system_prompt is None else task.system_prompt,
+            workflow.input_prompt if task.input_prompt is None else task.input_prompt,
             shared_input,
             user_prompt=task.user_prompt,
         ),

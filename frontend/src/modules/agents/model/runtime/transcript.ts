@@ -1,4 +1,5 @@
 import type { AgentEvent } from './types'
+import type { BaseMessage } from '@langchain/core/messages'
 
 const terminalTurnLabels: Record<string, string> = {
   'turn.completed': '本轮分析已完成',
@@ -34,7 +35,10 @@ export function reasoningText(value: unknown): string {
     })
     .join('')
 }
-export function transcriptRows(events: AgentEvent[]): TranscriptRow[] {
+export function transcriptRows(
+  events: AgentEvent[],
+  messages: BaseMessage[] = [],
+): TranscriptRow[] {
   const rows: TranscriptRow[] = []
   const lookup = new Map<string, TranscriptRow>()
   let group = 0
@@ -120,6 +124,20 @@ export function transcriptRows(events: AgentEvent[]): TranscriptRow[] {
           ? `${data.command} 已排队，将在工具组完成后的模型边界处理`
           : `${data.command} ${event.type === 'command.failed' ? '处理失败，原始历史保留' : event.type === 'command.cancelled' ? '已取消' : data.compacted === false ? '没有可压缩的早期消息' : '已处理'}`
     }
+  }
+
+  const messagesById = new Map(
+    messages.filter((message) => message.id).map((message) => [message.id!, message]),
+  )
+  for (const row of rows) {
+    if (!['user', 'assistant', 'reasoning'].includes(row.role)) continue
+    const messageId = row.event.data.message_id
+    const identity = `${row.event.session_id}:${typeof messageId === 'string' && messageId ? messageId : (row.event.turn_id ?? 'unscoped')}`
+    const message = messagesById.get(identity)
+    if (!message) continue
+    if (row.role === 'user') row.text = contentText(message.content)
+    else if (row.role === 'assistant') row.text = contentText(message.content)
+    else row.text = reasoningText(message.content)
   }
   return rows
 }
