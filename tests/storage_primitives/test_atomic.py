@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from logagent.storage_primitives.atomic import atomic_write_bytes, atomic_write_json
+from workflowweave.storage_primitives.atomic import atomic_write_bytes, atomic_write_json
 
 
 def test_atomic_write_publishes_complete_file_and_json(tmp_path: Path):
@@ -22,7 +22,7 @@ def test_atomic_write_keeps_old_value_and_cleans_temp_if_replace_fails(tmp_path,
     def fail_replace(*_args):
         raise OSError("replace failed")
 
-    monkeypatch.setattr("logagent.storage_primitives.atomic.os.replace", fail_replace)
+    monkeypatch.setattr("workflowweave.storage_primitives.atomic.os.replace", fail_replace)
     with pytest.raises(OSError, match="replace failed"):
         atomic_write_bytes(target, b"new")
 

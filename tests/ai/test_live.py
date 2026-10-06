@@ -11,7 +11,7 @@ import json
 import httpx
 import pytest
 
-from logagent.ai import AIService, OpenAIChannelFactory
+from workflowweave.ai import AIService, OpenAIChannelFactory
 from tests.ai.live_helpers import assert_success, call
 
 

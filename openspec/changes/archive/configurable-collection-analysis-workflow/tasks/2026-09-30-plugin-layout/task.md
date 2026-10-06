@@ -10,7 +10,7 @@
   mock/logs/history 的既有 schema 与行为沿用。
 - [最新渠道设计](../../../../redesign-agent-channel-manager/design.md)：Web 由应用装配，
   QQ/Test 是实现传输与消费契约的适配器。
-- 当前 `src/logagent/lifecycle/defaults.py` 只创建文件通知渠道、不创建旧采集来源；
+- 当前 `src/workflowweave/lifecycle/defaults.py` 只创建文件通知渠道、不创建旧采集来源；
   本次目录迁移不恢复旧默认源或修改 MCP/CLI 契约。
 
 ## 范围与结构

@@ -27,16 +27,16 @@
 
 ### Requirement: Runtime separates request failure and count state
 
-系统 SHALL 从 `_meta.logagent_count` 读取非负整数业务计数；字段缺失或非法时 SHALL 统一标记 `count_unavailable`，不得从正文推断。
+系统 SHALL 从 `_meta.workflowweave_count` 读取非负整数业务计数；字段缺失或非法时 SHALL 统一标记 `count_unavailable`，不得从正文推断。
 
 #### Scenario: Zero count
 
-- **WHEN** 请求正常返回且 `_meta.logagent_count` 为 0
+- **WHEN** 请求正常返回且 `_meta.workflowweave_count` 为 0
 - **THEN** 标记为空业务结果，不标记为请求失败
 
 #### Scenario: Missing count
 
-- **WHEN** 请求正常返回但缺少 `_meta.logagent_count`
+- **WHEN** 请求正常返回但缺少 `_meta.workflowweave_count`
 - **THEN** 请求保持成功，计数状态为 `count_unavailable`
 
 ### Requirement: Runtime does not replay unknown calls

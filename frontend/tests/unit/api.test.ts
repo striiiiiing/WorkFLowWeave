@@ -117,7 +117,7 @@ describe('HTTP contract', () => {
         error: {
           code: 'invalid_config',
           message: '资源未通过业务校验',
-          details: { exception_type: 'LogAgentError' },
+          details: { exception_type: 'WorkFLowWeaveError' },
         },
       },
       422,

@@ -11,6 +11,6 @@ export type CredentialProtector = (
 export function credentialPropertyNames(schema: JsonObject | undefined): string[] {
   const properties = (schema?.properties ?? {}) as Record<string, JsonObject>
   return Object.keys(properties).filter(
-    (name) => properties[name]['x-logagent-credential'] === true,
+    (name) => properties[name]['x-workflowweave-credential'] === true,
   )
 }

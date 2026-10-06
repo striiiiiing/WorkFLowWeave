@@ -16,7 +16,7 @@ AnalysisTask 必填 model；FanInConfig 的 ai/model 同时提供或同时省略
 
 ## Workflow 配置与快照
 
-SourceOverride 包含 options、setters（默认空对象）、template（默认 None）；ChannelOverride 包含 options（默认空对象）。WorkflowDefinition 新增 source_overrides/channel_overrides（已引用 ID 的映射，默认空）。options_schema 顶层 x-logagent-workflow=true 标明调用字段；其余字段只在实例设置。WorkflowSnapshot.sources/channels 保存合并后的有效配置。PluginSettings 仅 enabled；插件通过 api.config_path 自行读取私有 JSON。
+SourceOverride 包含 options、setters（默认空对象）、template（默认 None）；ChannelOverride 包含 options（默认空对象）。WorkflowDefinition 新增 source_overrides/channel_overrides（已引用 ID 的映射，默认空）。options_schema 顶层 x-workflowweave-workflow=true 标明调用字段；其余字段只在实例设置。WorkflowSnapshot.sources/channels 保存合并后的有效配置。PluginSettings 仅 enabled；插件通过 api.config_path 自行读取私有 JSON。
 
 `WorkflowDefinition` 引用来源、分析任务、汇总、渠道和 `BackupPolicy`。后者的 enabled 总开关与 snapshot、collection、analysis、final 四个范围开关默认全部开启；分别控制原配置快照、采集输入、分析分支结果和冻结后的最终输出。notify/finish 中的最终正文仍服从 final，不能通过另一份 checkpoint 状态绕过范围限制。状态、错误、回执及可用性等管理信息不受正文开关控制。
 

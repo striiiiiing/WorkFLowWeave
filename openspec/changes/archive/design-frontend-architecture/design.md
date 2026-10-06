@@ -470,7 +470,7 @@ HTTP transport 只负责传输和上述响应契约。业务错误字段文案�
 | Workflow 轮询继续 2000ms，请求完成后再计时 | 现有 `useSession.ts` 和原前端任务；保留不重叠、终态/错误停止 |
 | SSE 重连保留 500ms 指数退避，上限 5000ms | 现有 `useAgentStream.ts`；只是网络重连节奏，不是模型执行超时。迁移至命名常量并测试，避免改变既有行为 |
 | 不增加“300 秒无消息就取消” | 后端工具/模型预算已有定义，心跳不等于业务进度；浏览器连接不能决定后台轮次终态 |
-| 数据源 60s、渠道 30s、AI 600s/5 次重试、并发 4 | 现有 `domain/resources.ts`、`domain/workflow.ts` 对齐 `src/logagent/models.py`；后端默认是依据，前端工厂按契约回归，不能另做隐式默认层 |
+| 数据源 60s、渠道 30s、AI 600s/5 次重试、并发 4 | 现有 `domain/resources.ts`、`domain/workflow.ts` 对齐 `src/workflowweave/models.py`；后端默认是依据，前端工厂按契约回归，不能另做隐式默认层 |
 | DTO 首轮按模块手工维护 | 动态 CRUD、自有事件协议不能从当前 OpenAPI 完整生成；先明确所有者并通过真实契约验证 |
 | 先保留投影算法，再按测量优化 | 降低拆分与行为改变同时发生的风险；任何优化仍只有一套事实到 UI 的变换 |
 

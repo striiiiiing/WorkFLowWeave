@@ -10,8 +10,8 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from logagent.channel.conversation import ChannelAddress, InboundMessage
-from logagent.models import ChannelConfig, Notification
+from workflowweave.channel.conversation import ChannelAddress, InboundMessage
+from workflowweave.models import ChannelConfig, Notification
 
 _PLUGIN_ROOT = Path(__file__).parents[2] / "plugins" / "channel" / "feishu"
 

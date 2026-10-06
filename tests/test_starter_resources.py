@@ -7,9 +7,9 @@
 
 from fastapi.testclient import TestClient
 
-from logagent.interaction.app import create_app
-from logagent.lifecycle import ApplicationLifecycle
-from logagent.models import SystemConfig
+from workflowweave.interaction.app import create_app
+from workflowweave.lifecycle import ApplicationLifecycle
+from workflowweave.models import SystemConfig
 
 
 def test_new_install_has_no_preconfigured_collectors_or_resources(tmp_path):

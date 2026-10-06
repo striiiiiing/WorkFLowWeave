@@ -6,7 +6,7 @@
 
 本变更依赖既有 `redesign-agent-channel-manager` 对 Manager、统一队列和双向 Agent 端口的设计。这里不重写那份设计，只规定具体适配器必须如何归属和接入。
 
-核心层（`src/logagent/channel/`）只拥有：
+核心层（`src/workflowweave/channel/`）只拥有：
 
 - `ChannelType`、`NotificationChannel`、双向会话输入和投递回执等通用协议；
 - 唯一 `ChannelManager`、队列、生命周期、超时和去重；
@@ -45,7 +45,7 @@ plugins/channel/
 
 ### 3.1 清单和依赖
 
-所有插件遵循当前 LogAgent v1 清单格式：
+所有插件遵循当前 WorkFLowWeave v1 清单格式：
 
 ```json
 {
@@ -121,15 +121,15 @@ Email 只做 SMTP 出站，不轮询邮箱，不解析回复，不声明 `conver
 - 通过 SDK 的好友/群/频道发送方法完成通知或原路回复；
 - 按 SDK 的 Gateway 重连、心跳、事件去重契约报告接收状态。
 
-不再在 LogAgent 内重复实现 QQ token、WebSocket payload 和 REST 路由。SDK 没有覆盖的回执不被伪造为成功。
+不再在 WorkFLowWeave 内重复实现 QQ token、WebSocket payload 和 REST 路由。SDK 没有覆盖的回执不被伪造为成功。
 
 ### 6.2 微信“小龙虾”
 
-当前将名称解释为 OpenClaw Weixin 通道。其维护的外部插件通过二维码登录和 Tencent iLink API 工作，Python LogAgent 不应复制协议。拟采用受支持的 OpenClaw sidecar/bridge：
+当前将名称解释为 OpenClaw Weixin 通道。其维护的外部插件通过二维码登录和 Tencent iLink API 工作，Python WorkFLowWeave 不应复制协议。拟采用受支持的 OpenClaw sidecar/bridge：
 
 - sidecar 负责 QR 登录、账号会话、iLink 长连接和平台协议；
-- LogAgent 插件通过稳定的进程/IPC 边界交换 JSON 入站事件和发送请求；
-- 入站消息仍由 LogAgent Manager 排队，出站回复使用 sidecar 返回的原始路由；
+- WorkFLowWeave 插件通过稳定的进程/IPC 边界交换 JSON 入站事件和发送请求；
+- 入站消息仍由 WorkFLowWeave Manager 排队，出站回复使用 sidecar 返回的原始路由；
 - sidecar 未安装、登录过期或响应不确定时返回明确错误，不静默切换成另一套微信协议。
 
 由于 `@tencent-weixin/openclaw-weixin` 与 `openclaw-weixin` 的包名和版本存在漂移，sidecar 的准确启动命令、版本和 IPC 形式在用户确认后再冻结。若“小龙虾”不是 OpenClaw，应先替换本节方案。

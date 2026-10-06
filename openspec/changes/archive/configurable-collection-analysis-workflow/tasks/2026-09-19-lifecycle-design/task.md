@@ -11,7 +11,7 @@
 - [x] 补充生命周期锁、内部任务复用、调用方取消隔离，以及分步清理超时和重试行为。
 - [x] 核对相对链接、文档 diff 和现有实现；本次只修改文档，不重复执行运行时测试。
 
-决策依据：`src/logagent/lifecycle/service.py` 的四个入口、共享锁和清理任务表决定协调边界；`services.py`、`resources.py`、`health.py`、`logging.py`、`formatting.py` 分别提供服务容器、资源接线、本地诊断和日志能力。启动与关闭顺序按照已取得资源及其依赖关系表述，避免将清理概括为机械的构造顺序反转。
+决策依据：`src/workflowweave/lifecycle/service.py` 的四个入口、共享锁和清理任务表决定协调边界；`services.py`、`resources.py`、`health.py`、`logging.py`、`formatting.py` 分别提供服务容器、资源接线、本地诊断和日志能力。启动与关闭顺序按照已取得资源及其依赖关系表述，避免将清理概括为机械的构造顺序反转。
 
 默认值依据：30 秒和 10 秒等待窗口沿用原 task 的实现决策及 `service.py` 常量，明确其为分步骤预算，不构成整体关闭时限；本次未新增默认值。
 
@@ -21,7 +21,7 @@
 
 依据：用户要求以 docstring 形式注释代码，沿用上述模块设计和当前实现；设计不变，因此在本任务中追加记录，不修改 `design.md`。
 
-- [x] 为 `src/logagent/lifecycle/` 七个 Python 文件的模块、类和函数补充中文 docstring，说明职责、资源所有权、准入副作用、取消隔离与清理重试语义。
+- [x] 为 `src/workflowweave/lifecycle/` 七个 Python 文件的模块、类和函数补充中文 docstring，说明职责、资源所有权、准入副作用、取消隔离与清理重试语义。
 - [x] 补充资源发布回调的事件循环归属、本地健康探测边界及日志脱敏、字节预算和 handler 所有权约束。
 - [x] 将已有的准入锁、UTF-8 轮转计量和日志参数格式化说明移入对应 docstring，未改动执行逻辑或默认值。
 

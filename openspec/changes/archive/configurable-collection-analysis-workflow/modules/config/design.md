@@ -65,7 +65,7 @@ ResourceStore 接收注入的业务校验函数。WorkflowService 负责定义�
 
 保存来源/渠道实例时，依次应用能力 schema 默认值、实例显式 options，同名键整体覆盖，不深度混合；校验实例必填字段与已提供的调用默认值，规范化为持久化 options；Workflow 绑定后校验完整结果。已保存实例保留原有效值，执行时不重新应用默认值；必填调用字段可留待 Workflow 配置。
 
-Workflow 的 source_overrides/channel_overrides 仅可覆盖标注 x-logagent-workflow=true 的字段，候选提交时规范化路径、校验合并后的完整配置。Setter 使用“实例模板 → 实例显式键 → Workflow 模板 → Workflow 显式键”的独立规则，不与 options 混合；展开后的 Setter 再过 Collector 校验。显式空列表仍是覆盖。AIConfig 直接保存 provider 支持的模型选项，遵循 AI 模块契约。
+Workflow 的 source_overrides/channel_overrides 仅可覆盖标注 x-workflowweave-workflow=true 的字段，候选提交时规范化路径、校验合并后的完整配置。Setter 使用“实例模板 → 实例显式键 → Workflow 模板 → Workflow 显式键”的独立规则，不与 options 混合；展开后的 Setter 再过 Collector 校验。显式空列表仍是覆盖。AIConfig 直接保存 provider 支持的模型选项，遵循 AI 模块契约。
 
 ## 原子提交与快照
 

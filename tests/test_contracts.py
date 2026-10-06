@@ -11,8 +11,8 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from logagent.errors import LogAgentError
-from logagent.models import (
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import (
     CollectionContext,
     CollectorOutput,
     ErrorInfo,
@@ -20,7 +20,7 @@ from logagent.models import (
     SourceConfig,
     SystemConfig,
 )
-from logagent.schema import schema_defaults, validate_instance, validate_schema
+from workflowweave.schema import schema_defaults, validate_instance, validate_schema
 
 
 @pytest.mark.parametrize("timeout", ["invalid", 0, -1, math.inf, math.nan])
@@ -98,7 +98,7 @@ def test_schema_validation_is_strict_non_mutating_and_does_not_echo_values():
     defaults = schema_defaults(schema)
     defaults["names"].append("changed")
     assert schema["properties"]["names"]["default"] == []
-    with pytest.raises(LogAgentError) as caught:
+    with pytest.raises(WorkFLowWeaveError) as caught:
         validate_instance({"secret": "do-not-echo-this"}, schema, path=["options"])
     assert caught.value.details["errors"][0]["path"] == ["options"]
     assert "do-not-echo-this" not in caught.value.info.model_dump_json()
@@ -111,7 +111,7 @@ def test_partial_defaults_keep_nested_requirements():
         "required": ["nested"],
     }
     validate_instance({}, schema, partial=True)
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         validate_instance({"nested": {}}, schema, partial=True)
 
 
@@ -124,7 +124,7 @@ def test_partial_defaults_keep_nested_requirements():
     ],
 )
 def test_invalid_and_remote_schemas_rejected(schema):
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         validate_schema(schema)
 
 
@@ -142,7 +142,7 @@ def test_partial_defaults_resolve_local_references():
         "$defs": {"settings": {"type": "object", "required": ["name"]}},
     }
     validate_instance({}, schema, partial=True)
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         validate_instance({}, schema)
 
 
@@ -162,7 +162,7 @@ def test_schema_default_data_is_not_treated_as_a_remote_reference():
 
 
 def test_schema_fields_require_type_and_description():
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         validate_schema({"type": "object", "properties": {"value": {"type": "string"}}})
 
 
@@ -178,7 +178,7 @@ def option_schema(rule, *, definitions=None):
 @pytest.mark.parametrize("keyword", ["$ref", "$dynamicRef"])
 @pytest.mark.parametrize("reference", ["#/$defs/missing", "#missing_anchor"])
 def test_optional_local_references_must_resolve_before_instances_exist(keyword, reference):
-    with pytest.raises(LogAgentError) as caught:
+    with pytest.raises(WorkFLowWeaveError) as caught:
         validate_schema(option_schema({keyword: reference}))
     assert caught.value.code == "invalid_schema"
 
@@ -186,7 +186,7 @@ def test_optional_local_references_must_resolve_before_instances_exist(keyword, 
 @pytest.mark.parametrize("keyword", ["$ref", "$dynamicRef"])
 def test_references_in_unused_definitions_are_also_checked(keyword):
     schema = option_schema({"type": "string"}, definitions={"unused": {keyword: "#/$defs/missing"}})
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         validate_schema(schema)
 
 
@@ -197,7 +197,7 @@ def test_local_json_pointer_unescapes_definition_names():
     )
     validate_schema(schema)
     validate_instance({"value": 3}, schema)
-    with pytest.raises(LogAgentError) as caught:
+    with pytest.raises(WorkFLowWeaveError) as caught:
         validate_instance({"value": "wrong"}, schema)
     assert caught.value.code == "invalid_config"
 
@@ -213,7 +213,7 @@ def test_local_plain_and_dynamic_anchors(reference_keyword, anchor_keyword):
     )
     validate_schema(schema)
     validate_instance({"value": "ok"}, schema)
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         validate_instance({"value": 3}, schema)
 
 
@@ -232,7 +232,7 @@ def test_nested_resource_reference_uses_its_local_id_scope():
     schema["$id"] = "https://example.invalid/root.json"
     validate_schema(schema)
     validate_instance({"value": {"count": 1}}, schema)
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         validate_instance({"value": {"count": "wrong"}}, schema)
 
 
@@ -243,7 +243,7 @@ def test_remote_references_are_rejected_without_network_or_value_disclosure(keyw
 
     monkeypatch.setattr("socket.create_connection", unexpected_network)
     schema = option_schema({keyword: "https://example.invalid/FAKE_SECRET_SCHEMA"})
-    with pytest.raises(LogAgentError) as caught:
+    with pytest.raises(WorkFLowWeaveError) as caught:
         validate_schema(schema)
     assert "FAKE_SECRET_SCHEMA" not in caught.value.info.model_dump_json()
 
@@ -259,10 +259,10 @@ def test_annotation_values_are_not_walked_for_references(annotation):
 def test_reference_target_must_itself_be_a_valid_schema():
     schema = option_schema({"$ref": "#/examples/0"})
     schema["examples"] = ["not a schema"]
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         validate_schema(schema)
     schema["examples"] = [{"type": "unsupported_type"}]
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         validate_schema(schema)
 
 
@@ -277,7 +277,7 @@ def test_reference_target_must_itself_be_a_valid_schema():
     ],
 )
 def test_combinators_and_references_cannot_bypass_field_type_declarations(rule):
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         validate_schema(option_schema(rule, definitions={"untyped": {}}))
 
 
@@ -304,7 +304,7 @@ def test_reference_to_false_is_not_a_valid_untyped_alternative(keyword):
     )
     validate_schema(schema)
     validate_instance({"value": "ok"}, schema)
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         validate_instance({"value": 1}, schema)
 
 
@@ -323,7 +323,7 @@ def test_typed_recursive_object_reference_accepts_finite_data(keyword):
     )
     validate_schema(schema)
     validate_instance({"value": {"children": [{"children": []}]}}, schema)
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         validate_instance({"value": {"children": [3]}}, schema)
 
 
@@ -351,7 +351,7 @@ def test_pure_reference_cycles_are_rejected_even_if_unused(referenced):
             "second": {"allOf": [{"$ref": "#/$defs/first"}, {"minLength": 1}]},
         },
     )
-    with pytest.raises(LogAgentError) as caught:
+    with pytest.raises(WorkFLowWeaveError) as caught:
         validate_schema(schema)
     assert caught.value.code == "invalid_schema"
 
@@ -361,7 +361,7 @@ def test_type_in_one_alternative_does_not_ground_an_independent_untyped_cycle():
         {"anyOf": [{"type": "string"}, {"$ref": "#/$defs/loop"}]},
         definitions={"loop": {"$ref": "#/$defs/loop"}},
     )
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         validate_schema(schema)
 
 
@@ -371,7 +371,7 @@ def test_self_reference_cannot_mask_an_untyped_alternative(keyword):
         {"$ref": "#/$defs/node"},
         definitions={"node": {"$ref": "#/$defs/node", keyword: [{"type": "string"}, {}]}},
     )
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         validate_schema(schema)
 
 
@@ -383,7 +383,7 @@ def test_partial_defaults_still_check_nested_requirements_through_anchors():
     schema["required"] = ["value"]
     validate_schema(schema)
     validate_instance({}, schema, partial=True)
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         validate_instance({"value": {}}, schema, partial=True)
 
 

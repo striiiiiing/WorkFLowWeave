@@ -1,8 +1,8 @@
 import importlib
 import json
 
-from logagent.config.registry import PluginRegistry
-from logagent.models import SystemConfig
+from workflowweave.config.registry import PluginRegistry
+from workflowweave.models import SystemConfig
 
 
 async def test_builtin_tools_are_filtered_before_import_and_capture_read_only_views(tmp_path, monkeypatch):
@@ -20,7 +20,7 @@ async def test_builtin_tools_are_filtered_before_import_and_capture_read_only_vi
     report = await registry.discover_plugins(config)
     assert not report.errors
     assert {item.name for item in registry.toolRegister.describe()} == {"mcp", "read", "write", "grep"}
-    assert "logagent.agent.tools.builtin.shell" not in imports
+    assert "workflowweave.agent.tools.builtin.shell" not in imports
     read = registry.toolRegister.get("read")
     read.input_schema["properties"].clear()
     assert "path" in registry.toolRegister.get("read").input_schema["properties"]
@@ -43,7 +43,7 @@ def external_plugin(root, owner, code):
 
 async def test_tool_registration_rolls_back_on_name_conflict(tmp_path):
     external_plugin(tmp_path, "external", '''
-from logagent.agent.tools.declaration import ToolDeclaration, schema
+from workflowweave.agent.tools.declaration import ToolDeclaration, schema
 async def invoke(arguments, context): return {}
 class Plugin:
     def register(self, api):
@@ -68,7 +68,7 @@ async def test_external_plugin_cannot_override_disabled_builtin_id(tmp_path):
 
 
 async def test_collectors_default_to_exclusive_unless_declared():
-    from logagent.config.views import CollectorRegister, collector_registration
+    from workflowweave.config.views import CollectorRegister, collector_registration
     from tests.fixtures.collectors import MockCollector
 
     class Undeclared:

@@ -1,4 +1,4 @@
-from logagent.models import ErrorInfo, RecoveryAvailability
+from workflowweave.models import ErrorInfo, RecoveryAvailability
 from tests.interaction.test_interaction import Lifecycle, _client
 
 

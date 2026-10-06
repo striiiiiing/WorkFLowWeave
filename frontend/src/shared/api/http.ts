@@ -53,8 +53,8 @@ export function createHttpClient({
             code: 'http_error',
             message:
               status === 405
-                ? `LogAgent 接口不支持 ${config.method ?? 'GET'} ${path}（HTTP 405）；请确认后端已更新并重启，且 /api 代理指向 LogAgent 服务`
-                : `LogAgent 请求失败（HTTP ${status}）：${config.method ?? 'GET'} ${path}`,
+                ? `WorkFLowWeave 接口不支持 ${config.method ?? 'GET'} ${path}（HTTP 405）；请确认后端已更新并重启，且 /api 代理指向 WorkFLowWeave 服务`
+                : `WorkFLowWeave 请求失败（HTTP ${status}）：${config.method ?? 'GET'} ${path}`,
             details: {
               path,
               status_text: response.statusText,

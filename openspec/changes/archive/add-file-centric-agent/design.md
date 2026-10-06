@@ -144,7 +144,7 @@ Collector 的 CLI/HTTP 仍提供给运维和 Shell 使用，但 Agent 直接调�
 ```
 
 - list 默认只返回启用且可调用的实例 ID、描述和读/写类别，分页；不附所有 Schema，也不把资源账号配置放入 system prompt。
-- schema 返回目标的**调用参数 Schema**、类型说明和参数默认值的安全视图。Schema 来自注册声明；options 仅允许现有 `x-logagent-workflow=true` 字段，Setter 复用 setters_schema。内部用「调用层」解释这个历史注解，不再新增另一个内容相同的 `x-logagent-agent` 注解。
+- schema 返回目标的**调用参数 Schema**、类型说明和参数默认值的安全视图。Schema 来自注册声明；options 仅允许现有 `x-workflowweave-workflow=true` 字段，Setter 复用 setters_schema。内部用「调用层」解释这个历史注解，不再新增另一个内容相同的 `x-workflowweave-agent` 注解。
 - 新增公共 `call_options_schema(schema, fixed_options)` 投影，保留 `$defs`、本地 `$ref` 和类型约束；剔除实例层属性及其 required 条目，调用层已有固定值的字段不再强制模型重复提供。实例固定值只暴露允许且非敏感的调用默认值。该函数不等于现有 resource_options_schema，后者用于资源保存、required 处理方向不同。完整配置合并后仍按原 Schema 校验，Agent 不复制跨字段业务规则。
 - call 查目标 Collector 实例的本轮快照，合并本次参数并调用 CollectorManager 一次。连接、凭据、文件目标等实例层字段不能通过 arguments 覆盖。Channel 的发送仍由绑定的双向路由或 Workflow 触发，不能通过 plugin 选择目标。
 - options 按已固定实例值 → 本次显式键覆盖，复杂值整体替换；Setter 沿用现有模板展开规则与显式空列表语义。不在每次调用时重新套当前插件默认值。
@@ -358,7 +358,7 @@ SSE 回放与实时订阅在同一事件游标上接续，按 ID 去重，不能
 
 ## 11. 模块划分与实施顺序
 
-新增 `src/logagent/agent/`，先保持少量模块：
+新增 `src/workflowweave/agent/`，先保持少量模块：
 
 | 文件 | 单一职责 |
 | --- | --- |

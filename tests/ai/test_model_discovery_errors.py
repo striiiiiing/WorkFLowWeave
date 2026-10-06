@@ -3,9 +3,9 @@
 import httpx
 import pytest
 
-from logagent.ai import AIService, OpenAIChannelFactory
-from logagent.errors import LogAgentError
-from logagent.models import AIConfig
+from workflowweave.ai import AIService, OpenAIChannelFactory
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import AIConfig
 
 
 @pytest.mark.parametrize("body", ["", "<html>API gateway homepage</html>", "{invalid"])
@@ -19,7 +19,7 @@ async def test_non_json_model_catalog_keeps_diagnostic_without_retry(body):
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         service = AIService(channel_factories={"http": OpenAIChannelFactory(client)})
         try:
-            with pytest.raises(LogAgentError) as caught:
+            with pytest.raises(WorkFLowWeaveError) as caught:
                 await service.list_models(AIConfig(
                     id="provider", provider="http", base_url="http://provider.test/v1", retries=3,
                 ))

@@ -17,10 +17,10 @@ from typing import Any
 
 from pydantic import TypeAdapter
 
-from logagent.channel.conversation import ChannelAddress, InboundHandler, InboundMessage
-from logagent.channel.errors import ChannelDeliveryError
-from logagent.models import ChannelConfig, Credential, Notification
-from logagent.schema import resource_options_schema, validate_instance, validate_workflow_options
+from workflowweave.channel.conversation import ChannelAddress, InboundHandler, InboundMessage
+from workflowweave.channel.errors import ChannelDeliveryError
+from workflowweave.models import ChannelConfig, Credential, Notification
+from workflowweave.schema import resource_options_schema, validate_instance, validate_workflow_options
 
 _LOGGER = logging.getLogger(__name__)
 _CREDENTIAL_SCHEMA = TypeAdapter(Credential).json_schema()
@@ -39,20 +39,20 @@ _OPTIONS_SCHEMA = {
         "client_secret": {
             "description": "QQ Bot Client Secret 凭据引用",
             "anyOf": [_CREDENTIAL_SCHEMA, {"type": "null"}],
-            "x-logagent-credential": True,
+            "x-workflowweave-credential": True,
         },
         "target_kind": {
             "type": "string",
             "enum": ["c2c", "group", "guild", "dm"],
             "description": "单向通知目标类型",
-            "x-logagent-workflow": True,
+            "x-workflowweave-workflow": True,
         },
         "target_id": {
             "type": "string",
             "minLength": 1,
             "pattern": r"^\S+$",
             "description": "单向通知目标标识",
-            "x-logagent-workflow": True,
+            "x-workflowweave-workflow": True,
         },
     },
     "required": ["app_id", "client_secret"],
@@ -124,7 +124,7 @@ class QQChannel:
         factory = self._client_factory or self._make_client_factory(botpy)
         intents = self._intents(botpy)
         self._client = factory(intents=intents)
-        self._client._logagent_emit = self._emit_message
+        self._client._workflowweave_emit = self._emit_message
         self._appid = self._options["app_id"]
         self._secret = secret
         # botpy exposes an async ``Client.start`` in addition to the blocking

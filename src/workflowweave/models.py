@@ -1,0 +1,848 @@
+"""JSON-compatible exchange models derived from the approved module designs.
+
+Runtime dependencies live in CollectionContext, outside the serialized models.
+"""
+
+from __future__ import annotations
+
+from copy import deepcopy
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Self, TypeVar
+
+import orjson
+from pydantic import (
+    AfterValidator,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    JsonValue,
+    TypeAdapter,
+    ValidationInfo,
+    model_validator,
+)
+
+from workflowweave.model_base import StrictModel
+from workflowweave.scheduling import cron_trigger
+from workflowweave.workflow.storage.retention import BackupPolicy
+
+if TYPE_CHECKING:
+    from workflowweave.protocols import CredentialResolver, SessionReader
+
+_JSON_VALUE = TypeAdapter(JsonValue, config=ConfigDict(strict=True, allow_inf_nan=False))
+
+
+def _json_value(value: Any) -> Any:
+    """Validate JSON types and round-trip through orjson for an independent value."""
+    try:
+        return orjson.loads(orjson.dumps(_JSON_VALUE.validate_python(value)))
+    except (ValueError, orjson.JSONEncodeError):
+        raise ValueError("Expected a JSON-compatible value supported by orjson") from None
+
+
+def _json_object(value: Any) -> dict[str, Any]:
+    if type(value) is not dict:
+        raise ValueError("Expected a JSON object")
+    return _json_value(value)
+
+
+def _validate_json_value(value: Any) -> Any:
+    return _json_value(value)
+
+
+def _utc_datetime(value: Any) -> datetime:
+    if isinstance(value, str):
+        try:
+            # 3.11 以后兼容
+            value = datetime.fromisoformat(value)
+        except ValueError:
+            raise ValueError("Expected an ISO 8601 datetime with a timezone") from None
+    if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("Expected a datetime with a timezone")
+    return value.astimezone(UTC)
+
+def unique_check(name: str):
+    def check(value: list) -> list:
+        if len(value) != len(set(value)):
+            raise ValueError(f"{name} must be unique")
+        else:
+            return value
+    return check
+
+
+ID = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,80}$")]
+# Leave space for an underscore and the 36-character UUID in generated resource IDs.
+ResourceIDPrefix = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,43}$")]
+UTCDateTime = Annotated[datetime, BeforeValidator(_utc_datetime)]
+Seconds = Annotated[float, Field(gt=0, allow_inf_nan=False)]
+JSONObject = Annotated[dict[str, Any], BeforeValidator(_json_object)]
+JSONSchema = JSONObject
+JSONValue = Annotated[Any, BeforeValidator(_validate_json_value)]
+EnvironmentName = Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")]
+NonNegativeInt = Annotated[int, Field(strict=True, ge=0)]
+SessionVersion = Annotated[int, Field(gt=0)]
+
+ResourceKind = Literal["sources", "setters", "mcp_servers", "ai", "channels", "workflows"]
+PluginKind = Literal["collector", "channel", "tool"]
+SaveMode = Literal["create", "replace", "upsert"]
+SourcePolicy = Literal["stop","notice", "skip"]
+ContinuePolicy = Literal["stop", "continue"]
+WorkflowStage = Literal["collect", "analyze", "aggregate", "notify", "finish"]
+CollectionStatus = Literal["success", "empty", "filtered_empty", "missing", "failed", "timeout"]
+AnalysisStatus = Literal["success", "failed", "timeout", "cancelled"]
+DeliveryStatus = Literal["success", "failed", "timeout", "skipped"]
+SessionStatus = Literal[
+    "created", "running", "completed", "partial", "failed", "cancelled", "interrupted"
+]
+ArtifactAvailability = Literal[
+    "available", "pending", "not_saved", "expired", "missing", "corrupt", "write_failed"
+]
+
+
+class ErrorInfo(StrictModel):
+    code: str = Field(min_length=1)
+    message: str = Field(min_length=1)
+    details: JSONObject = Field(default_factory=dict)
+
+
+class ValidationIssue(StrictModel):
+    path: list[str | int]
+    reason: str
+
+
+class ErrorResponse(StrictModel):
+    error: ErrorInfo
+
+
+class SystemConfig(StrictModel):
+    data_dir: str = "data"
+    plugin_dir: str = "plugins"
+    host: str = "127.0.0.1"
+    port: int = Field(default=4300, ge=1, le=65535)
+    max_concurrent_runs: int = Field(default=4, ge=1)
+    log_file: str | None = None
+    master_key_env: EnvironmentName = "WORKFLOWWEAVE_MASTER_KEY"
+    master_key_file: str = "master.key"
+
+
+PositiveTokens = Annotated[int, Field(strict=True, gt=0)]
+
+
+class SourceLimits(StrictModel):
+    item_tokens: PositiveTokens | None = None
+    field_tokens: PositiveTokens | None = None
+
+
+class InputProcessing(SourceLimits):
+    format: Literal["none", "ison", "toon", "zon", "md", "csv"] = "none"
+    total_tokens: PositiveTokens | None = None
+
+
+class MCPCall(StrictModel):
+    kind: Literal["mcp"] = "mcp"
+    server: ID
+    tool: str = Field(min_length=1)
+    arguments: JSONObject = Field(default_factory=dict)
+
+
+class CLIArgv(StrictModel):
+    kind: Literal["cli"] = "cli"
+    mode: Literal["argv"]
+    executable: str = Field(min_length=1)
+    argv: list[str] = Field(default_factory=list)
+    cwd: str | None = None
+
+
+class CLIShell(StrictModel):
+    kind: Literal["cli"] = "cli"
+    mode: Literal["shell"]
+    command: str = Field(min_length=1)
+    cwd: str | None = None
+
+
+CLICall = Annotated[CLIArgv | CLIShell, Field(discriminator="mode")]
+# An outer discriminator maps "cli" to the nested mode union, which is not
+# a reference string and therefore invalid in OpenAPI discriminator.mapping.
+SourceCall = MCPCall | CLICall
+
+
+class SourceConfig(StrictModel):
+    id: ID
+    display_name: str | None = None
+    description: str = ""
+    # A source may be provided by a local Collector plugin or by the
+    # MCP/CLI call form introduced by collect-from-mcp-and-cli.  Exactly one
+    # execution form is required at runtime; keeping both here allows the
+    # merged configuration boundary to validate old and new persisted data in
+    # one place while callers still resolve one effective source.
+    collector: ID | None = None
+    call: SourceCall | None = None
+    enabled: bool = True
+    options: JSONObject = Field(default_factory=dict)
+    setters: JSONObject = Field(default_factory=dict)
+    limits: SourceLimits = Field(default_factory=SourceLimits)
+    template: ID | None = None
+    timeout: Seconds = 60.0
+    on_error: SourcePolicy = "notice"
+    on_missing: SourcePolicy = "notice"
+    on_empty: SourcePolicy = "notice"
+    on_filtered_empty: SourcePolicy = "notice"
+
+    @model_validator(mode="after")
+    def one_execution_form(self) -> Self:
+        if (self.collector is None) == (self.call is None):
+            raise ValueError("Source must define exactly one collector or call")
+        return self
+
+
+class SetterTemplate(StrictModel):
+    id: ID
+    collector: ID
+    setters: JSONObject = Field(default_factory=dict)
+
+
+class EnvironmentCredential(StrictModel):
+    kind: Literal["env"] = "env"
+    name: EnvironmentName
+
+
+class EncryptedCredential(StrictModel):
+    kind: Literal["encrypted"] = "encrypted"
+    format_version: int = Field(default=1, ge=1, le=1)
+    key_id: str = Field(min_length=1)
+    ciphertext: str = Field(min_length=1)
+
+
+Credential = Annotated[EnvironmentCredential | EncryptedCredential, Field(discriminator="kind")]
+
+
+class MCPServerConfig(StrictModel):
+    id: ID
+    transport: Literal["stdio", "streamable_http", "sse"]
+    enabled: bool = True
+    health_check_enabled: bool = False
+    health_check_interval_minutes: int = Field(default=30, strict=True, ge=1)
+    command: str | None = None
+    args: list[str] = Field(default_factory=list)
+    cwd: str | None = None
+    url: str | None = None
+    env: dict[EnvironmentName, Credential] = Field(default_factory=dict)
+    headers: dict[str, Credential] = Field(default_factory=dict)
+    timeout: Seconds = 60.0
+
+    @model_validator(mode="after")
+    def valid_transport(self) -> Self:
+        if self.transport == "stdio":
+            if not self.command or self.url is not None or self.headers:
+                raise ValueError("stdio requires command and forbids URL/headers")
+        elif not self.url or not self.url.startswith(("http://", "https://")):
+            raise ValueError("HTTP transport requires an HTTP(S) URL")
+        elif self.command is not None or self.args or self.cwd is not None or self.env:
+            raise ValueError("HTTP transport forbids process configuration")
+        return self
+
+
+class MCPServerImportEntry(StrictModel):
+    """One server entry from the named MCP configuration envelope."""
+
+    type: Literal["stdio", "streamable_http", "sse", "http"] = "stdio"
+    enabled: bool = True
+    command: str | None = None
+    args: list[str] = Field(default_factory=list)
+    cwd: str | None = None
+    url: str | None = None
+    env: dict[EnvironmentName, Credential] = Field(default_factory=dict)
+    headers: dict[str, Credential] = Field(default_factory=dict)
+    timeout: Seconds = 60.0
+
+    def to_resource(self, name: str) -> MCPServerConfig:
+        transport = "streamable_http" if self.type == "http" else self.type
+        return MCPServerConfig(
+            id=name,
+            transport=transport,
+            enabled=self.enabled,
+            command=self.command,
+            args=self.args,
+            cwd=self.cwd,
+            url=self.url,
+            env=self.env,
+            headers=self.headers,
+            timeout=self.timeout,
+        )
+
+
+class MCPServerImportConfig(StrictModel):
+    """Named-server envelope accepted at the MCP import boundary."""
+
+    servers: dict[ID, MCPServerImportEntry]
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_mcp_servers_alias(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        has_servers = "servers" in value
+        has_mcp_servers = "mcpServers" in value
+        if has_servers and has_mcp_servers:
+            raise ValueError("配置不能同时包含 servers 和 mcpServers")
+        if has_mcp_servers:
+            value = {**value, "servers": value["mcpServers"]}
+            value.pop("mcpServers", None)
+        return value
+
+    def to_resources(self) -> list[MCPServerConfig]:
+        return [server.to_resource(name) for name, server in self.servers.items()]
+
+
+MCPHealthStatus = Literal["unknown", "healthy", "unhealthy", "disabled"]
+
+
+class MCPHealthReport(StrictModel):
+    server: ID
+    status: MCPHealthStatus
+    checked_at: UTCDateTime | None = None
+    latency_ms: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    tool_count: NonNegativeInt | None = None
+    error: ErrorInfo | None = None
+
+
+ModelName = Annotated[str, Field(min_length=1, pattern=r"\S")]
+
+
+class AIConfig(StrictModel):
+    id: ID
+    provider: ID
+    base_url: str | None = None
+    api_key: Credential | None = None
+    system_prompt: str = ""
+    models: dict[ModelName, JSONObject] = Field(default_factory=dict)
+    timeout: Seconds = 600.0
+    retries: int = Field(default=5, ge=0)
+
+class ChannelConfig(StrictModel):
+    id: ID
+    channel: ID
+    options: JSONObject = Field(default_factory=dict)
+    timeout: Seconds = 30.0
+    enabled: bool = True
+    agent_enabled: bool = False
+
+
+class AnalysisTask(StrictModel):
+    id: ID
+    ai: ID
+    agent_mode: bool = False
+    agent_tools: list[ID] | None = None
+    system_prompt: str | None = None
+    input_prompt: str | None = None
+    user_prompt: str = ""
+    model: ModelName
+
+    @model_validator(mode="after")
+    def prompt_contract(self, info: ValidationInfo) -> Self:
+        if info.context and info.context.get("historical_snapshot"):
+            return self
+        if not self.user_prompt.strip():
+            raise ValueError("Analysis task requires a nonblank user_prompt")
+        if self.input_prompt is not None and not self.input_prompt.strip():
+            raise ValueError("Analysis task input_prompt cannot be blank")
+        return self
+
+
+class FanInConfig(StrictModel):
+    agent_mode: bool = False
+    agent_tools: list[ID] | None = None
+    single_task_optimization: bool = True
+    order: list[str] = Field(default_factory=list)
+    separator: str = "\n\n"
+    ai: ID | None = None
+    system_prompt: str | None = None
+    input_prompt: str | None = None
+    user_prompt: str = ""
+    reuse_from: ID | Literal["$first"] | None = "$first"
+    model: ModelName | None = None
+    mark_incomplete: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def historical_optimization(cls, value, info: ValidationInfo):
+        if (
+            info.context and info.context.get("historical_snapshot")
+            and isinstance(value, dict) and "single_task_optimization" not in value
+        ):
+            # Old checkpoints may already have released their analysis input.
+            return {**value, "single_task_optimization": False}
+        return value
+
+    def ordered_inputs(self, analyses: list[AnalysisTask]) -> list[str]:
+        return self.order or ["$input", *(task.id for task in analyses)]
+
+    def reused_task(self, analyses: list[AnalysisTask]) -> AnalysisTask | None:
+        if self.reuse_from is None:
+            return None
+        if self.reuse_from == "$first":
+            return analyses[0]
+        return next(task for task in analyses if task.id == self.reuse_from)
+
+    @model_validator(mode="after")
+    def paired_model(self, info: ValidationInfo) -> Self:
+        if self.agent_mode and self.ai is None and self.reuse_from is None:
+            raise ValueError("Agent fan-in requires an AI/model or a reused analysis task")
+        if (self.ai is None) != (self.model is None):
+            raise ValueError("Fan-in AI and model must be specified together")
+        if self.reuse_from is not None and self.ai is not None:
+            raise ValueError("Fan-in model reuse and explicit AI/model are mutually exclusive")
+        historical = info.context and info.context.get("historical_snapshot")
+        if not historical and (self.ai is not None or self.reuse_from is not None):
+            if not self.user_prompt.strip():
+                raise ValueError("AI fan-in requires a nonblank user_prompt")
+        if not historical and self.input_prompt is not None and not self.input_prompt.strip():
+            raise ValueError("Fan-in input_prompt cannot be blank")
+        return self
+
+
+class SourceOverride(StrictModel):
+    source: SourceConfig | None = None
+    options: JSONObject = Field(default_factory=dict)
+    setters: JSONObject = Field(default_factory=dict)
+    template: ID | None = None
+    arguments: JSONObject | None = None
+    limits: SourceLimits = Field(default_factory=SourceLimits)
+
+    @model_validator(mode="after")
+    def detached_source_has_no_template(self) -> Self:
+        if self.source is not None and (
+            self.source.template is not None or self.template is not None
+        ):
+            raise ValueError("Detached source snapshots cannot reference setter templates")
+        return self
+
+
+class ChannelOverride(StrictModel):
+    options: JSONObject = Field(default_factory=dict)
+
+
+class AtSchedule(StrictModel):
+    type: Literal["at"]
+    at: UTCDateTime
+
+
+class EverySchedule(StrictModel):
+    type: Literal["every"]
+    every_seconds: Seconds
+
+
+class CronSchedule(StrictModel):
+    type: Literal["cron"]
+    expression: str
+    timezone: str | None = None
+
+    @model_validator(mode="after")
+    def valid_cron(self) -> Self:
+        cron_trigger(self.expression, self.timezone)
+        return self
+
+
+WorkflowSchedule = Annotated[AtSchedule | EverySchedule | CronSchedule, Field(discriminator="type")]
+
+
+class WorkflowDefinition(StrictModel):
+    id: ID
+    name: str = ""
+    sources: Annotated[list[ID], AfterValidator(unique_check("sources IDs"))] = Field(default_factory=list)
+    analyses: list[AnalysisTask] = Field(min_length=1)
+    fan_in: FanInConfig | None = None
+    system_prompt: str = ""
+    input_prompt: str = "{input}"
+    channels: Annotated[list[ID], AfterValidator(unique_check("channels IDs"))] = Field(default_factory=list)
+    source_overrides: dict[ID, SourceOverride] = Field(default_factory=dict)
+    channel_overrides: dict[ID, ChannelOverride] = Field(default_factory=dict)
+    input_separator: str = "\n\n"
+    include_counts: bool = True
+    input_processing: InputProcessing = Field(default_factory=InputProcessing)
+    collection_concurrency: int = Field(default=4, ge=1)
+    analysis_concurrency: int = Field(default=4, ge=1)
+    on_all_empty: SourcePolicy = "stop"
+    analysis_failure: ContinuePolicy = "continue"
+    send_partial: bool = True
+    schedule: WorkflowSchedule | None = None
+    enabled: bool = True
+    backup: BackupPolicy = Field(default_factory=BackupPolicy)
+
+    @model_validator(mode="after")
+    def valid_references(self, info: ValidationInfo) -> Self:
+        historical = info.context and info.context.get("historical_snapshot")
+        if not historical and not self.input_prompt.strip():
+            raise ValueError("Workflow input_prompt cannot be blank")
+        if not self.source_overrides.keys() <= set(self.sources):
+            raise ValueError("Source overrides must reference selected sources")
+        if any(
+            override.source is not None and override.source.id != ident
+            for ident, override in self.source_overrides.items()
+        ):
+            raise ValueError("Detached source IDs must match their workflow binding")
+        if not self.channel_overrides.keys() <= set(self.channels):
+            raise ValueError("Channel overrides must reference selected channels")
+        tasks = [task.id for task in self.analyses]
+        unique_check("analysis IDs")(tasks)
+        if self.fan_in is not None:
+            order = self.fan_in.order
+            if len(order) != len(set(order)) or not set(order) <= {*tasks, "$input"}:
+                raise ValueError("fan_in order must contain unique analysis IDs or $input")
+            if self.fan_in.reuse_from not in {None, "$first", *tasks}:
+                raise ValueError("fan_in reuse_from must reference an analysis task or $first")
+        return self
+
+
+class WorkflowSnapshot(StrictModel):
+    workflow: WorkflowDefinition
+    sources: dict[ID, SourceConfig]
+    ai: dict[ID, AIConfig]
+    channels: dict[ID, ChannelConfig]
+    created_at: UTCDateTime
+    mcp_servers: dict[ID, MCPServerConfig] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def exact_references(self) -> Self:
+        expected_servers = {
+            source.call.server
+            for source in self.sources.values()
+            if source.call is not None and source.call.kind == "mcp"
+        }
+        if set(self.mcp_servers) != expected_servers or any(
+            key != server.id for key, server in self.mcp_servers.items()
+        ):
+            raise ValueError("Snapshot MCP mappings must exactly cover source server bindings")
+        for source in self.sources.values():
+            source.limits = source.limits.model_copy(update={
+                name: getattr(source.limits, name) or getattr(self.workflow.input_processing, name)
+                for name in ("item_tokens", "field_tokens")
+            })
+        # 验证引用完整性
+        ai_ids = {task.ai for task in self.workflow.analyses}
+        if self.workflow.fan_in is not None and self.workflow.fan_in.ai is not None:
+            ai_ids.add(self.workflow.fan_in.ai)
+        for resources, expected in (
+            (self.sources, set(self.workflow.sources)),
+            (self.ai, ai_ids),
+            (self.channels, set(self.workflow.channels)),
+        ):
+            if set(resources) != expected or any(key != item.id for key, item in resources.items()):
+                raise ValueError("Snapshot mappings must exactly cover their referenced IDs")
+        for task in self.workflow.analyses:
+            selected = task.model
+            if selected not in self.ai[task.ai].models:
+                raise ValueError("Analysis task model is not configured")
+        if self.workflow.fan_in and self.workflow.fan_in.ai:
+            selected = self.workflow.fan_in.model
+            if selected not in self.ai[self.workflow.fan_in.ai].models:
+                raise ValueError("Fan-in model is not configured")
+        return self
+
+
+class ReportText(StrictModel):
+    kind: Literal["text"]
+    title: str = Field(min_length=1)
+    text: str
+
+
+class ReportMetric(StrictModel):
+    label: str = Field(min_length=1)
+    value: str | Annotated[int, Field(strict=True)] | Annotated[float, Field(strict=True, allow_inf_nan=False)]
+    unit: str = ""
+
+
+class ReportMetrics(StrictModel):
+    kind: Literal["metrics"]
+    title: str = Field(min_length=1)
+    items: list[ReportMetric]
+
+
+class ReportTable(StrictModel):
+    kind: Literal["table"]
+    title: str = Field(min_length=1)
+    columns: list[Annotated[str, Field(min_length=1)]] = Field(min_length=1)
+    rows: list[list[str | Annotated[int, Field(strict=True)] | Annotated[float, Field(strict=True, allow_inf_nan=False)] | bool | None]]
+
+    @model_validator(mode="after")
+    def matching_columns(self) -> Self:
+        if any(len(row) != len(self.columns) for row in self.rows):
+            raise ValueError("Report table rows must match the declared columns")
+        return self
+
+
+class ResultReport(StrictModel):
+    sections: list[Annotated[ReportText | ReportMetrics | ReportTable, Field(discriminator="kind")]]
+
+
+class CollectorOutput(StrictModel):
+    status: CollectionStatus
+    items: list[JSONObject] = Field(default_factory=list)
+    text: str = ""
+    count: NonNegativeInt = 0
+    error: ErrorInfo | None = None
+    metadata: JSONObject = Field(default_factory=dict)
+    report: ResultReport | None = None
+
+    @model_validator(mode="after")
+    def coherent_result(self) -> Self:
+        if self.status == "success":
+            if not self.text.strip() or self.count == 0 or self.error is not None:
+                raise ValueError("Success requires consumable text, positive count and no error")
+        else:
+            if self.items or self.text or self.count:
+                raise ValueError("Non-success results cannot expose consumable or unfinished data")
+            if (self.status in ("empty", "filtered_empty")) != (self.error is None):
+                raise ValueError("Only missing, failed and timeout results require an error")
+        return self
+
+
+class CollectionResult(StrictModel):
+    """Acquisition fact shared by legacy collectors and MCP/CLI calls.
+
+    ``CollectorOutput`` is the plugin-facing normalized result.  The workflow
+    boundary additionally stores raw transport data, so it must not inherit
+    the plugin validator which requires a non-empty text/count pair.
+    """
+
+    source_id: ID
+    status: CollectionStatus
+    raw: JSONObject | None = None
+    items: list[JSONObject] = Field(default_factory=list)
+    text: str = ""
+    # Legacy Collector adapters may still carry a plugin-provided count while
+    # this transitional model is validated.  Counts are not a Workflow
+    # acquisition fact and must never cross the raw-result/archive boundary.
+    count: NonNegativeInt = Field(default=0, exclude=True)
+    error: ErrorInfo | None = None
+    metadata: JSONObject = Field(default_factory=dict)
+    report: ResultReport | None = None
+
+    @model_validator(mode="after")
+    def coherent_raw_result(self) -> Self:
+        """Validate transport facts without collapsing raw JSON false/empty values."""
+        if self.status == "success":
+            if self.error is not None or not (self.raw is not None or self.text or self.items):
+                raise ValueError("Successful collection requires raw or consumable content")
+        elif self.status in {"empty", "filtered_empty"}:
+            # Empty is still a transport fact: callers may need the original
+            # empty payload to distinguish an observed empty result from a
+            # missing/failed invocation.  It must not expose normalized
+            # consumable fields or an error, however.
+            if self.error is not None or self.text or self.items or self.count:
+                raise ValueError("Empty collection cannot expose consumable content or an error")
+        elif self.status in {"missing", "failed", "timeout"}:
+            if self.error is None:
+                raise ValueError("Unsuccessful collection requires an error")
+        return self
+
+
+class InputView(StrictModel):
+    source_id: ID
+    status: Literal["success", "failed", "skipped"]
+    text: str = ""
+    truncated: bool = False
+    omitted: bool = False
+    error: ErrorInfo | None = None
+
+
+class AnalysisResult(StrictModel):
+    task_id: ID
+    status: AnalysisStatus
+    agent_session_id: ID | None = None
+    text: str = ""
+    error: ErrorInfo | None = None
+    usage: JSONObject = Field(default_factory=dict)
+    elapsed_ms: float = Field(default=0.0, ge=0, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def coherent_result(self) -> Self:
+        if self.status == "success":
+            if self.error is not None or not self.text.strip():
+                raise ValueError("Successful analysis needs text and no error")
+        elif self.text or self.error is None:
+            raise ValueError("Unsuccessful analysis needs an error and cannot contain output text")
+        return self
+
+
+class Notification(StrictModel):
+    session_id: ID
+    output_id: ID
+    title: str = ""
+    text: str
+    metadata: JSONObject = Field(default_factory=dict)
+
+
+class DeliveryResult(StrictModel):
+    channel_id: ID
+    output_id: ID
+    status: DeliveryStatus
+    attempts: int = Field(ge=0, le=1)
+    error: ErrorInfo | None = None
+
+    @model_validator(mode="after")
+    def coherent_result(self) -> Self:
+        if self.status == "success" and (self.attempts != 1 or self.error is not None):
+            raise ValueError("Successful delivery requires one attempt and no error")
+        if self.status == "skipped" and (self.attempts != 0 or self.error is not None):
+            raise ValueError("Skipped delivery requires zero attempts and no error")
+        if self.status in ("failed", "timeout") and self.error is None:
+            raise ValueError("Failed or timed out delivery requires an error")
+        return self
+
+
+class ArtifactInfo(StrictModel):
+    content_version: SessionVersion | None = None
+    stage: WorkflowStage
+    availability: ArtifactAvailability
+    size_bytes: NonNegativeInt | None = None
+    error: ErrorInfo | None = None
+
+
+class PhaseContent(ArtifactInfo):
+    """A body read from one explicitly selected SessionStore version."""
+
+    session_id: ID
+    version: SessionVersion
+    content: JSONValue = None
+
+    @model_validator(mode="after")
+    def coherent_content(self) -> Self:
+        if (self.availability == "available") != (self.content is not None):
+            raise ValueError("Only available phase content carries a non-null body")
+        return self
+
+
+class RecoveryAvailability(StrictModel):
+    checkpoint_expires_at: UTCDateTime | None = None
+    available: bool
+    reason: ErrorInfo | None = None
+
+
+class WorkflowProgress(StrictModel):
+    """已提交业务结果的轻量引用，不包含正文或运行配置。"""
+
+    session_id: ID
+    execution_epoch: str | None = None
+    stage: WorkflowStage | None = None
+    event: Literal["item", "aggregate", "delivery", "lifecycle"]
+    status: str
+    item_id: ID | None = None
+    output_id: ID | None = None
+    channel_id: ID | None = None
+    label: str | None = None
+    order: NonNegativeInt = 0
+    result_ref: str | None = None
+    version: SessionVersion | None = None
+    availability: ArtifactAvailability = "pending"
+    error: ErrorInfo | None = None
+    summary: JSONObject = Field(default_factory=dict)
+
+
+class SessionRecord(StrictModel):
+    """Read-only business session data, independent of execution checkpoints."""
+
+    session_id: ID
+    workflow_id: ID
+    workflow_name: str | None = None
+    version: SessionVersion
+    status: SessionStatus
+    stage: WorkflowStage | None = None
+    created_at: UTCDateTime
+    updated_at: UTCDateTime
+    finished_at: UTCDateTime | None = None
+    error: ErrorInfo | None = None
+    artifacts: list[ArtifactInfo] = Field(default_factory=list)
+    snapshot_availability: ArtifactAvailability
+    execution_epoch: str | None = None
+    progress: list[WorkflowProgress] = Field(default_factory=list)
+
+
+class PluginEntry(StrictModel):
+    backend: str = Field(min_length=1)
+
+
+class PluginManifest(StrictModel):
+    id: ID
+    version: str = Field(min_length=1)
+    kind: PluginKind
+    api_version: int = Field(ge=1, le=1)
+    entry: PluginEntry
+
+
+class PluginSettings(StrictModel):
+    enabled: bool = True
+
+
+PluginConfiguration = dict[PluginKind, dict[ID, PluginSettings]]
+
+
+class CapabilityDescription(StrictModel):
+    kind: PluginKind
+    name: ID
+    id_prefix: ResourceIDPrefix | None = None
+    description: str = Field(min_length=1)
+    plugin: str
+    capabilities: list[str]
+    options_schema: JSONSchema
+    setters_schema: JSONSchema | None = None
+    fields: list[str] = Field(default_factory=list)
+    count_unit: str | None = None
+    input_schema: JSONSchema | None = None
+    execution: Literal["read", "exclusive"] = "exclusive"
+
+
+class DiscoveryReport(StrictModel):
+    registered: list[CapabilityDescription] = Field(default_factory=list)
+    errors: list[ErrorInfo] = Field(default_factory=list)
+
+
+class ExecutionContext(StrictModel):
+    workflow_id: ID | None = None
+    session_id: ID | None = None
+    stage: WorkflowStage | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CollectionContext:
+    """Invocation-only dependencies; absent optional services are diagnosed on use."""
+
+    workflow_id: ID
+    session_id: ID
+    log_path: str | None = None
+    credentials: CredentialResolver | None = None
+    session_reader: SessionReader | None = None
+    mcp_servers: dict[str, MCPServerConfig] | None = None
+
+    def __post_init__(self) -> None:
+        try:
+            # 因为是dataclass而非pydantic
+            TypeAdapter(ID).validate_python(self.workflow_id)
+            TypeAdapter(ID).validate_python(self.session_id)
+        except Exception as exc:
+            raise ValueError("workflow_id and session_id must be valid IDs") from exc
+        if self.log_path is not None and not isinstance(self.log_path, str):
+            raise ValueError("log_path must be a resolved path string")
+
+
+class ComponentHealth(StrictModel):
+    component: str
+    status: Literal["available", "degraded", "unavailable", "unknown"]
+    required: bool
+    error: ErrorInfo | None = None
+    checked_at: UTCDateTime | None = None
+
+
+class HealthReport(StrictModel):
+    status: Literal["ready", "degraded", "unavailable"]
+    accepting_runs: bool
+    checked_at: UTCDateTime
+    components: list[ComponentHealth]
+
+
+ModelT = TypeVar("ModelT", bound=StrictModel)
+
+
+def copy_model(model: ModelT) -> ModelT:
+    """Revalidate mutable nested data while producing an independent object."""
+    return type(model).model_validate(deepcopy(model.model_dump(mode="python")))

@@ -21,7 +21,7 @@
 
 channel以插件形式导入，通过config模块向 Manager 注入只读 `channelRegister`
 
-Manager 接收快照 ChannelConfig，按 options_schema 的 x-logagent-workflow 注解分离实例配置与调用选项；host/key 只需在可复用实例保存一次。
+Manager 接收快照 ChannelConfig，按 options_schema 的 x-workflowweave-workflow 注解分离实例配置与调用选项；host/key 只需在可复用实例保存一次。
 
 ChannelConfig 的公共字段由公共模型校验，options 由注册类型解释。目标只能来自配置，通知 text/metadata 不能覆盖收件人、路径或凭据。校验阶段不连接远端或发送测试消息。
 

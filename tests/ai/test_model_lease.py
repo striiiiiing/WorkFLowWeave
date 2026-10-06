@@ -4,9 +4,9 @@ import json
 import httpx
 import pytest
 
-from logagent.ai import AIService, OpenAIChannelFactory
-from logagent.ai.errors import ModelError
-from logagent.models import AIConfig
+from workflowweave.ai import AIService, OpenAIChannelFactory
+from workflowweave.ai.errors import ModelError
+from workflowweave.models import AIConfig
 
 
 def config():

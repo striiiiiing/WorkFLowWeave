@@ -14,7 +14,7 @@
 - 复用现有固定 `mcp` 代理的 `list`、`search`、`describe`、`call` 动作实现 schema-first Agent 交互，不新增平行顶层工具。
 - MCP 目录探测优先使用 `server/discover`，不支持时兼容 `tools/list`。
 - 通过 Cursor 风格 `mcpServers` JSON 导入 MCP；配置键名原样作为服务 ID。
-- 从 MCP 返回的 `_meta.logagent_count` 读取业务计数；缺失时统一标记 `count_unavailable`。
+- 从 MCP 返回的 `_meta.workflowweave_count` 读取业务计数；缺失时统一标记 `count_unavailable`。
 - 将来源名称、MCP 服务名称、工具名称和请求参数作为调用描述交接给继续对话的 Agent，由 Agent 自己通过 `mcp` 代理发现和调用；CLI 来源交接来源名称和 CLI 指令。
 - 将旧来源的 `stop`、`notice`、`skip` 错误策略应用到 MCP 请求错误。
 
@@ -37,4 +37,4 @@
 
 - `f175e03`：旧 `ToolDeclaration`/Agent 调度框架和 Collector 时代的错误策略。
 - `bf9fc1c`：MCP SDK runtime、stdio/SSE/Streamable HTTP、目录缓存、schema 校验和原始结果。
-- 本轮用户决定：`_meta.logagent_count`、缺失为 `count_unavailable`、`server/discover` 优先、Cursor 键名作为服务 ID。
+- 本轮用户决定：`_meta.workflowweave_count`、缺失为 `count_unavailable`、`server/discover` 优先、Cursor 键名作为服务 ID。

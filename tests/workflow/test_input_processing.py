@@ -3,8 +3,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from logagent.errors import LogAgentError
-from logagent.models import (
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import (
     AIConfig,
     AnalysisTask,
     CollectionResult,
@@ -12,8 +12,8 @@ from logagent.models import (
     WorkflowDefinition,
     WorkflowSnapshot,
 )
-from logagent.workflow.input_formats import serialize, strict_json
-from logagent.workflow.input_processing import extract, process_input
+from workflowweave.workflow.input_formats import serialize, strict_json
+from workflowweave.workflow.input_processing import extract, process_input
 
 
 def snapshot(*, format="none", item=None, field=None, total=None, sources=("first",)):
@@ -52,7 +52,7 @@ def test_structured_duplicate_and_original_precedence():
     assert len(parts) == 2 and parts[0].original == '{ "x" : false }'
     assert parts[1].value == "explanation"
     raw["content"].append({"type": "image", "data": "a", "mimeType": "image/png"})
-    with pytest.raises(LogAgentError, match="内容块"):
+    with pytest.raises(WorkFLowWeaveError, match="内容块"):
         extract(raw, "mcp")
 
 
@@ -86,7 +86,7 @@ def test_multimodel_item_and_total_budget_order():
 
 def test_missing_tokenizer_fails_only_with_limits():
     process_input(snapshot(), [result("abc")])
-    with pytest.raises(LogAgentError, match="计量能力"):
+    with pytest.raises(WorkFLowWeaveError, match="计量能力"):
         process_input(snapshot(item=5), [result("abc")])
 
 

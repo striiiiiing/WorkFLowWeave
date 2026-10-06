@@ -8,7 +8,7 @@ import httpx
 import pytest
 from typer.testing import CliRunner
 
-from logagent.interaction import cli
+from workflowweave.interaction import cli
 
 
 def test_cli_import_does_not_load_lifecycle_runtime() -> None:
@@ -16,8 +16,8 @@ def test_cli_import_does_not_load_lifecycle_runtime() -> None:
         [
             sys.executable,
             "-c",
-            "import sys; import logagent.interaction.cli; "
-            "print('logagent.lifecycle.service' in sys.modules)",
+            "import sys; import workflowweave.interaction.cli; "
+            "print('workflowweave.lifecycle.service' in sys.modules)",
         ],
         check=True,
         capture_output=True,
