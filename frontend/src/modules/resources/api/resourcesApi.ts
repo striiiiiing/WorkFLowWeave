@@ -8,8 +8,8 @@ import type {
   SourceConfig,
   SourceOverride,
   AIConfig,
-} from '../model/types'
-import type { McpConfig } from '../model/mcpImport'
+} from '../model/public'
+import type { McpConfig } from '../model/mcp/import'
 
 export function createResourcesApi(http: HttpClient) {
   return {

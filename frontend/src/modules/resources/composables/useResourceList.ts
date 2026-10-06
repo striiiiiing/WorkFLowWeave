@@ -3,13 +3,13 @@ import { useQuery } from '@/shared/async/useQuery'
 import { useAsyncTask } from '@/shared/async/useAsyncTask'
 import { useResourcesApi } from '../api/dependencies'
 import type { ResourcesApi } from '../api/resourcesApi'
-import type { EditableKind } from '../model/resources'
+import type { EditableKind } from '../model/public'
 import type {
   SourceConfig,
   AIConfig,
   ChannelConfig,
   SourceConfigEditorGateway,
-} from '../model/types'
+} from '../model/public'
 export function useResourceList(
   kind: Readonly<Ref<EditableKind>>,
   api: ResourcesApi = useResourcesApi(),

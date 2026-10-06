@@ -1,6 +1,6 @@
 import { ref } from 'vue'
-import type { CredentialProtector } from '../model/types'
-import type { Credential } from '../model/types'
+import type { CredentialProtector } from '../model/public'
+import type { Credential } from '../model/public'
 
 type CredentialMode = 'keep' | 'input' | 'env' | 'none'
 

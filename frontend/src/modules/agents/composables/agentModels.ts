@@ -1,4 +1,4 @@
-import type { AgentModel } from '../model/types'
+import type { AgentModel } from '../model/public'
 
 const DEFAULT_MODEL_KEY = 'logagent.agent.default-model'
 

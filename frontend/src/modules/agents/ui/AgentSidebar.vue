@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { sessionKind, sessionKindLabels } from '../model/sessionKind'
-import type { AgentSession } from '../model/types'
+import { sessionKind, sessionKindLabels } from '../model/session/sessionKind'
+import type { AgentSession } from '../model/public'
 import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 
 const props = defineProps<{ sessions: AgentSession[]; selectedId?: string }>()

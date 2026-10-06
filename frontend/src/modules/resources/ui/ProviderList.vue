@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AIConfig } from '../model/types'
+import type { AIConfig } from '../model/public'
 import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 defineProps<{ resources: readonly AIConfig[]; pending: boolean; busy: boolean; error: string }>()
 const emit = defineEmits<{ edit: [value: AIConfig]; remove: [id: string] }>()

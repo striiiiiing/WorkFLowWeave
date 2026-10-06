@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { fields, type FilterField } from '../model/filters'
-import { sessionStates } from '../model/session'
-import type { SessionStatus } from '../model/types'
+import { fields, type FilterField } from '@/modules/workflows/model/public'
+import { sessionStates } from '@/modules/workflows/model/public'
+import type { SessionStatus } from '@/modules/workflows/model/public'
 const filterField = defineModel<FilterField>('field', { required: true })
 const filterValue = defineModel<string>('value', { required: true })
 const filterStatus = defineModel<SessionStatus | ''>('status', { required: true })

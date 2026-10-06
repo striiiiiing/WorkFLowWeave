@@ -1,7 +1,8 @@
 import { ApiError } from '@/shared/api/errors'
 import { useAsyncTask, type AsyncTaskResult } from '@/shared/async/useAsyncTask'
 import { useRunsApi } from '../api/dependencies'
-import type { ResumeOptions, RunsApi } from '../api/runsApi'
+import type { RunsApi } from '../api/runsApi'
+import type { ResumeOptions } from '@/modules/workflows/model/public'
 
 export type RunActionResult<T> =
   | { status: 'success'; value: T }

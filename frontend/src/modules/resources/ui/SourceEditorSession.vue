@@ -5,7 +5,7 @@ import type {
   SourceOverride,
   SourceSaveTarget,
   SourceUsageView,
-} from '../model/types'
+} from '../model/public'
 import { useSourceEditor } from '../composables/useSourceEditor'
 import SourceEditorDrawer from './SourceEditorDrawer.vue'
 const props = defineProps<{

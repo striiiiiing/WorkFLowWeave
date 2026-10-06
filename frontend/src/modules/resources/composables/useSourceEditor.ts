@@ -1,7 +1,7 @@
 import { computed, shallowRef, toRaw } from 'vue'
 import { useQuery } from '@/shared/async/useQuery'
 import { useAsyncTask } from '@/shared/async/useAsyncTask'
-import { createResource, generatedResourceId } from '../model/resources'
+import { createResource, generatedResourceId } from '../model/public'
 import type {
   SourceConfig,
   SourceBasicChanges,
@@ -9,7 +9,7 @@ import type {
   SourceConfigEditorGateway,
   SourceOverride,
   SourceSaveTarget,
-} from '../model/types'
+} from '../model/public'
 
 export interface SourceEditorInput {
   readonly initial?: SourceConfig

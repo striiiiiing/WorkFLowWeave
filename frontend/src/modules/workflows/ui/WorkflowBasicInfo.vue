@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import SectionCard from '@/shared/ui/SectionCard.vue'
 import { useCronPreview } from '../composables/useCronPreview'
-import type { WorkflowChanges } from '../model/actions'
+import type { WorkflowChanges } from '../model/create/actions'
 import {
   DEFAULT_DAILY_CRON,
   dailyCron,
@@ -12,8 +12,8 @@ import {
   weeklyCron,
   type CronPreset,
   type Weekday,
-} from '../model/cronPresets'
-import type { WorkflowDefinition, WorkflowSchedule } from '../model/types'
+} from '../model/create/cronPresets'
+import type { WorkflowDefinition, WorkflowSchedule } from '../model/public'
 
 const props = defineProps<{
   draft: WorkflowDefinition

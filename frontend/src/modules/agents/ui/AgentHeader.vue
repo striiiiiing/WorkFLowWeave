@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { AgentModel, AgentSession, ContextBudget } from '../model/types'
+import type { AgentModel, AgentSession, ContextBudget } from '../model/public'
 import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 import { groupAgentModels } from '../composables/agentModels'
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { SourceConfig, SourceUsageView } from '../model/types'
-import { sourceName } from '../model/resources'
+import type { SourceConfig, SourceUsageView } from '../model/public'
+import { sourceName } from '../model/public'
 import SourceSummary from './SourceSummary.vue'
 import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 defineProps<{

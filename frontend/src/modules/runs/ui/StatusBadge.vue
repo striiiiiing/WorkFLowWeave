@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { sessionStates } from '../model/session'
-import type { SessionStatus } from '../model/types'
+import { sessionStates } from '@/modules/workflows/model/public'
+import type { SessionStatus } from '@/modules/workflows/model/public'
 defineProps<{ status: SessionStatus }>()
 </script>
 <template>

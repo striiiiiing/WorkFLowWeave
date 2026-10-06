@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SourceConfig } from '../model/types'
+import type { SourceConfig } from '../model/public'
 defineProps<{ source: SourceConfig }>()
 </script>
 <template>

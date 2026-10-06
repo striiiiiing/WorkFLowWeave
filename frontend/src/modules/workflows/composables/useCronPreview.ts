@@ -2,7 +2,7 @@ import { computed, ref, watch, type Ref } from 'vue'
 import { errorMessage } from '@/shared/api/errors'
 import { useWorkflowsApi } from '../api/dependencies'
 import type { CronPreview } from '../api/workflowsApi'
-import type { WorkflowSchedule } from '../model/types'
+import type { WorkflowSchedule } from '../model/public'
 
 type CronSchedule = Extract<WorkflowSchedule, { type: 'cron' }>
 

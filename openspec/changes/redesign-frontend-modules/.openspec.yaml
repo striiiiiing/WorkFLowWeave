@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-10-06
+skip_specs: true
+goal: 仅重构前端 Model；按业务垂直分层并将 Workflow 创建、运行和历史模型归于同一目录，API 与组件保持原位

@@ -5,23 +5,10 @@ import type {
   RecoveryAvailability,
   SessionRecord,
   WorkflowStage,
-} from '../model/types'
-export interface SessionQuery {
-  workflow_id?: string
-  workflow_name?: string
-  session_id?: string
-  status?: SessionRecord['status']
-  limit?: number
-  offset?: number
-  after?: string
-  before?: string
-}
-export interface ResumeOptions {
-  stage?: Exclude<WorkflowStage, 'finish'> | 'process'
-  checkpoint_id?: string
-  request_id?: string
-}
-export type RecoveryQuery = Pick<ResumeOptions, 'stage' | 'checkpoint_id'>
+  SessionQuery,
+  ResumeOptions,
+  RecoveryQuery,
+} from '@/modules/workflows/model/public'
 export function createRunsApi(
   http: HttpClient,
   subscribe: RunEventTransport = createRunEventSource(),

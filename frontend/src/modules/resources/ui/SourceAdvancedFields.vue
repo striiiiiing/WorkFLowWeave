@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { SourceConfig } from '../model/types'
-import { sourcePolicies } from '../model/forms'
+import type { SourceConfig } from '../model/public'
+import { sourcePolicies } from '../model/source/forms'
 defineProps<{ value: Readonly<SourceConfig> }>()
 const emit = defineEmits<{ change: [value: Partial<SourceConfig>] }>()
 const policyFields = [

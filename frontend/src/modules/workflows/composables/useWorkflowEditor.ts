@@ -21,11 +21,12 @@ import {
   updateAnalysis,
   updateBackup as updateBackupPolicy,
   updateWorkflow,
-} from '../model/actions'
-import { cloneWorkflow, createFanIn, createWorkflow } from '../model/defaults'
-import { validateAnalysisId } from '../model/validation'
-import { classifyLegacyRetention } from '../model/backup'
-import type { AnalysisTask, BackupPolicy, FanInConfig, WorkflowDefinition } from '../model/types'
+} from '../model/create/actions'
+import { cloneWorkflow, createWorkflow } from '../model/create/defaults'
+import { createFanIn } from '../model/create/stages/aggregation'
+import { validateAnalysisId } from '../model/create/validation'
+import { classifyLegacyRetention } from '../model/create/backup'
+import type { AnalysisTask, BackupPolicy, FanInConfig, WorkflowDefinition } from '../model/public'
 
 export interface WorkflowEditorOptions {
   identity: MaybeRefOrGetter<string | undefined>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { SessionRecord } from '../model/types'
-import { stages, formatTime } from '../model/session'
+import type { SessionRecord } from '@/modules/workflows/model/public'
+import { stages, formatTime } from '@/modules/workflows/model/public'
 import StatusBadge from './StatusBadge.vue'
 const props = defineProps<{ session: SessionRecord }>()
 const stageName = computed(

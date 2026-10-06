@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AgentModel } from '../model/types'
+import type { AgentModel } from '../model/public'
 import AgentModelSelect from './AgentModelSelect.vue'
 
 defineProps<{

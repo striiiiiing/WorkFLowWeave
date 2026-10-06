@@ -1,7 +1,7 @@
 import { useQuery } from '@/shared/async/useQuery'
 import { isTaskSuccess, useAsyncTask } from '@/shared/async/useAsyncTask'
 import type { AgentsApi } from '../api/agentsApi'
-import type { AgentConfig } from '../model/types'
+import type { AgentConfig } from '../model/public'
 import { saveDefaultAgentModel } from './agentModels'
 
 export function useAgentSettings(api: Pick<AgentsApi, 'config' | 'updateConfig' | 'updateTool'>) {

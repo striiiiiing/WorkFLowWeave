@@ -7,7 +7,8 @@ import type {
   AgentConfig,
   AgentSettings,
   TurnAccepted,
-} from '../model/types'
+  WorkflowHandoffInput,
+} from '../model/public'
 import { segment, type HttpClient } from '@/shared/api'
 
 export function createAgentsApi(http: HttpClient) {
@@ -40,8 +41,8 @@ export function createAgentsApi(http: HttpClient) {
     list: (signal?: AbortSignal) =>
       http.request<AgentSession[]>({ url: '/agents/sessions', signal }),
     create: async (payload: {
-      model?: string
-      workflow_session_id?: string
+      model?: WorkflowHandoffInput['model']
+      workflow_session_id?: WorkflowHandoffInput['workflow_session_id']
       workflow_id?: string
       task_id?: string
     }) =>

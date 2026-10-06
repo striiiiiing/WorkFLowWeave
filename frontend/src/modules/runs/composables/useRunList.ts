@@ -1,9 +1,10 @@
 import { computed, ref, watch } from 'vue'
 import { useQuery } from '@/shared/async/useQuery'
 import { useRunsApi } from '../api/dependencies'
-import type { RunsApi, SessionQuery } from '../api/runsApi'
-import type { SessionStatus } from '../model/types'
-import { fields, type FilterField } from '../model/filters'
+import type { RunsApi } from '../api/runsApi'
+import type { SessionQuery } from '@/modules/workflows/model/public'
+import type { SessionStatus } from '@/modules/workflows/model/public'
+import { fields, type FilterField } from '@/modules/workflows/model/public'
 export const RUN_PAGE_SIZE = 20
 export function useRunList(api: Pick<RunsApi, 'list'> = useRunsApi()) {
   const filterField = ref<FilterField>('workflow_name')

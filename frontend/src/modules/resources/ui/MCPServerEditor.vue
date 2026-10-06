@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useResourceTransport } from '../composables/useResourceTransport'
-import type { Credential, MCPServerConfig } from '../model/types'
-import { createResource } from '../model/resources'
+import type { Credential, MCPServerConfig } from '../model/public'
+import { createResource } from '../model/public'
 import {
   mcpExample,
   parseMcpConfig,
   resourceToMcpConfig,
   serverToResource,
-} from '../model/mcpImport'
+} from '../model/mcp/import'
 
 const props = defineProps<{ initial?: MCPServerConfig }>()
 const emit = defineEmits<{ saved: []; cancel: [] }>()

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import { useAsyncTask } from '@/shared/async/useAsyncTask'
-import { resultStatus, unavailableText } from '../model/report'
+import { resultStatus, unavailableText } from '@/modules/workflows/model/public'
 import type { PhaseReportController } from '../composables/usePhaseReport'
 import ReportText from '@/shared/ui/ReportText.vue'
 const props = defineProps<{ report: PhaseReportController; active: boolean; advanced: boolean }>()

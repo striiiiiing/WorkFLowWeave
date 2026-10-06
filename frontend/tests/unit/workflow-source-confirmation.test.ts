@@ -3,7 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus, { ElPopconfirm } from 'element-plus'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import SourceStepCard from '@/modules/workflows/ui/SourceStepCard.vue'
-import { createResource } from '@/modules/resources/model/resources'
+import { createResource } from '@/modules/resources/model/public'
 import { createWorkflow, useWorkflowEditor } from '@/modules/workflows/public'
 import type { SourceConfigEditorGateway } from '@/modules/resources/public'
 

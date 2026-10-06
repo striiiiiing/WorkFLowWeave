@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { SourceConfig, SourceSaveTarget, SourceUsageView } from '../model/types'
+import type { SourceConfig, SourceSaveTarget, SourceUsageView } from '../model/public'
 import type { SourceEditorController } from '../composables/useSourceEditor'
 import SourceConfigEditor from './SourceConfigEditor.vue'
 const props = defineProps<{

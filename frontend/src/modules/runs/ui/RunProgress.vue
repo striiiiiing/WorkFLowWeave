@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { SessionRecord } from '../model/types'
+import type { SessionRecord } from '@/modules/workflows/model/public'
 import {
   progressIdentity,
   progressItemLabel,
   progressStages,
   progressStatusLabel,
   progressTagType,
-} from '../model/progress'
-import { availabilityLabels, stages } from '../model/session'
+} from '@/modules/workflows/model/public'
+import { availabilityLabels, stages } from '@/modules/workflows/model/public'
 import AppIcon from '@/shared/ui/icons/AppIcon.vue'
 
 const props = defineProps<{ session: SessionRecord; active: boolean }>()

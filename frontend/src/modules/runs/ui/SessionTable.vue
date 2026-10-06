@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import StatusBadge from './StatusBadge.vue'
-import { formatTime, formatWorkflowName, stages } from '../model/session'
-import type { SessionRecord } from '../model/types'
+import { formatTime, formatWorkflowName, stages } from '@/modules/workflows/model/public'
+import type { SessionRecord } from '@/modules/workflows/model/public'
 withDefaults(defineProps<{ sessions: SessionRecord[]; loading?: boolean }>(), { loading: false })
 const emit = defineEmits<{ open: [id: string] }>()
 function formatStage(stage: SessionRecord['stage']) {

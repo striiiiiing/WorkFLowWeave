@@ -2,8 +2,8 @@ import { onScopeDispose, ref, shallowReadonly, shallowRef, watch, type Ref } fro
 import { useErrorFormatter } from '@/shared/async/errorFormatter'
 import { useRunsApi } from '../api/dependencies'
 import type { RunsApi } from '../api/runsApi'
-import { isTerminalStatus } from '../model/progress'
-import type { SessionRecord } from '../model/types'
+import { isTerminalStatus } from '@/modules/workflows/model/public'
+import type { SessionRecord } from '@/modules/workflows/model/public'
 
 export type RunConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'closed'
 
