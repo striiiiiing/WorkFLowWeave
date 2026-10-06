@@ -30,7 +30,7 @@ async function readSse(page: import('@playwright/test').Page, path: string, last
 
 async function installMockModel(page: Page) {
   await page.addInitScript(() => {
-    localStorage.setItem('logagent.agent.default-model', 'mock:smoke')
+    localStorage.setItem('workflowweave.agent.default-model', 'mock:smoke')
   })
   await page.route('**/api/agents/config', async (route) => {
     if (route.request().method() !== 'GET') return route.continue()

@@ -17,10 +17,10 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 
-from logagent.agent.config import AgentConfig
-from logagent.interaction.app import create_app
-from logagent.lifecycle import ApplicationLifecycle
-from logagent.models import SystemConfig
+from workflowweave.agent.config import AgentConfig
+from workflowweave.interaction.app import create_app
+from workflowweave.lifecycle import ApplicationLifecycle
+from workflowweave.models import SystemConfig
 
 
 class SmokeModel(BaseChatModel):
@@ -28,7 +28,7 @@ class SmokeModel(BaseChatModel):
 
     @property
     def _llm_type(self) -> str:
-        return "logagent-browser-smoke"
+        return "workflowweave-browser-smoke"
 
     def bind_tools(self, tools, **kwargs):
         return self
@@ -78,6 +78,6 @@ class SmokeLifecycle(ApplicationLifecycle):
         return services
 
 
-with TemporaryDirectory(prefix="logagent-agent-browser-") as temporary:
+with TemporaryDirectory(prefix="workflowweave-agent-browser-") as temporary:
     lifecycle = SmokeLifecycle(Path(temporary))
     uvicorn.run(create_app(lifecycle), host="127.0.0.1", port=14301)

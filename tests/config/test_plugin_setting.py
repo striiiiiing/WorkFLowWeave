@@ -1,7 +1,7 @@
 import json
 
-from logagent.config.registry import PluginRegistry
-from logagent.models import SystemConfig
+from workflowweave.config.registry import PluginRegistry
+from workflowweave.models import SystemConfig
 
 
 def test_plugin_setting_update_uses_registry_config_file(tmp_path):

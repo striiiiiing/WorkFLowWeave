@@ -61,13 +61,13 @@ async def call(service, config, options, *, task_id="live", on_cancel=None):
     model = next(iter(current.models))
     current.models[model] = {"max_tokens": 1024, **options}
     return await service.execute(
-        current, "{input}", "Reply LOGAGENT_OK.", model=model,
+        current, "{input}", "Reply WORKFLOWWEAVE_OK.", model=model,
         task_id=task_id, on_cancel=on_cancel,
     )
 
 
 def assert_success(result, config):
-    """要求分析成功且正文含模型对应标记：mock 为“测试”，Qwen 为 LOGAGENT_OK。"""
+    """要求分析成功且正文含模型对应标记：mock 为“测试”，Qwen 为 WORKFLOWWEAVE_OK。"""
     assert result.status == "success", result.model_dump_json()
-    expected = "测试" if next(iter(config.models)) == "mock" else "LOGAGENT_OK"
+    expected = "测试" if next(iter(config.models)) == "mock" else "WORKFLOWWEAVE_OK"
     assert expected in result.text, result.model_dump_json()

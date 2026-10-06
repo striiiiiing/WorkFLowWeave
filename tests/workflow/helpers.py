@@ -7,7 +7,7 @@
 import asyncio
 from datetime import UTC, datetime
 
-from logagent.models import (
+from workflowweave.models import (
     AIConfig,
     AnalysisResult,
     AnalysisTask,

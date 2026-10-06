@@ -3,7 +3,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-server = FastMCP("LogAgent contract fixture")
+server = FastMCP("WorkFLowWeave contract fixture")
 
 @server.tool()
 def echo(value: str, count: int = 1) -> dict[str, Any]:

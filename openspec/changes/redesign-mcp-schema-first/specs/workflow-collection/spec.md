@@ -29,7 +29,7 @@ MCP 来源 SHALL 保存服务 ID、工具名和原始请求参数，并调用共
 
 ### Requirement: Empty count is not a request error
 
-正常 MCP 响应的 `_meta.logagent_count = 0` SHALL 进入空业务结果处理，不触发请求错误策略。
+正常 MCP 响应的 `_meta.workflowweave_count = 0` SHALL 进入空业务结果处理，不触发请求错误策略。
 
 #### Scenario: Empty but successful response
 
@@ -38,7 +38,7 @@ MCP 来源 SHALL 保存服务 ID、工具名和原始请求参数，并调用共
 
 ### Requirement: Count absence is explicit
 
-缺少或非法的 `_meta.logagent_count` SHALL 统一记录 `count_unavailable`，不得从正文或数组长度估算。
+缺少或非法的 `_meta.workflowweave_count` SHALL 统一记录 `count_unavailable`，不得从正文或数组长度估算。
 
 #### Scenario: Count unavailable
 

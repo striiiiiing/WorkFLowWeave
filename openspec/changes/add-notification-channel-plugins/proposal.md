@@ -10,9 +10,9 @@
 
 ## What Changes
 
-- 在 `plugins/` 下提供六个独立的 channel 插件；`src/logagent/channel/` 只保留通用协议、注册器、Manager、队列、回执和平台无关的会话模型。
+- 在 `plugins/` 下提供六个独立的 channel 插件；`src/workflowweave/channel/` 只保留通用协议、注册器、Manager、队列、回执和平台无关的会话模型。
 - 优先使用维护方提供的 SDK/API：`aiosmtplib`、腾讯 `qq-botpy`、飞书 `lark-oapi`、`python-telegram-bot`。
-- 微信“小龙虾”按当前资料解释为 OpenClaw Weixin 通道；Python 插件使用受支持的 OpenClaw/Tencent iLink 桥接或 sidecar，不在 LogAgent 内重写 iLink 协议。
+- 微信“小龙虾”按当前资料解释为 OpenClaw Weixin 通道；Python 插件使用受支持的 OpenClaw/Tencent iLink 桥接或 sidecar，不在 WorkFLowWeave 内重写 iLink 协议。
 - 本地文件渠道从旧的 `mock` 语义改为正式的文件记录渠道。拟采用追加式 UTF-8 JSON Lines，每条通知对应一条记录；旧能力名是否迁移为 `file` 需用户确认。
 - Email 继续使用现有 `aiosmtplib` SMTP 出站实现，只发送通知，不增加 IMAP/POP 入站。
 - 删除新资源初始化时的采集器预配置和旧 `default_file`/`mock` 通知种子；不删除用户已经保存的来源或渠道，兼容迁移另列任务。

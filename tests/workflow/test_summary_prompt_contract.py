@@ -3,10 +3,10 @@
 import pytest
 from langchain_core.messages import AIMessage
 
-from logagent.ai import AIService
-from logagent.interaction.fastapi.agent import create_agent_service
-from logagent.models import AIConfig, FanInConfig, WorkflowSnapshot, copy_model
-from logagent.workflow.execution.runner import WorkflowRunner
+from workflowweave.ai import AIService
+from workflowweave.interaction.fastapi.agent import create_agent_service
+from workflowweave.models import AIConfig, FanInConfig, WorkflowSnapshot, copy_model
+from workflowweave.workflow.execution.runner import WorkflowRunner
 from tests.agent.helpers import ScriptedModel
 from tests.workflow.helpers import Channel, Collector, snapshot
 from tests.workflow_ai_helpers import TestChannelFactory

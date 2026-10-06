@@ -4,7 +4,7 @@
 
 `77a3253` 的 Workflow Agent Task 实现作为行为依据，不能直接 cherry-pick：它改动了旧 WorkflowService/旧 graph，并将 MCP 工具替换为 PluginGateway。当前主线已经采用 LangGraph Workflow v4、`WorkflowContext` 依赖注入、原生 SSE 和 MCP schema-first，因此本次只移植产品契约、适配器和测试，不恢复旧运行时。
 
-Agent Task 所有权属于 `WorkflowContext.agent_service` 与 `src/logagent/workflow/agent_tasks.py`；节点只选择执行路径，AgentService 继续拥有会话、checkpoint、事件和工具 admission。这样后续 Agent 对话不会写回 Workflow archive。
+Agent Task 所有权属于 `WorkflowContext.agent_service` 与 `src/workflowweave/workflow/agent_tasks.py`；节点只选择执行路径，AgentService 继续拥有会话、checkpoint、事件和工具 admission。这样后续 Agent 对话不会写回 Workflow archive。
 
 `agent_mode` 默认关闭以保持兼容；`agent_tools=null` 继承全局启用工具，空列表用于明确隔离；未知工具返回 `tool_unavailable`。模型和 AIConfig 深拷贝到 session 的 invocation 文件，恢复时继续使用冻结配置，显式切换模型才解除冻结。
 
@@ -14,9 +14,9 @@ Agent Task 所有权属于 `WorkflowContext.agent_service` 与 `src/logagent/wor
 
 | 合并内容 | 当前落点 | 实施方式 |
 | --- | --- | --- |
-| Task/FanIn 的 Agent 模式与工具白名单 | `src/logagent/models.py`、当前 Workflow 编辑器模块 | 新字段默认关闭；未知工具明确失败 |
-| Agent 执行与首轮冻结结果 | `src/logagent/workflow/agent_tasks.py` | 恢复历史适配器，接入当前图和 MCP binding |
-| 三类会话、冻结模型和 Prompt | `src/logagent/agent/service.py` | 扩展现有服务；事件和 checkpoint 仍由 Agent 拥有 |
+| Task/FanIn 的 Agent 模式与工具白名单 | `src/workflowweave/models.py`、当前 Workflow 编辑器模块 | 新字段默认关闭；未知工具明确失败 |
+| Agent 执行与首轮冻结结果 | `src/workflowweave/workflow/agent_tasks.py` | 恢复历史适配器，接入当前图和 MCP binding |
+| 三类会话、冻结模型和 Prompt | `src/workflowweave/agent/service.py` | 扩展现有服务；事件和 checkpoint 仍由 Agent 拥有 |
 | 分析/汇总节点与生命周期装配 | `workflow/execution`、`workflow/graph/subgraph`、`lifecycle/service.py` | 保留当前 LangGraph v4 图，注入同一 AgentService |
 | 来源接口 | `agent/commands.py`、`interaction/agent_routers.py` | 可选 `task_id` 读取分析/保留 `final` 汇总成功结果 |
 | MCP 范围 | `agent/binding.py`、`workflow/storage/sessions.py` | 共用快照投影；运行时输入不依赖开启 Workflow 备份 |

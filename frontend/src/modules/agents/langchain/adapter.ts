@@ -431,7 +431,7 @@ export class AgentServerAdapter implements LangGraphAgentServerAdapter {
         type: 'error',
         id: command.id,
         error: 'not_supported',
-        message: `LogAgent 不支持 ${command.method}`,
+        message: `WorkFLowWeave 不支持 ${command.method}`,
       }
     } catch (cause) {
       const requestId = this.#requestIdFromCommand(command)

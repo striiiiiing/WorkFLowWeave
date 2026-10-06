@@ -8,16 +8,16 @@ import pytest
 from langchain_core.messages import AIMessage
 from pydantic import Field
 
-from logagent.agent.commands import AgentCommand
-from logagent.channel import builtin_channels
-from logagent.channel.bindings import ChannelBindings
-from logagent.channel.conversation import ChannelAddress, InboundMessage
-from logagent.channel.manager import ChannelManager
-from logagent.config import PluginRegistry, ResourceStore
-from logagent.errors import LogAgentError
-from logagent.interaction.app import create_app
-from logagent.lifecycle import ApplicationLifecycle
-from logagent.models import ChannelConfig, Notification, SystemConfig
+from workflowweave.agent.commands import AgentCommand
+from workflowweave.channel import builtin_channels
+from workflowweave.channel.bindings import ChannelBindings
+from workflowweave.channel.conversation import ChannelAddress, InboundMessage
+from workflowweave.channel.manager import ChannelManager
+from workflowweave.config import PluginRegistry, ResourceStore
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.interaction.app import create_app
+from workflowweave.lifecycle import ApplicationLifecycle
+from workflowweave.models import ChannelConfig, Notification, SystemConfig
 from tests.agent.helpers import ScriptedModel
 from tests.agent.test_admission import GatedModel
 from tests.fixtures.plugin_helpers import install_test_channel_plugin
@@ -227,7 +227,7 @@ async def test_plugin_reload_conflicts_while_channel_reply_is_in_flight(tmp_path
         await services.agent.wait(accepted["result"]["turn_id"])
         await asyncio.wait_for(started.wait(), 2)
         assert services.channels.active_operations > 0
-        with pytest.raises(LogAgentError) as error:
+        with pytest.raises(WorkFLowWeaveError) as error:
             await lifecycle.reload("plugins")
         assert error.value.code == "plugin_reload_conflict"
         assert receiver.started is True
@@ -303,11 +303,11 @@ async def test_receiver_restart_failure_keeps_reload_admission_closed(tmp_path, 
     start_receiving = services.channels.start_receiving
 
     async def fail_receiving(config, handler):
-        raise LogAgentError("receiver_restart_failed", "receiver restart failed")
+        raise WorkFLowWeaveError("receiver_restart_failed", "receiver restart failed")
 
     try:
         monkeypatch.setattr(services.channels, "start_receiving", fail_receiving)
-        with pytest.raises(LogAgentError, match="receiver restart failed"):
+        with pytest.raises(WorkFLowWeaveError, match="receiver restart failed"):
             await lifecycle.reload("plugins")
         assert services.agent.accepting is False
         assert services.workflow.coordinator.accepting is False
@@ -352,7 +352,7 @@ async def test_manager_stop_interrupts_queued_request_and_retains_new_input(tmp_
             while services.channels._input_queue.size(("channel", channel.id, "normal")) != 1:  # noqa: ASYNC110
                 await asyncio.sleep(0)
 
-        with pytest.raises(LogAgentError) as full:
+        with pytest.raises(WorkFLowWeaveError) as full:
             await receiver.inject(inbound("overflow", "would overflow"))
         assert full.value.code == "channel_queue_full"
 
@@ -610,7 +610,7 @@ async def test_web_stop_interrupts_waiting_admission_to_shared_session(tmp_path)
             while True:  # noqa: ASYNC110
                 try:
                     pending = await services.channels.bindings.outcome(peer, "web-waiting")
-                except LogAgentError as exc:
+                except WorkFLowWeaveError as exc:
                     if exc.code != "request_not_found":
                         raise
                 else:
@@ -621,7 +621,7 @@ async def test_web_stop_interrupts_waiting_admission_to_shared_session(tmp_path)
             channel="web", action="stop", session=session, request_id="web-stop",
         ))
         assert stopped["result"]["status"] == "cancelled"
-        with pytest.raises(LogAgentError) as error:
+        with pytest.raises(WorkFLowWeaveError) as error:
             await asyncio.wait_for(waiting, 2)
         assert error.value.code == "message_interrupted"
         events = await services.agent.events(session)

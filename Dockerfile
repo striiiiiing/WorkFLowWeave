@@ -35,15 +35,15 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY plugins/channel/ ./plugins/channel/
 COPY --from=wechat-deps /bridge/node_modules/ ./plugins/channel/wechat_openclaw/node_modules/
 COPY deploy/docker/bootstrap.py /app/deploy/bootstrap.py
-RUN useradd --uid 10001 --create-home logagent \
-    && mkdir -p /var/lib/logagent && chown logagent:logagent /var/lib/logagent
+RUN useradd --uid 10001 --create-home workflowweave \
+    && mkdir -p /var/lib/workflowweave && chown workflowweave:workflowweave /var/lib/workflowweave
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
-    OPENCLAW_STATE_DIR=/var/lib/logagent/openclaw \
-    LOGAGENT_API_URL=http://127.0.0.1:4300
-USER logagent
-WORKDIR /var/lib/logagent
-VOLUME ["/var/lib/logagent"]
+    OPENCLAW_STATE_DIR=/var/lib/workflowweave/openclaw \
+    WORKFLOWWEAVE_API_URL=http://127.0.0.1:4300
+USER workflowweave
+WORKDIR /var/lib/workflowweave
+VOLUME ["/var/lib/workflowweave"]
 EXPOSE 4300
 HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4300/api/health', timeout=4).read()"

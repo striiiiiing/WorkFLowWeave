@@ -257,23 +257,23 @@ AI 供应商已经有密码输入、加密保存和保留现有凭据的流程�
 
 | 编号 | 证据位置与判断依据 |
 | --- | --- |
-| F01 | [保存请求](../../../../../frontend/src/api/resources.ts#L18) 整份提交；[资源保存](../../../../../src/logagent/config/store.py#L301) 检查存在性后整份替换，无旧版本检查。临时存储复现确认新模型被覆盖。 |
+| F01 | [保存请求](../../../../../frontend/src/api/resources.ts#L18) 整份提交；[资源保存](../../../../../src/workflowweave/config/store.py#L301) 检查存在性后整份替换，无旧版本检查。临时存储复现确认新模型被覆盖。 |
 | F02 | [工作流离开入口](../../../../../frontend/src/views/WorkflowEditView.vue#L66)、[资源弹窗](../../../../../frontend/src/views/ResourcesView.vue#L113) 无未保存处理；[按路径挂载页面](../../../../../frontend/src/App.vue#L9)。浏览器导航后名称恢复为已保存值。 |
 | F03 | [汇总开关](../../../../../frontend/src/components/workflow/FanInCard.vue#L8) 关闭置空、开启重建；[初始汇总设置](../../../../../frontend/src/domain/workflow.ts#L35)。浏览器确认原顺序、模型和提示词被默认值替换。 |
-| F04 | [任务改名](../../../../../frontend/src/components/workflow/FanOutTaskCard.vue#L18) 每次输入替换所有同名引用；[后端唯一性约束](../../../../../src/logagent/models.py#L254)。浏览器捕获最终任务 `report/task_2`，汇总顺序却为 `report/report`，后端拒绝。 |
-| F05 | [邮件凭据声明](../../../../../src/logagent/channel/email.py#L37) 包含 `x-logagent-credential`；[通用参数入口](../../../../../frontend/src/components/resources/ResourceEditor.vue#L157) 未区分凭据；[已存在的 AI 加密流程](../../../../../frontend/src/components/resources/AIProviderEditor.vue#L82)。 |
-| F06 | [通知卡片](../../../../../frontend/src/components/workflow/NotificationCard.vue#L17) 没有覆盖编辑入口；[邮件收件人声明](../../../../../src/logagent/channel/email.py#L34) 可按工作流覆盖；[后端合并及校验](../../../../../src/logagent/config/store.py#L174)。 |
-| F07 | [来源选择](../../../../../frontend/src/components/workflow/SourceStepCard.vue#L62)、[渠道选择](../../../../../frontend/src/components/workflow/NotificationCard.vue#L25) 未呈现启用状态；[来源过滤](../../../../../src/logagent/config/store.py#L182)、[停用通知跳过](../../../../../src/logagent/workflow/notification.py#L63)、[停用工作流拒绝运行](../../../../../src/logagent/workflow/service.py#L308)。 |
+| F04 | [任务改名](../../../../../frontend/src/components/workflow/FanOutTaskCard.vue#L18) 每次输入替换所有同名引用；[后端唯一性约束](../../../../../src/workflowweave/models.py#L254)。浏览器捕获最终任务 `report/task_2`，汇总顺序却为 `report/report`，后端拒绝。 |
+| F05 | [邮件凭据声明](../../../../../src/workflowweave/channel/email.py#L37) 包含 `x-workflowweave-credential`；[通用参数入口](../../../../../frontend/src/components/resources/ResourceEditor.vue#L157) 未区分凭据；[已存在的 AI 加密流程](../../../../../frontend/src/components/resources/AIProviderEditor.vue#L82)。 |
+| F06 | [通知卡片](../../../../../frontend/src/components/workflow/NotificationCard.vue#L17) 没有覆盖编辑入口；[邮件收件人声明](../../../../../src/workflowweave/channel/email.py#L34) 可按工作流覆盖；[后端合并及校验](../../../../../src/workflowweave/config/store.py#L174)。 |
+| F07 | [来源选择](../../../../../frontend/src/components/workflow/SourceStepCard.vue#L62)、[渠道选择](../../../../../frontend/src/components/workflow/NotificationCard.vue#L25) 未呈现启用状态；[来源过滤](../../../../../src/workflowweave/config/store.py#L182)、[停用通知跳过](../../../../../src/workflowweave/workflow/notification.py#L63)、[停用工作流拒绝运行](../../../../../src/workflowweave/workflow/service.py#L308)。 |
 | F08 | [资源卡片标题](../../../../../frontend/src/views/ResourcesView.vue#L77)、[自动生成资源 ID](../../../../../frontend/src/domain/resources.ts#L19)、[资源类型](../../../../../frontend/src/types/index.ts#L12)；来源、通知和供应商选择也以 ID 为主要标签。 |
-| F09 | [资源模板文本框](../../../../../frontend/src/components/resources/ResourceEditor.vue#L168)、[工作流模板文本框](../../../../../frontend/src/components/workflow/SourceStepCard.vue#L110)；[服务端要求模板存在且采集器一致](../../../../../src/logagent/config/store.py#L161)。 |
-| F10 | [错误拼接](../../../../../frontend/src/api/client.ts#L13)、[服务端字段路径及错误类型](../../../../../src/logagent/interaction/errors.py#L76)；[工作流高级 ID 表单项](../../../../../frontend/src/views/WorkflowEditView.vue#L97) 随 `v-if` 卸载，提交仍保留值。 |
+| F09 | [资源模板文本框](../../../../../frontend/src/components/resources/ResourceEditor.vue#L168)、[工作流模板文本框](../../../../../frontend/src/components/workflow/SourceStepCard.vue#L110)；[服务端要求模板存在且采集器一致](../../../../../src/workflowweave/config/store.py#L161)。 |
+| F10 | [错误拼接](../../../../../frontend/src/api/client.ts#L13)、[服务端字段路径及错误类型](../../../../../src/workflowweave/interaction/errors.py#L76)；[工作流高级 ID 表单项](../../../../../frontend/src/views/WorkflowEditView.vue#L97) 随 `v-if` 卸载，提交仍保留值。 |
 | F11 | [校验器解析规则引用](../../../../../frontend/src/adapters/schemaValidation.ts#L64)，但 [字段类型与候选项](../../../../../frontend/src/domain/parameters.ts#L49) 从未展开的 `definition` 读取；[参数行](../../../../../frontend/src/components/common/ParameterField.vue#L23) 读取直接声明的属性。 |
-| F12 | [阶段弹窗及 JSON 展示](../../../../../frontend/src/views/RunDetailView.vue#L131)；[阶段查询返回](../../../../../src/logagent/workflow/session_view.py#L116) 只组装状态和内容，未填充具体错误。设计 §3.1 要求按来源、分支、回执展示。 |
-| F13 | [恢复按钮条件](../../../../../frontend/src/views/RunDetailView.vue#L85) 只检查失败/中断状态；[真正恢复前提](../../../../../src/logagent/workflow/service.py#L329) 检查执行进度、配置快照与必要存档。 |
+| F12 | [阶段弹窗及 JSON 展示](../../../../../frontend/src/views/RunDetailView.vue#L131)；[阶段查询返回](../../../../../src/workflowweave/workflow/session_view.py#L116) 只组装状态和内容，未填充具体错误。设计 §3.1 要求按来源、分支、回执展示。 |
+| F13 | [恢复按钮条件](../../../../../frontend/src/views/RunDetailView.vue#L85) 只检查失败/中断状态；[真正恢复前提](../../../../../src/workflowweave/workflow/service.py#L329) 检查执行进度、配置快照与必要存档。 |
 | F14 | [总览整体加载](../../../../../frontend/src/views/DashboardView.vue#L12) 使用整体成功结果；[保留旧查询结果](../../../../../frontend/src/composables/useQuery.ts#L20)。浏览器在插件请求失败、其余请求成功时确认健康显示为“—”。 |
-| F15 | [插件健康展示](../../../../../frontend/src/domain/pluginHealth.ts#L26) 仅读取 `discovery_errors`；[后端健康明细](../../../../../src/logagent/lifecycle/health.py#L215) 另含 `capability_errors`、`reload_error`；[高级区](../../../../../frontend/src/views/DashboardView.vue#L90) 也只显示汇总文字。 |
+| F15 | [插件健康展示](../../../../../frontend/src/domain/pluginHealth.ts#L26) 仅读取 `discovery_errors`；[后端健康明细](../../../../../src/workflowweave/lifecycle/health.py#L215) 另含 `capability_errors`、`reload_error`；[高级区](../../../../../frontend/src/views/DashboardView.vue#L90) 也只显示汇总文字。 |
 | F16 | [运行表列宽](../../../../../frontend/src/components/common/SessionTable.vue#L8)。Chromium 测得页面宽 375px、表格可见宽 301px、内部内容宽 910px；现有手机检查仅比较页面宽与视口宽。 |
-| F17 | [运行筛选字段](../../../../../frontend/src/views/RunsView.vue#L10) 只有四种；[后端时间过滤](../../../../../src/logagent/workflow/session_view.py#L69) 已支持 `after/before`。既有设计 §3.1 明确要求时间范围入口。 |
+| F17 | [运行筛选字段](../../../../../frontend/src/views/RunsView.vue#L10) 只有四种；[后端时间过滤](../../../../../src/workflowweave/workflow/session_view.py#L69) 已支持 `after/before`。既有设计 §3.1 明确要求时间范围入口。 |
 
 后续审查实现时，应先检查审核确认的用户效果和对应设计，再对照实施任务；本文件中的建议不能自动视为设计已经变更。
 

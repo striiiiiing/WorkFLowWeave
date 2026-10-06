@@ -1,6 +1,6 @@
 # 任务与决策依据
 
-依据：[proposal](proposal.md)、[design](design.md)、[FastAPI application boundary 规范](specs/fastapi-application-boundary/spec.md)、[FastAPI SSE transport 规范](specs/fastapi-sse-transport/spec.md)、现有 `src/logagent/lifecycle/` 与 `src/logagent/interaction/` 实现，以及 FastAPI `0.141.1` 中的 `fastapi.sse` 接口。
+依据：[proposal](proposal.md)、[design](design.md)、[FastAPI application boundary 规范](specs/fastapi-application-boundary/spec.md)、[FastAPI SSE transport 规范](specs/fastapi-sse-transport/spec.md)、现有 `src/workflowweave/lifecycle/` 与 `src/workflowweave/interaction/` 实现，以及 FastAPI `0.141.1` 中的 `fastapi.sse` 接口。
 
 本 change 只记录方案二的实施任务。方案三“所有模块跨模块依赖都经过 `interaction/api`”不属于本次任务，下一次更新应新建独立 change，不能在本文件中勾选或通过旁路实现提前完成。
 
@@ -59,7 +59,7 @@
 
 - `timeout 60s uv run --no-sync pytest -q tests/interaction tests/lifecycle tests/test_provider_creation.py`：109 passed，1 条 Starlette deprecation warning。
 - `uv run --no-sync ruff check src tests`：通过。
-- `uv build`：成功生成 `dist/logagent-0.1.0-py3-none-any.whl`。
+- `uv build`：成功生成 `dist/workflowweave-0.1.0-py3-none-any.whl`。
 - `openspec validate centralize-fastapi-lifecycle-sse --strict`：通过。
-- `PYTHONPATH=. uv run --no-sync python /tmp/logagent-lifecycle-sse-smoke.py`：真实 TCP HTTP smoke 通过；workflow completed、agent events、channel `Last-Event-ID` replay 与空游标恢复均通过。
+- `PYTHONPATH=. uv run --no-sync python /tmp/workflowweave-lifecycle-sse-smoke.py`：真实 TCP HTTP smoke 通过；workflow completed、agent events、channel `Last-Event-ID` replay 与空游标恢复均通过。
 - `tests/interaction/test_application_boundary.py`、SSE completed-session replay、启动失败清理和原生响应头测试均包含在上述回归中；未覆盖完整浏览器端到端流程。

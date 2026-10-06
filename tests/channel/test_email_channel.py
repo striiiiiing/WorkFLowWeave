@@ -12,12 +12,12 @@ from email.parser import BytesParser
 
 import pytest
 
-from logagent.channel import ChannelManager
-from logagent.channel.errors import ChannelDeliveryError
-from logagent.config import PluginRegistry, ResourceStore
-from logagent.errors import LogAgentError
-from logagent.models import ChannelConfig, Notification, SystemConfig
-from logagent.schema import validate_instance
+from workflowweave.channel import ChannelManager
+from workflowweave.channel.errors import ChannelDeliveryError
+from workflowweave.config import PluginRegistry, ResourceStore
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import ChannelConfig, Notification, SystemConfig
+from workflowweave.schema import validate_instance
 from plugins.channel.email.channel import EmailChannel, EmailChannelType
 
 
@@ -136,7 +136,7 @@ class Register:
     {"username": "user", "password": "plaintext"}, {"tls": "auto"}, {"unknown": True},
 ])
 def test_reject_invalid_options_without_network(changes):
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         validate_instance(options(**changes), EmailChannelType.options_schema)
 
 
@@ -210,7 +210,7 @@ async def test_same_account_concurrent_recipients_reuse_connection_and_do_not_dr
 
 async def test_direct_email_call_requires_explicit_recipient_even_with_saved_default():
     channel = EmailChannel(config(2525), None)
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         await channel.send(note(), options={})
     assert channel._client is None
 

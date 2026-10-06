@@ -5,7 +5,7 @@
 | 决策 | 依据及理由 |
 | --- | --- |
 | 十个 source package 的清单 | 远端 `plugins/qwenpaw_sources/main.py` 当前注册的十个稳定 Collector 名称；一能力一目录才能验证独立停用/重载。`qwenpaw_notify` 与内置 `mock` 分开统计，避免把通知和测试能力混入来源数量。 |
-| 不称为 manifest v2 | `/mnt/d/code/QwenPaw` 固定版本清单使用 `type`、`entry`、`dependencies`、`qwenpaw_version`、`meta`，没有 `manifest_version` 或 `api_version=2`；因此只称 QwenPaw-style manifest。LogAgent v1 的目录名与 ID 不一致仍按既有 owner 规则兼容。 |
+| 不称为 manifest v2 | `/mnt/d/code/QwenPaw` 固定版本清单使用 `type`、`entry`、`dependencies`、`qwenpaw_version`、`meta`，没有 `manifest_version` 或 `api_version=2`；因此只称 QwenPaw-style manifest。WorkFLowWeave v1 的目录名与 ID 不一致仍按既有 owner 规则兼容。 |
 | 远端先于指标和 MCP | 用户指定顺序为 merge → 本地验收 → 远端同步；AxonHub 与真实 Agent-MCP 只有远端部署后才有有效观测对象。 |
 | 15 分钟 SSE/运行观察预算 | 现有 SSE 使用 15 秒空闲心跳且普通 Workflow 运行可超过单次请求；测试只设置有界总超时并把未终态明确记为失败，不以长时间等待隐藏挂起。 |
 | token 节省不设预定百分比 | 直接 JSON 与清洗 JSON 的实际长度取决于十个来源内容；仅报告成对测量结果，不把历史约 36.4% 估算当成本轮证据。 |
@@ -18,7 +18,7 @@
 
 ## 2. 本地 merge 前验收准备
 
-- [x] 2.1 复核 redesign worktree 的任务 13.1–13.6 及 intent barrier 修复；保留主工作区用户未提交的 `data-v4/`、`node_modules/`、`src/logagent/lifecycle/.idea/`，未覆盖或回滚。
+- [x] 2.1 复核 redesign worktree 的任务 13.1–13.6 及 intent barrier 修复；保留主工作区用户未提交的 `data-v4/`、`node_modules/`、`src/workflowweave/lifecycle/.idea/`，未覆盖或回滚。
 - [x] 2.2 已将 `feat/redesign-workflow` 合并到 `refactor/frontend-architecture`：merge commit `d7674f7`，intent barrier 修复随后以 `d99e122` 记录；合并前后均未使用 reset/clean。
 
 ## 3. Merge 后本地验收
@@ -51,7 +51,7 @@
 ## 远端插件同步与本地前端复验补记（2026-09-29）
 
 - 远端原 dirty 清单已保存到 `/tmp/workflowServer-remote-sync-20260929-142144`，并建立可恢复分支 `backup/remote-plugin-sync-20260929-142144`；未 reset、clean 或覆盖用户文件。远端原有未提交文件仍保持 dirty 状态。
-- 远端提交 `76e50c1` 拆出十个独立 QwenPaw source package，并把当前紧凑 JSON/CLI 适配提取到 `src/logagent/qwenpaw`；`6d1cd6d` 修正新文件权限。旧 `qwenpaw_sources` 只作为显式 `logagent_legacy` 回滚副本，不发布重复能力；`qwenpaw_notify` 仍是独立 channel。
+- 远端提交 `76e50c1` 拆出十个独立 QwenPaw source package，并把当前紧凑 JSON/CLI 适配提取到 `src/workflowweave/qwenpaw`；`6d1cd6d` 修正新文件权限。旧 `qwenpaw_sources` 只作为显式 `workflowweave_legacy` 回滚副本，不发布重复能力；`qwenpaw_notify` 仍是独立 channel。
 - 远端定向测试 `tests/qwenpaw/test_split_plugins.py tests/qwenpaw/test_adapters.py tests/config/test_config.py`：79 passed；目标文件 Ruff 通过。远端服务重启后 `GET /api/health`、`GET /api/plugins`、`GET /api/sources`、`GET /api/workflows` 和 `POST /api/reload?scope=plugins` 均 HTTP 200，health 为 ready；plugin inventory 共 25 项，其中十个 source ID 与 owner 一一对应，另有两个 `qwenpaw_notify` channel，未发布旧聚合能力。十个 daily source 的 `call-schema` 查询全部 200（10/10），但未执行带外部 CLI/通知副作用的采集。
 - 远端前端 systemd 服务实际监听 `13002`，`API_TARGET=http://127.0.0.1:4300`，经 `13002/api/health|plugins|workflows` 代理验证 HTTP 200；`3000` 属于同机其他 Karakeep 服务，未误判为本项目入口。
 - 本地前端复验：`npm run typecheck`、`npm run architecture:check`、`npm run build` 通过；Vitest 49 files/243 tests passed；Playwright 17/17 passed（54.9s）。

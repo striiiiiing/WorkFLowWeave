@@ -17,7 +17,7 @@
 
 采集器类型来自插件能力目录。它提供 `options_schema`、`setters_schema`、字段和说明，不作为用户创建的资源保存。
 
-`options_schema` 中未标记 `x-logagent-workflow=true` 的字段属于实例级配置；标记了该值的字段属于工作流调用级配置。前端只负责按 Schema 分区展示，最终校验仍由后端完成。
+`options_schema` 中未标记 `x-workflowweave-workflow=true` 的字段属于实例级配置；标记了该值的字段属于工作流调用级配置。前端只负责按 Schema 分区展示，最终校验仍由后端完成。
 
 ### 1.2 采集器实例
 

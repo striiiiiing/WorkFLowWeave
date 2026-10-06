@@ -3,13 +3,13 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from logagent.ai import AIService, OpenAIChannelFactory
-from logagent.ai.channels import OpenAIChannel
-from logagent.ai.errors import ModelError
-from logagent.errors import LogAgentError
-from logagent.interaction.app import create_app
-from logagent.lifecycle import ApplicationLifecycle
-from logagent.models import AIConfig, SystemConfig
+from workflowweave.ai import AIService, OpenAIChannelFactory
+from workflowweave.ai.channels import OpenAIChannel
+from workflowweave.ai.errors import ModelError
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.interaction.app import create_app
+from workflowweave.lifecycle import ApplicationLifecycle
+from workflowweave.models import AIConfig, SystemConfig
 
 pytestmark = pytest.mark.usefixtures("installed_plugins")
 
@@ -19,7 +19,7 @@ def test_save_without_models_and_check_failure_do_not_block_persistence(tmp_path
 
     async def unavailable(self, config):
         calls.append(config.id)
-        raise LogAgentError("ai_http_error", "上游返回 HTTP 405")
+        raise WorkFLowWeaveError("ai_http_error", "上游返回 HTTP 405")
 
     monkeypatch.setattr(AIService, "list_models", unavailable)
     owner = ApplicationLifecycle(SystemConfig(
@@ -59,7 +59,7 @@ def test_provider_without_models_cannot_execute_an_unconfigured_model():
     service = AIService(channel_factories={"http": OpenAIChannelFactory()})
     config = AIConfig(id="provider", provider="http", base_url="http://127.0.0.1:1/v1")
     service.validate(config)
-    with pytest.raises(LogAgentError, match="model 不存在"):
+    with pytest.raises(WorkFLowWeaveError, match="model 不存在"):
         service.validate(config, "unconfigured")
 
 

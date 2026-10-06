@@ -12,8 +12,8 @@ import threading
 
 import pytest
 
-from logagent.channel.errors import ChannelDeliveryError
-from logagent.models import ChannelConfig, Notification
+from workflowweave.channel.errors import ChannelDeliveryError
+from workflowweave.models import ChannelConfig, Notification
 from plugins.channel.file.channel import FileChannel
 
 
@@ -319,7 +319,7 @@ async def test_missing_write_count_cannot_report_success(tmp_path, monkeypatch):
 
 
 async def test_cancelled_start_is_drained_before_close(tmp_path, monkeypatch):
-    from logagent.errors import LogAgentError
+    from workflowweave.errors import WorkFLowWeaveError
     monkeypatch.setattr("plugins.channel.file.channel._STOP_TIMEOUT", .02)
     channel = _channel(tmp_path / "late-start.txt")
     entered, release = threading.Event(), threading.Event()
@@ -335,7 +335,7 @@ async def test_cancelled_start_is_drained_before_close(tmp_path, monkeypatch):
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
-        with pytest.raises(LogAgentError) as error:
+        with pytest.raises(WorkFLowWeaveError) as error:
             await channel.stop()
         assert error.value.code == "file_stop_timeout"
         assert not channel._stop_task.done()
@@ -349,7 +349,7 @@ async def test_cancelled_start_is_drained_before_close(tmp_path, monkeypatch):
 
 
 async def test_stop_waits_for_cancelled_write_and_can_be_awaited_again(tmp_path, monkeypatch):
-    from logagent.errors import LogAgentError
+    from workflowweave.errors import WorkFLowWeaveError
     monkeypatch.setattr("plugins.channel.file.channel._STOP_TIMEOUT", .02)
     path = tmp_path / "pending.txt"
     channel = _channel(path)
@@ -362,7 +362,7 @@ async def test_stop_waits_for_cancelled_write_and_can_be_awaited_again(tmp_path,
         send.cancel()
         with pytest.raises(asyncio.CancelledError):
             await send
-        with pytest.raises(LogAgentError) as error:
+        with pytest.raises(WorkFLowWeaveError) as error:
             await channel.stop()
         assert error.value.code == "file_stop_timeout"
     finally:

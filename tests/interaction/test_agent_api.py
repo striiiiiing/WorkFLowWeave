@@ -8,12 +8,12 @@ import httpx
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
 
-from logagent.agent.commands import CommandDispatcher
-from logagent.channel.web import WebChannel
-from logagent.errors import LogAgentError
-from logagent.interaction.app import create_app
-from logagent.interaction.errors import status_for_code
-from logagent.interaction.fastapi.agent import create_agent_service
+from workflowweave.agent.commands import CommandDispatcher
+from workflowweave.channel.web import WebChannel
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.interaction.app import create_app
+from workflowweave.interaction.errors import status_for_code
+from workflowweave.interaction.fastapi.agent import create_agent_service
 from tests.agent.helpers import ScriptedModel
 from tests.agent.test_admission import GatedModel
 
@@ -38,7 +38,7 @@ class FakeAgent:
 
     async def get_session(self, session_id):
         if session_id not in self.items:
-            raise LogAgentError("session_not_found", "Agent session 不存在")
+            raise WorkFLowWeaveError("session_not_found", "Agent session 不存在")
         return self.items[session_id]
 
     async def submit(self, session_id, text, *, request_id):

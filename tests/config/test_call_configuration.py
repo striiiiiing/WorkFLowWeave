@@ -2,15 +2,15 @@ from pathlib import Path
 
 import pytest
 
-from logagent.config.calls import normalize_call_options, resolve_channel_call, resolve_source_call
-from logagent.errors import LogAgentError
-from logagent.models import (
+from workflowweave.config.calls import normalize_call_options, resolve_channel_call, resolve_source_call
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import (
     ChannelConfig,
     ChannelOverride,
     SourceConfig,
     SourceOverride,
 )
-from logagent.schema import call_options_schema, validate_instance
+from workflowweave.schema import call_options_schema, validate_instance
 
 
 def test_call_schema_projects_defaults_and_preserves_reference_types():
@@ -20,9 +20,9 @@ def test_call_schema_projects_defaults_and_preserves_reference_types():
         "properties": {
             "path": {"type": "string", "description": "Account path"},
             "limit": {"$ref": "#/$defs/count", "description": "Count",
-                      "x-logagent-workflow": True},
+                      "x-workflowweave-workflow": True},
             "query": {"$ref": "#/properties/path", "description": "Search",
-                      "x-logagent-workflow": True},
+                      "x-workflowweave-workflow": True},
         },
         "required": ["path", "limit", "query"],
     }
@@ -32,9 +32,9 @@ def test_call_schema_projects_defaults_and_preserves_reference_types():
     assert projected["properties"]["limit"]["default"] == 25
     assert projected["$defs"]["count"]["minimum"] == 1
     validate_instance({"query": "error"}, projected)
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         validate_instance({"query": 1}, projected)
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         validate_instance({"query": "error", "path": "/override"}, projected)
     assert "default" not in schema["properties"]["limit"]
 
@@ -59,11 +59,11 @@ def test_call_resolution_keeps_empty_arguments_and_shallow_overrides():
 
 def test_call_normalization_rejects_instance_fields_and_does_not_apply_defaults():
     schema = {"type": "object", "properties": {
-        "path": {"type": "string", "description": "Instance path", "x-logagent-path": True},
+        "path": {"type": "string", "description": "Instance path", "x-workflowweave-path": True},
         "limit": {"type": "integer", "description": "Limit", "default": 200,
-                  "x-logagent-workflow": True},
+                  "x-workflowweave-workflow": True},
     }}
     assert normalize_call_options({}, schema, data_dir=Path("/data")) == {}
-    with pytest.raises(LogAgentError) as error:
+    with pytest.raises(WorkFLowWeaveError) as error:
         normalize_call_options({"path": "elsewhere"}, schema, data_dir=Path("/data"))
     assert error.value.details["errors"][0]["reason"] == "instance_only"

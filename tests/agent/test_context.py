@@ -8,14 +8,14 @@ from langchain_core.messages.utils import count_tokens_approximately
 from langgraph.graph.message import add_messages
 from pydantic import ValidationError
 
-from logagent.agent.config import AgentConfig
-from logagent.agent.context.budget import estimate_request
-from logagent.agent.context.compaction import ContextMiddleware, summarize_once
-from logagent.agent.tools.declaration import ToolDeclaration
-from logagent.ai import AIService, OpenAIChannelFactory
-from logagent.errors import LogAgentError
-from logagent.interaction.fastapi.agent import create_agent_service
-from logagent.models import AIConfig
+from workflowweave.agent.config import AgentConfig
+from workflowweave.agent.context.budget import estimate_request
+from workflowweave.agent.context.compaction import ContextMiddleware, summarize_once
+from workflowweave.agent.tools.declaration import ToolDeclaration
+from workflowweave.ai import AIService, OpenAIChannelFactory
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.interaction.fastapi.agent import create_agent_service
+from workflowweave.models import AIConfig
 from tests.agent.helpers import ScriptedModel
 
 
@@ -93,7 +93,7 @@ async def test_missing_capacity_fails_before_model_but_known_profile_is_usable(t
             sid = (await service.create_session(model="test"))["session_id"]
             turn = await service.submit(sid, "hi", request_id="first")
             if profile is None:
-                with pytest.raises(LogAgentError) as error:
+                with pytest.raises(WorkFLowWeaveError) as error:
                     await service.wait(turn["turn_id"])
                 assert error.value.code == "context_budget_unavailable"
                 assert not model.seen
@@ -153,7 +153,7 @@ async def test_serialized_summary_prompt_capacity_is_checked_before_model(indepe
                           summary_prompt="INSTRUCTIONS " * 50 + " {messages}")
     messages = [HumanMessage(content="old " * 300), HumanMessage(content="recent")]
     original = deepcopy(messages)
-    with pytest.raises(LogAgentError) as error:
+    with pytest.raises(WorkFLowWeaveError) as error:
         await context(model, config, system_prompt="fixed " * 60).prepare(messages)
     assert error.value.code == "summary_context_budget_exceeded"
     assert error.value.info.details["total"] > 1100
@@ -164,7 +164,7 @@ async def test_serialized_summary_prompt_capacity_is_checked_before_model(indepe
 async def test_independent_summary_model_cannot_inherit_main_capacity():
     model = TokenizedModel(responses=[])
     messages = [HumanMessage(content="old " * 400), HumanMessage(content="recent")]
-    with pytest.raises(LogAgentError) as error:
+    with pytest.raises(WorkFLowWeaveError) as error:
         await context(model, small_config(summary_ai="summary")).prepare(messages)
     assert error.value.code == "context_budget_unavailable"
     assert not model.seen
@@ -180,7 +180,7 @@ async def test_invalid_summary_never_retries_or_publishes_new_context(response):
     async def publish(data):
         published.append(data)
 
-    with pytest.raises(LogAgentError) as error:
+    with pytest.raises(WorkFLowWeaveError) as error:
         await context(model, on_compacted=publish).prepare(messages)
     assert error.value.code == ("context_compaction_failed" if not response.strip()
                                 else "context_budget_exceeded")
@@ -209,7 +209,7 @@ async def test_no_prefix_is_noop_for_manual_compact_and_fails_automatic_overflow
     model = TokenizedModel(responses=[])
     middleware = context(model)
     assert await middleware.prepare([HumanMessage(content="short")], force=True) is None
-    with pytest.raises(LogAgentError) as error:
+    with pytest.raises(WorkFLowWeaveError) as error:
         await middleware.prepare([HumanMessage(content="x" * 2000)])
     assert error.value.code == "context_budget_exceeded"
     assert not model.seen
@@ -220,7 +220,7 @@ async def test_no_prefix_is_noop_for_manual_compact_and_fails_automatic_overflow
     [AIMessage(content="", tool_calls=[{"id": "missing", "name": "read", "args": {}}])],
 ])
 async def test_incomplete_tool_groups_fail_explicitly(messages):
-    with pytest.raises(LogAgentError) as error:
+    with pytest.raises(WorkFLowWeaveError) as error:
         await context(TokenizedModel(responses=[])).prepare(messages)
     assert error.value.code == "context_tool_pairing"
 
@@ -240,7 +240,7 @@ async def test_tool_result_growth_is_checked_before_the_next_model_request(tmp_p
     try:
         sid = (await service.create_session(model="test"))["session_id"]
         turn = await service.submit(sid, "run", request_id="first")
-        with pytest.raises(LogAgentError) as error:
+        with pytest.raises(WorkFLowWeaveError) as error:
             await service.wait(turn["turn_id"])
         assert error.value.code == "context_budget_exceeded"
         assert len(model.seen) == 2

@@ -1,14 +1,14 @@
-"""Deterministic collectors for tests; never installed with LogAgent."""
+"""Deterministic collectors for tests; never installed with WorkFLowWeave."""
 
 from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
 
-from logagent.models import CollectionContext, CollectorOutput, ErrorInfo
-from logagent.schema import validate_instance
+from workflowweave.models import CollectionContext, CollectorOutput, ErrorInfo
+from workflowweave.schema import validate_instance
 
-_DEFAULT_RECORDS = [{"id": "sample-1", "message": "LogAgent mock record", "level": "INFO"}]
+_DEFAULT_RECORDS = [{"id": "sample-1", "message": "WorkFLowWeave mock record", "level": "INFO"}]
 
 
 class MockCollector:
@@ -26,14 +26,14 @@ class MockCollector:
                 "enum": ["success", "empty", "failed", "timeout"],
                 "default": "success",
                 "description": "Test collection result mode",
-                "x-logagent-workflow": True,
+                "x-workflowweave-workflow": True,
             },
             "records": {
                 "type": "array",
                 "items": {"type": "object"},
                 "default": _DEFAULT_RECORDS,
                 "description": "Records returned by this test collector",
-                "x-logagent-workflow": True,
+                "x-workflowweave-workflow": True,
             },
         },
         "additionalProperties": False,
@@ -104,18 +104,18 @@ class QueryCollector(MockCollector):
             "path": {
                 "type": "string",
                 "description": "Query file",
-                "x-logagent-workflow": True,
-                "x-logagent-path": True,
+                "x-workflowweave-workflow": True,
+                "x-workflowweave-path": True,
             },
             "begin": {
                 "type": "integer",
                 "description": "Lower bound",
-                "x-logagent-workflow": True,
+                "x-workflowweave-workflow": True,
             },
             "end": {
                 "type": "integer",
                 "description": "Upper bound",
-                "x-logagent-workflow": True,
+                "x-workflowweave-workflow": True,
             },
         },
         "required": ["host", "path", "begin", "end"],

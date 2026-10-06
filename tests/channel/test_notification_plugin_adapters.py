@@ -10,9 +10,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from logagent.channel.conversation import ChannelAddress, InboundMessage
-from logagent.channel.errors import ChannelDeliveryError
-from logagent.models import ChannelConfig, Notification
+from workflowweave.channel.conversation import ChannelAddress, InboundMessage
+from workflowweave.channel.errors import ChannelDeliveryError
+from workflowweave.models import ChannelConfig, Notification
 
 _CHANNEL_PLUGIN_ROOT = Path(__file__).parents[2] / "plugins" / "channel"
 

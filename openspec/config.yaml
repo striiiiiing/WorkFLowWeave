@@ -1,7 +1,7 @@
 schema: spec-driven
 
 context: |
-  LogAgent 是 Python 3.11+ 异步采集与 AI 分析服务，前端使用 Vue 3。
+  WorkFLowWeave 是 Python 3.11+ 异步采集与 AI 分析服务，前端使用 Vue 3。
   文档使用中文；OpenSpec Requirement、Scenario 和增量标题保留标准英文格式。
   存放与迁移约定见 openspec/README.md。
   openspec/specs 保存已验收并同步的能力规范；changes/<change-id>/specs 保存变更增量。

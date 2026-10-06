@@ -10,9 +10,9 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from logagent.ai import AIService, OpenAIChannelFactory
-from logagent.errors import LogAgentError
-from logagent.models import AIConfig
+from workflowweave.ai import AIService, OpenAIChannelFactory
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import AIConfig
 from tests.ai.live_helpers import assert_success
 
 
@@ -31,7 +31,7 @@ def test_managed_options_cannot_override_request_settings(field):
     service = AIService(channel_factories={"http": OpenAIChannelFactory()})
     cfg = config()
     cfg.models["mock"] = {field: "invalid"}
-    with pytest.raises(LogAgentError) as error:
+    with pytest.raises(WorkFLowWeaveError) as error:
         service.validate(cfg)
     assert error.value.code == "invalid_config"
     assert error.value.details["fields"] == [field]

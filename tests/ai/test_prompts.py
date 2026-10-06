@@ -4,9 +4,9 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
-from logagent.ai import AIService
-from logagent.ai.prompts import build_messages
-from logagent.models import AIConfig
+from workflowweave.ai import AIService
+from workflowweave.ai.prompts import build_messages
+from workflowweave.models import AIConfig
 from tests.workflow_ai_helpers import TestChannelFactory, TestChatModel
 
 

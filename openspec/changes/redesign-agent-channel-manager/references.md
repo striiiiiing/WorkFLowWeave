@@ -27,16 +27,16 @@
 
 前端差异须如实保留：QwenPaw 的 `src/qwenpaw/app/routers/console.py` 调用 ConsoleChannel.stream_one，而 `channels/console/channel.py` 使用自己的流路径，实际绕过普通 Manager 输入队列。本设计依照用户“前端也得走这个渠道”的要求统一 Web 队列，不声称参考项目已完全如此。
 
-## LogAgent
+## WorkFLowWeave
 
 | 依据 | 必须保留的约束 |
 | --- | --- |
 | [原 Channel 设计](../configurable-collection-analysis-workflow/modules/channel/design.md) | send 快照、实例版本、调用总预算、DeliveryResult、无后台发送重试；本变更仅为 conversation 增加入站队列 |
-| [Manager 四层设计](../configurable-collection-analysis-workflow/modules/manager%20design.md) | config 唯一合并、插件工厂和 x-logagent-workflow 实例/调用选项区分 |
+| [Manager 四层设计](../configurable-collection-analysis-workflow/modules/manager%20design.md) | config 唯一合并、插件工厂和 x-workflowweave-workflow 实例/调用选项区分 |
 | [Agent 设计](../add-file-centric-agent/design.md) | 双向信封、stop 独立取消、append/compact 安全边界、Agent 与 Workflow 并列、原事件日志唯一事实 |
 | [Lifecycle 设计](../configurable-collection-analysis-workflow/modules/lifecycle/design.md) | 全局准入协调、插件活动冲突、失败清理保留引用 |
-| `src/logagent/agent/service.py` 的 `_admit_message/cancel/wait/events` | 扩展原子等待准入，保留已有模型任务和取消的所有权，不重复建立模型运行时 |
-| `src/logagent/config/views.py`、`src/logagent/channel/manager.py` | 沿用只读注册表及两参数实例工厂、发送执行器和实例缓存 |
+| `src/workflowweave/agent/service.py` 的 `_admit_message/cancel/wait/events` | 扩展原子等待准入，保留已有模型任务和取消的所有权，不重复建立模型运行时 |
+| `src/workflowweave/config/views.py`、`src/workflowweave/channel/manager.py` | 沿用只读注册表及两参数实例工厂、发送执行器和实例缓存 |
 
 上一版 [tasks.md](../add-agent-channels/tasks.md) 是实际代码和历史验证的证据，仅用于确定可保留的协议实现及迁移范围，不能证明新 Manager 架构通过验收。
 

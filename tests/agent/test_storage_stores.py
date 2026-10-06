@@ -3,9 +3,9 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from logagent.agent.config import AgentConfig
-from logagent.agent.storage.bindings import BindingStore
-from logagent.agent.storage.settings import SettingsStore
+from workflowweave.agent.config import AgentConfig
+from workflowweave.agent.storage.bindings import BindingStore
+from workflowweave.agent.storage.settings import SettingsStore
 
 
 def test_binding_store_persists_session_snapshot_and_fails_closed(tmp_path):

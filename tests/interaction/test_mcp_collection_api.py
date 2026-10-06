@@ -2,9 +2,9 @@
 
 import pytest
 
-from logagent.collection.invocation import CollectorInvocation
-from logagent.errors import LogAgentError
-from logagent.models import CollectionContext, CollectionResult, MCPServerConfig, SourceConfig
+from workflowweave.collection.invocation import CollectorInvocation
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import CollectionContext, CollectionResult, MCPServerConfig, SourceConfig
 
 
 class Runtime:
@@ -50,7 +50,7 @@ async def test_cli_rejects_mcp_arguments_and_exposes_no_call_schema():
     entry, executor = invocation()
     context = CollectionContext("collection", "session", mcp_servers=entry.mcp_servers)
     assert (await entry.schema("cli"))["properties"] == {}
-    with pytest.raises(LogAgentError, match="CLI 来源不接受 MCP 参数覆盖"):
+    with pytest.raises(WorkFLowWeaveError, match="CLI 来源不接受 MCP 参数覆盖"):
         await entry.invoke("cli", {"arguments": {"limit": 3}}, context)
     assert executor.received is None
 
@@ -62,6 +62,6 @@ async def test_legacy_collector_exposes_no_call_contract():
     )
     context = CollectionContext("collection", "session")
     assert (await entry.schema("legacy"))["properties"] == {}
-    with pytest.raises(LogAgentError, match="历史 Collector"):
+    with pytest.raises(WorkFLowWeaveError, match="历史 Collector"):
         await entry.invoke("legacy", {}, context)
     assert executor.received is None

@@ -3,9 +3,9 @@ import json
 
 from langchain_core.messages import AIMessage
 
-from logagent.agent.config import AgentConfig
-from logagent.agent.tools.builtin import mcp, read
-from logagent.interaction.fastapi.agent import create_agent_service
+from workflowweave.agent.config import AgentConfig
+from workflowweave.agent.tools.builtin import mcp, read
+from workflowweave.interaction.fastapi.agent import create_agent_service
 from tests.agent.helpers import ScriptedModel
 
 
@@ -56,7 +56,7 @@ async def test_graph_uses_gateway_execution_and_persists_bounded_artifact(tmp_pa
 
 
 async def test_append_enters_same_turn_only_after_complete_tool_group(tmp_path):
-    from logagent.agent.tools.declaration import ToolDeclaration, schema
+    from workflowweave.agent.tools.declaration import ToolDeclaration, schema
     started = asyncio.Event()
     release = asyncio.Event()
 
@@ -158,7 +158,7 @@ async def test_fork_from_old_turn_and_edited_message_never_inherits_future(tmp_p
 
 
 async def test_running_compact_waits_for_tool_receipt_and_summarizes_once(tmp_path):
-    from logagent.agent.tools.declaration import ToolDeclaration, schema
+    from workflowweave.agent.tools.declaration import ToolDeclaration, schema
     started, release = asyncio.Event(), asyncio.Event()
 
     async def invoke(arguments, context):
@@ -192,8 +192,8 @@ async def test_running_compact_waits_for_tool_receipt_and_summarizes_once(tmp_pa
 
 
 async def test_settings_persist_and_disabled_tool_metadata_does_not_register(tmp_path):
-    from logagent.config import PluginRegistry
-    from logagent.models import SystemConfig
+    from workflowweave.config import PluginRegistry
+    from workflowweave.models import SystemConfig
     registry = PluginRegistry([])
     plugin_config = SystemConfig(plugin_dir=str(tmp_path / "plugins"))
     registry.update_plugin_setting(plugin_config, "tool", "agent_shell", False)
@@ -238,7 +238,7 @@ async def test_empty_compact_keeps_source_and_can_accept_first_message(tmp_path)
 async def test_failed_boundary_summary_allows_explicit_next_message(tmp_path):
     import pytest
 
-    from logagent.errors import LogAgentError
+    from workflowweave.errors import WorkFLowWeaveError
     from tests.agent.test_admission import GatedModel
 
     model = GatedModel(responses=[AIMessage(content="first " * 100), AIMessage(content="second " * 100),
@@ -258,7 +258,7 @@ async def test_failed_boundary_summary_allows_explicit_next_message(tmp_path):
         assert metadata["status"] == "running" and metadata["turn_id"] == second["turn_id"]
         await service.compact(sid)
         model.release.set()
-        with pytest.raises(LogAgentError) as error:
+        with pytest.raises(WorkFLowWeaveError) as error:
             await service.wait(second["turn_id"])
         assert error.value.code == "context_compaction_failed"
         assert not any(event["type"] == "context.compacted" for event in await service.events(sid))

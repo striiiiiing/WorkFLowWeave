@@ -31,7 +31,7 @@ rtk proxy timeout 60s uv run --frozen pytest -q tests/test_interaction.py tests/
 单测通过后执行变更文件检查及构建：
 
 ```bash
-rtk proxy uv run --frozen ruff check src/logagent/workflow/session_models.py src/logagent/workflow/session_store.py src/logagent/workflow/nodes.py tests/test_session_store.py tests/test_history.py tests/test_workflow_recovery.py tests/test_lifecycle.py tests/test_workflow_integration.py tests/test_workflow_process_recovery.py
+rtk proxy uv run --frozen ruff check src/workflowweave/workflow/session_models.py src/workflowweave/workflow/session_store.py src/workflowweave/workflow/nodes.py tests/test_session_store.py tests/test_history.py tests/test_workflow_recovery.py tests/test_lifecycle.py tests/test_workflow_integration.py tests/test_workflow_process_recovery.py
 rtk proxy uv build
 ```
 

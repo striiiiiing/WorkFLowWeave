@@ -15,10 +15,10 @@ from pathlib import Path
 
 import pytest
 
-from logagent.lifecycle.logging import JsonLogSink, RedactingJsonFormatter
+from workflowweave.lifecycle.logging import JsonLogSink, RedactingJsonFormatter
 
-_MARKER = "_logagent_lifecycle_handler"
-_LOGGER_NAME = "logagent"
+_MARKER = "_workflowweave_lifecycle_handler"
+_LOGGER_NAME = "workflowweave"
 
 
 @pytest.fixture(autouse=True)
@@ -120,7 +120,7 @@ def test_json_logging_is_bounded_redacted_and_rotates(tmp_path: Path) -> None:
     max_bytes = 256
     sink = JsonLogSink(path, max_bytes=max_bytes, backup_count=1)
     sink.start()
-    logger = logging.getLogger("logagent.test")
+    logger = logging.getLogger("workflowweave.test")
     try:
         for index in range(12):
             logger.info(
@@ -168,7 +168,7 @@ def test_json_logging_is_bounded_redacted_and_rotates(tmp_path: Path) -> None:
 
 def test_unicode_json_is_valid_and_bounded_by_utf8_bytes() -> None:
     record = logging.LogRecord(
-        name="logagent.测试",
+        name="workflowweave.测试",
         level=logging.INFO,
         pathname=__file__,
         lineno=0,
@@ -181,7 +181,7 @@ def test_unicode_json_is_valid_and_bounded_by_utf8_bytes() -> None:
 
     serialized = RedactingJsonFormatter(max_bytes=1024).format(record)
     decoded = json.loads(serialized)
-    assert decoded["module"] == "logagent.测试"
+    assert decoded["module"] == "workflowweave.测试"
     assert decoded["session_id"] == "会话-😀"
 
     max_bytes = len(serialized.encode("utf-8")) + 1
@@ -220,7 +220,7 @@ def test_write_failure_is_sanitized_and_recovers_through_check(tmp_path: Path) -
     stderr = io.StringIO()
     try:
         with redirect_stderr(stderr):
-            logging.getLogger("logagent.test").error(
+            logging.getLogger("workflowweave.test").error(
                 "write_event",
                 extra={"event": "write_event", "session_id": "session-1"},
             )

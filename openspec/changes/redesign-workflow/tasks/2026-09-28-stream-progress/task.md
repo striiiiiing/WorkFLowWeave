@@ -27,7 +27,7 @@
 | 决策 | 依据与理由 |
 | --- | --- |
 | 两个目标及选择性推送 | 用户明确提出精简和实时体验，随后限定三类推送点；不能扩大为每个节点完成都广播 |
-| 旧草图的核对范围 | 已按用户指示读取仓库外 LogAgent-design-notes/redesign-workflow-2026-09-28/workflow.py.txt 及 subgraph/collectors.py.txt，确认 subgraphs=True、按 tags 消费必要过程信息的意图；具体三类粒度以用户本轮澄清为准，不恢复 ToolNode、逐 chunk 建线程、fork 或草图保留时长 |
+| 旧草图的核对范围 | 已按用户指示读取仓库外 WorkFLowWeave-design-notes/redesign-workflow-2026-09-28/workflow.py.txt 及 subgraph/collectors.py.txt，确认 subgraphs=True、按 tags 消费必要过程信息的意图；具体三类粒度以用户本轮澄清为准，不恢复 ToolNode、逐 chunk 建线程、fork 或草图保留时长 |
 | 两部分职责 | 用户前轮要求工作逻辑与 astream 消费子模块；LangGraph 唯一调度，消费者负责观察、投影和推送 |
 | 正文采用引用 | 用户比较改动范围后接受；现有 workflow/session_store.py 保存正文与业务版本，protocols.py 的 SessionReader 要求固定版本读取 |
 | 必要提交在执行路径 | workflow/nodes.py 的 archive_node 在发布引用前等待保存；通知 intent 必须先于发送，确定 receipt 必须先于成功推送 |

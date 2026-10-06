@@ -6,8 +6,8 @@ import time
 import pytest
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-from logagent.workflow.execution.runner import WorkflowRunner
-from logagent.workflow.storage.checkpoints import CheckpointNamespaces, WorkflowSqliteSaver
+from workflowweave.workflow.execution.runner import WorkflowRunner
+from workflowweave.workflow.storage.checkpoints import CheckpointNamespaces, WorkflowSqliteSaver
 from tests.workflow.helpers import AI, Channel, Collector, snapshot
 
 

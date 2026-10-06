@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-import logagent.agent.workspace.files as workspace_module
-from logagent.agent.workspace import RuntimeIdentity, WorkspaceBackend
-from logagent.errors import LogAgentError
+import workflowweave.agent.workspace.files as workspace_module
+from workflowweave.agent.workspace import RuntimeIdentity, WorkspaceBackend
+from workflowweave.errors import WorkFLowWeaveError
 
 DEFAULT_LIMIT = 200
 OUTPUT_BYTES = 16 * 1024 * 1024
@@ -20,7 +20,7 @@ async def backend_for(tmp_path: Path) -> WorkspaceBackend:
     return backend
 
 
-def assert_error(exc_info: pytest.ExceptionInfo[LogAgentError], code: str) -> None:
+def assert_error(exc_info: pytest.ExceptionInfo[WorkFLowWeaveError], code: str) -> None:
     assert exc_info.value.code == code
 
 
@@ -63,10 +63,10 @@ async def test_runtime_self_is_session_scoped_readonly_and_not_searchable(tmp_pa
     assert '"session_id": "s2"' not in first_view["content"]
     assert first_view["readonly"] and first_view["hash"] != second_view["hash"]
 
-    with pytest.raises(LogAgentError) as write_error:
+    with pytest.raises(WorkFLowWeaveError) as write_error:
         await first.write("Runtime/self.json", "overwrite", "{}")
     assert_error(write_error, "read_only")
-    with pytest.raises(LogAgentError) as grep_error:
+    with pytest.raises(WorkFLowWeaveError) as grep_error:
         await first.grep("session_id", path="Runtime/self.json",
                           default_limit=DEFAULT_LIMIT, output_bytes=OUTPUT_BYTES)
     assert_error(grep_error, "read_only")
@@ -111,7 +111,7 @@ async def test_read_enforces_output_budget_without_partial_success(tmp_path):
     backend = await backend_for(tmp_path)
     await backend.write("Memory/large-line.txt", "overwrite", "123456\n")
 
-    with pytest.raises(LogAgentError) as exc_info:
+    with pytest.raises(WorkFLowWeaveError) as exc_info:
         await read_backend(backend, "Memory/large-line.txt", output_bytes=5)
 
     assert_error(exc_info, "output_limit_exceeded")
@@ -135,7 +135,7 @@ async def test_write_modes_and_unique_replace(tmp_path):
     assert (backend.root / "Memory/edit.txt").read_text() == "updated\nafter\n"
 
     await backend.write("Memory/repeated.txt", "overwrite", "same same")
-    with pytest.raises(LogAgentError) as exc_info:
+    with pytest.raises(WorkFLowWeaveError) as exc_info:
         await backend.write(
             "Memory/repeated.txt",
             "replace",
@@ -157,7 +157,7 @@ async def test_expected_hash_and_create_only_conflicts_preserve_content(tmp_path
         "v2",
         expected_hash=current_hash,
     )
-    with pytest.raises(LogAgentError) as stale:
+    with pytest.raises(WorkFLowWeaveError) as stale:
         await backend.write(
             "Memory/versioned.txt",
             "overwrite",
@@ -173,7 +173,7 @@ async def test_expected_hash_and_create_only_conflicts_preserve_content(tmp_path
         "first",
         expected_hash="*",
     )
-    with pytest.raises(LogAgentError) as existing:
+    with pytest.raises(WorkFLowWeaveError) as existing:
         await backend.write(
             "Memory/create-only.txt",
             "overwrite",
@@ -189,11 +189,11 @@ async def test_sandbox_rejects_escape_but_disabled_sandbox_allows_host_path(tmp_
     outside = tmp_path / "host-file.txt"
     outside.write_text("host data", encoding="utf-8")
 
-    with pytest.raises(LogAgentError) as parent_escape:
+    with pytest.raises(WorkFLowWeaveError) as parent_escape:
         await read_backend(backend, "../host-file.txt")
     assert_error(parent_escape, "path_forbidden")
 
-    with pytest.raises(LogAgentError) as absolute_escape:
+    with pytest.raises(WorkFLowWeaveError) as absolute_escape:
         await read_backend(backend, str(outside))
     assert_error(absolute_escape, "path_forbidden")
 
@@ -212,16 +212,16 @@ async def test_directory_and_leaf_symlinks_are_rejected(tmp_path):
     leaf.symlink_to(outside / "target.txt")
     directory.symlink_to(outside, target_is_directory=True)
 
-    with pytest.raises(LogAgentError) as leaf_read:
+    with pytest.raises(WorkFLowWeaveError) as leaf_read:
         await read_backend(backend, "leaf.txt")
     assert_error(leaf_read, "path_forbidden")
 
-    with pytest.raises(LogAgentError) as leaf_write:
+    with pytest.raises(WorkFLowWeaveError) as leaf_write:
         await backend.write("leaf.txt", "overwrite", "changed")
     assert_error(leaf_write, "path_forbidden")
     assert (outside / "target.txt").read_text() == "outside"
 
-    with pytest.raises(LogAgentError) as directory_read:
+    with pytest.raises(WorkFLowWeaveError) as directory_read:
         await read_backend(backend, "directory/target.txt")
     assert_error(directory_read, "path_forbidden")
 
@@ -247,7 +247,7 @@ async def test_directory_swap_during_open_is_rejected(tmp_path, monkeypatch):
 
     monkeypatch.setattr(workspace_module.os, "open", racing_open)
     try:
-        with pytest.raises(LogAgentError) as exc_info:
+        with pytest.raises(WorkFLowWeaveError) as exc_info:
             await read_backend(backend, "race/secret.txt")
     finally:
         if race_dir.is_symlink():
@@ -275,7 +275,7 @@ async def test_runtime_views_are_readonly_and_history_notes_remain_editable(tmp_
         "Artifacts/session/output.txt",
         "History/session/events.jsonl",
     ):
-        with pytest.raises(LogAgentError) as exc_info:
+        with pytest.raises(WorkFLowWeaveError) as exc_info:
             await backend.write(path, "overwrite", "tampered")
         assert_error(exc_info, "read_only")
 
@@ -414,7 +414,7 @@ async def test_grep_reports_invalid_regular_expression(tmp_path):
     backend = await backend_for(tmp_path)
     await backend.write("Memory/search.txt", "overwrite", "needle\n")
 
-    with pytest.raises(LogAgentError) as exc_info:
+    with pytest.raises(WorkFLowWeaveError) as exc_info:
         await grep_backend(backend, "[", path="Memory/search.txt")
 
     assert_error(exc_info, "grep_failed")
@@ -437,6 +437,6 @@ async def test_grep_does_not_follow_symlink_files_or_directories(tmp_path):
         "line": 1,
         "text": "needle in target",
     }]
-    with pytest.raises(LogAgentError) as exc_info:
+    with pytest.raises(WorkFLowWeaveError) as exc_info:
         await grep_backend(backend, "needle", path="Memory/linked.txt")
     assert_error(exc_info, "path_forbidden")

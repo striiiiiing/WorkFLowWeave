@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from logagent.errors import LogAgentError
-from logagent.telemetry import (
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.telemetry import (
     TokenMeasurement,
     cache_ratio,
     compare_token_measurements,
@@ -18,9 +18,9 @@ def test_cache_ratio_uses_cached_input_as_the_numerator():
 
 
 def test_cache_ratio_rejects_impossible_counters():
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         cache_ratio(input_tokens=0, cached_input_tokens=0)
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         cache_ratio(input_tokens=100, cached_input_tokens=101)
 
 
@@ -52,5 +52,5 @@ def test_token_pair_with_different_prompt_is_not_comparable():
         output_tokens=100,
     )
 
-    with pytest.raises(LogAgentError, match="不可比"):
+    with pytest.raises(WorkFLowWeaveError, match="不可比"):
         compare_token_measurements(_measurement(1000), compact)

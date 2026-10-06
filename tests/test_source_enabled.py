@@ -2,9 +2,9 @@
 
 import pytest
 
-from logagent.config import PluginRegistry, ResourceStore
-from logagent.errors import LogAgentError
-from logagent.models import AIConfig, SourceConfig, SystemConfig, WorkflowDefinition
+from workflowweave.config import PluginRegistry, ResourceStore
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import AIConfig, SourceConfig, SystemConfig, WorkflowDefinition
 from tests.fixtures.collectors import MockCollector
 
 
@@ -30,5 +30,5 @@ async def test_disabled_source_is_omitted_from_workflow_snapshot(tmp_path):
     )
 
     assert store.get("sources", source.id).enabled is False
-    with pytest.raises(LogAgentError, match="没有可用的数据源"):
+    with pytest.raises(WorkFLowWeaveError, match="没有可用的数据源"):
         store.snapshot("workflow")

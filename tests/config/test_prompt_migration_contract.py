@@ -7,10 +7,10 @@ import orjson
 import pytest
 from pydantic import ValidationError
 
-from logagent.config import ResourceStore
-from logagent.config.migrations import migrate_legacy_snapshot, migrate_resources
-from logagent.errors import LogAgentError
-from logagent.models import WorkflowSnapshot
+from workflowweave.config import ResourceStore
+from workflowweave.config.migrations import migrate_legacy_snapshot, migrate_resources
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import WorkflowSnapshot
 
 
 def legacy_resource():
@@ -71,7 +71,7 @@ def test_missing_difference_fails_without_overwriting_file_or_published_view(tmp
     data["workflows"]["wf"]["analyses"][0]["prompt"] = "{input}"
     path.write_bytes(orjson.dumps(data))
     before = Path(store.location).read_bytes()
-    with pytest.raises(LogAgentError, match="差异指令") as error:
+    with pytest.raises(WorkFLowWeaveError, match="差异指令") as error:
         store.reload_resources()
     assert error.value.code == "prompt_migration_required"
     assert path.read_bytes() == before

@@ -30,7 +30,7 @@
 
 [DeepSeek Harness discussion #4992](https://github.com/deepseek-ai/deepseek-harness/discussions/4992) 介绍的是社区插件，其两个元工具也证明了目录与模型 schema 可分离。这里选择 Pi 的单代理形式；本次不引入 directTools、搜索后自动激活原生工具、脚本 VM、语义搜索或自动审批流程。代理启动或校验失败应明确报错，不复制社区插件的全量工具透传 fallback。按需 schema 仍会占用会话历史，固定的是常驻代理定义，不是整次请求 token 成本。
 
-迁移前的 `src/logagent/agent/builtin/plugin.py` 与 [Collector 网关](../../../src/logagent/agent/gateway.py) 已具有 list/schema/call 外形，但后端绑定 Collector 和来源参数；[Agent 执行入口](../../../src/logagent/agent/graph.py) 对 `plugin` 名称具有调度和 schema 输出特例。此次需改造这些绑定及 [会话资源捕获](../../../src/logagent/agent/service.py)，不能仅更名或传一段服务列表。迁移前的 [结果模型](../../../src/logagent/models.py) 以正计数判成功，[Workflow 汇合](../../../src/logagent/workflow/stages.py) 会拼接计数，都与新契约冲突。
+迁移前的 `src/workflowweave/agent/builtin/plugin.py` 与 [Collector 网关](../../../src/workflowweave/agent/gateway.py) 已具有 list/schema/call 外形，但后端绑定 Collector 和来源参数；[Agent 执行入口](../../../src/workflowweave/agent/graph.py) 对 `plugin` 名称具有调度和 schema 输出特例。此次需改造这些绑定及 [会话资源捕获](../../../src/workflowweave/agent/service.py)，不能仅更名或传一段服务列表。迁移前的 [结果模型](../../../src/workflowweave/models.py) 以正计数判成功，[Workflow 汇合](../../../src/workflowweave/workflow/stages.py) 会拼接计数，都与新契约冲突。
 
 ## 默认行为与审查决策
 

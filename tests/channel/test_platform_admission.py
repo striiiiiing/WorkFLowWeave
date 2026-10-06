@@ -8,14 +8,14 @@ from unittest.mock import AsyncMock
 import pytest
 from langchain_core.messages import AIMessage
 
-from logagent.agent.commands import AgentCommand, CommandDispatcher
-from logagent.agent.config import AgentConfig
-from logagent.channel import ChannelManager
-from logagent.channel.conversation import ChannelAddress, InboundMessage
-from logagent.config import PluginRegistry
-from logagent.errors import LogAgentError
-from logagent.interaction.fastapi.agent import create_agent_service
-from logagent.models import ChannelConfig, Notification, SystemConfig
+from workflowweave.agent.commands import AgentCommand, CommandDispatcher
+from workflowweave.agent.config import AgentConfig
+from workflowweave.channel import ChannelManager
+from workflowweave.channel.conversation import ChannelAddress, InboundMessage
+from workflowweave.config import PluginRegistry
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.interaction.fastapi.agent import create_agent_service
+from workflowweave.models import ChannelConfig, Notification, SystemConfig
 from tests.agent.helpers import ScriptedModel
 from tests.fixtures.channels import TestChannelType
 
@@ -61,7 +61,7 @@ async def test_platform_ack_precedes_agent_processing_and_reply_uses_original_ro
         assert len(service.sessions) == 1
         assert not model.seen
         assert await asyncio.wait_for(receiver.handler(message), 2) == {"status": "duplicate"}
-        with pytest.raises(LogAgentError) as conflict:
+        with pytest.raises(WorkFLowWeaveError) as conflict:
             await receiver.handler(message.model_copy(update={"text": "different"}))
         assert conflict.value.code == "request_conflict"
 

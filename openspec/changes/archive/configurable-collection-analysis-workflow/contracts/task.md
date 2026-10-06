@@ -18,8 +18,8 @@
 - `models.py` 增加 `BackupPolicy`（快照/采集/分析/最终正文四范围，默认全开；retention_days 未指定不自动过期）、`WorkflowDefinition.backup`、`SystemConfig.max_concurrent_runs=4`、`SessionRecord`/`ArtifactInfo`/`PhaseContent`、`CollectionContext.session_reader` 和 `DeliveryResult` 一致性校验。状态包含设计要求的 `partial`；正文可用性与空正文区分。
 - `protocols.py` 增加 `SessionReader`、`ResourceReader`/`ResourceStore` 和 `ChannelRegistryView` 窄协议。协议仅依赖模型和注入，不导入 Workflow/LangGraph。
 - contracts/data-models.md 与 module-interfaces.md 已按当前总设计及模块 design.md 重写为派生说明；明确独立 SessionStore 业务内容、checkpointer 执行进度、JSON 资源、长期 channel 生命周期及业务 version 固定读取。
-- 旧架构修订前验证（仅保留历史记录，不作为本次新结果）：`rtk proxy timeout 60s uv run pytest -q tests/test_contracts.py tests/test_shared_session_models.py` → 123 passed；`rtk proxy timeout 60s uv run pytest -q tests/test_run_store.py tests/test_workflow_recovery.py tests/test_workflow_integration.py` → 87 passed；`rtk proxy uv run ruff check src/logagent/models.py src/logagent/protocols.py tests/test_shared_session_models.py` → All checks passed。
-- 旧架构修订前构建及烟测（同上）：`rtk proxy uv build` → 成功生成 `dist/logagent-0.1.0.tar.gz` 和 wheel；序列化烟测通过 `rtk proxy uv run python -` 验证 WorkflowDefinition、partial SessionRecord、含中文正文 PhaseContent 的 orjson/Pydantic round-trip 和 JSON Schema，运行时 reader 不出现在持久化 schema。
+- 旧架构修订前验证（仅保留历史记录，不作为本次新结果）：`rtk proxy timeout 60s uv run pytest -q tests/test_contracts.py tests/test_shared_session_models.py` → 123 passed；`rtk proxy timeout 60s uv run pytest -q tests/test_run_store.py tests/test_workflow_recovery.py tests/test_workflow_integration.py` → 87 passed；`rtk proxy uv run ruff check src/workflowweave/models.py src/workflowweave/protocols.py tests/test_shared_session_models.py` → All checks passed。
+- 旧架构修订前构建及烟测（同上）：`rtk proxy uv build` → 成功生成 `dist/workflowweave-0.1.0.tar.gz` 和 wheel；序列化烟测通过 `rtk proxy uv run python -` 验证 WorkflowDefinition、partial SessionRecord、含中文正文 PhaseContent 的 orjson/Pydantic round-trip 和 JSON Schema，运行时 reader 不出现在持久化 schema。
 
 ### 决策依据与默认值
 
@@ -33,6 +33,6 @@
 - 修订依据：用户明确要求 session 可读内容与 checkpointer 分开，业务节点向独立 SessionStore 幂等写入，可使用复用的参数化闭包节点供父图/子图调用；主代理同步对应 proposal/design。公共查询不反向依赖 checkpoint 结构。
 - SessionRecord/PhaseContent 将 checkpoint_id 替换为正整数 version；SessionReader 参数同步替换。time 查询继续使用 created_at 包含边界。SessionView 读取 SessionStore；公共协议仅保留只读访问，不公开 SessionStore 写入接口，内部写入由 Workflow 任务实现。
 - 新增正整数边界、Pydantic 数字字符串转换、旧 checkpoint_id 拒绝测试；保留原备份策略、容量和投递结果校验。
-- 本次重新验证：`rtk proxy timeout 60s uv run pytest -q tests/test_contracts.py tests/test_shared_session_models.py` → **134 passed in 0.81s**；`rtk proxy uv run ruff check src/logagent/models.py src/logagent/protocols.py tests/test_shared_session_models.py` → **All checks passed**；`rtk proxy uv build` → sdist 和 wheel 均构建成功。
+- 本次重新验证：`rtk proxy timeout 60s uv run pytest -q tests/test_contracts.py tests/test_shared_session_models.py` → **134 passed in 0.81s**；`rtk proxy uv run ruff check src/workflowweave/models.py src/workflowweave/protocols.py tests/test_shared_session_models.py` → **All checks passed**；`rtk proxy uv build` → sdist 和 wheel 均构建成功。
 - 本次烟测：`rtk proxy uv run python -` → WorkflowDefinition、version=2 的 partial SessionRecord 和中文 PhaseContent 均通过 orjson/Pydantic 往返；两种 session 模型 JSON Schema 的 version 为 integer 且 exclusiveMinimum=0、不再包含 checkpoint_id；SessionReader 仅有三个查询方法。`rtk proxy git diff --check` 通过。
 - 已对照本次更新的总设计 §1.6、§5.4 与 Workflow“可复用、幂等的存档节点”段落复查派生说明：业务版本对应设计中的 version；写入节点、原子事务、重放幂等及版本递增由后续 Workflow 实现，本次模型测试不冒充存储行为验证。

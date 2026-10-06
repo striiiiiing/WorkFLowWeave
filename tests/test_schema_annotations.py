@@ -10,14 +10,14 @@ from pathlib import Path
 
 import pytest
 
-from logagent.errors import LogAgentError
-from logagent.schema import transform_annotations, validate_instance, validate_schema
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.schema import transform_annotations, validate_instance, validate_schema
 
 
 def normalize(value, rule):
-    if rule.get("x-logagent-credential") and isinstance(value, str):
-        raise LogAgentError("invalid_credential", "Plaintext credential")
-    if rule.get("x-logagent-path"):
+    if rule.get("x-workflowweave-credential") and isinstance(value, str):
+        raise WorkFLowWeaveError("invalid_credential", "Plaintext credential")
+    if rule.get("x-workflowweave-path"):
         return str(Path("/data") / value)
     return value
 
@@ -30,13 +30,13 @@ def test_reference_annotations_reject_plaintext_and_fix_paths():
             "secret": {"$ref": "#/$defs/secret", "description": "Credential"},
         },
         "$defs": {
-            "path": {"type": "string", "x-logagent-path": True},
-            "secret": {"type": ["string", "object"], "x-logagent-credential": True},
+            "path": {"type": "string", "x-workflowweave-path": True},
+            "secret": {"type": ["string", "object"], "x-workflowweave-credential": True},
         },
         "additionalProperties": False,
     }
     validate_schema(schema)
-    with pytest.raises(LogAgentError, match="Plaintext"):
+    with pytest.raises(WorkFLowWeaveError, match="Plaintext"):
         transform_annotations({"secret": "private"}, schema, normalize)
     original = {"path": "out.txt", "secret": {"kind": "env", "name": "TOKEN"}}
     frozen_schema, frozen_original = deepcopy(schema), deepcopy(original)
@@ -50,8 +50,8 @@ def test_only_matching_branches_apply_and_matching_uses_original_value(keyword):
     schema = {
         "type": "object", "properties": {
             "value": {keyword: [
-                {"type": "string", "pattern": "^relative", "x-logagent-path": True},
-                {"type": "integer", "x-logagent-credential": True},
+                {"type": "string", "pattern": "^relative", "x-workflowweave-path": True},
+                {"type": "integer", "x-workflowweave-credential": True},
             ]},
         },
     }
@@ -65,7 +65,7 @@ def test_allof_and_recursive_refs_visit_nested_objects_and_arrays():
         "type": "object", "$defs": {
             "node": {
                 "type": "object", "properties": {
-                    "path": {"allOf": [{"type": "string", "x-logagent-path": True}]},
+                    "path": {"allOf": [{"type": "string", "x-workflowweave-path": True}]},
                     "children": {"type": "array", "items": {"$ref": "#/$defs/node"}},
                 },
             },
@@ -81,12 +81,12 @@ def test_unknown_properties_remain_for_normal_validation():
     schema = {"type": "object", "properties": {}, "additionalProperties": False}
     result = transform_annotations({"unknown": "value"}, schema, normalize)
     assert result == {"unknown": "value"}
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         validate_instance(result, schema)
 
 
 def test_pattern_properties_additional_properties_and_tuple_items():
-    path = {"type": "string", "x-logagent-path": True}
+    path = {"type": "string", "x-workflowweave-path": True}
     schema = {"type": "object", "properties": {
         "paths": {"type": "object", "patternProperties": {"^p": path},
                   "additionalProperties": path},
@@ -102,7 +102,7 @@ def test_referenced_condition_uses_correct_local_resolver():
         "kind": {"type": "string", "const": "file"},
         "file": {"type": "object", "properties": {"kind": {"$ref": "#/$defs/kind"}}},
     }, "if": {"$ref": "#/$defs/file"}, "then": {
-        "properties": {"path": {"type": "string", "x-logagent-path": True}},
+        "properties": {"path": {"type": "string", "x-workflowweave-path": True}},
     }}
     assert transform_annotations({"kind": "file", "path": "x"}, schema, normalize)["path"] == "/data/x"
     assert transform_annotations({"kind": "text", "path": "x"}, schema, normalize)["path"] == "x"

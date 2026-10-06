@@ -1,7 +1,7 @@
 import pytest
 
-from logagent.storage_primitives.digest import canonical_json, digest_json
-from logagent.storage_primitives.revision import etag_for_bytes, if_match, next_revision
+from workflowweave.storage_primitives.digest import canonical_json, digest_json
+from workflowweave.storage_primitives.revision import etag_for_bytes, if_match, next_revision
 
 
 def test_digest_uses_canonical_json_and_rejects_nan():

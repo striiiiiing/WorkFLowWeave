@@ -1,8 +1,8 @@
 """The read-only recovery query must agree with the actual material check."""
 import pytest
 
-from logagent.errors import LogAgentError
-from logagent.models import BackupPolicy
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import BackupPolicy
 from tests.workflow.helpers import AI, snapshot
 from tests.workflow.test_workflow_recovery import close, run, service
 
@@ -17,7 +17,7 @@ async def test_query_and_recover_agree_on_missing_checkpoint_without_changing_hi
         assert not eligibility.available
         assert eligibility.reason.code == "checkpoint_missing"
         assert await workflow.history("run") == before
-        with pytest.raises(LogAgentError) as caught:
+        with pytest.raises(WorkFLowWeaveError) as caught:
             await workflow.resume("run")
         assert caught.value.info == eligibility.reason
     finally:

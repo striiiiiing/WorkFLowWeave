@@ -2,8 +2,8 @@
 
 from langchain_core.messages import AIMessage
 
-from logagent.agent.config import AgentConfig
-from logagent.interaction.fastapi.agent import create_agent_service
+from workflowweave.agent.config import AgentConfig
+from workflowweave.interaction.fastapi.agent import create_agent_service
 from tests.agent.helpers import ScriptedModel
 
 

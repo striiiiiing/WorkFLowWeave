@@ -25,7 +25,7 @@ const capability = (kind: 'collector' | 'channel', name: string): CapabilityDesc
       ? {
           type: 'object',
           properties: {
-            recipient: { type: 'string', 'x-logagent-workflow': true, description: '收件人' },
+            recipient: { type: 'string', 'x-workflowweave-workflow': true, description: '收件人' },
           },
         }
       : { type: 'object', properties: {} },

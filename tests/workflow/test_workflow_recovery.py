@@ -13,8 +13,8 @@ import pytest
 from sqlalchemy.exc import OperationalError
 from sqlmodel import select
 
-from logagent.errors import LogAgentError
-from logagent.models import (
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import (
     AIConfig,
     AnalysisResult,
     ChannelConfig,
@@ -23,10 +23,10 @@ from logagent.models import (
     FanInConfig,
     SourceConfig,
 )
-from logagent.workflow.execution.runner import WorkflowRunner
-from logagent.workflow.execution.tasks import RunCoordinator
-from logagent.workflow.storage.facts import SessionStore
-from logagent.workflow.storage.models import ReportBody, SessionEntry
+from workflowweave.workflow.execution.runner import WorkflowRunner
+from workflowweave.workflow.execution.tasks import RunCoordinator
+from workflowweave.workflow.storage.facts import SessionStore
+from workflowweave.workflow.storage.models import ReportBody, SessionEntry
 from tests.workflow.helpers import AI, Channel, Collector, archived, snapshot
 
 
@@ -420,7 +420,7 @@ async def test_missing_checkpoint_is_not_reconstructed_from_business_history(tmp
     w, store, _, _, _ = service(path)
     await run(w)
     await w._checkpointer.adelete_thread("run")
-    with pytest.raises(LogAgentError) as caught:
+    with pytest.raises(WorkFLowWeaveError) as caught:
         await w.resume("run")
     assert caught.value.code == "checkpoint_missing"
     assert (await w.get_session("run")).status == "completed"
@@ -431,7 +431,7 @@ async def test_missing_checkpoint_is_not_reconstructed_from_business_history(tmp
 async def test_disabled_archive_does_not_disable_checkpoint_recovery(
     tmp_path, category
 ):
-    from logagent.models import BackupPolicy
+    from workflowweave.models import BackupPolicy
 
     policy = BackupPolicy(**{category: False})
     # Block before outputs freeze to exercise recovery from a cancelled checkpoint.
@@ -457,13 +457,13 @@ async def test_duplicate_capacity_and_shutdown(tmp_path):
     w.coordinator._max = 1
     await w.trigger(snapshot(), session_id="run")
     await asyncio.wait_for(ai.started.wait(), 5)
-    with pytest.raises(LogAgentError, match="同一 session"):
+    with pytest.raises(WorkFLowWeaveError, match="同一 session"):
         await w.resume("run")
-    with pytest.raises(LogAgentError, match="容量"):
+    with pytest.raises(WorkFLowWeaveError, match="容量"):
         await w.trigger(snapshot(), session_id="other")
     await w.shutdown()
     assert (await w.wait("run")).status == "cancelled"
-    with pytest.raises(LogAgentError, match="关闭"):
+    with pytest.raises(WorkFLowWeaveError, match="关闭"):
         await w.resume("run")
     store.close()
 
@@ -578,7 +578,7 @@ async def test_aggregate_failure_does_not_fallback_to_branch_delivery(tmp_path):
 
 
 def test_in_memory_database_is_rejected():
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         WorkflowRunner(Collector(), AI(), Channel(), database=":memory:")
 
 
@@ -621,7 +621,7 @@ async def test_failed_work_requires_explicit_stage_rerun(tmp_path, failure):
 async def test_archive_damage_does_not_replace_checkpoint_execution_authority(tmp_path, damage):
     from datetime import timedelta
 
-    from logagent.models import BackupPolicy
+    from workflowweave.models import BackupPolicy
 
     path = tmp_path / "runs.sqlite3"
     w, store, c, a, n = service(path)
@@ -648,7 +648,7 @@ async def test_archive_damage_does_not_replace_checkpoint_execution_authority(tm
         assert (await w.wait("run")).status == "completed"
     else:
         record = await w.get_session("run")
-        with pytest.raises(LogAgentError) as error:
+        with pytest.raises(WorkFLowWeaveError) as error:
             await w.session_view.get_phase_content("run", "aggregate", version=record.version)
         assert error.value.code == "storage_corrupt"
         assert "private-content" not in str(error.value)
@@ -658,7 +658,7 @@ async def test_archive_damage_does_not_replace_checkpoint_execution_authority(tm
 
 @pytest.mark.parametrize("on_failure", ["stop", "continue"])
 async def test_body_backup_failure_preserves_checkpoint_for_later_reconciliation(tmp_path, on_failure):
-    from logagent.models import BackupPolicy
+    from workflowweave.models import BackupPolicy
 
     class BodyFailure(SessionStore):
         failing = True
@@ -670,7 +670,7 @@ async def test_body_backup_failure_preserves_checkpoint_for_later_reconciliation
     w, store, c, a, n = service(tmp_path / "runs.sqlite3", store_type=BodyFailure)
     definition = snapshot(backup=BackupPolicy(on_failure=on_failure))
     if on_failure == "stop":
-        with pytest.raises(LogAgentError, match="备份策略"):
+        with pytest.raises(WorkFLowWeaveError, match="备份策略"):
             await run(w, definition)
     else:
         result = await run(w, definition)
@@ -691,7 +691,7 @@ async def test_body_backup_failure_preserves_checkpoint_for_later_reconciliation
 
 
 async def test_reconcile_interrupted_preserves_events_without_running_business(tmp_path):
-    from logagent.models import BackupPolicy
+    from workflowweave.models import BackupPolicy
 
     w, store, c, a, n = service(tmp_path / "runs.sqlite3")
     store.create("orphan", "demo", BackupPolicy())
@@ -729,7 +729,7 @@ async def test_created_session_cannot_be_reused_after_snapshot_write_failure(tmp
     with pytest.raises(RuntimeError, match="snapshot write interrupted"):
         await w.wait("run")
     assert (await w.get_session("run")).status == "interrupted"
-    with pytest.raises(LogAgentError) as error:
+    with pytest.raises(WorkFLowWeaveError) as error:
         await w.trigger(snapshot(), session_id="run")
     assert error.value.code == "session_exists"
     await close(w, store)
@@ -760,7 +760,7 @@ async def test_final_archive_replay_reconciles_interrupted_summary(tmp_path):
 
 async def test_unsaved_definition_is_not_silently_replaced_by_same_id(tmp_path):
     w, store, _, _, _ = service(tmp_path / "runs.sqlite3")
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         await w.trigger(snapshot().workflow)
     await close(w, store)
 

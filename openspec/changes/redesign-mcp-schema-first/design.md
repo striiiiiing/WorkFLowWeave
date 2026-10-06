@@ -31,12 +31,12 @@ Cursor 的 `command`、`args`、`url`、`headers`、`env` 按 transport 归一�
 
 ## 5. 计数与请求状态
 
-MCP 结果中的专用业务计数字段为 `_meta.logagent_count`，值必须是非负整数。字段缺失、类型错误或路径不符合约定时，调用仍可成功，但计数状态为 `count_unavailable`；系统不从正文推断计数。
+MCP 结果中的专用业务计数字段为 `_meta.workflowweave_count`，值必须是非负整数。字段缺失、类型错误或路径不符合约定时，调用仍可成功，但计数状态为 `count_unavailable`；系统不从正文推断计数。
 
 请求状态和业务计数分离：
 
 - `isError=true`、超时、传输错误、协议错误、服务/工具不在绑定范围：请求错误。
-- 正常返回且 `_meta.logagent_count = 0`：空业务结果，不是请求错误。
+- 正常返回且 `_meta.workflowweave_count = 0`：空业务结果，不是请求错误。
 - 正常返回但计数缺失或非法：请求成功，计数状态 `count_unavailable`。
 - 已发送但结果未知：保留执行阶段和未知事实，按请求错误策略处理，不自动重放。
 

@@ -50,7 +50,7 @@ export function errorMessage(
     const staleBusinessError =
       error.info.code === 'invalid_config' &&
       error.message === '资源未通过业务校验' &&
-      exceptionType === 'LogAgentError'
+      exceptionType === 'WorkFLowWeaveError'
         ? '后端未展开具体校验原因，请重启后端服务后重试'
         : ''
     const code = staleBusinessError ? `错误码 ${error.info.code}` : ''
@@ -114,7 +114,7 @@ export class NetworkError extends Error {
     public readonly path: string,
     public readonly cause: unknown,
   ) {
-    super(`无法连接 LogAgent：${path}；请求结果未知`)
+    super(`无法连接 WorkFLowWeave：${path}；请求结果未知`)
     this.name = 'NetworkError'
   }
 }

@@ -5,11 +5,11 @@ import pytest
 from langchain_core.messages import AIMessage
 from pydantic import Field
 
-from logagent.agent.config import AgentConfig
-from logagent.agent.tools.declaration import ToolDeclaration
-from logagent.agent.tools.scheduling import ToolScheduler
-from logagent.interaction.fastapi.agent import create_agent_service
-from logagent.models import AIConfig
+from workflowweave.agent.config import AgentConfig
+from workflowweave.agent.tools.declaration import ToolDeclaration
+from workflowweave.agent.tools.scheduling import ToolScheduler
+from workflowweave.interaction.fastapi.agent import create_agent_service
+from workflowweave.models import AIConfig
 from tests.agent.helpers import ScriptedModel
 
 

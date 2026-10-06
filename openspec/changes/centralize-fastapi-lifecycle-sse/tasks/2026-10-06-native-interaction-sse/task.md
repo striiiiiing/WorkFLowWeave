@@ -1,6 +1,6 @@
 # Interaction 原生 SSE 实施记录
 
-依据：[proposal](../../proposal.md)、[design §3](../../design.md)、[FastAPI SSE transport 规范](../../specs/fastapi-sse-transport/spec.md)，以及当前 `src/logagent/interaction/` 的三条事件路由。
+依据：[proposal](../../proposal.md)、[design §3](../../design.md)、[FastAPI SSE transport 规范](../../specs/fastapi-sse-transport/spec.md)，以及当前 `src/workflowweave/interaction/` 的三条事件路由。
 
 ## 范围与决策
 
@@ -12,10 +12,10 @@
 
 ## 实施文件
 
-- `src/logagent/interaction/channel_routers.py`：共享 Agent SSE 依赖和原生事件生成器。
-- `src/logagent/interaction/agent_routers.py`：Agent 路由声明原生 SSE 响应。
-- `src/logagent/interaction/routers.py`：Workflow snapshot SSE 改为原生响应和依赖清理。
-- `src/logagent/interaction/sse.py`：仅保留 FastAPI `ServerSentEvent` 类型别名，不再实现第二套编码器。
+- `src/workflowweave/interaction/channel_routers.py`：共享 Agent SSE 依赖和原生事件生成器。
+- `src/workflowweave/interaction/agent_routers.py`：Agent 路由声明原生 SSE 响应。
+- `src/workflowweave/interaction/routers.py`：Workflow snapshot SSE 改为原生响应和依赖清理。
+- `src/workflowweave/interaction/sse.py`：仅保留 FastAPI `ServerSentEvent` 类型别名，不再实现第二套编码器。
 - `tests/interaction/test_sse.py`：验证原生响应头、事件字段、Unicode JSON payload 和元数据校验。
 
 ## 验证

@@ -4,7 +4,7 @@
 
 ## 调用方式与独立性
 
-模型测试直接实例化 AIService，通过 LangChain 和真实 HTTP 连接调用服务。默认请求 `http://localhost:19026/v1` 的 `mock`，密钥从 `.env` 读取；显式设置 `LOGAGENT_AI_LIVE=1` 后还可测试 `qwen3.7-flash`。Qwen 使用 `.env` 的地址，模型 ID 固定为用户要求的 `qwen3.7-flash`。
+模型测试直接实例化 AIService，通过 LangChain 和真实 HTTP 连接调用服务。默认请求 `http://localhost:19026/v1` 的 `mock`，密钥从 `.env` 读取；显式设置 `WORKFLOWWEAVE_AI_LIVE=1` 后还可测试 `qwen3.7-flash`。Qwen 使用 `.env` 的地址，模型 ID 固定为用户要求的 `qwen3.7-flash`。
 
 已删除 AI 测试中的 `httpx.MockTransport`、伪造 HTTP 响应及注入假模型的测试。观察请求时只使用 httpx 的 request event hook 记录真实发送内容，不替换传输、不制造响应。其他模块仍使用的测试替身移至 `tests/workflow_ai_helpers.py`，AI 测试不导入它。
 
@@ -22,7 +22,7 @@
 | `tests/ai/live_helpers.py` | 配置解析、凭据提供、固定提示词和结果断言。 |
 
 - mock 服务实测返回正文“测试”，成功断言要求 `status=success` 且正文包含“测试”，不把 HTTP 200 单独作为通过依据。
-- Qwen 的固定提示词要求返回 `LOGAGENT_OK`，断言成功且正文包含该标记。
+- Qwen 的固定提示词要求返回 `WORKFLOWWEAVE_OK`，断言成功且正文包含该标记。
 - 六种思考配置为 `enable_thinking=false`，以及 `enable_thinking=true` 搭配 low/medium/high/xhigh/max。记录真实请求并逐项比对参数，同时要求服务器返回可用结果。
 - 模型发现必须包含请求的模型 ID；并发结果分别检查 task_id。取消测试在请求开始时取消任务，检查 cancelled 和一次取消通知；显式重启后重新请求模型验证成功。
 - `.env`、连接、认证或上游调用失败直接报错，不使用本地替身兜底。
@@ -40,10 +40,10 @@ rtk proxy timeout 60s uv run --frozen pytest -q tests/ai --junitxml=data/ai-mock
 仅运行 Qwen 用例：
 
 ```bash
-rtk proxy env LOGAGENT_AI_LIVE=1 timeout 180s uv run --frozen pytest -q tests/ai -k qwen --junitxml=data/ai-qwen-tests.xml
+rtk proxy env WORKFLOWWEAVE_AI_LIVE=1 timeout 180s uv run --frozen pytest -q tests/ai -k qwen --junitxml=data/ai-qwen-tests.xml
 ```
 
-`LOGAGENT_AI_ENV` 可指定配置文件，默认 `.env`。支持下列格式；密钥可省略以请求无认证服务。
+`WORKFLOWWEAVE_AI_ENV` 可指定配置文件，默认 `.env`。支持下列格式；密钥可省略以请求无认证服务。
 
 ```text
 http://localhost:19026/v1
@@ -60,7 +60,7 @@ AI_API_KEY=<实际密钥>
 静态检查：
 
 ```bash
-rtk proxy uv run --frozen ruff check src/logagent/ai tests/ai
+rtk proxy uv run --frozen ruff check src/workflowweave/ai tests/ai
 ```
 
 ## 验证边界

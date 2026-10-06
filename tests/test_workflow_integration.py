@@ -12,11 +12,11 @@ from contextlib import asynccontextmanager
 from sqlalchemy import URL, inspect
 from sqlmodel import Session, create_engine, func, select
 
-from logagent.ai import AIService
-from logagent.channel import ChannelManager
-from logagent.collection.manager import CollectorManager
-from logagent.config import PluginRegistry, ResourceStore, expand_source
-from logagent.models import (
+from workflowweave.ai import AIService
+from workflowweave.channel import ChannelManager
+from workflowweave.collection.manager import CollectorManager
+from workflowweave.config import PluginRegistry, ResourceStore, expand_source
+from workflowweave.models import (
     AIConfig,
     AnalysisTask,
     ChannelConfig,
@@ -26,8 +26,8 @@ from logagent.models import (
     SystemConfig,
     WorkflowDefinition,
 )
-from logagent.workflow.execution.runner import WorkflowRunner
-from logagent.workflow.storage.models import SessionHeader
+from workflowweave.workflow.execution.runner import WorkflowRunner
+from workflowweave.workflow.storage.models import SessionHeader
 from plugins.channel.file.channel import FileChannelType
 from tests.fixtures.collectors import MockCollector
 from tests.workflow.helpers import archived

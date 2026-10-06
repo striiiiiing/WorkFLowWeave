@@ -50,7 +50,7 @@
 | 清理以父图提交为条件 | 删除发生在子图结果已经脱离内部进度后，避免失去进程恢复材料；astream chunk 不等于 checkpoint 已提交 |
 | 不采用新的天数/分钟默认 | 用户要求异步删除已无用子图进度，因此按完成与提交事实触发；保留未完成调用，父图和业务保留策略沿用既有设置 |
 | saver 的局部清理适配 | 已检查当前 `langgraph-checkpoint-sqlite 3.1.1`：adelete_thread 会删除整 thread；aprune/adelete_for_runs 继承的实现抛 NotImplementedError。只扩展 namespace 删除，不复制 saver 的执行机制 |
-| Agent 保持主动读取 | 当前 `src/logagent/agent/commands.py::_workflow_result` 先按 sessionID 取记录，再用 record.version 读取 aggregate；按用户要求保持这一方式 |
+| Agent 保持主动读取 | 当前 `src/workflowweave/agent/commands.py::_workflow_result` 先按 sessionID 取记录，再用 record.version 读取 aggregate；按用户要求保持这一方式 |
 
 ## 检查记录与限制
 

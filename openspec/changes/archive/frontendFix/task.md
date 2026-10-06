@@ -75,18 +75,18 @@
 ### 添加供应商渠道与 HTTP 405 修正（2026-09-21）
 
 - 证据：运行中的 4300 后端进程启动于 2026-09-20 18:14，OpenAPI 不含 `/api/credentials/protect`；向该接口 POST 空对象返回 405，而当前源码已注册该接口。保存卡在本地凭据保护阶段，不是 AI 地址的连接检查失败。
-- 根因修复：更新运行后端；405 提示带上 LogAgent 请求方法与路径，并提示后端版本/代理目标，避免误导为供应商拒绝连接。保留真正的保存和加密失败，不显示虚假成功。
+- 根因修复：更新运行后端；405 提示带上 WorkFLowWeave 请求方法与路径，并提示后端版本/代理目标，避免误导为供应商拒绝连接。保留真正的保存和加密失败，不显示虚假成功。
 - 分类按钮与弹窗统一采用资源名：添加数据源、添加处理模板、添加供应商渠道、添加通知渠道。
 - 供应商可先保存地址和凭据，`AIConfig.models` 默认空对象；依据本次“不能阻止用户添加”的要求，移除保存时至少一个模型的限制。执行时 `AIService.validate(config, model)` 和 WorkflowSnapshot 仍要求模型已配置。
 - 检查连接为已保存供应商的独立操作，复用 `AIService.list_models`；成功仅显示发现数量，不改写模型。失败不删除资源、不阻止继续编辑或保存。沿用现有 timeout/retries 预算，不增加隐藏重试或默认模型。
 - 验证：真实生命周期 HTTP 测试覆盖加密、无模型保存、检查失败后保留和编辑、发现成功不覆盖配置；前端验证分类文案与显式检查请求，随后类型检查、构建和运行端路由冒烟。
 - 已验证：后端 22 项通过（1 项可选真实供应商测试因未启用跳过，4 项网络调用测试不在本次筛选内）；前端原有 API/编辑器 20 项及新增供应商 UI/API 3 项通过；vue-tsc、生产构建、Ruff 和 diff 检查通过。
-- 运行端修复：确认现有 sessions 为空后重启旧 LogAgent；OpenAPI 已包含凭据保护及独立连接检查入口，凭据接口空请求返回 422 字段校验，不再返回 405。未对用户供应商发送测试请求。
+- 运行端修复：确认现有 sessions 为空后重启旧 WorkFLowWeave；OpenAPI 已包含凭据保护及独立连接检查入口，凭据接口空请求返回 422 字段校验，不再返回 405。未对用户供应商发送测试请求。
 
 ### AI 供应商业务校验提示（2026-09-21）
 
-- `src/logagent/lifecycle/service.py` 注册 `openai_compatible_api` OpenAI 兼容渠道；AxonHub 使用该 API 格式并填写包含 `/v1` 的 base URL。旧资源中的 provider=`http` 作为兼容别名保留。
-- `ResourceStore` 保留 `LogAgentError` 的结构化错误，前端显示 `provider_missing`、`invalid_config` 等字段提示，不再统一折叠成“资源未通过业务校验”。
+- `src/workflowweave/lifecycle/service.py` 注册 `openai_compatible_api` OpenAI 兼容渠道；AxonHub 使用该 API 格式并填写包含 `/v1` 的 base URL。旧资源中的 provider=`http` 作为兼容别名保留。
+- `ResourceStore` 保留 `WorkFLowWeaveError` 的结构化错误，前端显示 `provider_missing`、`invalid_config` 等字段提示，不再统一折叠成“资源未通过业务校验”。
 - 系统提示词字段按用户要求不在前端展示。
 
 ### API 格式单选（2026-09-21）
@@ -96,14 +96,14 @@
 
 ### AI 配置默认值修正（2026-09-21）
 
-- 依据 `src/logagent/models.py`，AI 配置的 `provider` 是必填业务字段；后端正式 provider 键为 `openai_compatible_api`，旧 `http` 仅作为兼容别名。
+- 依据 `src/workflowweave/models.py`，AI 配置的 `provider` 是必填业务字段；后端正式 provider 键为 `openai_compatible_api`，旧 `http` 仅作为兼容别名。
 - 前端 `createResource('ai')` 默认选择唯一的 `OpenAI Compatible API` 格式，提交值为 `openai_compatible_api`。
 - 前端补齐 `AIConfig.system_prompt` 编辑字段；该字段已存在于后端模型，之前界面漏展示会导致用户无法配置。
 
 ### 供应商业务校验错误的前端诊断（2026-09-21）
 
-- 现场证据：当前 4300 端口仍运行旧后端。提交 `provider=openai_compatible_api`、`base_url=http://localhost:19026/v1` 时返回 `invalid_config / 资源未通过业务校验 / exception_type=LogAgentError`；同一进程提交兼容旧版本的 `provider=http` 可以保存。URL 格式本身通过当前 `ai/options.py::validate_config` 校验，保存供应商也不会访问上游地址。
-- 决策：前端 `errorMessage` 对后端错误详情增加 `fields`、`reason`、`exception_type` 展示；当收到旧进程典型的未展开 `LogAgentError` 时明确提示后端未加载最新版本并要求重启。这样保留服务端结构化错误为唯一事实来源，不在前端猜测上游连接原因或自动改写 provider。
+- 现场证据：当前 4300 端口仍运行旧后端。提交 `provider=openai_compatible_api`、`base_url=http://localhost:19026/v1` 时返回 `invalid_config / 资源未通过业务校验 / exception_type=WorkFLowWeaveError`；同一进程提交兼容旧版本的 `provider=http` 可以保存。URL 格式本身通过当前 `ai/options.py::validate_config` 校验，保存供应商也不会访问上游地址。
+- 决策：前端 `errorMessage` 对后端错误详情增加 `fields`、`reason`、`exception_type` 展示；当收到旧进程典型的未展开 `WorkFLowWeaveError` 时明确提示后端未加载最新版本并要求重启。这样保留服务端结构化错误为唯一事实来源，不在前端猜测上游连接原因或自动改写 provider。
 - 验证：API 单元测试覆盖旧后端未展开错误与模型字段错误，现有前端错误信封测试继续通过。
 
 
@@ -119,7 +119,7 @@
 - 验证计划：定向参数/资源/供应商回归测试 → 类型和格式检查 → 生产构建 → 真实临时后端浏览器保存和重载；重点覆盖重复项、顺序、唯一性、数目约束、嵌套数组、非法输入保留及可选值省略。
 - 验证完成：参数表单 11 项、资源/工作流编辑器 8 项、供应商编辑器 9 项、模型 Proxy 保存 2 项，合计 30 项分批通过；vue-tsc、本次文件 Prettier 检查、生产构建和本次范围 diff 空白检查通过。
 - 浏览器完成：Chromium + 真实临时后端 1 条新增流程通过。验证 mock 记录重复添加、保存、重新打开、独立删除，以及 history.limit 固定数字文字、stages 逐项选择/排序/保存/重载；无页面运行错误。断言分别检查提交体和后端持久化结果，允许 `config/normalize.py` 的既有服务端默认值补齐。
-- 验证环境：WSL 挂载目录曾偶发 ENOMEM 读取失败，相关用例已用单 worker 及 `UV_THREADPOOL_SIZE=1` 重试通过。Chromium 缺失的 libnspr/libnss/libasound 下载解包到 `/tmp/logagent-browser-libs`，通过 `LD_LIBRARY_PATH` 使用，无系统安装或后端修改。
+- 验证环境：WSL 挂载目录曾偶发 ENOMEM 读取失败，相关用例已用单 worker 及 `UV_THREADPOOL_SIZE=1` 重试通过。Chromium 缺失的 libnspr/libnss/libasound 下载解包到 `/tmp/workflowweave-browser-libs`，通过 `LD_LIBRARY_PATH` 使用，无系统安装或后端修改。
 
 
 ### 字段标题类型后缀与中文输入错误（2026-09-21）
@@ -135,7 +135,7 @@
 ### 字段处理类与 Schema 校验统一（2026-09-21）
 
 - 授权：用户要求将字段编辑封装为统一处理类，删除堆叠的手写类型校验；复用 Element Plus 的 validate 流程，基于 Schema 生成约束。
-- 根因与选择：Element Plus 的 Form.validate 使用 async-validator 规则，而后端 `src/logagent/schema.py` 使用 JSON Schema 2020-12（含本地引用、联合类型、条件和格式约束）。手工翻译为另一套规则会再次建立不完整的校验实现；因此以 Ajv 2020 直接编译原 Schema，通过 Element Plus 的自定义 validator 接入表单。
+- 根因与选择：Element Plus 的 Form.validate 使用 async-validator 规则，而后端 `src/workflowweave/schema.py` 使用 JSON Schema 2020-12（含本地引用、联合类型、条件和格式约束）。手工翻译为另一套规则会再次建立不完整的校验实现；因此以 Ajv 2020 直接编译原 Schema，通过 Element Plus 的自定义 validator 接入表单。
 - 职责：`domain/parameters.ts::ParameterInput` 统一字段元信息、草稿解析和数组操作，只依赖注入的 FieldRule 接口；`adapters/schemaValidation.ts` 封装 Ajv/ajv-formats 和错误中文化；Vue 控件只管理表单绑定、展示和交互。移除旧的数字正则、整数/类型/数组唯一性手写校验及深比较实现；选项匹配使用 fast-deep-equal，Schema 约束由 Ajv 判断。
 - 一致性：字段校验器在根 Schema 上下文中编译，保留 `$defs`/`$ref`，不复制引用定义；表单整对象和原始 JSON 同样校验根规则，覆盖跨字段约束。中文提示使用 ajv-i18n，常见输入错误补充可操作的中文文案。
 - 默认值依据：沿用插件声明的 default → enum 首项 → 类型空值，仅初始化编辑草稿；Ajv 禁止自动转型、补默认值、删除未知字段，未开启的可选字段不写入提交对象。strictNumbers 保持开启；strict 模式关闭以兼容后端合法联合类型和应用注解，Schema 自身仍经 Ajv 验证。

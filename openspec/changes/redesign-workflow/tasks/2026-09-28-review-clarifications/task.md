@@ -21,13 +21,13 @@
 
 | 能力 | 已有实现 | 本轮仍需修改 |
 | --- | --- | --- |
-| 五阶段图与逐项子图 | [graph.py](../../../../../src/logagent/workflow/graph.py)、[fan.py](../../../../../src/logagent/workflow/fan.py) 已直接注册阶段及逐项分支，子图 compile(checkpointer=None) | GraphState 仍为 snapshot_ref/phases/items 引用；改内容 state、局部 schema，移除节点归档依赖 |
-| 单次 astream | [service.py](../../../../../src/logagent/workflow/service.py) 的 _execute 已使用 subgraphs=True、durability="sync" | 消费者从观察既有归档改为确认 checkpoint 后形成长期归档，补齐与去重共用路径 |
-| 并行 intent → receipt | [notification.py](../../../../../src/logagent/workflow/notification.py) 已为每项建立独立分支，无全局串行链 | 当前 intent/receipt 使用 archive_node；改为 checkpoint 权威，不以 SessionStore 判断发送资格 |
-| 原运行续跑与阶段重跑 | service.py 的 resume 已有真实前驱 aupdate_state、新 epoch 和请求去重 | [recovery.py](../../../../../src/logagent/workflow/recovery.py) 仍从 SessionStore 恢复输入；改用内容 checkpoint，增加独立恢复截止 |
-| 子图异步清理 | [checkpoints.py](../../../../../src/logagent/workflow/checkpoints.py) 已实现 namespace 删除及有界后台任务 | 适配内容归档交接、分类期限及 session 互斥，不把当前引用交接条件直接沿用为新内容条件 |
+| 五阶段图与逐项子图 | [graph.py](../../../../../src/workflowweave/workflow/graph.py)、[fan.py](../../../../../src/workflowweave/workflow/fan.py) 已直接注册阶段及逐项分支，子图 compile(checkpointer=None) | GraphState 仍为 snapshot_ref/phases/items 引用；改内容 state、局部 schema，移除节点归档依赖 |
+| 单次 astream | [service.py](../../../../../src/workflowweave/workflow/service.py) 的 _execute 已使用 subgraphs=True、durability="sync" | 消费者从观察既有归档改为确认 checkpoint 后形成长期归档，补齐与去重共用路径 |
+| 并行 intent → receipt | [notification.py](../../../../../src/workflowweave/workflow/notification.py) 已为每项建立独立分支，无全局串行链 | 当前 intent/receipt 使用 archive_node；改为 checkpoint 权威，不以 SessionStore 判断发送资格 |
+| 原运行续跑与阶段重跑 | service.py 的 resume 已有真实前驱 aupdate_state、新 epoch 和请求去重 | [recovery.py](../../../../../src/workflowweave/workflow/recovery.py) 仍从 SessionStore 恢复输入；改用内容 checkpoint，增加独立恢复截止 |
+| 子图异步清理 | [checkpoints.py](../../../../../src/workflowweave/workflow/checkpoints.py) 已实现 namespace 删除及有界后台任务 | 适配内容归档交接、分类期限及 session 互斥，不把当前引用交接条件直接沿用为新内容条件 |
 | 前端逐项进度与恢复动作 | [RunProgress.vue](../../../../../frontend/src/modules/runs/ui/RunProgress.vue) 已接入 [RunDetailPage.vue](../../../../../frontend/src/pages/runs/RunDetailPage.vue)；useRunDetail 已有阶段 resume | [runEventSource.ts](../../../../../frontend/src/modules/runs/api/runEventSource.ts) 仍为 ready/progress/resync；改完整 snapshot 及简单排序，浏览器验收仍未在本轮执行 |
-| BackupPolicy | [models.py](../../../../../src/logagent/models.py) 现为 enabled/snapshot/collection/analysis/final、on_failure 和统一 retention_days | 扩展统一策略范围，替换统一期限并同步配置/API/UI 说明；不另建平行保留配置 |
+| BackupPolicy | [models.py](../../../../../src/workflowweave/models.py) 现为 enabled/snapshot/collection/analysis/final、on_failure 和统一 retention_days | 扩展统一策略范围，替换统一期限并同步配置/API/UI 说明；不另建平行保留配置 |
 
 前后端共用 SSE 层、分类正文/提示词存储仍待实施；上述既有图、通知、恢复和页面能力需要适配，不应整体标为未落地。
 

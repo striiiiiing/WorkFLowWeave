@@ -14,7 +14,7 @@
 - `src/qwenpaw/app/channels/base.py`：对话输出最终经过渠道发送入口。
 - `src/qwenpaw/app/channels/telegram/channel.py`：SDK handler 构造来源与路由信息后提交 `_enqueue`。
 
-参考其职责拆分；保留 LogAgent 已有队列、命令端口、Workflow 发送和错误诊断，不照搬其静默超时/丢弃行为，不再增加一套渠道运行时。
+参考其职责拆分；保留 WorkFLowWeave 已有队列、命令端口、Workflow 发送和错误诊断，不照搬其静默超时/丢弃行为，不再增加一套渠道运行时。
 
 ## 2. 归属和身份
 

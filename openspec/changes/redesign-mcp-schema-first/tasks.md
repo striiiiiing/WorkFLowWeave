@@ -12,7 +12,7 @@
 - [ ] 4. 实现现有 `mcp` 代理 `call` action 的当前 schema 参数校验、原始结果保存、调用阶段和结果未知语义。
 - [ ] 5. 实现 Cursor JSON 导入，覆盖 `command/args/env/url/headers`，敏感值进入凭据引用，不写入普通配置和 Agent 上下文。
 - [ ] 6. 重写 Workflow MCP 调用描述，保存服务、工具和原始参数；删除对 Collector registry、Setter、模板和旧 count 成功判定的依赖。
-- [ ] 7. 实现 `_meta.logagent_count` 的严格非负整数读取；缺失或非法统一记录 `count_unavailable`，零值进入空业务结果。
+- [ ] 7. 实现 `_meta.workflowweave_count` 的严格非负整数读取；缺失或非法统一记录 `count_unavailable`，零值进入空业务结果。
 - [ ] 8. 将 MCP 请求错误映射到 `stop/notice/skip`；明确区分请求失败、空结果、计数不可用和结果未知。
 - [ ] 9. 重写 Workflow 到 Agent 的交接，交接来源名称、MCP 服务名称、工具名称和参数作为声明式调用描述；CLI 交接来源名称和指令；由 Agent 自己调用；恢复和分支使用持久化描述。
 - [ ] 10. 增加真实 stdio MCP、Cursor JSON、server/discover 回退、schema 校验、零计数、计数缺失、错误策略和未知结果测试。
@@ -24,7 +24,7 @@
 - MCP SDK、transport、目录缓存和原始执行事实：复用 `bf9fc1c` 已实现并验证的基础能力。
 - Agent schema 插件和统一调度：复用 `f175e03` 的 `ToolDeclaration`、事件和执行框架；MCP 路由重新实现。
 - 当前固定 `mcp` 代理已具备 list/search/describe/call 的 schema-first 外形：依据 subagent 对 `bf9fc1c` 的代码检查，不新增三个顶层工具，只补齐目录探测和交接语义。
-- `_meta.logagent_count`：按用户要求增加专用前缀，避免通用 `count` 与其他元数据冲突。
+- `_meta.workflowweave_count`：按用户要求增加专用前缀，避免通用 `count` 与其他元数据冲突。
 - `count_unavailable`：按用户要求统一表示字段缺失或非法，不从正文推算。
 - `server/discover` 优先、`tools/list` 回退：按用户要求兼容新版和旧版探测能力。
 - Cursor 原始键名作为 ID：按用户要求保留用户配置中的服务身份，不再套用旧资源 ID 正则。

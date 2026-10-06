@@ -13,7 +13,7 @@ from pathlib import Path
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-from logagent.workflow.storage.facts import SessionStore
+from workflowweave.workflow.storage.facts import SessionStore
 from tests.workflow.helpers import archived
 
 _CHILD_PROGRAM = """
@@ -25,12 +25,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-from logagent.models import (
+from workflowweave.models import (
     AIConfig, AnalysisResult, AnalysisTask, ChannelConfig, CollectionResult,
     DeliveryResult, SourceConfig, WorkflowDefinition, WorkflowSnapshot,
 )
-from logagent.workflow.execution.runner import WorkflowRunner
-from logagent.workflow.storage.facts import SessionStore
+from workflowweave.workflow.execution.runner import WorkflowRunner
+from workflowweave.workflow.storage.facts import SessionStore
 from tests.workflow.helpers import archived
 
 

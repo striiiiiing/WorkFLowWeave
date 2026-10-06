@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from logagent.models import AnalysisTask, FanInConfig, WorkflowDefinition
+from workflowweave.models import AnalysisTask, FanInConfig, WorkflowDefinition
 
 
 def test_counts_default_on_but_explicit_saved_false_is_preserved():

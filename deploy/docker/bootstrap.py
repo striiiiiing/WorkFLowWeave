@@ -5,9 +5,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from logagent.models import SystemConfig
+from workflowweave.models import SystemConfig
 
-STATE = Path("/var/lib/logagent")
+STATE = Path("/var/lib/workflowweave")
 BUNDLED_CHANNELS = Path("/app/plugins/channel")
 
 
@@ -41,4 +41,4 @@ def initialize(state: Path = STATE, bundled_channels: Path = BUNDLED_CHANNELS) -
 
 if __name__ == "__main__":
     config_path = initialize()
-    os.execvp("logagent", ["logagent", "start", "--config", str(config_path)])
+    os.execvp("workflowweave", ["workflowweave", "start", "--config", str(config_path)])

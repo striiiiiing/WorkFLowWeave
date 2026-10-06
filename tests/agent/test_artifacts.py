@@ -1,8 +1,8 @@
 import json
 
-from logagent.agent.config import AgentConfig
-from logagent.agent.storage.artifacts import ArtifactStore, json_text
-from logagent.agent.workspace import WorkspaceBackend
+from workflowweave.agent.config import AgentConfig
+from workflowweave.agent.storage.artifacts import ArtifactStore, json_text
+from workflowweave.agent.workspace import WorkspaceBackend
 
 
 async def store_for(tmp_path):

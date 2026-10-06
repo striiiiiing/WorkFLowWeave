@@ -24,4 +24,4 @@
 
 ## Impact
 
-代码范围仅 frontend；文档范围为本 change、原设计 tasks 的实施移交链接和前端 README。后端、数据库、服务端协议、密钥及本地运行数据不迁移、不修改。使用 `/mnt/d/code/LogAgent-frontend-architecture` 的 `refactor/frontend-architecture` 分支，前端基线为 `4e3c524f799edd079356f8c3975632b7968fccbd`。引用式技术设计见 [design.md](design.md)，唯一执行清单见 [tasks.md](tasks.md)。
+代码范围仅 frontend；文档范围为本 change、原设计 tasks 的实施移交链接和前端 README。后端、数据库、服务端协议、密钥及本地运行数据不迁移、不修改。使用 `/mnt/d/code/WorkFLowWeave-frontend-architecture` 的 `refactor/frontend-architecture` 分支，前端基线为 `4e3c524f799edd079356f8c3975632b7968fccbd`。引用式技术设计见 [design.md](design.md)，唯一执行清单见 [tasks.md](tasks.md)。

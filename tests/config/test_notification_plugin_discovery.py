@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from logagent.config.registry import PluginRegistry
-from logagent.models import SystemConfig
+from workflowweave.config.registry import PluginRegistry
+from workflowweave.models import SystemConfig
 from tests.fixtures.plugin_helpers import install_plugin
 
 

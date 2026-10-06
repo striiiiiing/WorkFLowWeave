@@ -38,7 +38,7 @@ describe('JSON Schema validation used by parameter controls', () => {
       $schema: 'https://json-schema.org/draft/2020-12/schema',
       type: 'object',
       $defs: { limit: { type: 'integer', minimum: 1, maximum: 1000 } },
-      properties: { 'a/b~c': { $ref: '#/$defs/limit', 'x-logagent-workflow': true } },
+      properties: { 'a/b~c': { $ref: '#/$defs/limit', 'x-workflowweave-workflow': true } },
     })
     const field = rule.at('properties', 'a/b~c')
     expect(field.validate(3)).toBe('')

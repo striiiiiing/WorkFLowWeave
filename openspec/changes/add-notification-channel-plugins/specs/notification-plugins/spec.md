@@ -85,7 +85,7 @@ Email 插件 SHALL 只支持 SMTP 出站。凭据 SHALL 通过 `CredentialResolv
 
 ### Requirement: 微信小龙虾使用受支持桥接
 
-微信“小龙虾”插件 SHALL 在用户确认其指代 OpenClaw Weixin 后，通过受支持的 OpenClaw/Tencent iLink sidecar 或 bridge 接入；LogAgent SHALL NOT 在本项目内重写 iLink 协议。
+微信“小龙虾”插件 SHALL 在用户确认其指代 OpenClaw Weixin 后，通过受支持的 OpenClaw/Tencent iLink sidecar 或 bridge 接入；WorkFLowWeave SHALL NOT 在本项目内重写 iLink 协议。
 
 #### Scenario: 微信桥接不可用
 

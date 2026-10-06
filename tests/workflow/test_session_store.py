@@ -14,12 +14,12 @@ from sqlalchemy import URL, inspect
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, create_engine, select, text
 
-from logagent.errors import LogAgentError
-from logagent.models import BackupPolicy
-from logagent.workflow.storage.facts import SessionStore
-from logagent.workflow.storage.models import CollectionBody, SessionEntry, SessionHeader
-from logagent.workflow.storage.sessions import SessionView
-from logagent.workflow.stream.subscriptions.checkpoints import CheckpointArchive, commit
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import BackupPolicy
+from workflowweave.workflow.storage.facts import SessionStore
+from workflowweave.workflow.storage.models import CollectionBody, SessionEntry, SessionHeader
+from workflowweave.workflow.storage.sessions import SessionView
+from workflowweave.workflow.stream.subscriptions.checkpoints import CheckpointArchive, commit
 
 
 @pytest.fixture
@@ -44,7 +44,7 @@ def test_replay_and_conflict_are_atomic_and_version_is_per_session(store):
     first = write(store)
     assert first["version"] == 2
     assert write(store) == first
-    with pytest.raises(LogAgentError, match="幂等键"):
+    with pytest.raises(WorkFLowWeaveError, match="幂等键"):
         write(store, text="changed")
     _, entries = store.entries("s")
     assert entries[1:] == [first]
@@ -95,7 +95,7 @@ def test_corrupt_archives_are_reported_without_exposing_body(store):
         for row in session.exec(select(CollectionBody)).all():
             row.content = '{"text":"secret"}'
             session.add(row)
-    with pytest.raises(LogAgentError) as caught:
+    with pytest.raises(WorkFLowWeaveError) as caught:
         store.entry("s", "phase:collect")
     assert caught.value.code == "storage_corrupt"
     assert "secret" not in str(caught.value)
@@ -111,7 +111,7 @@ async def test_read_view_pins_version_and_never_uses_checkpoints(store):
     assert content.content == {"text": "原始业务正文"}
     assert len(await view.list_sessions()) == 1
     assert await view.list_sessions(exclude_session_id="s") == []
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         await view.get_session("s", version=99)
     tables = set(inspect(store._engine).get_table_names())
     assert "checkpoints" not in tables
@@ -138,7 +138,7 @@ def test_existing_write_rejects_conflicting_recovery_payload(store):
         summary={"status": "running", "execution_epoch": "epoch"},
         body={"text": "原始业务正文"}, category="collection",
     ) == saved
-    with pytest.raises(LogAgentError, match="幂等键"):
+    with pytest.raises(WorkFLowWeaveError, match="幂等键"):
         store.existing_write(
             "s", "phase:collect", stage="collect", scope="phase",
             summary={"status": "running", "execution_epoch": "epoch"},
@@ -185,7 +185,7 @@ async def test_created_session_is_immediately_queryable(store):
 
 
 async def test_mcp_binding_ignores_legacy_collector_sources(store):
-    from logagent.models import AIConfig, SourceConfig, WorkflowDefinition, WorkflowSnapshot
+    from workflowweave.models import AIConfig, SourceConfig, WorkflowDefinition, WorkflowSnapshot
 
     legacy = WorkflowSnapshot(
         workflow=WorkflowDefinition(
@@ -208,7 +208,7 @@ async def test_failed_archive_stop_preserves_error_without_fabricating_business_
     async def publish(record):
         pass
     archive = CheckpointArchive(None, store, SessionView(store), publish)
-    with pytest.raises(LogAgentError) as caught:
+    with pytest.raises(WorkFLowWeaveError) as caught:
         await archive._write("s", "failed", "analyze", "analyze", "analysis", BackupPolicy(),
                              {"item_id": "one", "item_status": "success"}, {"text": "value"}, None)
     assert caught.value.code == "backup_failed"
@@ -225,7 +225,7 @@ def test_legacy_database_is_not_silently_hidden(tmp_path):
             session.commit()
     finally:
         engine.dispose()
-    with pytest.raises(LogAgentError) as caught:
+    with pytest.raises(WorkFLowWeaveError) as caught:
         SessionStore(path)
     assert caught.value.code == "storage_version"
 
@@ -233,7 +233,7 @@ def test_legacy_database_is_not_silently_hidden(tmp_path):
 def test_close_is_idempotent_and_use_after_close_is_explicit(store):
     store.close()
     store.close()
-    with pytest.raises(LogAgentError) as caught:
+    with pytest.raises(WorkFLowWeaveError) as caught:
         store.session_ids()
     assert caught.value.code == "storage_closed"
 

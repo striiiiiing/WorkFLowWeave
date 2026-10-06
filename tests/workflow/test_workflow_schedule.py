@@ -12,12 +12,12 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from pydantic import ValidationError
 
-from logagent.config import ResourceStore
-from logagent.config.migrations import RESOURCE_FORMAT_VERSION
-from logagent.errors import LogAgentError
-from logagent.models import WorkflowDefinition
-from logagent.scheduling import cron_trigger, describe_cron
-from logagent.workflow.execution.scheduler import WorkflowScheduler, schedule_trigger
+from workflowweave.config import ResourceStore
+from workflowweave.config.migrations import RESOURCE_FORMAT_VERSION
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import WorkflowDefinition
+from workflowweave.scheduling import cron_trigger, describe_cron
+from workflowweave.workflow.execution.scheduler import WorkflowScheduler, schedule_trigger
 
 
 def definition(schedule=None, **kwargs):
@@ -135,7 +135,7 @@ async def test_due_at_is_consumed_before_rejection_and_not_replayed_on_restart(t
 
     async def reject(ident):
         assert ResourceStore(store.location).get("workflows", ident).schedule is None
-        raise LogAgentError("capacity_exhausted", "full")
+        raise WorkFLowWeaveError("capacity_exhausted", "full")
 
     service = AsyncMock()
     service.trigger.side_effect = reject
@@ -183,7 +183,7 @@ async def test_at_storage_failure_prevents_trigger(tmp_path, monkeypatch, caplog
     scheduler = WorkflowScheduler(service, store)
     def fail(*args):
         raise OSError("disk full")
-    monkeypatch.setattr("logagent.config.store.os.replace", fail)
+    monkeypatch.setattr("workflowweave.config.store.os.replace", fail)
     assert await scheduler._execute("demo", schedule) is None
     assert "storage_failed" in caplog.text
     assert store.get("workflows", "demo").schedule == schedule

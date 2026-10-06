@@ -7,11 +7,11 @@ import orjson
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
-from logagent.ai.errors import ModelError, error_info
-from logagent.errors import LogAgentError
-from logagent.interaction.fastapi.agent import create_agent_service
-from logagent.models import AIConfig
-from logagent.workflow.agent_tasks import LEGACY_TASK_MESSAGE, execute_agent_task
+from workflowweave.ai.errors import ModelError, error_info
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.interaction.fastapi.agent import create_agent_service
+from workflowweave.models import AIConfig
+from workflowweave.workflow.agent_tasks import LEGACY_TASK_MESSAGE, execute_agent_task
 from tests.agent.helpers import ScriptedModel
 
 
@@ -71,9 +71,9 @@ async def test_title_and_session_source_kinds_survive_restart(tmp_path):
         changed = await service.set_title(subtask["session_id"], "  告警复盘  ")
         assert changed["title"] == "告警复盘"
         for title in (" ", "a" * 121):
-            with pytest.raises(LogAgentError, match="话题名称"):
+            with pytest.raises(WorkFLowWeaveError, match="话题名称"):
                 await service.set_title(subtask["session_id"], title)
-        with pytest.raises(LogAgentError, match="task_id"):
+        with pytest.raises(WorkFLowWeaveError, match="task_id"):
             await service.create_session(workflow_task_id="orphan")
     finally:
         await service.close()
@@ -115,7 +115,7 @@ async def test_unknown_task_tool_fails_instead_of_enabling_global_tools(tmp_path
             workflow_session_id="run", workflow_task_id="task", tool_names=["missing"],
         )
         accepted = await service.submit(session["session_id"], "execute", request_id="first")
-        with pytest.raises(LogAgentError) as caught:
+        with pytest.raises(WorkFLowWeaveError) as caught:
             await service.wait(accepted["turn_id"])
         assert caught.value.code == "tool_unavailable"
         assert caught.value.details["tools"] == ["missing"]

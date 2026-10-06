@@ -1,4 +1,4 @@
-# LogAgent 前端
+# WorkFLowWeave 前端
 
 Vue 3 Composition API + TypeScript + Element Plus + Vue Router + Vite。保留蓝灰配色、桌面侧栏、移动抽屉、明暗主题和纵向工作流卡片。
 
@@ -8,8 +8,8 @@ Vue 3 Composition API + TypeScript + Element Plus + Vue Router + Vite。保留�
 
 ```sh
 uv sync --group dev
-uv run logagent config-example --output config.json
-uv run logagent start --config config.json
+uv run workflowweave config-example --output config.json
+uv run workflowweave start --config config.json
 ```
 
 默认后端地址为 `http://127.0.0.1:4300`；配置、数据库与密钥保留在本地，不纳入 Git。另开终端启动前端：
@@ -39,7 +39,7 @@ npm run dev
 
 ## 接口与行为
 
-以 `src/logagent/interaction/routers.py` 和 `models.py` 为准：资源路径为 `/api/{kind}`，运行路径为 `/api/sessions`。资源类型为 `sources`、`mcp_servers`、`ai`、`channels`、`workflows`；没有独立凭据 CRUD 接口。来源编辑支持 MCP 目录 schema 驱动的参数、CLI argv/shell 调用和局部 token 限额。
+以 `src/workflowweave/interaction/routers.py` 和 `models.py` 为准：资源路径为 `/api/{kind}`，运行路径为 `/api/sessions`。资源类型为 `sources`、`mcp_servers`、`ai`、`channels`、`workflows`；没有独立凭据 CRUD 接口。来源编辑支持 MCP 目录 schema 驱动的参数、CLI argv/shell 调用和局部 token 限额。
 
 后端目前内置 AI API 格式为 `OpenAI Compatible API`（provider 值 `openai_compatible_api`），需要有效的 `base_url`。插件参数与模型参数使用带语法校验的 JSON 对象编辑器；参数业务约束由后端验证，插件页可查 Schema。
 
@@ -59,7 +59,7 @@ npm run test:e2e
 
 浏览器测试需要根目录已有 `.venv` 及后端依赖，会使用临时目录启动真实 FastAPI（14300）和生产预览（13000），不会修改项目运行数据。通过内置离线采集器验证运行与阶段读取，不调用外部 AI 服务。单元测试覆盖 HTTP 契约、请求竞态、作用域清理、轮询和 JSON 表单校验。
 
-实际环境需另外运行 `npm run test:live`：此检查不启动测试服务器，直接访问当前运行的 `http://127.0.0.1:3000`（可用 `LOGAGENT_FRONTEND_URL` 指定）。验证健康报告、资源/运行/插件列表、页面接收和资源保存；只创建带唯一 ID 的临时采集源，结束时删除，不触发工作流。后端未启动或代理不通会直接失败。隔离测试通过不能替代这项检查。
+实际环境需另外运行 `npm run test:live`：此检查不启动测试服务器，直接访问当前运行的 `http://127.0.0.1:3000`（可用 `WORKFLOWWEAVE_FRONTEND_URL` 指定）。验证健康报告、资源/运行/插件列表、页面接收和资源保存；只创建带唯一 ID 的临时采集源，结束时删除，不触发工作流。后端未启动或代理不通会直接失败。隔离测试通过不能替代这项检查。
 
 过渡代码清理的依据与验证记录见 [OpenSpec 清理任务](../openspec/changes/archive/refactor-frontend-architecture/tasks/2026-10-05-transition-cleanup/task.md)；既有 `proposal.md` 与 `design.md` 未改动。
 

@@ -14,14 +14,14 @@
 | 接入现有 FastAPI 目标 | centralize-fastapi-lifecycle-sse 的 design §1–4 | 只创建一个进程资源图；业务层不导入 FastAPI |
 | 不搬数据目录 | design §5；当前 WorkspaceBackend/EventLog/service 的路径 | 保留 session IDs、checkpoint 节点、事件 ID；不是双路径兼容迁移 |
 | MCP 工具使用 schema-first 基线 | redesign-mcp-schema-first 的 design/specs | 选中文档中旧 Collector/plugin 仅是历史背景，不恢复旧系统 |
-| Agent 前端使用 LangChain Vue 3 | npm `@langchain/vue` 提供 Composition API `useStream`、v2 streaming protocol 和自定义 adapter；当前前端仍自维护 EventSource/composable 状态 | 通过自定义 AgentServerAdapter 对接 LogAgent API；不把后端伪装成官方 hosted Agent Server，不在组件中保留第二套流状态机 |
+| Agent 前端使用 LangChain Vue 3 | npm `@langchain/vue` 提供 Composition API `useStream`、v2 streaming protocol 和自定义 adapter；当前前端仍自维护 EventSource/composable 状态 | 通过自定义 AgentServerAdapter 对接 WorkFLowWeave API；不把后端伪装成官方 hosted Agent Server，不在组件中保留第二套流状态机 |
 | Agent/Workflow 共用 storage_primitives | 用户明确要求设计；两边已有 atomic 写、digest、SQLite、JSONL/版本类重复底层需求 | 只共用无业务语义原语；不合并 checkpoint、SessionStore、events、artifact 和 retention |
 | 不新增业务 specs | 本 change 不改业务行为；openspec/README.md 的 skip_specs 约定 | 验收引用原规范矩阵；不是跳过行为测试或宣布历史规范已验收 |
 | 新建设计和任务 | 用户本轮明确请求重新设计；用户 SDD 约定 | 不修改旧 design/proposal；未来设计变化新建任务记录，不能改历史勾选冒充完成 |
 
 ## 2. 默认值与保持理由
 
-下表不是第二份配置定义。运行时仍只读 `src/logagent/agent/config.py:AgentConfig`；此处用于解释为什么此次迁移不顺便调参。
+下表不是第二份配置定义。运行时仍只读 `src/workflowweave/agent/config.py:AgentConfig`；此处用于解释为什么此次迁移不顺便调参。
 
 | 配置/语义 | 当前默认 / 来源 | 保持理由 |
 | --- | --- | --- |
@@ -52,8 +52,8 @@ rtk proxy timeout 60s uv run pytest tests/agent/test_turn_config.py tests/agent/
 rtk proxy timeout 60s uv run pytest tests/channel/test_platform_admission.py tests/channel/test_instance_bindings.py -q
 rtk proxy timeout 60s uv run pytest tests/interaction/test_agent_api.py tests/interaction/test_sse.py -q
 rtk proxy uv run pytest tests/storage_primitives tests/agent tests/channel tests/interaction -q
-rtk proxy uv run ruff check src/logagent/agent src/logagent/storage_primitives tests/agent tests/storage_primitives
-rtk proxy uv build --out-dir /tmp/logagent-agent-module-dist
+rtk proxy uv run ruff check src/workflowweave/agent src/workflowweave/storage_primitives tests/agent tests/storage_primitives
+rtk proxy uv build --out-dir /tmp/workflowweave-agent-module-dist
 rtk proxy npm --prefix frontend run typecheck
 rtk proxy npm --prefix frontend run build
 rtk proxy openspec validate redesign-agent-module --strict --no-interactive
@@ -138,7 +138,7 @@ Diff review 证据：`create_agent` 仅存在于静态 `runtime/builder.py` 和�
 
 ### 6.1 基线与实现
 
-- worktree：`/mnt/d/code/LogAgent/.worktree/redesign-agent-module`；分支 `implement/redesign-agent-module`。
+- worktree：`/mnt/d/code/WorkFLowWeave/.worktree/redesign-agent-module`；分支 `implement/redesign-agent-module`。
 - 原基线 `e71341c`；发现主分支新增 `3381e04` 后保存实现检查点并完成 rebase。实现检查点 `a5bd9fc` 基于 `3381e04`，其后的存储原语接入、测试迁移和交接文档已固定；主工作区的未提交文件未带入。
 - 最新基线已有 Workflow Agent Task 功能，整合时保留其会话种类/task/source、AI invocation 持久化、prompt/tool 选择、历史 turn 查询及 `workflow.agent_service` 接线。新增 `storage/invocations.py` 是提取最新基线既有职责，不是另造业务事实源；路径仍为原 `agents/invocations/<sid>.json`。
 - `AgentService` 只接受已装配依赖；`TurnCoordinator` 拥有任务与准入；`SessionView` 只有会话值；真实 ToolRuntime 进入唯一 executor。EventLog/file I/O/workspace digest 已接入共享原语，最后这批接线和新增测试迁移仍未提交。
@@ -175,13 +175,13 @@ timeout 60s pytest tests/interaction/test_agent_api.py tests/interaction/test_ss
 14 passed in 21.68s，退出码 0
 
 ruff check src tests：通过
-Python wheel/sdist build：通过；产物 /tmp/logagent-agent-module-dist-final/
+Python wheel/sdist build：通过；产物 /tmp/workflowweave-agent-module-dist-final/
 frontend typecheck：通过
 frontend build：通过；4209 modules transformed，49.45s，退出码 0
 openspec validate redesign-agent-module --strict --no-interactive：通过
 ```
 
-临时输出保存在 `/tmp/logagent-redesign-handoff-{agent,workflow,frontend,lifecycle,interaction}.log`；长期依据是上面的命令/汇总与对应测试，不能依赖临时文件永远存在。Vue scope 测试有 inject warning，但无未处理 rejection；生产构建有依赖 Zod 的注释位置 warning。当前 Python wheel/sdist、前端 typecheck/build 已通过；真实应用 smoke、全部跨模块回归与最终 diff review 仍未完成。
+临时输出保存在 `/tmp/workflowweave-redesign-handoff-{agent,workflow,frontend,lifecycle,interaction}.log`；长期依据是上面的命令/汇总与对应测试，不能依赖临时文件永远存在。Vue scope 测试有 inject warning，但无未处理 rejection；生产构建有依赖 Zod 的注释位置 warning。当前 Python wheel/sdist、前端 typecheck/build 已通过；真实应用 smoke、全部跨模块回归与最终 diff review 仍未完成。
 
 ### 6.4 未完成与限制
 

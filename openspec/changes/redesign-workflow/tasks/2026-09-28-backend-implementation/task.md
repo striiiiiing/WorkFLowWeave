@@ -57,7 +57,7 @@ HTTP 契约：
 - 集成、interaction、lifecycle、History Collector、Agent artifacts：67 passed，25.01 秒；包含真实 uvicorn TCP HTTP/SSE，不是只检查服务启动。仅一个第三方 anyio 弃用警告。
 - 真实进程强退：4 项分批通过（最终 3 项批次 42.01 秒、新轮次项 15.30 秒），检查原 namespace/epoch、成功分支复用、业务提交/checkpoint 窗口、已发未确认投递不补发。整组曾触及 60 秒硬上限，按批拆分，不放宽超时。
 - 慢分析/慢通知屏障证明快项、aggregate 与单渠道回执可先观察；重复消费同一引用不增加存储版本；清理删除异常的原子回滚、执行边界重试与启动补扫均覆盖。
-- Ruff 通过；`uv build` 生成 wheel 与 sdist；没有配置独立 mypy/pyright。构建产物写入 `/tmp/logagent-redesign-workflow-dist`，不污染 worktree。
+- Ruff 通过；`uv build` 生成 wheel 与 sdist；没有配置独立 mypy/pyright。构建产物写入 `/tmp/workflowweave-redesign-workflow-dist`，不污染 worktree。
 - 对照最终 diff 删除 WorkflowGraph、StageNodes 阶段分派、snapshot/start_* 图节点、旧成功项扫描、通知 previous 串行链、旧快照迁移和旧阶段名回退。原六个执行模块合计 1399 → 1358 行（含注释）；新恢复、清理、流消费模块共 444 行。新增需求使后端总代码增加，不声称总代码量减少或生产性能提升。
 - proposal/design 未改，前端未改，不做浏览器测试、不提交或合并分支。原先涉及前端的混合复选项仍未完成；后端实现及真实 HTTP/SSE 验证独立完成。
 

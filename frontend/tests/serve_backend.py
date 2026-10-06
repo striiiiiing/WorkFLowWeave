@@ -11,15 +11,15 @@ from tempfile import TemporaryDirectory
 
 import uvicorn
 
-from logagent.interaction.app import create_app
-from logagent.lifecycle import ApplicationLifecycle
-from logagent.models import SystemConfig
+from workflowweave.interaction.app import create_app
+from workflowweave.lifecycle import ApplicationLifecycle
+from workflowweave.models import SystemConfig
 
-with TemporaryDirectory(prefix="logagent-frontend-test-") as temporary:
+with TemporaryDirectory(prefix="workflowweave-frontend-test-") as temporary:
     root = Path(temporary)
     copytree(Path(__file__).resolve().parents[2] / "plugins", root / "plugins",
              ignore=ignore_patterns("__pycache__", "*.pyc", "config.json"))
-    port = int(os.environ.get("LOGAGENT_E2E_BACKEND_PORT", "14300"))
+    port = int(os.environ.get("WORKFLOWWEAVE_E2E_BACKEND_PORT", "14300"))
     config = SystemConfig(
         data_dir=str(root / "data"),
         plugin_dir=str(root / "plugins"),

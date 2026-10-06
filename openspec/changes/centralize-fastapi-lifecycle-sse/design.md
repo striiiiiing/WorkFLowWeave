@@ -7,7 +7,7 @@
 目标结构可以保留生命周期相关的内部辅助模块，但不得以目录移动冒充架构吸收。具体文件名可在实施时按现有模块拆分调整：
 
 ```text
-src/logagent/
+src/workflowweave/
   interaction/
     fastapi/
       app.py

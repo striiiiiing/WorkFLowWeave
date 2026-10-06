@@ -2,10 +2,10 @@
 
 from copy import deepcopy
 
-from logagent.channel.conversation import ChannelAddress, InboundHandler, InboundMessage
-from logagent.channel.errors import ChannelDeliveryError
-from logagent.errors import LogAgentError
-from logagent.models import ChannelConfig, Notification
+from workflowweave.channel.conversation import ChannelAddress, InboundHandler, InboundMessage
+from workflowweave.channel.errors import ChannelDeliveryError
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import ChannelConfig, Notification
 
 
 class TestChannel:
@@ -28,7 +28,7 @@ class TestChannel:
 
     async def inject(self, message: InboundMessage) -> dict:
         if self.handler is None:
-            raise LogAgentError("channel_disabled", "测试渠道未启用 Agent 接收")
+            raise WorkFLowWeaveError("channel_disabled", "测试渠道未启用 Agent 接收")
         return await self.handler(InboundMessage.model_validate(message).model_copy(deep=True))
 
     async def send(self, notification: Notification, *, options: dict):

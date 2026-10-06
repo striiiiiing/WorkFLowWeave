@@ -8,10 +8,10 @@ from typing import Any
 
 from pydantic import TypeAdapter
 
-from logagent.channel.conversation import ChannelAddress, InboundHandler, InboundMessage
-from logagent.channel.errors import ChannelDeliveryError
-from logagent.models import ChannelConfig, Credential, Notification
-from logagent.schema import resource_options_schema, validate_instance, validate_workflow_options
+from workflowweave.channel.conversation import ChannelAddress, InboundHandler, InboundMessage
+from workflowweave.channel.errors import ChannelDeliveryError
+from workflowweave.models import ChannelConfig, Credential, Notification
+from workflowweave.schema import resource_options_schema, validate_instance, validate_workflow_options
 
 _CREDENTIAL_SCHEMA = TypeAdapter(Credential).json_schema()
 _OPTIONS_SCHEMA = {
@@ -22,12 +22,12 @@ _OPTIONS_SCHEMA = {
         "token": {
             "description": "Telegram Bot API token 凭据引用",
             "anyOf": [_CREDENTIAL_SCHEMA, {"type": "null"}],
-            "x-logagent-credential": True,
+            "x-workflowweave-credential": True,
         },
         "chat_id": {
             "type": ["string", "integer"],
             "description": "单向通知的 Telegram chat ID",
-            "x-logagent-workflow": True,
+            "x-workflowweave-workflow": True,
         },
     },
     "required": ["token"],

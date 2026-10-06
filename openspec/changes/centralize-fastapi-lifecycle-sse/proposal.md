@@ -29,7 +29,7 @@
 
 ## Impact
 
-- 主要目录：`src/logagent/interaction/`、现有 lifecycle 实现及其调用方、`pyproject.toml`。
+- 主要目录：`src/workflowweave/interaction/`、现有 lifecycle 实现及其调用方、`pyproject.toml`。
 - 依赖与锁文件：`pyproject.toml`、`uv.lock`。
 - 测试：interaction、lifecycle、SSE 传输和最小 HTTP 集成测试。
 - 方案三将在后续独立 OpenSpec change 中重新评估和实施，不作为本变更的隐含任务。

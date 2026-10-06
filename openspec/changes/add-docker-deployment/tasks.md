@@ -40,7 +40,7 @@ design.md。以集成分支 `3d56fa3` 构建，包含通知插件与后续 MCP/C
   SPA 深链接、健康、OpenAPI、文档均返回 200，Agent SSE 返回事件流首行。
 - [x] 隔离卷创建 Agent 会话、禁用接收的 Telegram 绑定、file 日志及测试加密值；
   强制重建后会话与绑定可读，配置、密钥、日志哈希一致，插件目录链接保留。
-  相对 file 路径由现有资源边界规范化到 `/var/lib/logagent/data`，不改变路径语义。
+  相对 file 路径由现有资源边界规范化到 `/var/lib/workflowweave/data`，不改变路径语义。
 - [x] 定向测试 57 passed（29.42 秒，命令硬超时 60 秒）；Ruff、uv lock --check、
   三项 OpenSpec strict validate、git diff --check 通过，镜像内前端类型和生产构建通过。
 - 浏览器验收限制：Tabbit 在两次本地导航后关闭运行时会话，未完成 DOM/视觉验收；

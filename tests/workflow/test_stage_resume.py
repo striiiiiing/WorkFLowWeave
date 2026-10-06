@@ -5,9 +5,9 @@ import asyncio
 import pytest
 from sqlmodel import select
 
-from logagent.errors import LogAgentError
-from logagent.models import FanInConfig
-from logagent.workflow.storage.models import SessionEntry
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import FanInConfig
+from workflowweave.workflow.storage.models import SessionEntry
 from tests.workflow.helpers import AI, archived, snapshot
 from tests.workflow.test_workflow_recovery import close, run, service
 
@@ -72,14 +72,14 @@ async def test_stage_entry_and_request_validation(tmp_path):
     w, store, _, _, _ = service(tmp_path / "runs.sqlite3")
     try:
         await run(w, snapshot(channels=False))
-        with pytest.raises(LogAgentError, match="中断续跑"):
+        with pytest.raises(WorkFLowWeaveError, match="中断续跑"):
             await w.resume("run", checkpoint_id="unknown")
-        with pytest.raises(LogAgentError) as invalid:
+        with pytest.raises(WorkFLowWeaveError) as invalid:
             await w.resume("run", stage="analyze", checkpoint_id="unknown")
         assert invalid.value.code == "stage_unavailable"
         await w.resume("run", stage="analyze", request_id="accepted")
         await w.wait("run")
-        with pytest.raises(LogAgentError) as conflict:
+        with pytest.raises(WorkFLowWeaveError) as conflict:
             await w.resume("run", stage="notify", request_id="accepted")
         assert conflict.value.code == "request_conflict"
         # This new round starts at analyze; it must not silently select an old collect entry.
@@ -99,7 +99,7 @@ async def test_only_one_concurrent_resume_can_advance_thread(tmp_path):
             return_exceptions=True,
         )
         assert results.count("run") == 1
-        assert any(isinstance(value, LogAgentError) and value.code == "session_active" for value in results)
+        assert any(isinstance(value, WorkFLowWeaveError) and value.code == "session_active" for value in results)
         await blocker.started.wait()
         await w.cancel("run")
         await w.wait("run")
@@ -152,7 +152,7 @@ async def test_explicit_historical_parent_entry_and_foreign_checkpoint_rejection
         await w.trigger(snapshot(channels=False), session_id="other")
         await w.wait("other")
         foreign = await graph.aget_state({"configurable": {"thread_id": "other"}})
-        with pytest.raises(LogAgentError) as error:
+        with pytest.raises(WorkFLowWeaveError) as error:
             await w.resume("run", stage="collect",
                            checkpoint_id=foreign.config["configurable"]["checkpoint_id"])
         assert error.value.code == "stage_unavailable"
@@ -225,7 +225,7 @@ async def test_child_checkpoint_and_incompatible_graph_are_rejected(tmp_path):
         await w.wait("run")
         child = next(cp for cp in [cp async for cp in w._checkpointer.alist(None)]
                      if cp.config["configurable"]["checkpoint_ns"].startswith("analyze:"))
-        with pytest.raises(LogAgentError) as error:
+        with pytest.raises(WorkFLowWeaveError) as error:
             await w.resume("run", stage="analyze",
                            checkpoint_id=child.config["configurable"]["checkpoint_id"])
         assert error.value.code == "stage_unavailable"

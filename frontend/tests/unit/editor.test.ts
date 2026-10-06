@@ -222,7 +222,7 @@ describe('capability form scope', () => {
       required: ['account', 'limit'],
       properties: {
         account: { type: 'string' },
-        limit: { type: 'integer', 'x-logagent-workflow': true },
+        limit: { type: 'integer', 'x-workflowweave-workflow': true },
       },
     }
     expect(optionSchema(schema, 'resource')?.required).toEqual(['account'])

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from logagent.agent.integrations.workflow import resolve_mcp_binding
-from logagent.errors import LogAgentError
+from workflowweave.agent.integrations.workflow import resolve_mcp_binding
+from workflowweave.errors import WorkFLowWeaveError
 
 
 def test_binding_returns_exact_requested_mcp_set_in_stable_order():
@@ -29,7 +29,7 @@ def test_binding_returns_exact_requested_mcp_set_in_stable_order():
     ],
 )
 def test_binding_rejects_missing_disabled_or_unauthorized_mcp(requested, enabled, allowed):
-    with pytest.raises(LogAgentError, match="MCP"):
+    with pytest.raises(WorkFLowWeaveError, match="MCP"):
         resolve_mcp_binding(
             agent_id="workflow-agent",
             requested_mcp_ids=requested,
@@ -39,7 +39,7 @@ def test_binding_rejects_missing_disabled_or_unauthorized_mcp(requested, enabled
 
 
 def test_binding_does_not_fallback_to_global_mcp_set():
-    with pytest.raises(LogAgentError, match="MCP"):
+    with pytest.raises(WorkFLowWeaveError, match="MCP"):
         resolve_mcp_binding(
             agent_id="workflow-agent",
             requested_mcp_ids=[],

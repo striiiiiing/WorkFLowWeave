@@ -12,10 +12,10 @@ from typing import Any
 import aiosmtplib
 from pydantic import TypeAdapter
 
-from logagent.channel.context import remaining_delivery_time
-from logagent.channel.errors import ChannelDeliveryError
-from logagent.models import ChannelConfig, Credential, Notification
-from logagent.schema import (
+from workflowweave.channel.context import remaining_delivery_time
+from workflowweave.channel.errors import ChannelDeliveryError
+from workflowweave.models import ChannelConfig, Credential, Notification
+from workflowweave.schema import (
     resource_options_schema,
     validate_instance,
     validate_workflow_options,
@@ -37,7 +37,7 @@ _OPTIONS_SCHEMA = {
         "host": {"type": "string", "description": "SMTP 主机", "minLength": 1, "pattern": r"^\S+$"},
         "port": {"type": "integer", "description": "SMTP 端口", "minimum": 1, "maximum": 65535},
         "sender": _ADDRESS,
-        "recipient": {**_ADDRESS, "x-logagent-workflow": True},
+        "recipient": {**_ADDRESS, "x-workflowweave-workflow": True},
         "tls": {
             "type": "string",
             "description": "TLS 连接方式",
@@ -54,7 +54,7 @@ _OPTIONS_SCHEMA = {
             "description": "认证凭据引用",
             "anyOf": [_CREDENTIAL_SCHEMA, {"type": "null"}],
             "default": None,
-            "x-logagent-credential": True,
+            "x-workflowweave-credential": True,
         },
     },
     "required": ["host", "port", "sender", "recipient"],
@@ -110,7 +110,7 @@ class EmailChannel:
         message["From"], message["To"] = options["sender"], recipient
         message["Subject"] = notification.title
         identity = "\0".join((notification.session_id, notification.output_id, self._config.id))
-        message["Message-ID"] = f"<{hashlib.sha256(identity.encode()).hexdigest()}@logagent.local>"
+        message["Message-ID"] = f"<{hashlib.sha256(identity.encode()).hexdigest()}@workflowweave.local>"
         message.set_content(notification.text.encode("utf-8"), maintype="text", subtype="plain", cte="base64")
         message.set_param("charset", "utf-8")
         return message.as_bytes()

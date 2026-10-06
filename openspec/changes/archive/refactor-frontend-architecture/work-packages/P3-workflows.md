@@ -4,7 +4,7 @@
 
 ## 当前执行约束（用户审核后更新）
 
-本包只在 `/mnt/d/code/LogAgent` 内就地执行，按根 tasks 的文件所有权与其他 worker 并发；不新建或使用其他工作目录/worktree。新 worker 统一使用 GPT-6 Astra medium，只改获分配文件，禁止切 branch、stash、reset。普通实施 worker 禁止 commit；唯一获授权的集成 worker 串行处理公共文件、审查验证并精确提交，逐个 commit 排除后端及其他任务文件，沿用现有 post-commit 自动推送钩子，禁止 SKIP_WORKFLOW_PUSH 或覆盖 hooksPath。主代理仅编排和传递交接信息，不执行代码检查或验证。后端双向 channel 正在另一任务中演进；本包仅记录真实契约测试当时的 HEAD/dirty 与协议差异，不要求其全局不变，不干预或静默兼容不匹配的后端。前端针对性测试可独立继续。
+本包只在 `/mnt/d/code/WorkFLowWeave` 内就地执行，按根 tasks 的文件所有权与其他 worker 并发；不新建或使用其他工作目录/worktree。新 worker 统一使用 GPT-6 Astra medium，只改获分配文件，禁止切 branch、stash、reset。普通实施 worker 禁止 commit；唯一获授权的集成 worker 串行处理公共文件、审查验证并精确提交，逐个 commit 排除后端及其他任务文件，沿用现有 post-commit 自动推送钩子，禁止 SKIP_WORKFLOW_PUSH 或覆盖 hooksPath。主代理仅编排和传递交接信息，不执行代码检查或验证。后端双向 channel 正在另一任务中演进；本包仅记录真实契约测试当时的 HEAD/dirty 与协议差异，不要求其全局不变，不干预或静默兼容不匹配的后端。前端针对性测试可独立继续。
 
 ## 文件所有权与边界
 
@@ -24,7 +24,7 @@ useWorkflowEditor 唯一拥有 sources/analyses/fan_in/channels/overrides 草稿
 
 ### 2026-09-25 实施批次
 
-依据原设计 §5.3 与 §6，工作流草稿的唯一拥有者为 `useWorkflowEditor`；`model/actions.ts` 以不可变返回值实现来源顺序、来源覆盖、分析任务改名/引用同步、汇聚 disabledDraft、通知覆盖和备份字段更新。工作流默认值沿用 `src/logagent/models.py` 对应 DTO（并与原 `domain/workflow.ts` 一致）：采集/分析并发均为 4、来源输入分隔符为两个换行、备份默认启用且四类快照均启用；这些值是后端模型和历史行为依据，不新增前端隐式默认层。
+依据原设计 §5.3 与 §6，工作流草稿的唯一拥有者为 `useWorkflowEditor`；`model/actions.ts` 以不可变返回值实现来源顺序、来源覆盖、分析任务改名/引用同步、汇聚 disabledDraft、通知覆盖和备份字段更新。工作流默认值沿用 `src/workflowweave/models.py` 对应 DTO（并与原 `domain/workflow.ts` 一致）：采集/分析并发均为 4、来源输入分隔符为两个换行、备份默认启用且四类快照均启用；这些值是后端模型和历史行为依据，不新增前端隐式默认层。
 
 `useWorkflowEditor` 在路由身份变化时清空旧实体并只接受相同 ID 的服务器快照；同身份刷新、目录刷新和迟到响应保留未保存草稿。来源脱离/发布通过 P2 `SourceConfigEditorGateway`，`workflow-draft` 只调用 `applySource`，`shared-resource` 才写资源 API；resolve 响应会校验工作流代际，切换工作流后拒绝旧响应。来源使用位置继续由 `sourceUsage`/`useSourceUsage` 投影，当前草稿按 ID 替换服务端快照。
 

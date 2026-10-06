@@ -1,10 +1,10 @@
 import sys
 
-from logagent.collection.manager import CollectorManager
-from logagent.config.store import ResourceStore
-from logagent.models import AIConfig, SourceConfig, WorkflowDefinition
-from logagent.workflow.execution.runner import WorkflowRunner
-from logagent.workflow.storage.facts import SessionStore
+from workflowweave.collection.manager import CollectorManager
+from workflowweave.config.store import ResourceStore
+from workflowweave.models import AIConfig, SourceConfig, WorkflowDefinition
+from workflowweave.workflow.execution.runner import WorkflowRunner
+from workflowweave.workflow.storage.facts import SessionStore
 from tests.workflow.helpers import AI, Channel, snapshot
 
 

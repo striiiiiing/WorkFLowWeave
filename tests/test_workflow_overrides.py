@@ -12,12 +12,12 @@ from copy import deepcopy
 import pytest
 from pydantic import ValidationError
 
-from logagent.ai import AIService
-from logagent.channel import ChannelManager
-from logagent.collection import CollectorManager
-from logagent.config import PluginRegistry, ResourceStore
-from logagent.errors import LogAgentError
-from logagent.models import (
+from workflowweave.ai import AIService
+from workflowweave.channel import ChannelManager
+from workflowweave.collection import CollectorManager
+from workflowweave.config import PluginRegistry, ResourceStore
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import (
     AIConfig,
     ChannelConfig,
     CollectionContext,
@@ -27,8 +27,8 @@ from logagent.models import (
     SystemConfig,
     WorkflowDefinition,
 )
-from logagent.schema import resource_options_schema, validate_instance, validate_schema
-from logagent.workflow.execution.runner import WorkflowRunner
+from workflowweave.schema import resource_options_schema, validate_instance, validate_schema
+from workflowweave.workflow.execution.runner import WorkflowRunner
 from plugins.channel.email.channel import EmailChannelType
 from plugins.channel.file.channel import FileChannelType
 from tests.fixtures.collectors import AlternateMockCollector, MockCollector, QueryCollector
@@ -98,7 +98,7 @@ async def test_workflow_template_precedence_empty_override_and_reference_integri
     store.save("workflows", workflow(source_overrides={"source": {"template": "call"}}))
     assert store.snapshot("workflow").sources["source"].setters == {"fields": ["level"]}
     saved = store.snapshot("workflow")
-    with pytest.raises(LogAgentError) as caught:
+    with pytest.raises(WorkFLowWeaveError) as caught:
         store.delete("setters", "call")
     assert caught.value.code == "reference_conflict"
     changed = store.get("workflows", "workflow")
@@ -127,7 +127,7 @@ async def test_detached_source_snapshot_stays_independent_from_shared_source(bin
     }))
     shared.enabled = False
     store.save("sources", shared)
-    with pytest.raises(LogAgentError, match="没有可用的数据源"):
+    with pytest.raises(WorkFLowWeaveError, match="没有可用的数据源"):
         store.snapshot("linked")
     assert store.snapshot("detached").sources["source"].options["records"] == [
         {"message": "shared"},
@@ -151,7 +151,7 @@ async def test_detached_source_snapshot_stays_independent_from_shared_source(bin
 
 
 async def test_detached_source_snapshot_requires_its_binding_id():
-    from logagent.models import WorkflowDefinition
+    from workflowweave.models import WorkflowDefinition
 
     with pytest.raises(ValidationError):
         WorkflowDefinition(
@@ -195,7 +195,7 @@ async def test_email_account_can_be_saved_before_recipient_but_binding_requires_
     store.save("channels", ChannelConfig(id="account", channel="email", options={
         "host": "smtp.example.com", "port": 587, "sender": "sender@example.com",
     }))
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         store.save("workflows", workflow(channels=["account"]))
     for name in ("first", "second"):
         store.save("workflows", workflow(name, channels=["account"], channel_overrides={
@@ -206,7 +206,7 @@ async def test_email_account_can_be_saved_before_recipient_but_binding_requires_
     before = store.get("workflows", "first")
     changed = deepcopy(before)
     changed.channel_overrides["account"].options["host"] = "other.example.com"
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         store.save("workflows", changed)
     assert store.get("workflows", "first") == before
 
@@ -227,9 +227,9 @@ async def test_invalid_binding_and_template_change_are_atomic(bindings):
     before = store.snapshot("workflow")
     changed = store.get("workflows", "workflow")
     changed.source_overrides["source"].options = {"records": "invalid"}
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         store.save("workflows", changed)
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         store.save("setters", SetterTemplate(id="call", collector="mock", setters={"unknown": []}))
     assert store.snapshot("workflow").sources == before.sources
 
@@ -251,7 +251,7 @@ async def test_custom_account_requirements_call_path_and_cross_field_validation(
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     store = ResourceStore(tmp_path / "resources.json", collector_register=registry.collectorRegister,
                           validators={"sources": CollectorManager(registry.collectorRegister).validate})
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         store.save("sources", SourceConfig(id="source", collector="query"))
     store.save("sources", SourceConfig(id="source", collector="query", options={"host": "account"}))
     store.save("ai", AIConfig(id="ai", provider="test", models={"model": {}}))
@@ -268,23 +268,23 @@ async def test_custom_account_requirements_call_path_and_cross_field_validation(
         tmp_path / "query.json"
     )
     definition.source_overrides["source"].options["begin"] = 3
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         store.save("workflows", definition)
     definition.source_overrides["source"].options["begin"] = 1
     definition.source_overrides["source"].options["host"] = "other-account"
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         store.save("workflows", definition)
     assert store.snapshot("workflow").sources == snapshot.sources
 
 
 @pytest.mark.parametrize("rule", [
-    {"type": "string", "x-logagent-workflow": "true"},
-    {"type": "object", "x-logagent-workflow": True, "x-logagent-credential": True},
-    {"type": "object", "x-logagent-workflow": True,
-     "properties": {"key": {"type": "object", "x-logagent-credential": True}}},
+    {"type": "string", "x-workflowweave-workflow": "true"},
+    {"type": "object", "x-workflowweave-workflow": True, "x-workflowweave-credential": True},
+    {"type": "object", "x-workflowweave-workflow": True,
+     "properties": {"key": {"type": "object", "x-workflowweave-credential": True}}},
 ])
 def test_invalid_scope_or_call_credentials_fail_registration_schema(rule):
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         validate_schema({"type": "object", "properties": {"field": {
             "description": "declared option", **rule,
         }}, "additionalProperties": False})
@@ -295,8 +295,8 @@ def test_account_schema_keeps_conditional_credentials_required():
         "type": "object",
         "properties": {
             "user": {"type": "string", "description": "Account user"},
-            "key": {"type": "object", "description": "Credential", "x-logagent-credential": True},
-            "query": {"type": "string", "description": "Query", "x-logagent-workflow": True},
+            "key": {"type": "object", "description": "Credential", "x-workflowweave-credential": True},
+            "query": {"type": "string", "description": "Query", "x-workflowweave-workflow": True},
         },
         "required": ["query"],
         "if": {"required": ["user"]},
@@ -304,7 +304,7 @@ def test_account_schema_keeps_conditional_credentials_required():
     }
     account_schema = resource_options_schema(schema)
     validate_instance({}, account_schema)
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         validate_instance({"user": "user"}, account_schema)
     validate_instance({"user": "user", "key": {}}, account_schema)
 

@@ -6,8 +6,8 @@
 
 | 项目 | 当前值 |
 | --- | --- |
-| 主工作区 | `/mnt/d/code/LogAgent`，分支 `main`；用户的未提交内容未被本实现覆盖 |
-| 实现 worktree | `/mnt/d/code/LogAgent/.worktree/redesign-agent-module` |
+| 主工作区 | `/mnt/d/code/WorkFLowWeave`，分支 `main`；用户的未提交内容未被本实现覆盖 |
+| 实现 worktree | `/mnt/d/code/WorkFLowWeave/.worktree/redesign-agent-module` |
 | 实现分支 | `implement/redesign-agent-module` |
 | 初始基线 | `e71341c` |
 | 已整合基线 | `3381e04`，已完成 rebase；该提交新增 Workflow Agent Task |
@@ -87,13 +87,13 @@
 
 当前基线 `3381e04` 的交接前验证已确认退出码 0（临时日志不属于长期交付）：
 
-- `/tmp/logagent-redesign-handoff-agent.log`：`tests/agent tests/storage_primitives`，**176 passed**，40.74 秒。
-- `/tmp/logagent-redesign-handoff-workflow.log`：Workflow Agent Task integration/tasks，**25 passed**，28.94 秒。
-- `/tmp/logagent-redesign-handoff-frontend.log`：adapter/stream/protocol/view 四个 Agent 测试文件，**24 passed**。Vue 的 `inject()` 在部分 scope 测试中仍有 warning，无未处理 rejection。
-- `/tmp/logagent-redesign-handoff-lifecycle.log`：`tests/lifecycle/test_agent_channels.py`，**13 passed**，38.95 秒。
-- `/tmp/logagent-redesign-handoff-interaction.log`：Agent API + SSE，**14 passed**，21.68 秒。
+- `/tmp/workflowweave-redesign-handoff-agent.log`：`tests/agent tests/storage_primitives`，**176 passed**，40.74 秒。
+- `/tmp/workflowweave-redesign-handoff-workflow.log`：Workflow Agent Task integration/tasks，**25 passed**，28.94 秒。
+- `/tmp/workflowweave-redesign-handoff-frontend.log`：adapter/stream/protocol/view 四个 Agent 测试文件，**24 passed**。Vue 的 `inject()` 在部分 scope 测试中仍有 warning，无未处理 rejection。
+- `/tmp/workflowweave-redesign-handoff-lifecycle.log`：`tests/lifecycle/test_agent_channels.py`，**13 passed**，38.95 秒。
+- `/tmp/workflowweave-redesign-handoff-interaction.log`：Agent API + SSE，**14 passed**，21.68 秒。
 - `ruff check src tests`：通过；三个迁移测试的 import 排序已修复。
-- Python wheel/sdist 构建：通过，产物在 `/tmp/logagent-agent-module-dist-final/`。
+- Python wheel/sdist 构建：通过，产物在 `/tmp/workflowweave-agent-module-dist-final/`。
 - 前端 typecheck、生产 build：通过；build 转换 4209 个模块，49.45 秒，退出码 0；依赖 Zod 的注释位置产生 Rollup warning。
 - OpenSpec 严格校验：通过；归档未执行。
 
@@ -108,14 +108,14 @@
 建议先执行：
 
 ```bash
-cd /mnt/d/code/LogAgent/.worktree/redesign-agent-module
+cd /mnt/d/code/WorkFLowWeave/.worktree/redesign-agent-module
 rtk git status --short
 rtk git log --oneline -3
-rtk proxy cat /tmp/logagent-redesign-handoff-agent.log
-rtk proxy cat /tmp/logagent-redesign-handoff-workflow.log
-rtk proxy cat /tmp/logagent-redesign-handoff-frontend.log
-rtk proxy cat /tmp/logagent-redesign-handoff-lifecycle.log
-rtk proxy cat /tmp/logagent-redesign-handoff-interaction.log
+rtk proxy cat /tmp/workflowweave-redesign-handoff-agent.log
+rtk proxy cat /tmp/workflowweave-redesign-handoff-workflow.log
+rtk proxy cat /tmp/workflowweave-redesign-handoff-frontend.log
+rtk proxy cat /tmp/workflowweave-redesign-handoff-lifecycle.log
+rtk proxy cat /tmp/workflowweave-redesign-handoff-interaction.log
 rtk git show --stat HEAD
 ```
 

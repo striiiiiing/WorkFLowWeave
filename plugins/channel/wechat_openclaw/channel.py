@@ -9,11 +9,11 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from logagent.channel.context import remaining_delivery_time
-from logagent.channel.conversation import ChannelAddress, InboundHandler, InboundMessage
-from logagent.channel.errors import ChannelDeliveryError
-from logagent.models import ChannelConfig, Notification
-from logagent.schema import resource_options_schema, validate_instance, validate_workflow_options
+from workflowweave.channel.context import remaining_delivery_time
+from workflowweave.channel.conversation import ChannelAddress, InboundHandler, InboundMessage
+from workflowweave.channel.errors import ChannelDeliveryError
+from workflowweave.models import ChannelConfig, Notification
+from workflowweave.schema import resource_options_schema, validate_instance, validate_workflow_options
 
 _LOGGER = logging.getLogger(__name__)
 _STOP_TIMEOUT = 5.0
@@ -28,7 +28,7 @@ _OPTIONS_SCHEMA = {
         "command": {"type": "string", "minLength": 1, "default": "node",
                     "description": "Node.js 可执行文件"},
         "target_id": {"type": "string", "minLength": 1, "pattern": r"^\S+$",
-                      "description": "单向通知接收者的微信 ID", "x-logagent-workflow": True},
+                      "description": "单向通知接收者的微信 ID", "x-workflowweave-workflow": True},
     },
     "required": ["account_id"],
 }

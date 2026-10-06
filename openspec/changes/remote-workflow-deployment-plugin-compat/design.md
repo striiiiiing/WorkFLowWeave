@@ -2,7 +2,7 @@
 
 ## Context
 
-远端 `workflowServer` 当前只有 `mock`、`qwenpaw_sources` 和 `qwenpaw_notify` 三个目录；其中 `qwenpaw_sources` 注册十个 Collector。LogAgent 本地注册器要求 `kind/api_version`，而固定版本的 QwenPaw 插件清单使用 `type`、显示元数据、依赖和 `qwenpaw_version`，没有可依据的 `manifest_version` 或 `api_version=2`。本设计因此把兼容性作为显式边界，不把“新版本”解释成未经来源支持的数值。
+远端 `workflowServer` 当前只有 `mock`、`qwenpaw_sources` 和 `qwenpaw_notify` 三个目录；其中 `qwenpaw_sources` 注册十个 Collector。WorkFLowWeave 本地注册器要求 `kind/api_version`，而固定版本的 QwenPaw 插件清单使用 `type`、显示元数据、依赖和 `qwenpaw_version`，没有可依据的 `manifest_version` 或 `api_version=2`。本设计因此把兼容性作为显式边界，不把“新版本”解释成未经来源支持的数值。
 
 ## Goals / Non-Goals
 
@@ -14,7 +14,7 @@
 
 **Non-Goals:**
 
-- 不修改 QwenPaw 上游清单格式，不声称存在 `manifest v2`；不把任意未知 `type` 映射为 LogAgent `kind`。
+- 不修改 QwenPaw 上游清单格式，不声称存在 `manifest v2`；不把任意未知 `type` 映射为 WorkFLowWeave `kind`。
 - 不迁移凭据、运行数据库、日志、CLI 私有仓库或远端未提交文件；不强制 reset、clean 或覆盖 `myserver`。
 - 不把缓存率、token 节省或 Agent 成功从一次服务启动推断出来；没有原始计数就保持未验收。
 
@@ -22,9 +22,9 @@
 
 ### 1. 清单兼容采用显式归一层
 
-在配置层增加纯归一函数/模型：读取后先识别 LogAgent v1 或 QwenPaw-style 形状，再统一生成内部 manifest。QwenPaw 的 `type=collector/channel/tool` 映射到 LogAgent 的 `kind`；`entry.backend` 仍必须是包内相对 `.py`。`type` 与 `kind` 同时存在且不一致、路径越界、重复 ID 或未知类型均拒绝；manifest ID 是 owner 身份，保留旧版目录名与 ID 不同的兼容行为。依赖和 `qwenpaw_version` 作为诊断/准入元数据，不在没有安装器授权时自动 pip 安装。
+在配置层增加纯归一函数/模型：读取后先识别 WorkFLowWeave v1 或 QwenPaw-style 形状，再统一生成内部 manifest。QwenPaw 的 `type=collector/channel/tool` 映射到 WorkFLowWeave 的 `kind`；`entry.backend` 仍必须是包内相对 `.py`。`type` 与 `kind` 同时存在且不一致、路径越界、重复 ID 或未知类型均拒绝；manifest ID 是 owner 身份，保留旧版目录名与 ID 不同的兼容行为。依赖和 `qwenpaw_version` 作为诊断/准入元数据，不在没有安装器授权时自动 pip 安装。
 
-替代方案是直接把 QwenPaw JSON 改写成 LogAgent v1；该方案会丢失上游元数据并把迁移状态隐藏在文件修改中，因此不采用。另一替代方案是宽松接受任意字段并猜测类型，会造成错误插件被加载，违反失败可见原则。
+替代方案是直接把 QwenPaw JSON 改写成 WorkFLowWeave v1；该方案会丢失上游元数据并把迁移状态隐藏在文件修改中，因此不采用。另一替代方案是宽松接受任意字段并猜测类型，会造成错误插件被加载，违反失败可见原则。
 
 ### 2. 十个来源 package 一能力一目录
 

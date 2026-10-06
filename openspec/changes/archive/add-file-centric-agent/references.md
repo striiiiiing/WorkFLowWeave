@@ -6,10 +6,10 @@
 
 | 证据 | 结论 |
 | --- | --- |
-| `src/logagent/config/registry.py`、`config/views.py`、`models.py` | 当前注册事务、Schema 捕获、owner 和禁用不导入可扩展到 `kind=tool`。 |
-| `src/logagent/schema.py`、`config/normalize.py`、`config/store.py` | 统一复用 Schema、默认值、Setter、凭据和路径校验；Agent 不复制调用解析。 |
-| `src/logagent/collection/manager.py`、`channel/manager.py` | Collector/Channel 都是单次 Manager 调用；Channel 路由和 delivery_uncertain 不应被模型工具绕开。 |
-| `src/logagent/ai/`、`workflow/`、`lifecycle/` | 模型租约、Workflow checkpoint 和应用生命周期已有边界，Agent 需通过公共入口接入。 |
+| `src/workflowweave/config/registry.py`、`config/views.py`、`models.py` | 当前注册事务、Schema 捕获、owner 和禁用不导入可扩展到 `kind=tool`。 |
+| `src/workflowweave/schema.py`、`config/normalize.py`、`config/store.py` | 统一复用 Schema、默认值、Setter、凭据和路径校验；Agent 不复制调用解析。 |
+| `src/workflowweave/collection/manager.py`、`channel/manager.py` | Collector/Channel 都是单次 Manager 调用；Channel 路由和 delivery_uncertain 不应被模型工具绕开。 |
+| `src/workflowweave/ai/`、`workflow/`、`lifecycle/` | 模型租约、Workflow checkpoint 和应用生命周期已有边界，Agent 需通过公共入口接入。 |
 | `uv.lock` | 当前记录为 `langchain 1.4.2`、`langchain-core 1.6.4`、`langgraph 1.2.12`、`langgraph-checkpoint 4.2.0`、`langgraph-checkpoint-sqlite 3.1.1`、`aiorwlock 1.5.1`。实施以实际锁文件为准。 |
 
 ## 2. LangGraph/LangChain

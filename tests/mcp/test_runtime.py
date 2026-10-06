@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 from mcp.types import CallToolResult, ListToolsResult, TextContent, Tool
 
-from logagent.errors import LogAgentError
-from logagent.mcp import MCPRuntime, SDKConnector
-from logagent.models import MCPServerConfig
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.mcp import MCPRuntime, SDKConnector
+from workflowweave.models import MCPServerConfig
 
 
 def config(id="one", **kwargs):
@@ -50,13 +50,13 @@ async def test_lazy_catalog_scope_schema_and_refresh(tmp_path):
     await runtime.describe(scope, "one", "echo")
     assert connector.opens == 1 and not connector.calls
     assert runtime.listing(scope)["entries"][0]["server"] == "one"
-    with pytest.raises(LogAgentError, match="范围"):
+    with pytest.raises(WorkFLowWeaveError, match="范围"):
         await runtime.call(scope, "other", "echo", {}, context={})
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         await runtime.call(scope, "one", "echo", {"value": 1}, context={})
     assert not connector.calls
     connector.tools = []
-    with pytest.raises(LogAgentError, match="不存在"):
+    with pytest.raises(WorkFLowWeaveError, match="不存在"):
         await runtime.call(scope, "one", "echo", {"value": "a"}, context={})
     assert runtime.listing(scope, server="one")["entries"] == []
     cached = MCPRuntime(connector, cache_dir=tmp_path)
@@ -123,7 +123,7 @@ async def test_missing_stdio_command_has_actionable_diagnostic(tmp_path):
     runtime = MCPRuntime(SDKConnector(None))
     missing = str(tmp_path / "missing-mcp-command")
     scope = {"one": MCPServerConfig(id="one", transport="stdio", command=missing)}
-    with pytest.raises(LogAgentError) as caught:
+    with pytest.raises(WorkFLowWeaveError) as caught:
         await runtime.load(scope, "one")
     error = caught.value.info
     assert error.code == "mcp_directory_failed"

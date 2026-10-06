@@ -13,11 +13,11 @@ from pathlib import Path
 import orjson
 import pytest
 
-from logagent.config import PluginRegistry, ResourceStore
-from logagent.config.migrations import RESOURCE_FORMAT_VERSION
-from logagent.errors import LogAgentError
-from logagent.lifecycle.resources import LifecycleResourceStore
-from logagent.models import (
+from workflowweave.config import PluginRegistry, ResourceStore
+from workflowweave.config.migrations import RESOURCE_FORMAT_VERSION
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.lifecycle.resources import LifecycleResourceStore
+from workflowweave.models import (
     AIConfig,
     ChannelConfig,
     SourceConfig,
@@ -91,10 +91,10 @@ async def test_legacy_collection_resources_require_explicit_rebuild(resources, v
         data.pop("mcp_servers")
     edit(store, data)
     before = await asyncio.to_thread(Path(store.location).read_bytes)
-    with pytest.raises(LogAgentError) as error:
+    with pytest.raises(WorkFLowWeaveError) as error:
         store.reload_resources()
     assert error.value.code == "collection_migration_required"
-    with pytest.raises(LogAgentError) as error:
+    with pytest.raises(WorkFLowWeaveError) as error:
         ResourceStore(store.location)
     assert error.value.code == "collection_migration_required"
     assert await asyncio.to_thread(Path(store.location).read_bytes) == before
@@ -108,12 +108,12 @@ async def test_save_many_updates_model_and_workflow_atomically(resources):
     upgraded = AIConfig(id="ai", provider="mock", models={"next": {}})
     definition.analyses[0].model = "next"
 
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         store.save("ai", upgraded)
     assert await asyncio.to_thread(Path(store.location).read_bytes) == before
 
     invalid = definition.model_copy(update={"sources": ["missing"]})
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         store.save_many({"ai": [upgraded], "workflows": [invalid]})
     assert await asyncio.to_thread(Path(store.location).read_bytes) == before
     assert store.snapshot("workflow").workflow.analyses[0].model == "model"
@@ -141,7 +141,7 @@ async def test_lifecycle_batch_refreshes_once_after_success(resources, tmp_path)
         "ai": [AIConfig(id="ai", provider="mock", models={"model": {}})],
     })
     assert refreshed == [True]
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         store.save_many({"workflows": [WorkflowDefinition(
             id="broken", sources=["missing"],
             analyses=[{"user_prompt": "analyze input", "id": "analysis", "ai": "ai", "model": "model"}],
@@ -155,15 +155,15 @@ async def test_lifecycle_batch_refreshes_once_after_success(resources, tmp_path)
 async def test_create_replace_and_unknown_fields(resources):
     store, _ = resources
     value = AIConfig(id="ai", provider="mock", models={"model": {}})
-    with pytest.raises(LogAgentError, match="不存在"):
+    with pytest.raises(WorkFLowWeaveError, match="不存在"):
         store.save("ai", value, mode="replace")
     store.save("ai", value, mode="create")
-    with pytest.raises(LogAgentError, match="已存在"):
+    with pytest.raises(WorkFLowWeaveError, match="已存在"):
         store.save("ai", value, mode="create")
     before = read(store)
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         store.save("ai", {**value.model_dump(), "unknown": "secret"})
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         store.save("ai", value, mode="bad")
     assert read(store) == before
 
@@ -173,7 +173,7 @@ async def test_referenced_resources_cannot_be_deleted(resources, kind, ident):
     store, _ = resources
     seed(store)
     before = read(store)
-    with pytest.raises(LogAgentError) as caught:
+    with pytest.raises(WorkFLowWeaveError) as caught:
         store.delete(kind, ident)
     assert caught.value.code == "reference_conflict"
     assert read(store) == before
@@ -195,9 +195,9 @@ async def test_resolve_unsaved_definition_and_source_do_not_publish(resources):
     assert store.resolve(source).call.argv == ["%s", "unsaved"]
     assert read(store) == before
     definition.sources = ["missing"]
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         store.resolve(definition)
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         store.resolve(SourceConfig(id="unsaved", call={
             "kind": "mcp", "server": "missing", "tool": "echo",
         }))
@@ -209,7 +209,7 @@ async def test_cli_snapshots_do_not_require_collector_registry(resources):
     reopened = ResourceStore(store.location)
     assert reopened.snapshot("workflow").sources["source"].call.kind == "cli"
     reopened.save("ai", AIConfig(id="ai", provider="mock", models={"model": {"reasoning_effort": "low"}}))
-    with pytest.raises(LogAgentError) as caught:
+    with pytest.raises(WorkFLowWeaveError) as caught:
         reopened.save("sources", SourceConfig(id="new", call={
             "kind": "mcp", "server": "missing", "tool": "echo",
         }))
@@ -225,8 +225,8 @@ async def test_write_failure_preserves_disk_and_published_view(resources, monkey
     before = await asyncio.to_thread(Path(store.location).read_bytes)
     def fail(*args):
         raise OSError("fake-private-path")
-    monkeypatch.setattr(f"logagent.config.store.os.{failure}", fail)
-    with pytest.raises(LogAgentError) as caught:
+    monkeypatch.setattr(f"workflowweave.config.store.os.{failure}", fail)
+    with pytest.raises(WorkFLowWeaveError) as caught:
         store.save("ai", AIConfig(id="ai", provider="mock", models={"model": {"reasoning_effort": "low"}}))
     assert "fake-private" not in caught.value.info.model_dump_json()
     assert await asyncio.to_thread(Path(store.location).read_bytes) == before
@@ -241,7 +241,7 @@ async def test_reload_candidate_failure_then_success_and_relative_path(resources
     invalid = deepcopy(data)
     invalid["workflows"]["workflow"]["sources"] = ["missing"]
     edit(store, invalid)
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         store.reload_resources()
     assert store.snapshot("workflow").workflow.sources == ["source"]
     data["channels"]["channel"]["options"]["path"] = "relative/next.txt"
@@ -278,7 +278,7 @@ async def test_invalid_document_never_becomes_an_empty_store(resources, change):
         await asyncio.to_thread(Path(store.location).write_bytes, b"SQLite format 3\x00not-json")
     else:
         edit(store, data)
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         ResourceStore(store.location)
 
 
@@ -310,7 +310,7 @@ async def test_injected_validation_sees_final_options_once(resources):
     assert result.options == seen[0]
 
     before = read(store)
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         store.save("channels", ChannelConfig(id="channel", channel="file", options={"path": "relative.txt", "unknown": True}))
     assert read(store) == before
 
@@ -321,13 +321,13 @@ async def test_removing_referenced_model_rejects_entire_resource_candidate(resou
     definition = seed(store)
     store.save("ai", AIConfig(id="ai", provider="mock", models={"model": {}, "summary": {}}))
     if reference == "fan_in":
-        from logagent.models import FanInConfig
+        from workflowweave.models import FanInConfig
         definition.fan_in = FanInConfig(user_prompt="summarize results", ai="ai", model="summary", reuse_from=None)
         store.save("workflows", definition)
     before = await asyncio.to_thread(Path(store.location).read_bytes)
     original = store.snapshot("workflow")
     remaining = {"summary": {}} if reference == "analysis" else {"model": {}}
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         store.save("ai", AIConfig(id="ai", provider="mock", models=remaining))
     assert await asyncio.to_thread(Path(store.location).read_bytes) == before
     current = store.snapshot("workflow")

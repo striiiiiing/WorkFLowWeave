@@ -3,8 +3,8 @@ from copy import deepcopy
 import pytest
 from pydantic import ValidationError
 
-from logagent.agent.config import AgentConfig
-from logagent.agent.contracts import freeze
+from workflowweave.agent.config import AgentConfig
+from workflowweave.agent.contracts import freeze
 
 
 def test_turn_config_freezes_nested_values_and_retains_original_defaults():

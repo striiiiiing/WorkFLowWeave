@@ -2,7 +2,7 @@
 
 import asyncio
 
-from logagent.models import DeliveryResult, ErrorInfo
+from workflowweave.models import DeliveryResult, ErrorInfo
 from tests.workflow.helpers import archived, snapshot
 from tests.workflow.test_workflow_recovery import close, service
 

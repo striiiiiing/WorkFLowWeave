@@ -4,14 +4,14 @@ from types import SimpleNamespace
 import pytest
 from langchain_core.messages import AIMessage
 
-from logagent.agent.config import AgentConfig
-from logagent.agent.integrations.mcp import MCPGateway
-from logagent.agent.tools.builtin.mcp import plugin
-from logagent.config.store import ResourceStore
-from logagent.errors import LogAgentError
-from logagent.interaction.fastapi.agent import create_agent_service
-from logagent.mcp import MCPRuntime
-from logagent.models import MCPServerConfig
+from workflowweave.agent.config import AgentConfig
+from workflowweave.agent.integrations.mcp import MCPGateway
+from workflowweave.agent.tools.builtin.mcp import plugin
+from workflowweave.config.store import ResourceStore
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.interaction.fastapi.agent import create_agent_service
+from workflowweave.mcp import MCPRuntime
+from workflowweave.models import MCPServerConfig
 from tests.agent.helpers import ScriptedModel
 from tests.mcp.test_runtime import Connector
 
@@ -64,5 +64,5 @@ async def test_proxy_fixed_schema_direct_call_and_cli_empty_scope():
     assert output["raw"]["content"][0]["text"] == "false"
     assert connector.calls == [("echo", {"value": "new args"})]
     empty = MCPGateway(runtime, {"servers": {}, "sources": []})
-    with pytest.raises(LogAgentError, match="范围"):
+    with pytest.raises(WorkFLowWeaveError, match="范围"):
         await empty.invoke({"action": "call", "server": "one", "tool": "echo"}, context)

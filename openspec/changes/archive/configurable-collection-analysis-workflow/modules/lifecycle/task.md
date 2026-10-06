@@ -27,8 +27,8 @@
 ## 专项验证
 
 - `rtk proxy timeout 60s uv run pytest tests/test_lifecycle.py -q`：`15 passed, 1 warning`（LangGraph 既存弃用警告）。
-- `rtk proxy uv run ruff check src/logagent/lifecycle/service.py src/logagent/lifecycle/__init__.py tests/test_lifecycle.py`：通过。
-- `rtk proxy uv run ruff format --check src/logagent/lifecycle/service.py src/logagent/lifecycle/__init__.py tests/test_lifecycle.py`：通过。
+- `rtk proxy uv run ruff check src/workflowweave/lifecycle/service.py src/workflowweave/lifecycle/__init__.py tests/test_lifecycle.py`：通过。
+- `rtk proxy uv run ruff format --check src/workflowweave/lifecycle/service.py src/workflowweave/lifecycle/__init__.py tests/test_lifecycle.py`：通过。
 
 未在此模块执行全量构建或全量测试；`logging.py`/独立日志测试和 Workflow 接口分别由对应代理负责，Lifecycle 专项测试中使用的接口已通过集成测试。
 
@@ -49,8 +49,8 @@
 
 - `timeout 60s uv run pytest tests/test_lifecycle.py tests/test_lifecycle_logging.py tests/test_workflow_lifecycle.py -q`：26 passed，包含新增 AI/日志关闭健康状态及日志探针异常恢复验证。
 - `timeout 60s uv run pytest tests/test_interaction.py tests/test_workflow_lifecycle.py tests/test_workflow_interval.py tests/test_workflow_integration.py tests/test_workflow_overrides.py tests/test_workflow_recovery.py tests/test_resource_store.py -q`：98 passed。
-- `uv run ruff check src/logagent/lifecycle tests/test_lifecycle.py` 和对应 `ruff format --check`：通过。
-- `uv build --out-dir /tmp/logagent-lifecycle-build`：sdist/wheel 构建成功，wheel 包含所有新拆分模块。
+- `uv run ruff check src/workflowweave/lifecycle tests/test_lifecycle.py` 和对应 `ruff format --check`：通过。
+- `uv build --out-dir /tmp/workflowweave-lifecycle-build`：sdist/wheel 构建成功，wheel 包含所有新拆分模块。
 - 临时目录下真实 Lifecycle + FastAPI TestClient：健康检查 ready、resources/plugins 两种重载、恢复准入、幂等关闭及 JSON 启停日志均通过；未访问远端服务。
 - 测试仅出现 LangGraph/Starlette 已有弃用警告；本次变更范围内 `git diff --check` 通过。主文件由 1044 行缩减至 621 行，模块总行数由 1475 行缩减至 1381 行（含新增模块和导入）。
 
@@ -65,7 +65,7 @@
 依据：用户要求先找出启动中最耗时的部分，再决定是否增加终端提示；本次只更新实现任务记录，不修改 proposal/design。
 
 - 实测临时空数据、复制当前 `data/` 的 Lifecycle 装配均约 `0.30–0.44s`；Lifecycle 内最慢阶段是插件发现，约 `0.18–0.19s`，其余阶段更短，不足以证明逐阶段终端提示有价值。
-- CLI 冷启动的主要等待发生在 `import logagent.lifecycle.service`，约 `13.2s`；其中 `logagent.mcp` 约 `4.2s`、Workflow runner 约 `5.9s`。这段等待发生在进入 `ApplicationLifecycle.start()` 之前，因此在 lifecycle 阶段内打印不能覆盖用户感知的卡顿。
+- CLI 冷启动的主要等待发生在 `import workflowweave.lifecycle.service`，约 `13.2s`；其中 `workflowweave.mcp` 约 `4.2s`、Workflow runner 约 `5.9s`。这段等待发生在进入 `ApplicationLifecycle.start()` 之前，因此在 lifecycle 阶段内打印不能覆盖用户感知的卡顿。
 - [x] 将运行时导入移至 `start` 命令执行点，并在导入前通过 stderr flush 输出“正在加载运行时模块”；导入完成后提示即将读取配置并装配后端。
 - [x] 不在 Lifecycle 的亚秒阶段逐个输出终端消息；服务就绪继续由 Uvicorn 的 `Application startup complete` 报告，避免重复输出。
 - [x] CLI 导入回归测试确认导入命令模块不会提前加载生命周期运行时，保持非 `start` 命令的轻量路径。

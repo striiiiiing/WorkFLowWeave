@@ -14,7 +14,7 @@
 
 - `SourceConfig` 是当前可复用的采集器实例模型，保存 options、template、setters、启用状态和失败策略。
 - `SetterTemplate` 是当前可复用的处理 JSON 模板，已经带有 `collector` 归属。
-- `CapabilityDescription` 提供 options/setters Schema，`x-logagent-workflow=true` 可区分实例配置与工作流配置。
+- `CapabilityDescription` 提供 options/setters Schema，`x-workflowweave-workflow=true` 可区分实例配置与工作流配置。
 - `resolve_source_call` 已定义实例模板、实例局部规则、工作流模板和工作流局部规则的合并顺序；前端不复制该业务逻辑。
 - 当前前端的 `ResourceEditor`、`SetterTemplateManager` 和 `SourceStepCard` 将这些概念混在同一层，方案只调整交互表达和资源显示，不改变采集执行模型。
 

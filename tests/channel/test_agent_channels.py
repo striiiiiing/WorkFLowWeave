@@ -7,15 +7,15 @@ import pytest
 from langchain_core.messages import AIMessage
 from pydantic import Field
 
-from logagent.agent.commands import AgentCommand
-from logagent.agent.config import AgentConfig
-from logagent.channel import ChannelManager
-from logagent.channel.bindings import ChannelBindings
-from logagent.collection import CollectorManager
-from logagent.config import PluginRegistry
-from logagent.errors import LogAgentError
-from logagent.interaction.fastapi.agent import create_agent_service
-from logagent.models import (
+from workflowweave.agent.commands import AgentCommand
+from workflowweave.agent.config import AgentConfig
+from workflowweave.channel import ChannelManager
+from workflowweave.channel.bindings import ChannelBindings
+from workflowweave.collection import CollectorManager
+from workflowweave.config import PluginRegistry
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.interaction.fastapi.agent import create_agent_service
+from workflowweave.models import (
     AIConfig,
     AnalysisResult,
     AnalysisTask,
@@ -26,7 +26,7 @@ from logagent.models import (
     WorkflowDefinition,
     WorkflowSnapshot,
 )
-from logagent.workflow.execution.runner import WorkflowRunner
+from workflowweave.workflow.execution.runner import WorkflowRunner
 from tests.agent.helpers import ScriptedModel
 from tests.fixtures.plugin_helpers import install_test_channel_plugin
 
@@ -61,7 +61,7 @@ async def _agent(tmp_path, model):
 
 
 def _message(request_id, text, *, sender="alice", target="room", kind="test"):
-    from logagent.channel.conversation import ChannelAddress, InboundMessage
+    from workflowweave.channel.conversation import ChannelAddress, InboundMessage
 
     return InboundMessage(
         request_id=request_id,
@@ -113,7 +113,7 @@ class _AgentCommands:
     """Production command adapter, keeping tests on real AgentService operations."""
 
     def __init__(self, service):
-        from logagent.agent.commands import CommandDispatcher
+        from workflowweave.agent.commands import CommandDispatcher
 
         self._channel = CommandDispatcher(service)
 
@@ -218,7 +218,7 @@ async def test_request_id_is_idempotent_and_rejects_different_content(tmp_path):
         await _settle_reply(runtime, receiver, "same-id")
 
         duplicate = await _inject_result(runtime, message)
-        with pytest.raises(LogAgentError) as conflict:
+        with pytest.raises(WorkFLowWeaveError) as conflict:
             await _inject_result(runtime, _message("same-id", "different"))
 
         assert duplicate["deduplicated"] is True
@@ -406,7 +406,7 @@ async def test_legacy_identity_migration_rejects_conflicting_session_or_receipt(
     try:
         await bindings.bind("old", "session-a")
         await bindings.bind("current", "session-b")
-        with pytest.raises(LogAgentError) as conflict:
+        with pytest.raises(WorkFLowWeaveError) as conflict:
             await bindings.migrate_peer("old", "current")
         assert conflict.value.code == "request_conflict"
         assert await bindings.current("current") == "session-b"
@@ -416,7 +416,7 @@ async def test_legacy_identity_migration_rejects_conflicting_session_or_receipt(
         await bindings.complete("old", "message", {"kind": "session", "result": "old"})
         await bindings.claim("current", "message", "same-digest")
         await bindings.complete("current", "message", {"kind": "session", "result": "current"})
-        with pytest.raises(LogAgentError) as conflict:
+        with pytest.raises(WorkFLowWeaveError) as conflict:
             await bindings.migrate_peer("old", "current")
         assert conflict.value.code == "request_conflict"
         assert (await bindings.outcome("current", "message"))["response"]["result"] == "current"
@@ -515,7 +515,7 @@ async def test_legacy_creation_crash_preserves_session_without_adopting_binding(
         outcome = await restarted.outcome(config, message)
         assert outcome["status"] == "outcome_unknown"
         assert outcome["response"] is None
-        with pytest.raises(LogAgentError) as error:
+        with pytest.raises(WorkFLowWeaveError) as error:
             await _inject_result(restarted, message)
         assert error.value.code == "request_outcome_unknown"
     finally:
@@ -577,7 +577,7 @@ async def test_reply_uses_the_inbound_address_and_one_way_send_uses_config_targe
         }
 
         one_way_config = _config(agent_enabled=False, target="workflow-output")
-        with pytest.raises(LogAgentError) as no_agent_receiver:
+        with pytest.raises(WorkFLowWeaveError) as no_agent_receiver:
             await channels.start_receiving(one_way_config, receiver.inject)
         assert no_agent_receiver.value.code == "channel_disabled"
         notification = Notification(session_id="workflow", output_id="result", text="report")
@@ -598,14 +598,14 @@ async def test_disabled_channel_and_closed_runtime_reject_inbound(tmp_path):
     model = ScriptedModel(responses=[])
     service, channels, runtime = await _start(tmp_path, model, _config(enabled=False))
     try:
-        with pytest.raises(LogAgentError) as not_started:
+        with pytest.raises(WorkFLowWeaveError) as not_started:
             channels.receiver(_config(enabled=False))
         assert not_started.value.code == "channel_unavailable"
 
         await runtime.configure([_config()])
         receiver = channels.receiver(runtime.configs["test"])
         await runtime.close()
-        with pytest.raises(LogAgentError) as closed:
+        with pytest.raises(WorkFLowWeaveError) as closed:
             await receiver.inject(_message("closed", "hello"))
         assert closed.value.code == "channel_disabled"
     finally:
@@ -686,7 +686,7 @@ async def test_runtime_configure_toggles_agent_receiving_without_replacing_send(
         await runtime.configure([config.model_copy(update={"agent_enabled": False})])
         assert runtime.configs == {}
         assert receiver.handler is None
-        with pytest.raises(LogAgentError) as disabled:
+        with pytest.raises(WorkFLowWeaveError) as disabled:
             await receiver.inject(_message("disabled", "hello"))
         assert disabled.value.code == "channel_disabled"
 

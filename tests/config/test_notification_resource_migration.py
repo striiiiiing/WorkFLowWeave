@@ -4,10 +4,10 @@ from copy import deepcopy
 
 import pytest
 
-from logagent.config import PluginRegistry, ResourceStore
-from logagent.config.migrations import migrate_legacy_snapshot, migrate_resources
-from logagent.errors import LogAgentError
-from logagent.models import ChannelConfig, SystemConfig
+from workflowweave.config import PluginRegistry, ResourceStore
+from workflowweave.config.migrations import migrate_legacy_snapshot, migrate_resources
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import ChannelConfig, SystemConfig
 
 
 def test_file_capability_migration_preserves_identity_path_and_bindings():
@@ -44,7 +44,7 @@ async def test_new_resource_input_rejects_removed_mock_alias(tmp_path):
     registry = PluginRegistry()
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     store = ResourceStore(tmp_path / "resources.json", channel_register=registry.channelRegister)
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         store.save("channels", ChannelConfig(
             id="local", channel="mock", options={"path": "out.log"},
         ))

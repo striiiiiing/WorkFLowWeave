@@ -12,9 +12,9 @@ from copy import deepcopy
 
 import pytest
 
-from logagent.config import ConfigurationReader, PluginRegistry
-from logagent.errors import LogAgentError
-from logagent.models import (
+from workflowweave.config import ConfigurationReader, PluginRegistry
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import (
     CollectionContext,
     CollectorOutput,
     SystemConfig,
@@ -79,7 +79,7 @@ class ConfigurableCollector(SampleCollector):
     )
 
 
-PLUGIN_SUPPORT = """from logagent.models import CollectorOutput
+PLUGIN_SUPPORT = """from workflowweave.models import CollectorOutput
 
 class SampleCollector:
     description = "Plugin test collector"
@@ -174,7 +174,7 @@ async def test_system_paths_are_relative_to_config_and_defaults_are_fixed(tmp_pa
 async def test_invalid_system_config_is_rejected_without_exposing_input(tmp_path, content):
     path = tmp_path / "system.json"
     path.write_text(content)
-    with pytest.raises(LogAgentError) as error:
+    with pytest.raises(WorkFLowWeaveError) as error:
         await ConfigurationReader().load_system(path)
     assert "secret-value" not in error.value.info.model_dump_json()
 
@@ -183,14 +183,14 @@ async def test_optional_plugin_settings_are_missing_only_not_invalid_or_unreadab
     reader = ConfigurationReader()
     path = tmp_path / "config.json"
     assert await reader.load_plugin_config(path) == {}
-    with pytest.raises(LogAgentError, match="不存在"):
+    with pytest.raises(WorkFLowWeaveError, match="不存在"):
         await reader.load_system(path)
     path.write_text('{"collector": {"demo": {"enabled": "invalid"}}}')
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         await reader.load_plugin_config(path)
     path.unlink()
     path.mkdir()
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         await reader.load_plugin_config(path)
 
 
@@ -200,7 +200,7 @@ async def test_valid_plugin_config_and_invalid_top_level_kind(tmp_path):
     config = await ConfigurationReader().load_plugin_config(path)
     assert config["collector"]["demo"].enabled is False
     path.write_text('{"unsupported": {}}')
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         await ConfigurationReader().load_plugin_config(path)
 
 
@@ -253,7 +253,7 @@ async def test_invalid_builtin_declarations_prevent_publication(tmp_path, invali
             {"limit": {"type": "integer", "default": "invalid", "description": "Limit"}}
         )
     registry = PluginRegistry(builtin_collectors=[collector])
-    with pytest.raises(LogAgentError) as error:
+    with pytest.raises(WorkFLowWeaveError) as error:
         await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path)))
     assert error.value.code == "builtin_registration_failed"
     assert registry.collectorRegister.describe() == []
@@ -357,7 +357,7 @@ async def test_invalid_optional_semantic_hooks_reject_declaration(tmp_path, mode
         collector.validate = lambda options: None
     else:
         collector.validate = 5
-    with pytest.raises(LogAgentError) as error:
+    with pytest.raises(WorkFLowWeaveError) as error:
         await discover(tmp_path, builtins=[collector])
     assert error.value.code == "builtin_registration_failed"
 
@@ -425,7 +425,7 @@ async def test_old_framework_plugin_defaults_are_explicitly_rejected(tmp_path, d
     (tmp_path / "config.json").write_text(
         json.dumps({"collector": {"demo": {"defaults": defaults}}})
     )
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         await discover(tmp_path)
 
 
@@ -433,7 +433,7 @@ async def test_plugin_reads_private_json_and_injects_constructor_dependencies(tm
     package = write_plugin(tmp_path, "private", body='''
 import json
 from .support import SampleCollector
-from logagent.models import CollectorOutput
+from workflowweave.models import CollectorOutput
 
 class ConfiguredCollector(SampleCollector):
     def __init__(self, prefix):
@@ -509,7 +509,7 @@ async def test_plugin_id_prefix_is_validated_and_published(tmp_path):
     write_plugin(
         tmp_path,
         "prefixed",
-        body="""from logagent.models import CollectorOutput
+        body="""from workflowweave.models import CollectorOutput
 class Collector:
     name = "prefixed"
     id_prefix = "logs"
@@ -536,7 +536,7 @@ async def test_invalid_plugin_id_prefix_is_rejected(tmp_path, prefix):
     write_plugin(
         tmp_path,
         "invalid_prefix",
-        body=f"""from logagent.models import CollectorOutput
+        body=f"""from workflowweave.models import CollectorOutput
 class Collector:
     name = "invalid_prefix"
     id_prefix = {prefix!r}
@@ -584,10 +584,10 @@ async def test_entry_symlink_cannot_escape_package(tmp_path):
     "body",
     [
         "raise RuntimeError('super-secret-password')",
-        "from logagent.errors import LogAgentError\n"
+        "from workflowweave.errors import WorkFLowWeaveError\n"
         "class Plugin:\n"
         "    def register(self, api):\n"
-        "        raise LogAgentError('custom-secret-code', 'super-secret-password', {'value': 'secret'})\n"
+        "        raise WorkFLowWeaveError('custom-secret-code', 'super-secret-password', {'value': 'secret'})\n"
         "plugin = Plugin()",
         "plugin = object()",
         "class Plugin:\n    async def register(self, api):\n        pass\nplugin = Plugin()",
@@ -646,14 +646,14 @@ async def test_invalid_global_settings_leave_previous_published_view_intact(tmp_
     registry, _ = await discover(tmp_path)
     old_view = registry.collectorRegister
     (tmp_path / "config.json").write_text("not JSON")
-    with pytest.raises(LogAgentError):
+    with pytest.raises(WorkFLowWeaveError):
         await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path)))
     assert registry.collectorRegister is old_view
     assert registry.collectorRegister.get("demo") is not None
 
 
 async def test_string_config_values_normalize_through_readers_and_store(tmp_path):
-    from logagent.config.store import ResourceStore
+    from workflowweave.config.store import ResourceStore
     from plugins.channel.file.channel import FileChannelType
     from tests.fixtures.collectors import MockCollector
 

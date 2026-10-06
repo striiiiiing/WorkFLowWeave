@@ -4,7 +4,7 @@
 
 用户要求基于 `redesign-workflow` 建立新 worktree，先按 OpenSpec 修改文档，并强调前端 Workflow 应随执行及时更新。本轮完成规划文档，不将文档齐备记为运行能力已实现。
 
-- worktree：`/mnt/d/code/LogAgent/.worktree/redesign-workflow`。
+- worktree：`/mnt/d/code/WorkFLowWeave/.worktree/redesign-workflow`。
 - 分支：`feat/redesign-workflow`，基线提交：`a1cf5e0`，来源分支：`refactor/frontend-architecture`。
 - 主工作区的本变更尚未跟踪，已将 `redesign-workflow` 整个文档目录带入新 worktree；其他未提交代码、IDE 文件和归档迁移未带入。
 - 源工作区已将历史 Workflow 设计移入 archive，但该移动尚未提交。新 worktree 使用基线中仍受 Git 跟踪的 `configurable-collection-analysis-workflow` 历史文件；仅把 proposal 与根 tasks 中该相对链接改回可解析位置，proposal 的目标和范围未改写。既有 design 所述“旧归档”是历史来源，不表示本分支已完成该目录迁移。
@@ -20,11 +20,11 @@
 | `useRunDetail.ts`、`usePhaseReport.ts` 按 session/version/stage 读取阶段内容 | 新增逐项投影消费；只按确切结果引用读取需要的正文，不能每个事件刷新所有阶段 |
 | `RunDetailPage.vue` 与 `RunProcessDetails.vue` 以最终报告和折叠过程为主 | 普通模式直接显示当前阶段与逐项状态；aggregate 可读不等待 notify，全局状态仍真实 |
 | `frontend/src/pages/workflows/WorkflowListPage.vue` 触发成功后导航 `/runs/:session_id` | 保留该入口，真实验证导航后即可看到实时执行，不在配置页重复维护运行状态 |
-| `src/logagent/interaction/routers.py` 没有 Workflow 事件路由 | 在本 change 增加只读订阅及 session 进度查询的必要字段；不能只修改前端假设接口已存在 |
-| `src/logagent/interaction/channel_routers.py` 已提供 Agent SSE | 复用 HTTP/SSE 传输思路；Workflow 不复用 Agent 的 command、事件日志、游标重放或会话语义 |
+| `src/workflowweave/interaction/routers.py` 没有 Workflow 事件路由 | 在本 change 增加只读订阅及 session 进度查询的必要字段；不能只修改前端假设接口已存在 |
+| `src/workflowweave/interaction/channel_routers.py` 已提供 Agent SSE | 复用 HTTP/SSE 传输思路；Workflow 不复用 Agent 的 command、事件日志、游标重放或会话语义 |
 | `runsApi.ts` 与 `RunActions.vue` 只有无参数 recover 动作 | 配合既有设计第 5 节，增加可用性核验和阶段选择，不以旧失败状态列表限制所有重跑 |
 
-主要修改范围：`src/logagent/workflow/` 的流消费和查询投影，`interaction/routers.py`、`interaction/schemas.py`，以及 `frontend/src/modules/runs/`、`frontend/src/pages/runs/RunDetailPage.vue` 和 Workflow 触发入口的必要集成。前端传输通过 runs API 注入，页面消费模块公开接口，不直接依赖后端实现或 Agent 私有模块。实际新文件以消除重复职责为依据，不预建多层事件框架。
+主要修改范围：`src/workflowweave/workflow/` 的流消费和查询投影，`interaction/routers.py`、`interaction/schemas.py`，以及 `frontend/src/modules/runs/`、`frontend/src/pages/runs/RunDetailPage.vue` 和 Workflow 触发入口的必要集成。前端传输通过 runs API 注入，页面消费模块公开接口，不直接依赖后端实现或 Agent 私有模块。实际新文件以消除重复职责为依据，不预建多层事件框架。
 
 ## 依据、取舍与默认值
 

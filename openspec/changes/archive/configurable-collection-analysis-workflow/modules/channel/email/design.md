@@ -11,7 +11,7 @@
 | host | 非空字符串，必填 | SMTP 主机。 |
 | port | 1–65535 的整数，必填 | 显式填写，避免推测服务配置。 |
 | sender | 单个邮箱地址，必填 | SMTP 信封发件人及 From。 |
-| recipient | 单个邮箱地址，调用时必填 | x-logagent-workflow=true；实例可存默认值，Workflow 可覆盖。 |
+| recipient | 单个邮箱地址，调用时必填 | x-workflowweave-workflow=true；实例可存默认值，Workflow 可覆盖。 |
 | tls | none/starttls/implicit，默认 starttls | 显式连接方式，协商失败报告错误。 |
 | username | 字符串或 null，默认 null | SMTP 认证用户。 |
 | password | Credential 或 null，默认 null | 与 username 成对提供；不认证的本地 relay 可都为空。 |

@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
-const backendPort = process.env.LOGAGENT_E2E_BACKEND_PORT || '14300'
-const frontendPort = process.env.LOGAGENT_E2E_FRONTEND_PORT || '13000'
+const backendPort = process.env.WORKFLOWWEAVE_E2E_BACKEND_PORT || '14300'
+const frontendPort = process.env.WORKFLOWWEAVE_E2E_FRONTEND_PORT || '13000'
 const backendURL = `http://127.0.0.1:${backendPort}`
 const frontendURL = `http://127.0.0.1:${frontendPort}`
 export default defineConfig({
@@ -20,7 +20,7 @@ export default defineConfig({
     {
       command: '../.venv/bin/python tests/serve_backend.py',
       url: `${backendURL}/api/health`,
-      env: { LOGAGENT_E2E_BACKEND_PORT: backendPort },
+      env: { WORKFLOWWEAVE_E2E_BACKEND_PORT: backendPort },
       timeout: 60_000,
     },
     {

@@ -2,7 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from logagent.storage_primitives.jsonl import (
+from workflowweave.storage_primitives.jsonl import (
     JsonlStore,
     append_record,
     parse_records,

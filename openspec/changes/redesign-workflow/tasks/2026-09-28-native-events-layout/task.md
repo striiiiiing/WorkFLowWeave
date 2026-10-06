@@ -35,7 +35,7 @@
 - 当前 `uv.lock` 锁定 LangGraph 1.2.12；本轮读取安装目录中 `langgraph/pregel/main.py` 与 `langchain_core/runnables/base.py`：astream_events v2 使用原生 StreamEvent，config metadata/tags 可随调用传播，额外参数转给图流。
 - `langgraph/pregel/debug.py` 的 checkpoint 投影包含 config、parent_config、values、metadata、next、tasks。checkpoint 流投影不等于 v2 独立 on_checkpoint 回调，不能写不存在的 API。
 - `langgraph/pregel/_loop.py` 显示任务 writes 保存与输出存在异步调度；本轮只做源码核对，未运行 v2 父子图事件与 SQLite 提交时序探针。实施前必须验证，不能把节点 end 事件直接认定为已提交，也不能借此恢复全量轮询框架。
-- 当前 [archive.py](../../../../../src/logagent/workflow/archive.py) 仍只用 stream_mode="updates" 并逐事件扫描；[service.py](../../../../../src/logagent/workflow/service.py) 仍含归档报告组装；[models.py](../../../../../src/logagent/models.py) 的 checkpoint/collection 默认仍为 None。本轮设计更新不代表这些实现已修改。
+- 当前 [archive.py](../../../../../src/workflowweave/workflow/archive.py) 仍只用 stream_mode="updates" 并逐事件扫描；[service.py](../../../../../src/workflowweave/workflow/service.py) 仍含归档报告组装；[models.py](../../../../../src/workflowweave/models.py) 的 checkpoint/collection 默认仍为 None。本轮设计更新不代表这些实现已修改。
 - 当前清理请求主要发生在启动与运行退出；长期在线的到期触发仍需实现。只确定该行为，不新增未经依据的清理周期默认值。
 
 ## 实施任务

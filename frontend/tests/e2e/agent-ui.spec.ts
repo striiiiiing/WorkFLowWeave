@@ -364,7 +364,7 @@ test('正式 Agent 入口不含 demo；默认模型持久化并用于新会话�
   await page.getByRole('button', { name: '保存全局设置' }).click()
   await expect(page.getByRole('dialog', { name: 'Agent 全局设置与运行环境' })).toBeHidden()
   await expect
-    .poll(() => page.evaluate(() => localStorage.getItem('logagent.agent.default-model')))
+    .poll(() => page.evaluate(() => localStorage.getItem('workflowweave.agent.default-model')))
     .toBe('channel-a:alpha')
 
   await page.reload()
@@ -462,7 +462,7 @@ test('长会话只滚动消息区，输入器留在聊天窗口底部', async ({
 
 test('Workflow 续接自动选择默认模型并提交固定来源', async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem('logagent.agent.default-model', 'channel-a:alpha')
+    localStorage.setItem('workflowweave.agent.default-model', 'channel-a:alpha')
   })
   const calls = await installApi(page, { sessions: [session('qa-session')] })
   await page.goto('/agents/qa-session')

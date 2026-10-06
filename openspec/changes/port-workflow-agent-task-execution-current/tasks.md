@@ -11,7 +11,7 @@
 
 ## 实施依据
 
-- 当前 Workflow 运行时由 `src/logagent/workflow/execution/runner.py` 和 `WorkflowContext` 持有依赖，不能使用旧 `WorkflowService`。
+- 当前 Workflow 运行时由 `src/workflowweave/workflow/execution/runner.py` 和 `WorkflowContext` 持有依赖，不能使用旧 `WorkflowService`。
 - 当前 Agent 工具入口是 `MCPGateway` 与内置 MCP tool declaration；旧 commit 中的 `PluginGateway` 已被主线 MCP schema-first 设计淘汰。
 - `agent_tools=null` 复用全局工具，`[]` 明确禁用工具，依据历史 change 的工具隔离规范。
 - 任务首轮默认超时沿用每个冻结 `AIConfig.timeout`，不添加第二个 Workflow 专用超时值。

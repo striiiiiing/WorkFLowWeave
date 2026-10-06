@@ -51,7 +51,7 @@
 
 ## 2026-09-19 运行图结构重构记录
 
-- 依据本次用户要求，将 LangGraph 图定义与 WorkflowService 的运行准入、恢复、生命周期职责拆开。父图拓扑位于 `src/logagent/workflow/graph.py`，采集/分析子图位于 `subgraphs.py`，阶段节点位于 `stages.py`，通知子图位于 `notification.py`；Service 只装配图并负责 session 运行入口。
+- 依据本次用户要求，将 LangGraph 图定义与 WorkflowService 的运行准入、恢复、生命周期职责拆开。父图拓扑位于 `src/workflowweave/workflow/graph.py`，采集/分析子图位于 `subgraphs.py`，阶段节点位于 `stages.py`，通知子图位于 `notification.py`；Service 只装配图并负责 session 运行入口。
 - 父图仍保持 `snapshot → collect → analyze → aggregate → notify → finish` 阶段边界；采集和分析继续使用独立子图；子图通过 LangGraph state 传递条目和阶段存档引用。
-- 通知图迁移到 `src/logagent/workflow/notification.py`，每个输出/渠道显式注册 `intent` 与 `receipt` 节点，并以 `intent → receipt` 边保证先存档意图再执行外部发送。
+- 通知图迁移到 `src/workflowweave/workflow/notification.py`，每个输出/渠道显式注册 `intent` 与 `receipt` 节点，并以 `intent → receipt` 边保证先存档意图再执行外部发送。
 - 选择独立模块而非继续在 Service 增加私有方法，是为了让节点拓扑可直接阅读、节点副作用有明确边界，同时保持现有 SessionStore 幂等键和恢复语义不变。

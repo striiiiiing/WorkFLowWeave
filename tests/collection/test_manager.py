@@ -7,10 +7,10 @@ import sys
 import pytest
 from pydantic import ValidationError
 
-from logagent.collection.manager import CollectorManager
-from logagent.errors import LogAgentError
-from logagent.mcp.runtime import MCPExecution
-from logagent.models import CollectionContext, SourceConfig
+from workflowweave.collection.manager import CollectorManager
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.mcp.runtime import MCPExecution
+from workflowweave.models import CollectionContext, SourceConfig
 
 CONTEXT = CollectionContext("workflow", "session")
 
@@ -52,7 +52,7 @@ def test_validation_is_pure_and_descriptions_are_empty():
 
 
 async def test_missing_mcp_scope_is_a_missing_fact_without_policy_execution():
-    runtime = Runtime(LogAgentError("mcp_out_of_scope", "not bound"))
+    runtime = Runtime(WorkFLowWeaveError("mcp_out_of_scope", "not bound"))
     source = mcp_source()
     source.on_missing = "stop"
     result = await CollectorManager(runtime).collect(source, CONTEXT)

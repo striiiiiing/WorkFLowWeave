@@ -4,9 +4,9 @@ import asyncio
 
 import pytest
 
-from logagent.errors import LogAgentError
-from logagent.models import AnalysisResult, DeliveryResult, FanInConfig, WorkflowProgress
-from logagent.workflow.stream.subscriptions.progress import ProgressHub
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import AnalysisResult, DeliveryResult, FanInConfig, WorkflowProgress
+from workflowweave.workflow.stream.subscriptions.progress import ProgressHub
 from tests.workflow.helpers import AI, Channel, archived, snapshot
 from tests.workflow.test_workflow_recovery import close, service
 
@@ -259,7 +259,7 @@ async def test_archive_failure_interrupts_drive_and_keeps_source(tmp_path, monke
     monkeypatch.setattr(store, "write", fail)
     try:
         await w.trigger(snapshot(channels=False), session_id="run")
-        with pytest.raises(LogAgentError):
+        with pytest.raises(WorkFLowWeaveError):
             await w.wait("run")
         assert (await w.get_session("run")).status == "interrupted"
         assert await w._checkpointer.aget_tuple({"configurable": {"thread_id": "run"}})

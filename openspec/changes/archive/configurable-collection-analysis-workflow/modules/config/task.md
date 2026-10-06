@@ -18,13 +18,13 @@
 
 - 已完成单一 `data_dir/resources.json` 版本化资源视图：五集合、候选完整校验、单进程锁、临时文件 fsync + 原子替换后发布；get/list/snapshot/resolve 均返回独立副本，保存模式、引用删除冲突、reload 失败保留旧视图均有测试。旧 SQLiteResourceStore 出口和调用点已替换。
 - 来源保存时固化 options schema 默认值、插件 defaults 和显式 options；Setter 模板引用保留在资源中，snapshot/resolve 再展开并验证完整 Setter。Mock Collector 的 fields 是任意非空字符串，因此原先 `fields=["invalid"]` 不是非法输入；回归已改为真正违反 schema 的 `fields=[1]`，并增加带语义 validator 的模板更新/未保存 resolve 测试。
-- `normalize_options` 使用 `schema.transform_annotations` 统一处理 `$ref`、allOf/anyOf/oneOf、本地条件与嵌套数组/对象中的 `x-logagent-path`、`x-logagent-credential` 注解，避免第二套 schema 解释；channels 即使注入业务 validator 也始终先执行 schema 完整校验。
+- `normalize_options` 使用 `schema.transform_annotations` 统一处理 `$ref`、allOf/anyOf/oneOf、本地条件与嵌套数组/对象中的 `x-workflowweave-path`、`x-workflowweave-credential` 注解，避免第二套 schema 解释；channels 即使注入业务 validator 也始终先执行 schema 完整校验。
 - CredentialManager 支持 env 引用和 Fernet 密文；主密钥优先环境变量，否则 data_dir 下 0600 文件。首次生成前检查 resources.json，并写入不可覆盖的 `.initialized` 使用证据；密钥丢失、格式错误、环境变量无效或密文不匹配均显式失败，禁止静默轮换。
 - 定向验证：`rtk proxy timeout 60s uv run pytest -q tests/test_schema_annotations.py tests/test_config.py tests/test_resource_store.py tests/test_credentials.py` → **92 passed**；全套 `rtk proxy timeout 60s uv run pytest -q` → **388 passed**；`rtk proxy uv run ruff check ...`（Config、schema、相关测试）→ All checks passed；`rtk proxy uv build` 成功生成 sdist/wheel；`rtk proxy git diff --check` 通过。
 
 ### 决策依据与默认值
 
-- 五集合与原子候选发布直接依据 config design 的“单一版本化 JSON 封套”和三步提交流程；不保留 SQLite 双来源，避免资源视图分裂。路径只在能力 schema 明确 `x-logagent-path` 时解析，依据 design 对“不能把所有名叫 path 的字段统一重写”的约束。
+- 五集合与原子候选发布直接依据 config design 的“单一版本化 JSON 封套”和三步提交流程；不保留 SQLite 双来源，避免资源视图分裂。路径只在能力 schema 明确 `x-workflowweave-path` 时解析，依据 design 对“不能把所有名叫 path 的字段统一重写”的约束。
 - Setter 更新重新校验所有引用来源，是 design “受影响 Workflow/Setter 引用校验”和模板未来 snapshot 生效的必要不变量；resolve 复用同一候选校验链路且不发布。
 - `.initialized` 是对 design“已有密文或无法确认时不得生成替代密钥”的跨进程证据补强：仅扫描当前 resources.json 无法覆盖尚未保存资源或 SessionStore 中的密文，因此首次使用后永久保留不可覆盖标记，优先安全地拒绝不确定状态。
 - 默认值沿用 schema/plugin defaults，并在保存/import 时固化；凭据不在 defaults 中解密，快照只保留 Credential 引用/密文，符合配置与凭据设计。
