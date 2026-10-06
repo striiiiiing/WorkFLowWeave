@@ -52,6 +52,41 @@ def definition(tasks=("first",), *, enabled=True, selection="reuse"):
     return snap
 
 
+@pytest.mark.parametrize("agent_summary", [False, True])
+@pytest.mark.parametrize("order", [[], ["first"]])
+async def test_default_summary_input_includes_shared_input_unless_explicitly_omitted(
+    tmp_path, agent_summary, order,
+):
+    factory = RecordingFactory()
+    ai = AIService(channel_factories={"mock": factory})
+    agent_model = ScriptedModel(responses=[AIMessage(content="summary")])
+    agent = AgentService(tmp_path / "workspace", tmp_path / "agent", model_provider=lambda _: agent_model)
+    workflow = WorkflowRunner(Collector(), ai, Channel(), agent_service=agent,
+                              database=tmp_path / "runs.sqlite")
+    snap = definition(enabled=False)
+    snap.workflow.fan_in.order = order
+    snap.workflow.fan_in.agent_mode = agent_summary
+    snap.workflow.fan_in.agent_tools = []
+    try:
+        result = await workflow.wait(await workflow.trigger(snap))
+        assert result.status == "completed"
+        messages = agent_model.seen[-1] if agent_summary else factory.models["ai", "offline"].seen[-1]
+        expected = result.analyses[0].text
+        if not order:
+            expected = result.shared_input + "\n\n" + expected
+        assert [message.type for message in messages] == ["system", "human", "human"]
+        assert messages[1].content == "results: " + expected
+        assert messages[2].content == "summary instruction {input}"
+        if agent_summary:
+            assert "summary system" in messages[0].content
+        else:
+            assert messages[0].content == "summary system"
+    finally:
+        await workflow.shutdown()
+        await agent.close()
+        await ai.close()
+
+
 @pytest.mark.parametrize("tasks,enabled,selection,optimized", [
     (("first",), True, "reuse", True),
     (("first",), True, "explicit", True),

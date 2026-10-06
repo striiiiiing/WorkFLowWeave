@@ -9,6 +9,7 @@ from logagent.errors import LogAgentError, exception_error
 from logagent.models import AnalysisResult, ErrorInfo
 
 _TIMEOUT_CODES = {"ai_timeout", "model_idle_timeout", "provider_timeout"}
+LEGACY_TASK_MESSAGE = "执行当前 Workflow 任务。"
 
 
 async def execute_agent_task(
@@ -25,6 +26,7 @@ async def execute_agent_task(
     user_prompt,
     tool_names,
     mcp_binding=None,
+    request_text=None,
 ):
     """Wait for the first turn; subsequent conversation never changes its result.
 
@@ -50,7 +52,7 @@ async def execute_agent_task(
         session = await asyncio.shield(admission)
         session_id = session["session_id"]
         admission = asyncio.create_task(service.submit(
-            session_id, user_prompt, request_id=operation_id,
+            session_id, user_prompt if request_text is None else request_text, request_id=operation_id,
         ))
         accepted = await asyncio.shield(admission)
         outcome = await service.wait(accepted["turn_id"])

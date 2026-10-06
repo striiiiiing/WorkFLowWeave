@@ -2,7 +2,7 @@
 
 ### Requirement: 必填的三层提示词
 
-系统 SHALL 按 `[SystemPrompt, HumanPrompt(input), HumanPrompt(差异)]` 发送普通与 Agent 分析请求。两层 HumanPrompt SHALL 为非空白内容，系统提示词 MAY 为空。Task 的前两层覆盖 SHALL 各自优先于 Workflow 共享值，未设置 SHALL 继承共享字段；仅输入模板 SHALL 展开 `{input}`。
+系统 SHALL 按 `[SystemPrompt, HumanPrompt(input), HumanPrompt(差异)]` 发送普通与 Agent 分析请求。两层 HumanPrompt 的输入模板及差异指令 SHALL 由用户填写且为非空白内容（输入模板展开后的业务正文 MAY 为空），系统提示词 MAY 为空。Task 的前两层覆盖 SHALL 各自优先于 Workflow 共享值，未设置 SHALL 继承共享字段；仅输入模板 SHALL 展开 `{input}`。
 
 #### Scenario: 独立覆盖与字面差异
 
@@ -28,14 +28,19 @@ Workflow SHALL 允许显式空采集源列表，使用空字符串作为输入�
 - **WHEN** Workflow 配置了来源但采集均返回空结果
 - **THEN** 继续按原全空策略处理，不将此次运行当作无采集源的提示词执行
 
-### Requirement: 汇总输入来自上一阶段
+### Requirement: 汇总输入的默认顺序与显式覆盖
 
-常规汇总 SHALL 使用独立的三层消息，输入默认 SHALL 按 Task 声明顺序来自上一阶段输出，差异 SHALL 使用汇总自身字段；显式输入顺序 MAY 包含 `$input`。
+启用模型的常规汇总 SHALL 使用独立的三层消息；当 `order` 为空时，输入顺序 SHALL 默认包含 `$input`，随后按 Task 声明顺序加入上一阶段输出，差异 SHALL 使用汇总自身字段。用户可在前端显式编辑 `order` 覆盖默认顺序。关闭模型时仅进行纯文本拼接，不发送 PromptList。
 
 #### Scenario: 多任务乱序完成
 
 - **WHEN** 分析任务以不同顺序完成且汇总未指定 order
-- **THEN** 汇总输入只包含按声明顺序排列的分析输出，不重复默认加入原始输入
+- **THEN** 汇总输入先包含原始 `$input`，再包含按声明顺序排列的分析输出；完成顺序不影响内容顺序
+
+#### Scenario: 用户省略原始输入
+
+- **WHEN** 用户在前端显式保存仅含分析 Task ID 的非空 order
+- **THEN** 普通与 Agent 常规汇总均只拼接所选分析结果，不再加入 `$input`
 
 ### Requirement: 普通汇总单任务优化
 
@@ -49,7 +54,7 @@ Workflow SHALL 允许显式空采集源列表，使用空字符串作为输入�
 #### Scenario: 关闭或不同模型
 
 - **WHEN** 用户关闭优化或汇总模型不同
-- **THEN** 汇总使用自己的三层消息，其第二层输入为上一阶段结果
+- **THEN** 汇总使用自己的三层消息，其第二层输入由汇总 order 决定；空 order 为原始 `$input` 加上一阶段结果，显式 order 可省略 `$input`
 
 ### Requirement: 显式旧资源迁移
 

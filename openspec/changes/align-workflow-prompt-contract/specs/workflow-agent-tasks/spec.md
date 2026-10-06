@@ -16,4 +16,4 @@ Agent 汇总 SHALL 始终使用常规三层 Prompt，即使一个 Task、模型�
 #### Scenario: 同模型单 Agent 汇总
 
 - **WHEN** 仅一个分析 Task，Agent 汇总模型与其相同
-- **THEN** Agent 首轮使用汇总自身系统、上一阶段结果输入、汇总差异三条消息，不包含分析 Task 差异或作为 AI 角色注入的分析回复
+- **THEN** Agent 首轮使用汇总自身系统、默认包含原始 `$input` 及上一阶段结果的输入、汇总差异三条消息，不包含分析 Task 差异或作为 AI 角色注入的分析回复

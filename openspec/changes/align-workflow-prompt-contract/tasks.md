@@ -28,3 +28,7 @@
 
 - 无采集源的保存校验已经允许空列表，但采集合流仍对空列表应用全空策略。现在只对已配置来源应用该策略；新增 6 项真实 Workflow 图和 SQLite 回归，验证分析、模型汇总、投递以及已配置但全空的策略。
 - 本次空来源、Prompt 契约和停用绑定定向测试 25 项通过；变动 Python 文件 Ruff 和 `git diff --check` 通过。遵循用户要求，未安装或启动浏览器。
+
+## 2026-10-06 本地契约核验补齐
+
+用户最新确认的空 order 默认 `$input` 加 Task 顺序适用于普通与 Agent 汇总；Human 输入模板及差异必填。此次设计修订与实现、迁移及恢复验证见 [Prompt 契约核验](../align-workflow-prompt-contract/tasks/2026-10-06-prompt-contract-audit/task.md)。历史验收文字保留，默认顺序以此次修订为准。
