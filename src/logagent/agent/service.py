@@ -67,12 +67,36 @@ class AgentService:
                 "工具结果未知时告知用户，不自动重做副作用。\n"
             ), expected_hash="*")
         await self.checkpoints.initialize()
+        self.runner.graph = self.runner.graph_builder.build_static(
+            declarations=self.resource_provider.declarations(),
+            config=self.config, checkpointer=self.checkpoints.saver,
+            generation=self.resource_provider.tools_generation(),
+        )
         await self.repository.restore()
         self._initialized = True
 
     async def close(self):
         await self.turns.close()
         await self.checkpoints.close()
+
+    async def _ensure_graph(self):
+        """Rebuild only at an admission boundary after registry publication."""
+        generation = self.resource_provider.tools_generation()
+        if self.runner.graph_builder.generation == generation:
+            return
+        if any(task is not None and not task.done() for task in self.turns.tasks.values()):
+            return
+        await self.turns.pause_admission()
+        try:
+            if any(task is not None and not task.done() for task in self.turns.tasks.values()):
+                return
+            self.runner.graph = self.runner.graph_builder.build_static(
+                declarations=self.resource_provider.declarations(),
+                config=self.config, checkpointer=self.checkpoints.saver,
+                generation=generation,
+            )
+        finally:
+            self.turns.resume_admission()
 
     async def pause_admission(self):
         return await self.turns.pause_admission()
@@ -108,12 +132,15 @@ class AgentService:
         return await self.session_manager.list_sessions()
 
     async def submit(self, session_id, text, *, request_id):
+        await self._ensure_graph()
         return await self.turns.submit(session_id, text, request_id=request_id)
 
     async def submit_after_idle(self, session_id, text, *, request_id, valid=None):
+        await self._ensure_graph()
         return await self.turns.submit_after_idle(session_id, text, request_id=request_id, valid=valid)
 
     async def append(self, session_id, text, *, request_id):
+        await self._ensure_graph()
         return await self.turns.append(session_id, text, request_id=request_id)
 
     async def wait(self, turn_id):
@@ -123,6 +150,7 @@ class AgentService:
         return await self.turns.cancel(session_id)
 
     async def compact(self, session_id):
+        await self._ensure_graph()
         return await self.turns.compact(session_id)
 
     async def events(self, session_id, *, after=0):

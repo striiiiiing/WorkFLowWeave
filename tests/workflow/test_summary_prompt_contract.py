@@ -3,8 +3,8 @@
 import pytest
 from langchain_core.messages import AIMessage
 
-from logagent.agent.service import AgentService
 from logagent.ai import AIService
+from logagent.interaction.fastapi.agent import create_agent_service
 from logagent.models import AIConfig, FanInConfig, WorkflowSnapshot, copy_model
 from logagent.workflow.execution.runner import WorkflowRunner
 from tests.agent.helpers import ScriptedModel
@@ -109,7 +109,9 @@ async def test_single_same_model_agent_summary_ignores_enabled_optimization(
         models[session.workflow_task_id] = model
         return model
 
-    agent = AgentService(tmp_path / "workspace", tmp_path / "agent", model_provider=provider)
+    agent = create_agent_service(
+        tmp_path / "workspace", tmp_path / "agent", model_provider=provider,
+    )
     factory = RecordingFactory()
     ai = AIService(channel_factories={"mock": factory})
     workflow = WorkflowRunner(Collector(), ai, Channel(), agent_service=agent,
