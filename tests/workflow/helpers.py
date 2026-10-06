@@ -65,7 +65,7 @@ class AI:
         self.started = asyncio.Event()
 
     async def execute(self, config, prompt, text, *, model, task_id, context,
-                      system_prompt=None, user_prompt=""):
+                      system_prompt=None, user_prompt="", messages=None):
         self.calls.append((task_id, text, model))
         self.requests.append((task_id, config.id, prompt, system_prompt, user_prompt))
         if task_id == self.block:

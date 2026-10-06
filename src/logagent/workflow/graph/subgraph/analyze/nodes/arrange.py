@@ -1,5 +1,6 @@
 from langgraph.runtime import Runtime
 
+from logagent.ai.prompts import uses_single_task_optimization
 from logagent.workflow.execution.context import WorkflowContext
 from logagent.workflow.graph.subgraph.nodes.state import phase
 
@@ -13,7 +14,9 @@ def arrange(state, runtime: Runtime[WorkflowContext]):
         failed and (wf.analysis_failure == "stop" or not wf.send_partial)
     )
     error = {"code": "analysis_stopped", "message": "分析失败策略阻止下游阶段"} if stopped else None
-    keep_input = wf.fan_in and "$input" in wf.fan_in.ordered_inputs(wf.analyses)
+    keep_input = wf.fan_in and (
+        "$input" in wf.fan_in.ordered_inputs(wf.analyses) or uses_single_task_optimization(wf)
+    )
     return phase(
         state,
         "analyze",

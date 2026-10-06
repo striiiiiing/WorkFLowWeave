@@ -7,6 +7,7 @@ export function defaultFanInModelSource(analyses: readonly AnalysisTask[]): stri
 
 export function createFanIn(analyses: readonly AnalysisTask[] = []): FanInConfig {
   return {
+    single_task_optimization: true,
     order: [],
     separator: '\n\n',
     ai: null,
