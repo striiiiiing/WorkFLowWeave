@@ -8,7 +8,7 @@
 
 **当前现状**：`api/`、`model/`、`composables/`、`ui/` 是业务模块下的同级目录；现有四个 `model/` 中没有 `api/` 子目录。API 引用模型类型与 API 实现放入模型是两回事。
 
-**本次目标**：先按业务垂直划分 `agents`、`resources`、`workflows`、`runs`，再只在业务内部的 `model/` 中细分。`api/`、`composables/`、`ui/` 始终是业务模块的同级目录并保持原位；HTTP/SSE 请求、SDK adapter、Vue 控制器和组件不成为 Model 的子模块。目标树完整展示业务边界和 Model 子树。
+**本次目标**：只在 `model/` 内划分子模块。HTTP/SSE 请求、SDK adapter、Vue 控制器和组件仍在它们现有的层，不成为 Model 的子模块。下方目标树只展示 Model 范围，未列出的 API/UI 等目录不迁移。
 
 用户选中的 [Agent 交接](../../../.worktree/redesign-agent-module/docs/redesign-agent-module-handoff.md) 对应 `065701c`：交接分支已经采用 `@langchain/vue`，主工作区仍有旧 SSE 实现。这个差异作为 Model 兼容检查依据，不要求本 change 合并或改造 SDK 实现；实施时在所选基线里更新 Model 引用，既有 SDK/事件协议保持原样。Workflow 的 Agent Task 和汇总优化字段同样必须保留。
 
@@ -16,69 +16,49 @@
 
 ```text
 frontend/src/modules/
-├── agents/
-│   ├── api/                        # 保持原位
-│   ├── composables/                # 保持原位
-│   ├── model/
-│   │   ├── session/                # 会话、分支、模型引用、session kind
-│   │   ├── runtime/                # 事件、turn、transcript、预算、工具视图
-│   │   ├── workspace/              # 用户文件、目录、分页、条件写入 DTO
-│   │   ├── workflow-handoff.ts     # 结果续接输入/来源值类型
-│   │   └── public.ts
-│   ├── ui/                         # 保持原位
+├── agents/model/
+│   ├── session/                # 会话、分支、模型引用、session kind
+│   ├── runtime/                # 事件、turn、transcript、预算、工具视图
+│   ├── workspace/              # 用户文件、目录、分页、条件写入 DTO
+│   ├── workflow-handoff.ts     # 结果续接输入/来源值类型
 │   └── public.ts
-├── resources/
-│   ├── api/                        # 保持原位
-│   ├── composables/                # 保持原位
-│   ├── model/
-│   │   ├── source/
-│   │   │   ├── definition.ts       # SourceConfig、策略、limits
-│   │   │   ├── call.ts             # MCP/CLI 调用身份与方式
-│   │   │   ├── parameters.ts       # arguments/options 等静态值与纯转换
-│   │   │   ├── setters.ts          # 现存历史字段；无实现不造空模块
-│   │   │   ├── overrides.ts        # SourceOverride、编辑输入/gateway 类型
-│   │   │   ├── defaults.ts         # Source 默认构造
-│   │   │   └── filtering.ts        # 现有名称/筛选纯逻辑
-│   │   ├── mcp/                    # MCPServerConfig、配置导入和默认值
-│   │   ├── ai/                     # AIConfig、模型配置和默认值
-│   │   ├── channel/                # ChannelConfig、override 和默认值
-│   │   ├── credential.ts           # 共享凭据值类型/纯 schema 投影
-│   │   ├── catalog.ts              # ResourceMap、种类、名称、工厂组合
-│   │   └── public.ts
-│   ├── ui/                         # 保持原位
+├── resources/model/
+│   ├── source/
+│   │   ├── definition.ts       # SourceConfig、策略、limits
+│   │   ├── call.ts             # MCP/CLI 调用身份与方式
+│   │   ├── parameters.ts       # arguments/options 静态值与纯转换
+│   │   ├── setters.ts          # 现存历史字段；无实现不造空模块
+│   │   ├── overrides.ts        # SourceOverride、编辑输入/gateway 类型
+│   │   ├── defaults.ts         # Source 默认构造
+│   │   └── filtering.ts        # 现有名称/筛选纯逻辑
+│   ├── mcp/                    # MCPServerConfig、配置导入和默认值
+│   ├── ai/                     # AIConfig、模型配置和默认值
+│   ├── channel/                # ChannelConfig、override 和默认值
+│   ├── credential.ts           # 共享凭据值类型/纯 schema 投影
+│   ├── catalog.ts              # ResourceMap、种类、名称、工厂组合
 │   └── public.ts
-├── workflows/
-│   ├── api/                        # 保持原位
-│   ├── composables/                # 保持原位
-│   ├── model/
-│   │   ├── shared/                 # 阶段、Session、Phase、Progress 公共值类型
-│   │   ├── create/
-│   │   │   ├── definition.ts       # WorkflowDefinition、schedule
-│   │   │   ├── defaults.ts         # 唯一 createWorkflow 工厂
-│   │   │   ├── actions.ts          # 不可变草稿动作与引用联动
-│   │   │   ├── validation.ts
-│   │   │   ├── backup.ts
-│   │   │   ├── sourceUsage.ts
-│   │   │   └── stages/             # 采集、分析、汇总、通知的配置/默认值
-│   │   ├── run/
-│   │   │   ├── session.ts          # 状态映射、终态判断和纯投影
-│   │   │   ├── progress.ts
-│   │   │   └── recovery.ts         # 恢复查询/重跑选项值类型
-│   │   ├── history/
-│   │   │   ├── filters.ts
-│   │   │   ├── report.ts
-│   │   │   └── artifacts.ts        # 正文可用性、显示标签/查询值类型
-│   │   └── public.ts
-│   ├── ui/                         # 保持原位
-│   └── public.ts
-└── runs/
-    ├── api/                        # 保持原位，消费 Workflow Model
-    ├── composables/                # 保持原位，消费 Workflow Model
-    ├── ui/                         # 保持原位，消费 Workflow Model
-    └── public.ts                   # 仅更新模型导出；runs/model 迁移后删除
+└── workflows/model/
+    ├── shared/                 # 阶段、Session、Phase、Progress 公共值类型
+    ├── create/
+    │   ├── definition.ts       # WorkflowDefinition、schedule
+    │   ├── defaults.ts         # 唯一 createWorkflow 工厂
+    │   ├── actions.ts          # 不可变草稿动作与引用联动
+    │   ├── validation.ts
+    │   ├── backup.ts
+    │   ├── sourceUsage.ts
+    │   └── stages/             # 采集、分析、汇总、通知的配置/默认值
+    ├── run/
+    │   ├── session.ts          # 状态映射、终态判断和纯投影
+    │   ├── progress.ts
+    │   └── recovery.ts         # 恢复查询/重跑选项值类型
+    ├── history/
+    │   ├── filters.ts
+    │   ├── report.ts
+    │   └── artifacts.ts        # 正文可用性、显示标签/查询值类型
+    └── public.ts
 ```
 
-这张树先展示业务边界，再展示每个业务的 Model 子模块；不要求每个字段造独立文件。Source 调用参数仍只有一份：`call` 引用参数值类型，最终对象仍由现有 Source editor 保存。DTO 字段和 JSON 形状不因内部拆分变化。
+这张树描述模型职责，不要求每个字段造独立文件。Source 调用参数仍只有一份：`call` 引用参数值类型，最终对象仍由现有 Source editor 保存。DTO 字段和 JSON 形状不因内部拆分变化。
 
 ## 3. Agents Model
 
