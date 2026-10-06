@@ -19,6 +19,10 @@ def langchain_tool(declaration):
         tool_call_id = runtime.tool_call_id
         if not isinstance(tool_call_id, str) or not tool_call_id:
             raise LogAgentError("tool_call_id_missing", "工具执行缺少 LangGraph tool_call_id")
+        allowed = context.scope.allowed_tool_names
+        if allowed is not None and declaration.name not in allowed:
+            raise LogAgentError("tool_unavailable", "当前 Agent turn 未启用该工具",
+                                {"tool": declaration.name})
         return await execute_tool(declaration, arguments, context, tool_call_id=tool_call_id)
     return StructuredTool.from_function(
         coroutine=invoke, name=declaration.name, description=declaration.description,
