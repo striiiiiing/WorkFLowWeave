@@ -1,6 +1,7 @@
 """Capture the published configuration and tool scope once for each turn."""
 from __future__ import annotations
 
+import hashlib
 from dataclasses import replace
 from typing import Any
 
@@ -27,9 +28,25 @@ class ResourceProvider:
         self.mcp_runtime = mcp_runtime
         self.bindings = bindings
 
+    def tools_generation(self) -> int:
+        """Return the published registry generation used by the static graph.
+
+        Plugin registries expose an explicit generation, while embedded callers
+        commonly pass plain declarations.  Hashing the complete declaration
+        shape gives both paths the same explicit rebuild boundary and detects
+        an in-place schema edit without rebuilding during a turn.
+        """
+        published = self.plugins.generation if self.plugins is not None else 0
+        declarations = tuple(
+            (item.name, item.description, repr(item.input_schema), item.execution)
+            for item in self._tool_declarations()
+        )
+        digest = hashlib.sha256(repr((published, declarations)).encode("utf-8")).hexdigest()
+        return int(digest[:16], 16)
+
     def tool_views(self) -> list[dict[str, Any]]:
         """Return the published tool DTOs used by the next turn."""
-        generation = self.plugins.generation if self.plugins is not None else None
+        generation = self.tools_generation()
         owners = ({item.name: item.plugin for item in self.plugins.toolRegister.describe()}
                   if self.plugins is not None else {})
         views = []
@@ -81,6 +98,10 @@ class ResourceProvider:
             declarations = [item for item in declarations if item.name in allowed]
         return tuple(declarations)
 
+    def declarations(self) -> tuple[ToolDeclaration, ...]:
+        """Return the process-level tool registry used to compile the Agent graph."""
+        return self._tool_declarations()
+
     def resolve_model(self, selected: str | None, snapshot: dict[str, Any]) -> tuple[Any, str]:
         """Resolve a model reference against one ResourceStore publication.
 
@@ -122,7 +143,7 @@ class ResourceProvider:
             gateway = (self.gateway_factory(session) if self.gateway_factory is not None else
                        MCPGateway(self.mcp_runtime, self.bindings.read(session.session_id)) if self.mcp_runtime else None)
             return TurnSnapshot(config, freeze(session.ai_config or self.ai_config), session.model,
-                                  None, None, None, declarations, gateway)
+                                  None, None, self.tools_generation(), declarations, gateway)
         snapshot = self.resources.invocation_snapshot()
         ai_config = None
         model_name = session.model
@@ -145,7 +166,7 @@ class ResourceProvider:
             gateway = None
         return TurnSnapshot(
             config, freeze(ai_config), model_name, freeze(summary_ai_config), summary_model,
-            self.plugins.generation if self.plugins is not None else None,
+            self.tools_generation(),
             declarations, gateway,
         )
 

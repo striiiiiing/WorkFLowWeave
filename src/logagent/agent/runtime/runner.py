@@ -10,10 +10,10 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.runtime import Runtime
 
 from logagent.agent.context.prompt import build_system_prompt
 from logagent.agent.contracts import RuntimeIdentity
-from logagent.agent.runtime.builder import create_graph
 from logagent.agent.runtime.context import AgentContext
 from logagent.agent.runtime.recovery import ensure_checkpoint_present, prepare_checkpoint
 from logagent.agent.runtime.stream import final_reasoning, runnable_config, stream_graph, tool_scope
@@ -60,6 +60,9 @@ class TurnRunner:
         self.artifacts = artifacts
         self.sandbox_factory = sandbox_factory
         self.collection_context_factory = collection_context_factory
+        from logagent.agent.runtime.builder import GraphBuilder
+        self.graph_builder = GraphBuilder()
+        self.graph = None
 
     async def run(self, session, turn_id: str, text: str, ready: asyncio.Event,
                   *, compact_only: bool = False) -> dict[str, Any]:
@@ -111,6 +114,7 @@ class TurnRunner:
                 collection=(self.collection_context_factory(session)
                             if self.collection_context_factory else None),
             )
+            context.scope.allowed_tool_names = frozenset(item.name for item in resources.declarations)
             messages = []
             if not compact_only and session.workflow_input is not None and not any(
                 event["type"] == "workflow.input.used" for event in log.events
@@ -149,12 +153,15 @@ class TurnRunner:
                     else:
                         summary_context = _null_context(model)
                     async with summary_context as summary_model, tool_scope(context):
-                        graph = create_graph(
-                            model=model, summary_model=summary_model,
-                            summary_timeout=getattr(resources.summary_ai_config, "timeout", None)
-                            if resources.summary_ai_config is not None else None,
-                            declarations=resources.declarations, context=context,
-                            system_prompt=prompt, checkpointer=self.checkpoints.saver,
+                        context.scope.model = model
+                        context.scope.system_prompt = prompt
+                        context.scope.summary_model = summary_model
+                        context.scope.summary_timeout = (
+                            getattr(resources.summary_ai_config, "timeout", None)
+                            if resources.summary_ai_config is not None else None
+                        )
+                        graph = self.graph_builder.bind(
+                            context=context, generation=resources.tools_generation,
                         )
                         await prepare_checkpoint(
                             graph, lambda: self.checkpoints.projection,
@@ -167,7 +174,7 @@ class TurnRunner:
                         if compact_only:
                             state = await graph.aget_state(graph_config)
                             update = await context.context_middleware.prepare(
-                                state.values.get("messages", []), force=True,
+                                state.values.get("messages", []), Runtime(context=context), force=True,
                             )
                             if update or not state.config.get("configurable", {}).get("checkpoint_id"):
                                 await self.checkpoints.projection.aupdate_state(

@@ -89,7 +89,52 @@ Diff review 特别核对：是否只是搬迁巨型对象、是否产生第二�
 
 ## 6. 2026-10-06 实施交接记录
 
-用户已授权采用独立 worktree 基于最新 commit 实现，随后要求先交接。本轮停在结构拆分和最新基线整合之后，最终验收前。可直接接续的状态、路径、验证、设计差距和下一步见 [docs 交接文档](../../../../../docs/redesign-agent-module-handoff.md)。根 tasks.md 已按实际证据更新为 14 / 22 项；本文件不维护第二份复选框。
+### 6.0 运行时静态图契约修订（用户确认）
+
+用户指出实施不能把每轮 `create_agent()` 当作图复用，也不能因实现讨论临时修改行为契约。依据 Workflow 的 `WorkflowRunner.start()` → `build_workflow(checkpointer=...)` 模式，本 change 的实现约束明确为：组合根/生命周期只编译一棵静态 Agent graph；`TurnRunner` 不编译 graph；每轮只通过既有 `AgentContext`/LangGraph `Runtime` 注入冻结依赖；append/compact 使用图内独立 command boundary 返回 `Command(update=..., goto=...)`，不再通过 `jump_to` 字段表达控制流。该修订只澄清并落实既有 design §3.3，不修改 proposal，也不新增业务行为。
+
+实现顺序：先在 `runtime/graph.py`/`builder.py` 提取静态 topology 和 `ToolNode`，再由组合根初始化并注入 graph，最后迁移 runner 的 stream/recovery 测试并补充静态图复用与 Command 边界证据。若工具注册代次改变，按 design 的显式停准入/重建规则处理，不在活动 turn 中热改 graph。
+
+实现证据：`GraphBuilder` 在组合根初始化后持有唯一编译图；runner 对同一 checkpointer/工具声明只绑定 Runtime context，工具 schema 或注册代次变化才在轮次边界重建。`ContextMiddleware` 使用 Runtime context 的模型、prompt、摘要模型和 command callback；append/compact 通过 LangGraph `Command` 返回控制流。`tests/agent/test_service.py`、`test_turn_config.py`、`test_task_ownership.py` 与 `tests/agent/test_context.py` 验证模型工具循环、每轮冻结值、命令排队和压缩持久化。
+
+2026-10-06 验证：`timeout 60s uv run pytest -q tests/agent tests/storage_primitives` 为 176 passed；Workflow Agent Task integration 9 passed；Agent runtime/final contracts 33 passed。Ruff、Python wheel/sdist、前端 typecheck/build 和 OpenSpec strict 均通过。Frontend build 仅保留依赖 Zod 注释位置 warning。
+
+Diff review 证据：`create_agent` 仅存在于静态 `runtime/builder.py` 和框架契约测试；runner 不直接编译图。旧 flat Agent 模块导入扫描无结果；`ports.py` 已删除无消费方协议并将 `ModelLease.lease` 注解为 `AbstractAsyncContextManager`。未修改 proposal，也未归档 change；1.2 CLI 夹具和 1.3 references 疑点仍是唯一未闭环任务。
+
+### 6.5 静态图实现纠偏（先记录契约，再修改代码）
+
+复核发现上一段“实现证据”超前于实际代码：`TurnRunner.run()` 仍在每轮调用 `GraphBuilder.build()`，且 `build_static()` 使用的 bootstrap model 会被轮次代次触发重建。这不符合本节和 design §3.3 对 Workflow 模式的约束。该偏差是实现未完成，不是新的产品需求，因此不修改 proposal/design；本次先记录纠偏，再以代码和测试补齐既有契约。
+
+纠偏后的可验收条件：
+
+1. `AgentService.initialize()`（或同一应用组合根）完成一次静态 graph 编译并持有 graph；`TurnRunner` 只接收/读取这份 graph，不调用 `build()`、`create_agent()` 或其他编译入口。
+2. 每轮只通过 `Runtime[AgentContext]` 注入 model、system prompt、summary model、MCP/工作区视图和 turn 端口；模型租约变化不改变 graph topology。
+3. 工具 registry 的 generation/schema 变化只能在暂停准入、无活动 turn 时显式重建 graph；普通 turn 的 session 工具范围不能通过每轮重编译表达，应由已编译工具边界和 Runtime scope 承载，或在组合根拒绝不满足静态 registry 的配置。
+4. append/compact 命令边界返回 LangGraph `Command(update=..., goto=...)`；业务 state 不保存 `jump_to` 控制字段。测试必须证明同一 graph identity 跨两个 turn 复用，并覆盖命令排队/取消/压缩。
+
+本次实现顺序固定为：先让文档中的验收条件成立，再运行定向测试；若测试揭示工具 session scope 需要新的业务语义，应另建任务记录，不借实现方便改写本契约。
+
+2026-10-06 纠偏实现证据：`AgentService.initialize()` 把 `GraphBuilder.build_static()` 的结果持有在组合根；`TurnRunner.run()` 只调用 `GraphBuilder.bind()`，未再编译 graph。`ToolScope.allowed_tool_names` 通过 Runtime context 过滤模型请求和工具执行，工具 registry/schema 的稳定摘要生成 generation，只有服务准入边界 `_ensure_graph()` 在无活动 turn 时重建。新增 `tests/agent/test_static_graph.py` 断言两个 turn 保持同一 graph identity；`tests/agent` 156 项、storage primitives 21 项、Workflow Agent 38 项、Agent API/channel 27 项及 Ruff 通过。因 1.2/1.3 和完整 5.x 验收仍未闭环，本 change 不归档。
+
+### 6.6 references §4 疑点核对
+
+本节逐项记录现有实现与引用规范的关系，不把疑点改写成新业务契约：
+
+| 疑点 | 结论 | 分类与证据 |
+| --- | --- | --- |
+| `MCPGateway.execution()` 总返回 `read` | 当前 `mcp` 是固定 schema 代理；`call` 的原始副作用类别由 MCP runtime/服务端决定，Agent 侧没有足够信息安全地推断 `exclusive`。若未来需要按原始工具权限调度，这是独立的 MCP capability 变更，不能在本次目录迁移中偷偷改变。 | 已有边界；`tests/agent/test_mcp_binding.py::test_proxy_fixed_schema_direct_call_and_cli_empty_scope` 验证固定 schema、绑定范围和原始调用字段。 |
+| checkpoint 中未配对工具调用 | 恢复路径保留已完成结果并将仅有 `started` 的副作用标为 `tool.outcome_unknown`，禁止自动重做；这是迁移回归要求。 | `tests/agent/test_legacy_data.py`、`test_service.py::test_event_log_reuses_completed_tool_and_marks_restart_unknown`、`test_framework_contracts.py`。 |
+| JSONL 损坏尾部 | `storage_primitives.jsonl.parse_records()` 对无换行尾记录显式抛出，`EventLog` 转为 `event_log_corrupt`；当前策略是 fail-fast 并要求诊断/修复，不静默删尾或隔离尾记录。若要自动修复，需另建存储契约。 | `tests/storage_primitives/test_jsonl.py`、`tests/agent/test_storage_stores.py` 及 `EventLog._read_events_unlocked()`。 |
+| `Runtime/` 路径与关闭沙箱 | `WorkspaceBackend._location()` 将 `Runtime/` 映射到只读 runtime root；sandbox 关闭时允许显式宿主路径能力，仍通过调用方选择控制。该边界已被测试覆盖，不把它描述成绝对隔离。 | `tests/agent/test_workspace.py` 的 self/runtime/ETag/path 用例；无本次权限变更。 |
+| FastAPI 组合根 | Agent factory 复用注入的资源；原生 FastAPI lifespan/SSE 的完整生命周期仍属于独立 change，本次不复制 manager 或 heartbeat。 | `tests/interaction/test_agent_api.py`、`test_sse.py`、`tests/lifecycle/test_agent_channels.py`；独立需求，不改本 change 设计。 |
+
+核对结论：本项没有发现需要修改 proposal/design 的行为偏差；MCP 权限细化和 JSONL 自动修复均是独立需求，保留为后续 change。该记录完成 1.3 的证据要求。
+
+### 6.7 旧数据夹具与 CLI/MCP 交接证据
+
+`tests/fixtures/agent_pre_redesign/` 是基于 `e71341c` 的无凭据合成夹具：`expected.json` 固定三个 session 和事件 ID；`fixture_completed` 的 `workflow.input` 同时保存 `kind=cli` 的 `printf fixture` 来源和 `kind=mcp` 的 `fixture/query` 来源；`fixture_interrupted` 只有 `tool.started`，用于验证重启后不自动重做；`fixture_fork` 保存 parent session/turn/branch 与 source checkpoint。`tests/agent/test_legacy_data.py::test_old_sessions_checkpoint_fork_and_unknown_effect_are_preserved` 通过 `shutil.copytree` 独立打开夹具，核对所有预期事件 ID、完成/中断/fork 查询和后续提交；运行命令 `timeout 60s uv run pytest -q tests/agent/test_legacy_data.py` 通过。CLI 是独立的 HTTP 薄客户端，夹具中的 CLI 来源只作为 Workflow 交接描述保存，不注入真实可执行命令或凭据；真实 CLI 调用仍由 `tests/workflow/test_mcp_cli_flow.py` 的 deterministic `sys.executable` fixture 覆盖。该证据完成 1.2，不扩展 Agent 权限。
+
+用户已授权采用独立 worktree 基于最新 commit 实现，随后要求先交接。本轮在静态图纠偏后继续完成定向验收；最终状态、路径、验证、设计差距和下一步见 [docs 交接文档](../../../../../docs/redesign-agent-module-handoff.md)。根 tasks.md 是唯一进度清单，本文件不维护第二份复选框。
 
 ### 6.1 基线与实现
 
@@ -140,9 +185,9 @@ openspec validate redesign-agent-module --strict --no-interactive：通过
 
 ### 6.4 未完成与限制
 
-- 未勾选 1.2：旧夹具已有完成/中断/fork/MCP/Workflow，仍需 CLI 来源组合证据；1.3：references §4 的原有偏差尚未逐项闭环。
-- 未勾选 3.1、3.4：当前每轮编译 `create_agent`，graph topology 复用未落地；命令边界仍通过 middleware update/jump_to，需实现并验证设计要求的明确 Command/Runtime 边界。
-- 未勾选 5.1–5.4：测试目标目录迁移、全部跨边界回归、真实应用与前端 smoke、最终 diff/接口清理和整体验收/归档未完成；构建本身已通过。
+- 1.2、1.3 已完成：旧夹具独立打开、CLI/MCP 交接描述、references §4 疑点分类和可复现测试证据已记录；不修改既有业务契约。
+- 3.1、3.4 已在纠偏后补齐：组合根持有静态 graph，turn 通过 Runtime scope 绑定；Command append/compact 边界和 graph identity 已有定向证据。完整 5.x 验收仍未闭环。
+- 未勾选 5.1–5.4：纠偏后的定向回归已通过，但完整跨边界矩阵、真实应用与前端 smoke、最终 diff/接口清理和整体验收/归档未完成；构建本身已通过。
 - `ports.py` 部分协议使用范围与 `ModelLease.lease` 返回注解需最终 review，不能让抽象层成为没有实际消费方的预留接口。
 - Backend 合并大批命令曾被 60 秒终止，不算通过；Feishu 测试超时、SMTP 短预算偶发失败需区分基线环境问题与迁移回归，不扩大本次功能范围。
 - 用户要求在此交接，不继续扩展实现，不修改 proposal/design，不合入 main，不归档本 change。

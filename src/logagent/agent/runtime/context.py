@@ -25,6 +25,12 @@ class ToolScope:
 
     tasks: dict[str, asyncio.Task] = field(default_factory=dict)
     context_middleware: Any = None
+    model: Any = None
+    system_prompt: str = ""
+    summary_model: Any = None
+    summary_timeout: float | None = None
+    allowed_tool_names: frozenset[str] | None = None
+    model_returned: bool = False
 
 
 @dataclass(frozen=True, slots=True)

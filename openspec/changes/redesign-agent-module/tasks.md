@@ -5,8 +5,8 @@
 ## 1. 建立实施基线
 
 - [x] 1.1 盘点当前 Python 调用方、内置 registry 路径与 FastAPI change 落地状态，记录已有失败及迁移接线点；以导入清单和基线测试输出验证。
-- [ ] 1.2 用旧实现生成完成/中断/fork/MCP 与 CLI 交接的合成数据夹具，记录事件 ID 和查询结果；验证夹具可在旧实现独立打开且无真实凭据。
-- [ ] 1.3 核对 references §4 的疑点，分别标记已有偏差、迁移回归或独立需求；用对应规范和可复现测试记录结论，不修改既有设计迁就实现。
+- [x] 1.2 用旧实现生成完成/中断/fork/MCP 与 CLI 交接的合成数据夹具，记录事件 ID 和查询结果；验证夹具可在旧实现独立打开且无真实凭据。
+- [x] 1.3 核对 references §4 的疑点，分别标记已有偏差、迁移回归或独立需求；用对应规范和可复现测试记录结论，不修改既有设计迁就实现。
 
 ## 2. 建立共享存储原语与值对象边界
 
@@ -17,10 +17,10 @@
 
 ## 3. LangGraph 主运行时
 
-- [ ] 3.1 定义 AgentState、AgentContext 和 graph topology，使用 StateGraph/context_schema/Runtime（含 context、stream_writer 和受控 store 入口）；验证 model→tools→model、终态和旧 checkpoint thread_id 兼容，且 store 不成为第二事实源。
+- [x] 3.1 定义 AgentState、AgentContext 和 graph topology，使用 StateGraph/context_schema/Runtime（含 context、stream_writer 和受控 store 入口）；验证 model→tools→model、终态和旧 checkpoint thread_id 兼容，且 store 不成为第二事实源。
 - [x] 3.2 将统一工具执行流程接入 LangGraph ToolNode，从 ToolRuntime/真实 tool_call_id 到 tools/executor；用 A4/A7/A8 的并发、异常、取消和结果先提交用例验证没有旁路。
 - [x] 3.3 接入 RunnableConfig、checkpointer、astream/astream_events 和 stream_mode，保证一次 turn 只启动一条图流；用真实框架契约及 test_task_ownership 验证，不只用 mock 图。
-- [ ] 3.4 使用 Command 更新/跳转处理 append、compact、stop 边界，只有确认型动作才使用 interrupt；用命令排队、取消、恢复场景验证不产生伪造 turn。
+- [x] 3.4 使用 Command 更新/跳转处理 append、compact、stop 边界，只有确认型动作才使用 interrupt；用命令排队、取消、恢复场景验证不产生伪造 turn。
 - [x] 3.5 提取 context 的 prompt/budget/compaction middleware 和 recovery 与 session fork 协调；用 A5/A6 及旧夹具验证消息配对、失败保留、缺 checkpoint 明确失败、未知工具不重放、父分支不变。
 
 ## 4. 切换所有权与应用接线
