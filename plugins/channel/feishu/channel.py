@@ -8,14 +8,19 @@ Agent turn themselves.
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import importlib
+import importlib.machinery
 import json
 import logging
+import sys
 import threading
 from collections.abc import Callable
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from copy import deepcopy
+from pathlib import Path
+from types import ModuleType, SimpleNamespace
 from typing import Any
 
 from pydantic import TypeAdapter
@@ -186,6 +191,167 @@ class _SDKLoopRuntime:
 
 _SDK_RUNTIMES: dict[Any, _SDKLoopRuntime] = {}
 _SDK_RUNTIMES_LOCK = threading.Lock()
+_SDK_IMPORT_LOCK = threading.Lock()
+_SDK_PACKAGE_STUB = "_workflowweave_feishu_package_stub"
+_SDK_MODULE: Any = None
+
+
+def _sdk_api_packages(sdk_root: Path) -> set[str]:
+    dispatcher_path = sdk_root / "event" / "dispatcher_handler.py"
+    tree = ast.parse(dispatcher_path.read_text(encoding="utf-8"), filename=str(dispatcher_path))
+    packages = {"lark_oapi.api"}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or node.level or not node.module:
+            continue
+        if not node.module.startswith("lark_oapi.api."):
+            continue
+        parts = node.module.split(".")
+        packages.update(".".join(parts[:index]) for index in range(3, len(parts)))
+        if parts[-1] == "processor":
+            packages.add(".".join((*parts[:-1], "model")))
+
+    for suffix in (
+        "api.im",
+        "api.im.v1",
+        "api.im.v1.model",
+        "api.im.v1.resource",
+    ):
+        packages.add(f"lark_oapi.{suffix}")
+    return packages
+
+
+def _make_package_stub(sdk_root: Path, name: str) -> ModuleType | None:
+    package_path = sdk_root.joinpath(*name.split(".")[1:])
+    if not package_path.is_dir():
+        return None
+    module = ModuleType(name)
+    module.__package__ = name
+    module.__path__ = [str(package_path)]  # type: ignore[attr-defined]
+    module.__file__ = str(package_path / "__init__.py")
+    module.__spec__ = importlib.machinery.ModuleSpec(name, loader=None, is_package=True)
+    module.__spec__.submodule_search_locations = [str(package_path)]
+    setattr(module, _SDK_PACKAGE_STUB, True)
+    return module
+
+
+def _load_lightweight_sdk() -> Any:
+    """Load only the SDK components used by this channel.
+
+    The upstream package initializer imports every generated API service, and
+    its Client imports them again to construct every service. A temporary
+    package shell lets us import the official event dispatcher, WebSocket
+    client, request models, and IM message resource without executing those
+    eager package initializers.
+    """
+
+    global _SDK_MODULE
+    with _SDK_IMPORT_LOCK:
+        if _SDK_MODULE is not None:
+            return _SDK_MODULE
+
+        existing = sys.modules.get("lark_oapi")
+        if existing is not None:
+            _SDK_MODULE = existing
+            return existing
+
+        spec = importlib.machinery.PathFinder.find_spec("lark_oapi", sys.path)
+        if spec is None or not spec.submodule_search_locations:
+            raise ModuleNotFoundError("No module named 'lark_oapi'")
+        sdk_root = Path(next(iter(spec.submodule_search_locations))).resolve()
+        required_files = (
+            sdk_root / "event" / "dispatcher_handler.py",
+            sdk_root / "ws" / "client.py",
+            sdk_root / "api" / "im" / "v1" / "resource" / "message.py",
+            sdk_root / "core" / "model" / "config.py",
+        )
+        if any(not path.is_file() for path in required_files):
+            raise ImportError("installed lark-oapi does not contain the required channel modules")
+
+        package = ModuleType("lark_oapi")
+        package.__package__ = "lark_oapi"
+        package.__path__ = [str(sdk_root)]  # type: ignore[attr-defined]
+        package.__file__ = str(sdk_root / "__init__.py")
+        package_spec = importlib.machinery.ModuleSpec("lark_oapi", loader=None, is_package=True)
+        package_spec.submodule_search_locations = [str(sdk_root)]
+        package.__spec__ = package_spec
+        setattr(package, _SDK_PACKAGE_STUB, True)
+        sys.modules["lark_oapi"] = package
+        original_api_modules = {
+            name
+            for name in sys.modules
+            if name == "lark_oapi.api" or name.startswith("lark_oapi.api.")
+        }
+
+        try:
+            for name in sorted(
+                _sdk_api_packages(sdk_root), key=lambda value: (value.count("."), value)
+            ):
+                if name in sys.modules:
+                    continue
+                stub = _make_package_stub(sdk_root, name)
+                if stub is not None:
+                    sys.modules[name] = stub
+
+            dispatcher = importlib.import_module(
+                "lark_oapi.event.dispatcher_handler"
+            ).EventDispatcherHandler
+            websocket = importlib.import_module("lark_oapi.ws")
+            model = importlib.import_module("lark_oapi.api.im.v1.model")
+            model_modules = {
+                "CreateMessageRequest": "create_message_request",
+                "CreateMessageRequestBody": "create_message_request_body",
+                "ReplyMessageRequest": "reply_message_request",
+                "ReplyMessageRequestBody": "reply_message_request_body",
+            }
+            for class_name, module_name in model_modules.items():
+                module = importlib.import_module(f"lark_oapi.api.im.v1.model.{module_name}")
+                setattr(model, class_name, getattr(module, class_name))
+
+            message_resource = importlib.import_module(
+                "lark_oapi.api.im.v1.resource.message"
+            ).Message
+            config_type = importlib.import_module("lark_oapi.core.model.config").Config
+            api = sys.modules["lark_oapi.api"]
+            api.im = sys.modules["lark_oapi.api.im"]
+            api.im.v1 = sys.modules["lark_oapi.api.im.v1"]
+            api.im.v1.model = model
+
+            class ChannelClientBuilder:
+                def __init__(self) -> None:
+                    self._config = config_type()
+
+                def app_id(self, value: str) -> ChannelClientBuilder:
+                    self._config.app_id = value
+                    return self
+
+                def app_secret(self, value: str) -> ChannelClientBuilder:
+                    self._config.app_secret = value
+                    return self
+
+                def build(self) -> Any:
+                    message = message_resource(self._config)
+                    return SimpleNamespace(im=SimpleNamespace(v1=SimpleNamespace(message=message)))
+
+            class ChannelClient:
+                @staticmethod
+                def builder() -> ChannelClientBuilder:
+                    return ChannelClientBuilder()
+
+            _SDK_MODULE = SimpleNamespace(
+                Client=ChannelClient,
+                EventDispatcherHandler=dispatcher,
+                api=api,
+                ws=websocket,
+            )
+            return _SDK_MODULE
+        finally:
+            for name in tuple(sys.modules):
+                if (
+                    name.startswith("lark_oapi.api.") or name == "lark_oapi.api"
+                ) and name not in original_api_modules:
+                    del sys.modules[name]
+            if sys.modules.get("lark_oapi") is package:
+                del sys.modules["lark_oapi"]
 
 
 def _acquire_runtime_for_module(sdk_module: Any) -> _SDKLoopRuntime:
@@ -237,7 +403,9 @@ async def _acquire_runtime(factory: Any) -> _SDKLoopRuntime:
     module_name = getattr(factory, "__module__", None)
     if not module_name:
         raise ChannelDeliveryError("feishu_sdk_incompatible", "无法定位飞书 WebSocket SDK 模块")
-    module = await asyncio.to_thread(importlib.import_module, module_name)
+    module = sys.modules.get(module_name)
+    if module is None:
+        module = await asyncio.to_thread(importlib.import_module, module_name)
     task = asyncio.create_task(asyncio.to_thread(_acquire_runtime_for_module, module))
     try:
         return await asyncio.shield(task)
@@ -378,7 +546,7 @@ class FeishuChannel:
         if self._sdk is not None:
             return self._sdk
         try:
-            lark = await asyncio.to_thread(importlib.import_module, "lark_oapi")
+            lark = await asyncio.to_thread(_load_lightweight_sdk)
         except ImportError as exc:
             raise ChannelDeliveryError(
                 "feishu_dependency_missing",

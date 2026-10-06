@@ -97,7 +97,9 @@ def serialize(value, format):
             decoded = toon_format.decode(text)
         elif format == "zon":
             import zon
-            text = zon.encode(value)
+            # zon-format 1.2.3's dictionary decoder trims quoted trailing
+            # whitespace. Keep table/delta encoding, but require exact values.
+            text = zon.ZonEncoder(enable_dict_compression=False).encode(value)
             decoded = zon.decode(text)
         else:
             raise ValueError("unknown format")

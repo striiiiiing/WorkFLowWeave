@@ -3,7 +3,7 @@
 import asyncio
 import inspect
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from workflowweave.errors import WorkFLowWeaveError
@@ -48,6 +48,15 @@ class WorkflowContext:
     )
 
     def __post_init__(self):
+        # Collection and stage recovery must use this run's frozen MCP bindings.
+        object.__setattr__(
+            self,
+            "collection",
+            replace(
+                self.collection,
+                mcp_servers={key: copy_model(value) for key, value in self.snapshot.mcp_servers.items()},
+            ),
+        )
         object.__setattr__(
             self,
             "collection_slots",

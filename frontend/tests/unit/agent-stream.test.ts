@@ -2,7 +2,7 @@ import { effectScope, type EffectScope } from 'vue'
 import { afterEach, expect, it, vi } from 'vitest'
 import { useAgentSession } from '@/modules/agents/langchain/stream'
 import type { AgentsApi } from '@/modules/agents/api/agentsApi'
-import type { AgentEvent, AgentSession, TurnAccepted } from '@/modules/agents/model/types'
+import type { AgentEvent, AgentSession, TurnAccepted } from '@/modules/agents/model/public'
 
 const session = (id = 's', status = 'completed'): AgentSession =>
   ({
