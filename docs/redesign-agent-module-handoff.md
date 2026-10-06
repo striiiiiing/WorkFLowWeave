@@ -125,4 +125,10 @@ rtk git show --stat HEAD
 - 保持 `proposal.md` 和 `design.md` 原文；设计调整须用户授权。实施记录写详细 `task.md`，进度只有根 `tasks.md` 一份。
 - 主仓库仍有人在修改。`3381e04` 已纳入，`7ab1429` 已在主线提交但尚待本分支整合；下一位先保存本 worktree 改动，再整合已提交的变更，不能从主工作区复制未提交文件。
 - 子 agent 的工具消息在本环境会显示 `gAAAA...` 密文，无法直接读取；最终文字和 `/tmp/*handoff.md` 可读。最近 follow-up 没有可靠地产生新的实现，继续工作时优先看文件和 git，不等待密文消息。
-- 不自动合并 main，不宣称外部真实模型/MCP provider 联调通过，不在验收未完成时归档本 change。
+- 合并前阶段不自动合并 main；当前已按用户要求完成合并。仍不宣称外部真实模型/MCP provider 联调通过，不归档本 change。
+
+## 2026-10-06 合并后验收
+
+用户随后要求先合并再验收，主线已包含 Agent 重设计合并提交 `ecab02d`，并已快进到 `4052562` 的 WorkFLowWeave 重命名结果。重命名后的包路径为 `src/workflowweave`；Agent 157 项、Workflow/Agent 交接 63 项、storage primitives 21 项、Agent API/SSE 14 项和 lifecycle Agent channels 13 项均通过。合并后发现的两类兼容问题已修正：Workflow Agent 测试改用组合根和 repository 公开边界，旧 `session.created` 事件恢复从冻结 AI 配置补回 system prompt，并把历史 `user_prompt` 按旧语义恢复为 input template。
+
+当前 Agent 源码 Ruff、OpenSpec strict 和 `git diff --check` 通过。`uv` 的 wheel 构建因环境访问 PyPI 时 TLS 握手失败未重复执行；当前重命名基线的前端 typecheck 仍受既有模型路径和依赖缺失影响，不能据此宣称前端验收通过。OpenSpec change 保持未归档，proposal/design 未改写；实现依据和默认值记录继续放在 [详细 task](../openspec/changes/redesign-agent-module/tasks/2026-10-06-agent-module/task.md)。

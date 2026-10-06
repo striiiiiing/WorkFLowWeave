@@ -28,13 +28,13 @@ async def test_legacy_prompt_layers_and_original_request_identity_survive_restar
                    model="model", ai_config=config, workflow_result="SOURCE",
                    system_prompt="legacy system", input_prompt="legacy input: {input}",
                    user_prompt="", tool_names=[])
-    service = AgentService(*paths, model_provider=lambda _: model)
+    service = create_agent_service(*paths, model_provider=lambda _: model)
     try:
         session = await service.create_session(**options)
         accepted, original = await complete(
             service, session["session_id"], text=LEGACY_TASK_MESSAGE, request_id="legacy-operation",
         )
-        event_path = service.sessions[session["session_id"]].log.path
+        event_path = service.repository.log(session["session_id"]).path
     finally:
         await service.close()
     events = [orjson.loads(line) for line in event_path.read_bytes().splitlines()]
@@ -43,7 +43,7 @@ async def test_legacy_prompt_layers_and_original_request_identity_survive_restar
     created.pop("input_prompt")
     created["user_prompt"] = "legacy input: {input}"
     event_path.write_bytes(b"".join(orjson.dumps(event) + b"\n" for event in events))
-    restored = AgentService(*paths, model_provider=lambda _: model)
+    restored = create_agent_service(*paths, model_provider=lambda _: model)
     try:
         await restored.initialize()
         stored = restored.sessions[session["session_id"]]
@@ -52,7 +52,7 @@ async def test_legacy_prompt_layers_and_original_request_identity_survive_restar
         )
         repeated = await execute_agent_task(restored, **options, request_text=LEGACY_TASK_MESSAGE)
         assert repeated.status == "success" and repeated.text == original["text"] == "original"
-        assert stored.request_ids["legacy-operation"][0] == accepted["turn_id"]
+        assert restored.repository.requests(session["session_id"])["legacy-operation"][0] == accepted["turn_id"]
         assert len(model.seen) == 1
         await complete(restored, session["session_id"], text="followup", request_id="later")
         assert "legacy system" in model.seen[-1][0].content

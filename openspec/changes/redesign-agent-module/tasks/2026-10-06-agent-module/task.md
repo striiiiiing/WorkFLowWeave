@@ -190,4 +190,16 @@ openspec validate redesign-agent-module --strict --no-interactive：通过
 - 未勾选 5.1–5.4：纠偏后的定向回归已通过，但完整跨边界矩阵、真实应用与前端 smoke、最终 diff/接口清理和整体验收/归档未完成；构建本身已通过。
 - `ports.py` 部分协议使用范围与 `ModelLease.lease` 返回注解需最终 review，不能让抽象层成为没有实际消费方的预留接口。
 - Backend 合并大批命令曾被 60 秒终止，不算通过；Feishu 测试超时、SMTP 短预算偶发失败需区分基线环境问题与迁移回归，不扩大本次功能范围。
-- 用户要求在此交接，不继续扩展实现，不修改 proposal/design，不合入 main，不归档本 change。
+- 用户要求先合并再验收；当前主线已包含 `ecab02d` Agent 重设计合并和后续 `4052562` WorkFLowWeave 重命名提交。本 change 不修改 proposal/design，也不归档。
+
+### 6.8 合并后验收修正
+
+合并提交 `ecab02d` 后的回归发现 `tests/agent/test_workflow_tasks.py` 仍直接构造已移除具体依赖的旧 `AgentService`，并访问已收归 `SessionRepository` 的日志句柄；已改用 `create_agent_service(...)` 和 `service.repository.log(...)`，保持组合根与存储所有权契约。
+
+旧事件重放测试进一步复现了 prompt 历史兼容缺口：历史 `session.created` 只有 `user_prompt` 时，旧语义是输入模板，且 system prompt 应从冻结 `AIConfig` 恢复。`storage/sessions.py` 已在事实恢复边界按既有 `b71dd14` 迁移规则恢复这两个字段；缺少 `{input}` 的旧模板显式补齐，非字符串模板报告 `event_log_corrupt`，不静默吞错。该实现不改变当前事件格式，只恢复 design §5 的既有数据目录和历史可重建约束。
+
+本轮已确认 storage primitives 21 项通过、lifecycle Agent channels 13 项通过；完整 Agent 批次暴露的两个问题已修正，后续验收重新执行。`agent/builtin` 仅剩测试过程产生的忽略缓存目录，已清理；实际内置工具唯一位于 `agent/tools/builtin`。
+
+### 6.9 当前主线验收结果
+
+当前交付提交为主线 `4052562`，其父提交链包含 `ecab02d`。重命名后的 `workflowweave` 包重新执行了 Agent 157 项、Workflow/Agent 交接 63 项、storage primitives 21 项、Agent API/SSE 14 项和 lifecycle Agent channels 13 项，均通过；Agent 源码 Ruff、OpenSpec strict 与 `git diff --check` 通过。`uv` 因环境无法访问 PyPI 的 TLS 失败，未重复构建 wheel；前端 typecheck 在当前重命名基线已有的模型路径/依赖缺失上失败，未把该基线问题伪装成 Agent 后端验收通过。
