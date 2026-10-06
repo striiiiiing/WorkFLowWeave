@@ -4,12 +4,12 @@ from types import SimpleNamespace
 import pytest
 from langchain_core.messages import AIMessage
 
-from logagent.agent.builtin.mcp import plugin
 from logagent.agent.config import AgentConfig
-from logagent.agent.gateway import MCPGateway
-from logagent.agent.service import AgentService
+from logagent.agent.integrations.mcp import MCPGateway
+from logagent.agent.tools.builtin.mcp import plugin
 from logagent.config.store import ResourceStore
 from logagent.errors import LogAgentError
+from logagent.interaction.fastapi.agent import create_agent_service
 from logagent.mcp import MCPRuntime
 from logagent.models import MCPServerConfig
 from tests.agent.helpers import ScriptedModel
@@ -27,23 +27,23 @@ async def test_session_restores_original_scope_and_fork_preserves_it(tmp_path):
     model = ScriptedModel(responses=[AIMessage(content="answer")])
     kwargs = dict(resources=resources, model_provider=lambda _: model,
                   mcp_runtime=MCPRuntime(Connector()), mcp_binding_reader=reader)
-    service = AgentService(tmp_path / "workspace", tmp_path / "runtime", **kwargs)
+    service = create_agent_service(tmp_path / "workspace", tmp_path / "runtime", **kwargs)
     session = await service.create_session(workflow_session_id="run", workflow_result={"outputs": {"x": "result"}})
     sid = session["session_id"]
     resources.save("mcp_servers", old.model_copy(update={"command": "replacement"}))
     resources.save("mcp_servers", MCPServerConfig(id="new", transport="stdio", command="other"))
-    gateway = service._capture_turn_resources(service.sessions[sid]).gateway
+    gateway = service.resource_provider.capture(service.sessions[sid]).gateway
     assert set(gateway.scope) == {"old"} and gateway.scope["old"].command == "old-command"
     turn = await service.submit(sid, "continue", request_id="first")
     await service.wait(turn["turn_id"])
     child = await service.fork(sid)
-    assert service.sessions[child["session_id"]].mcp_binding == binding
+    assert service.session_manager.bindings.read(child["session_id"]) == binding
     await service.close()
-    restored = AgentService(tmp_path / "workspace", tmp_path / "runtime", **kwargs)
+    restored = create_agent_service(tmp_path / "workspace", tmp_path / "runtime", **kwargs)
     await restored.initialize()
     try:
-        assert restored.sessions[sid].mcp_binding == binding
-        assert restored.sessions[child["session_id"]].mcp_binding == binding
+        assert restored.session_manager.bindings.read(sid) == binding
+        assert restored.session_manager.bindings.read(child["session_id"]) == binding
         events = json.dumps(await restored.events(sid), ensure_ascii=False)
         assert "old-command" not in events and "replacement" not in events
     finally:

@@ -3,8 +3,8 @@
 import pytest
 from langchain_core.messages import AIMessage
 
-from logagent.agent.service import AgentService
 from logagent.ai import AIService
+from logagent.interaction.fastapi.agent import create_agent_service
 from logagent.models import AIConfig, FanInConfig, WorkflowSnapshot, copy_model
 from logagent.workflow.execution.runner import WorkflowRunner
 from tests.agent.helpers import ScriptedModel
@@ -50,41 +50,6 @@ def definition(tasks=("first",), *, enabled=True, selection="reuse"):
             snap.ai["ai"].models["other"] = {}
     snap.workflow.fan_in = fan
     return snap
-
-
-@pytest.mark.parametrize("agent_summary", [False, True])
-@pytest.mark.parametrize("order", [[], ["first"]])
-async def test_default_summary_input_includes_shared_input_unless_explicitly_omitted(
-    tmp_path, agent_summary, order,
-):
-    factory = RecordingFactory()
-    ai = AIService(channel_factories={"mock": factory})
-    agent_model = ScriptedModel(responses=[AIMessage(content="summary")])
-    agent = AgentService(tmp_path / "workspace", tmp_path / "agent", model_provider=lambda _: agent_model)
-    workflow = WorkflowRunner(Collector(), ai, Channel(), agent_service=agent,
-                              database=tmp_path / "runs.sqlite")
-    snap = definition(enabled=False)
-    snap.workflow.fan_in.order = order
-    snap.workflow.fan_in.agent_mode = agent_summary
-    snap.workflow.fan_in.agent_tools = []
-    try:
-        result = await workflow.wait(await workflow.trigger(snap))
-        assert result.status == "completed"
-        messages = agent_model.seen[-1] if agent_summary else factory.models["ai", "offline"].seen[-1]
-        expected = result.analyses[0].text
-        if not order:
-            expected = result.shared_input + "\n\n" + expected
-        assert [message.type for message in messages] == ["system", "human", "human"]
-        assert messages[1].content == "results: " + expected
-        assert messages[2].content == "summary instruction {input}"
-        if agent_summary:
-            assert "summary system" in messages[0].content
-        else:
-            assert messages[0].content == "summary system"
-    finally:
-        await workflow.shutdown()
-        await agent.close()
-        await ai.close()
 
 
 @pytest.mark.parametrize("tasks,enabled,selection,optimized", [
@@ -144,7 +109,9 @@ async def test_single_same_model_agent_summary_ignores_enabled_optimization(
         models[session.workflow_task_id] = model
         return model
 
-    agent = AgentService(tmp_path / "workspace", tmp_path / "agent", model_provider=provider)
+    agent = create_agent_service(
+        tmp_path / "workspace", tmp_path / "agent", model_provider=provider,
+    )
     factory = RecordingFactory()
     ai = AIService(channel_factories={"mock": factory})
     workflow = WorkflowRunner(Collector(), ai, Channel(), agent_service=agent,

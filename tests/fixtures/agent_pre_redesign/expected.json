@@ -1,0 +1,31 @@
+{
+  "baseline_commit": "e71341c",
+  "completed": "fixture_completed",
+  "completed_turn": "turn_b2520390747d470bbe597ab220238a5d",
+  "fork": "fixture_fork",
+  "interrupted": "fixture_interrupted",
+  "events": {
+    "fixture_completed": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ],
+    "fixture_fork": [
+      1,
+      2,
+      3
+    ],
+    "fixture_interrupted": [
+      1,
+      2,
+      3
+    ]
+  }
+}

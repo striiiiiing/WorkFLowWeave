@@ -1,7 +1,7 @@
 import json
 
-from logagent.agent.artifacts import ArtifactStore, json_text
 from logagent.agent.config import AgentConfig
+from logagent.agent.storage.artifacts import ArtifactStore, json_text
 from logagent.agent.workspace import WorkspaceBackend
 
 

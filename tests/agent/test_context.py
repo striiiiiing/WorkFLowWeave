@@ -8,12 +8,13 @@ from langchain_core.messages.utils import count_tokens_approximately
 from langgraph.graph.message import add_messages
 from pydantic import ValidationError
 
-from logagent.agent.builtin.declaration import ToolDeclaration
 from logagent.agent.config import AgentConfig
-from logagent.agent.context import ContextMiddleware, estimate_request, summarize_once
-from logagent.agent.service import AgentService
+from logagent.agent.context.budget import estimate_request
+from logagent.agent.context.compaction import ContextMiddleware, summarize_once
+from logagent.agent.tools.declaration import ToolDeclaration
 from logagent.ai import AIService, OpenAIChannelFactory
 from logagent.errors import LogAgentError
+from logagent.interaction.fastapi.agent import create_agent_service
 from logagent.models import AIConfig
 from tests.agent.helpers import ScriptedModel
 
@@ -85,7 +86,7 @@ def test_missing_tokenizer_is_labeled_but_unexpected_counting_errors_surface():
 async def test_missing_capacity_fails_before_model_but_known_profile_is_usable(tmp_path):
     for index, profile in enumerate((None, {"max_input_tokens": 100_000})):
         model = ScriptedModel(responses=[AIMessage(content="ok")], profile=profile)
-        service = AgentService(tmp_path / str(index), tmp_path / f"runtime-{index}",
+        service = create_agent_service(tmp_path / str(index), tmp_path / f"runtime-{index}",
                                config=AgentConfig(context_window=None),
                                model_provider=lambda _, captured=model: captured)
         try:
@@ -231,7 +232,7 @@ async def test_tool_result_growth_is_checked_before_the_next_model_request(tmp_p
     model = ScriptedModel(responses=[AIMessage(content="", tool_calls=[
         {"id": "large", "name": "large", "args": {}},
     ]), AIMessage(content="summary")])
-    service = AgentService(
+    service = create_agent_service(
         tmp_path / "workspace", tmp_path / "runtime", config=small_config(keep_tokens=1400),
         model_provider=lambda _: model,
         declarations=[ToolDeclaration("large", "Large result", {"type": "object"}, "read", invoke)],
@@ -256,7 +257,7 @@ async def test_old_checkpoint_history_is_checked_and_compaction_is_durable(tmp_p
     model = ScriptedModel(responses=[AIMessage(content="old reply"),
                                      AIMessage(content="short summary"),
                                      AIMessage(content="new reply")])
-    service = AgentService(tmp_path / "workspace", tmp_path / "runtime",
+    service = create_agent_service(tmp_path / "workspace", tmp_path / "runtime",
                            config=AgentConfig(output_tokens=100, summary_max_tokens=100),
                            model_provider=lambda _: model)
     try:
@@ -314,7 +315,7 @@ async def test_real_provider_payload_matches_main_and_summary_reservations(tmp_p
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         ai = AIService(channel_factories={"http": OpenAIChannelFactory(client)})
-        service = AgentService(
+        service = create_agent_service(
             tmp_path / "workspace", tmp_path / "runtime", ai_service=ai,
             ai_config=AIConfig(id="ai", provider="http", base_url="http://model.test/v1",
                                models={"model": {"max_tokens": 9999}}, retries=0),

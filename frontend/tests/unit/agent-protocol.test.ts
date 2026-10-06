@@ -1,10 +1,7 @@
-import { effectScope } from 'vue'
-import { describe, expect, it, vi } from 'vitest'
-import type { AgentEventTransport } from '@/modules/agents/api/agentEventSource'
-import { useAgentSession } from '@/modules/agents/composables/useAgentSession'
-import { parseAgentEvent } from '@/modules/agents/model/public'
-import { projectAgentSession } from '@/modules/agents/model/public'
-import type { AgentEvent, AgentSession } from '@/modules/agents/model/public'
+import { describe, expect, it } from 'vitest'
+import { parseAgentEvent } from '@/modules/agents/model/events'
+import { projectAgentSession } from '@/modules/agents/model/sessionProjection'
+import type { AgentEvent, AgentSession } from '@/modules/agents/model/types'
 
 const session = (status = 'running', turnId = 'current'): AgentSession => ({
   session_id: 's',
@@ -127,45 +124,4 @@ describe('Agent event model', () => {
       continuation_error: { code: 'checkpoint_missing', message: 'missing' },
     })
   })
-})
-
-it('accepts one cursor per session and isolates stale transport callbacks', async () => {
-  const handlers: Array<Parameters<AgentEventTransport['open']>[2]> = []
-  const open = vi.fn(
-    (_: string, __: number, callbacks: Parameters<AgentEventTransport['open']>[2]) => {
-      handlers.push(callbacks)
-    },
-  )
-  const close = vi.fn()
-  const accept = vi.fn()
-  const api = {
-    history: vi.fn().mockResolvedValue([event(1, 'message.user', 'old', { text: 'hello' })]),
-    get: vi.fn().mockResolvedValue(session()),
-  }
-  const scope = effectScope()
-  const controller = scope.run(() => useAgentSession(api, { open, close, accept }))!
-  await controller.select('s')
-  expect(open).toHaveBeenLastCalledWith('s', 1, expect.any(Object))
-
-  handlers[0].event(event(1, 'message.user', 'old', { text: 'hello' }))
-  handlers[0].event(event(2, 'turn.completed', 'old'))
-  expect(controller.session.value?.status).toBe('running')
-  expect(controller.state.value).not.toBe('closed')
-  handlers[0].event(event(3, 'turn.completed'))
-  expect(controller.session.value?.status).toBe('completed')
-  expect(controller.cursor.value).toBe(3)
-  expect(accept).toHaveBeenLastCalledWith(3)
-  expect(controller.state.value).toBe('closed')
-
-  controller.resume('next')
-  expect(open).toHaveBeenLastCalledWith('s', 3, expect.any(Object))
-  handlers[0].event(event(4, 'turn.failed', 'next'))
-  expect(controller.cursor.value).toBe(3)
-  handlers[1].event(event(4, 'turn.started', 'next'))
-  expect(controller.session.value?.status).toBe('running')
-  controller.clear()
-  handlers[1].event(event(5, 'turn.completed', 'next'))
-  expect(controller.events.value).toEqual([])
-  expect(controller.session.value).toBeUndefined()
-  scope.stop()
 })

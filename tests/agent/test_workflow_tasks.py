@@ -7,9 +7,9 @@ import orjson
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
-from logagent.agent.service import AgentService
 from logagent.ai.errors import ModelError, error_info
 from logagent.errors import LogAgentError
+from logagent.interaction.fastapi.agent import create_agent_service
 from logagent.models import AIConfig
 from logagent.workflow.agent_tasks import LEGACY_TASK_MESSAGE, execute_agent_task
 from tests.agent.helpers import ScriptedModel
@@ -63,7 +63,7 @@ async def test_legacy_prompt_layers_and_original_request_identity_survive_restar
 
 async def test_title_and_session_source_kinds_survive_restart(tmp_path):
     paths = tmp_path / "workspace", tmp_path / "runtime"
-    service = AgentService(*paths)
+    service = create_agent_service(*paths)
     try:
         standalone = await service.create_session()
         continued = await service.create_session(workflow_session_id="run")
@@ -77,7 +77,7 @@ async def test_title_and_session_source_kinds_survive_restart(tmp_path):
             await service.create_session(workflow_task_id="orphan")
     finally:
         await service.close()
-    restored = AgentService(*paths)
+    restored = create_agent_service(*paths)
     try:
         await restored.initialize()
         expected = ["standalone", "workflow_continue", "workflow_subtask"]
@@ -94,7 +94,7 @@ async def test_title_and_session_source_kinds_survive_restart(tmp_path):
 @pytest.mark.parametrize("tools, expected", [([], []), (["read"], ["read"])])
 async def test_each_task_uses_its_own_tool_selection(tmp_path, tools, expected):
     model = ScriptedModel(responses=[AIMessage(content="done")])
-    service = AgentService(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model)
+    service = create_agent_service(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model)
     try:
         session = await service.create_session(
             workflow_session_id="run", workflow_task_id="task", tool_names=tools,
@@ -102,14 +102,14 @@ async def test_each_task_uses_its_own_tool_selection(tmp_path, tools, expected):
         await complete(service, session["session_id"])
         assert [tool.name for tool in model.bound_tools] == expected
         other = await service.create_session()
-        assert len(service._capture_turn_resources(service.sessions[other["session_id"]]).declarations) > 1
+        assert len(service.resource_provider.capture(service.sessions[other["session_id"]]).declarations) > 1
     finally:
         await service.close()
 
 
 async def test_unknown_task_tool_fails_instead_of_enabling_global_tools(tmp_path):
     model = ScriptedModel(responses=[AIMessage(content="must not run")])
-    service = AgentService(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model)
+    service = create_agent_service(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model)
     try:
         session = await service.create_session(
             workflow_session_id="run", workflow_task_id="task", tool_names=["missing"],
@@ -136,7 +136,7 @@ async def test_task_input_template_expands_once_and_only_injects_source_once(
     tmp_path, prompt, expected,
 ):
     model = ScriptedModel(responses=[AIMessage(content="first"), AIMessage(content="second")])
-    service = AgentService(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model)
+    service = create_agent_service(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model)
     try:
         session = await service.create_session(
             workflow_session_id="run", workflow_task_id="task", workflow_result="raw {input}",
@@ -154,7 +154,7 @@ async def test_task_input_template_expands_once_and_only_injects_source_once(
 
 async def test_workflow_continue_puts_result_and_new_prompt_in_separate_user_messages(tmp_path):
     model = ScriptedModel(responses=[AIMessage(content="done")])
-    service = AgentService(tmp_path / "workspace", tmp_path / "runtime",
+    service = create_agent_service(tmp_path / "workspace", tmp_path / "runtime",
                            model_provider=lambda _: model)
     try:
         session = await service.create_session(
@@ -170,7 +170,7 @@ async def test_workflow_continue_puts_result_and_new_prompt_in_separate_user_mes
 @pytest.mark.parametrize("edit_message", [False, True])
 async def test_fork_inherits_task_context_without_injecting_workflow_source_again(tmp_path, edit_message):
     model = ScriptedModel(responses=[AIMessage(content="first"), AIMessage(content="second")])
-    service = AgentService(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model)
+    service = create_agent_service(tmp_path / "workspace", tmp_path / "runtime", model_provider=lambda _: model)
     try:
         session = await service.create_session(
             workflow_session_id="run", workflow_task_id="task", workflow_result="SOURCE",
@@ -208,7 +208,7 @@ async def test_task_model_snapshot_survives_resource_edits_restart_and_explicit_
                            system_prompt="task system", models={"task-model": {}})
     live = AIConfig(id="live-ai", provider="mock", models={"live-model": {}})
     resources = SimpleNamespace(invocation_snapshot=lambda: {"ai": {"live-ai": live}})
-    service = AgentService(*paths, ai_service=AI(), resources=resources)
+    service = create_agent_service(*paths, ai_service=AI(), resources=resources)
     try:
         session = await service.create_session(
             model="task-model", workflow_session_id="run", workflow_task_id="task",
@@ -221,7 +221,7 @@ async def test_task_model_snapshot_survives_resource_edits_restart_and_explicit_
         assert "https://task.invalid" not in public
     finally:
         await service.close()
-    restored = AgentService(*paths, ai_service=AI(), resources=resources)
+    restored = create_agent_service(*paths, ai_service=AI(), resources=resources)
     try:
         await restored.initialize()
         await complete(restored, session["session_id"], text="followup", request_id="second")
@@ -241,14 +241,14 @@ async def test_completed_first_turn_can_be_deduplicated_after_restart_and_later_
     paths = tmp_path / "workspace", tmp_path / "runtime"
     options = dict(workflow_session_id="run", workflow_task_id="task", workflow_result="SOURCE",
                    user_prompt="{input}", tool_names=[], operation_id="stable-operation")
-    service = AgentService(*paths, model_provider=lambda _: model)
+    service = create_agent_service(*paths, model_provider=lambda _: model)
     try:
         session = await service.create_session(**options)
         accepted, original = await complete(service, session["session_id"], request_id="stable-operation")
         await complete(service, session["session_id"], text="later", request_id="later")
     finally:
         await service.close()
-    restored = AgentService(*paths, model_provider=lambda _: model)
+    restored = create_agent_service(*paths, model_provider=lambda _: model)
     try:
         await restored.initialize()
         replay = await restored.create_session(**options)
@@ -275,7 +275,7 @@ async def test_failed_provider_diagnostic_survives_restart(tmp_path):
 
     model = FailingModel(responses=[])
     paths = tmp_path / "workspace", tmp_path / "runtime"
-    service = AgentService(*paths, model_provider=lambda _: model)
+    service = create_agent_service(*paths, model_provider=lambda _: model)
     try:
         session = await service.create_session(model="test", tool_names=[])
         accepted = await service.submit(session["session_id"], "execute", request_id="first")
@@ -283,7 +283,7 @@ async def test_failed_provider_diagnostic_survives_restart(tmp_path):
             await service.wait(accepted["turn_id"])
     finally:
         await service.close()
-    restored = AgentService(*paths, model_provider=lambda _: model)
+    restored = create_agent_service(*paths, model_provider=lambda _: model)
     try:
         await restored.initialize()
         result = await restored.wait(accepted["turn_id"])
