@@ -3,8 +3,8 @@
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
-from logagent.agent.service import AgentService
 from logagent.errors import LogAgentError
+from logagent.interaction.fastapi.agent import create_agent_service
 from logagent.models import AIConfig, FanInConfig
 from logagent.workflow.execution.runner import WorkflowRunner
 from logagent.workflow.storage.facts import SessionStore
@@ -26,7 +26,7 @@ async def test_mixed_llm_agent_tasks_and_agent_summary_keep_separate_configurati
         ]))
         return model
 
-    agent = AgentService(tmp_path / "workspace", tmp_path / "agent", model_provider=provider)
+    agent = create_agent_service(tmp_path / "workspace", tmp_path / "agent", model_provider=provider)
     workflow = WorkflowRunner(Collector(), AI(), Channel(), agent_service=agent,
                                database=tmp_path / "workflow.sqlite3")
     snap = snapshot(tasks=("llm", "research", "review"), channels=False)
@@ -57,7 +57,7 @@ async def test_mixed_llm_agent_tasks_and_agent_summary_keep_separate_configurati
             humans = [message.content for message in model.seen[0] if isinstance(message, HumanMessage)]
             assert humans[0].startswith("summary " if key == "final" else key + ": ")
             assert session.workflow_session_id == "run"
-            assert session.mcp_binding == {"servers": {}, "sources": []}
+            assert agent.repository.bindings.read(session.session_id) == {"servers": {}, "sources": []}
         assert "agent:research" in sessions["final"].workflow_input
         assert result.outputs == {"final": "agent:final"}
         assert result.aggregate.agent_session_id == sessions["final"].session_id
@@ -73,7 +73,7 @@ async def test_mixed_llm_agent_tasks_and_agent_summary_keep_separate_configurati
     ("stop", True, "failed"), ("continue", False, "failed"), ("continue", True, "partial"),
 ])
 async def test_agent_failure_obeys_workflow_partial_delivery_policy(tmp_path, policy, partial, status):
-    agent = AgentService(
+    agent = create_agent_service(
         tmp_path / "workspace", tmp_path / "agent",
         model_provider=lambda _: FailingModel(responses=[]),
     )
@@ -106,7 +106,7 @@ async def test_retry_creates_new_agent_and_reuses_successful_workflow_branch(tmp
         return models[session.session_id]
 
     collector, ai = Collector(), AI()
-    agent = AgentService(tmp_path / "workspace", tmp_path / "agent", model_provider=provider)
+    agent = create_agent_service(tmp_path / "workspace", tmp_path / "agent", model_provider=provider)
     workflow = WorkflowRunner(collector, ai, Channel(), agent_service=agent,
                                database=tmp_path / "workflow.sqlite3")
     snap = snapshot(channels=False, analysis_failure="stop")
@@ -131,7 +131,7 @@ async def test_retry_creates_new_agent_and_reuses_successful_workflow_branch(tmp
 
 async def test_later_agent_conversation_does_not_change_parent_workflow_archive(tmp_path):
     model = ScriptedModel(responses=[AIMessage(content="task result"), AIMessage(content="later")])
-    agent = AgentService(tmp_path / "workspace", tmp_path / "agent", model_provider=lambda _: model)
+    agent = create_agent_service(tmp_path / "workspace", tmp_path / "agent", model_provider=lambda _: model)
     workflow = WorkflowRunner(Collector(), AI(), Channel(), agent_service=agent,
                                database=tmp_path / "workflow.sqlite3")
     snap = snapshot(tasks=("first",), channels=False)
@@ -164,7 +164,7 @@ async def test_restart_recovers_completed_agent_turn_when_parent_archive_was_not
     agent_paths = tmp_path / "workspace", tmp_path / "agent"
     database = tmp_path / "workflow.sqlite3"
     store = FailAnalysisWrite(database)
-    agent = AgentService(*agent_paths, model_provider=lambda _: model)
+    agent = create_agent_service(*agent_paths, model_provider=lambda _: model)
     workflow = WorkflowRunner(Collector(), AI(), Channel(), agent_service=agent, session_store=store)
     snap = snapshot(tasks=("first",), channels=False)
     snap.workflow.analyses[0].agent_mode = True
@@ -180,7 +180,7 @@ async def test_restart_recovers_completed_agent_turn_when_parent_archive_was_not
         await workflow.shutdown()
         await agent.close()
         store.close()
-    restored_agent = AgentService(*agent_paths, model_provider=lambda _: model)
+    restored_agent = create_agent_service(*agent_paths, model_provider=lambda _: model)
     restored = WorkflowRunner(Collector(), AI(), Channel(), agent_service=restored_agent, database=database)
     try:
         await restored.resume("run")
@@ -201,7 +201,7 @@ async def test_source_free_workflow_runs_task_and_own_summary(tmp_path, agent_mo
     def provider(session):
         return ScriptedModel(responses=[AIMessage(content="agent:" + session.workflow_task_id)])
 
-    agent = AgentService(tmp_path / "workspace", tmp_path / "agent", model_provider=provider)
+    agent = create_agent_service(tmp_path / "workspace", tmp_path / "agent", model_provider=provider)
     workflow = WorkflowRunner(Collector(), AI(), Channel(), agent_service=agent,
                               database=tmp_path / "workflow.sqlite3")
     snap = snapshot(tasks=("first",), channels=False)
