@@ -3,6 +3,7 @@
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
+import orjson
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
@@ -10,12 +11,54 @@ from logagent.agent.service import AgentService
 from logagent.ai.errors import ModelError, error_info
 from logagent.errors import LogAgentError
 from logagent.models import AIConfig
+from logagent.workflow.agent_tasks import LEGACY_TASK_MESSAGE, execute_agent_task
 from tests.agent.helpers import ScriptedModel
 
 
 async def complete(service, session_id, *, text="execute", request_id="first"):
     accepted = await service.submit(session_id, text, request_id=request_id)
     return accepted, await service.wait(accepted["turn_id"])
+
+
+async def test_legacy_prompt_layers_and_original_request_identity_survive_restart(tmp_path):
+    model = ScriptedModel(responses=[AIMessage(content="original"), AIMessage(content="followup")])
+    paths = tmp_path / "workspace", tmp_path / "runtime"
+    config = AIConfig(id="ai", provider="mock", system_prompt="legacy system", models={"model": {}})
+    options = dict(operation_id="legacy-operation", workflow_session_id="run", workflow_task_id="task",
+                   model="model", ai_config=config, workflow_result="SOURCE",
+                   system_prompt="legacy system", input_prompt="legacy input: {input}",
+                   user_prompt="", tool_names=[])
+    service = AgentService(*paths, model_provider=lambda _: model)
+    try:
+        session = await service.create_session(**options)
+        accepted, original = await complete(
+            service, session["session_id"], text=LEGACY_TASK_MESSAGE, request_id="legacy-operation",
+        )
+        event_path = service.sessions[session["session_id"]].log.path
+    finally:
+        await service.close()
+    events = [orjson.loads(line) for line in event_path.read_bytes().splitlines()]
+    created = next(event for event in events if event["type"] == "session.created")
+    created.pop("system_prompt")
+    created.pop("input_prompt")
+    created["user_prompt"] = "legacy input: {input}"
+    event_path.write_bytes(b"".join(orjson.dumps(event) + b"\n" for event in events))
+    restored = AgentService(*paths, model_provider=lambda _: model)
+    try:
+        await restored.initialize()
+        stored = restored.sessions[session["session_id"]]
+        assert (stored.system_prompt, stored.input_prompt, stored.user_prompt) == (
+            "legacy system", "legacy input: {input}", "",
+        )
+        repeated = await execute_agent_task(restored, **options, request_text=LEGACY_TASK_MESSAGE)
+        assert repeated.status == "success" and repeated.text == original["text"] == "original"
+        assert stored.request_ids["legacy-operation"][0] == accepted["turn_id"]
+        assert len(model.seen) == 1
+        await complete(restored, session["session_id"], text="followup", request_id="later")
+        assert "legacy system" in model.seen[-1][0].content
+        assert sum(message.content == "legacy input: SOURCE" for message in model.seen[-1]) == 1
+    finally:
+        await restored.close()
 
 
 async def test_title_and_session_source_kinds_survive_restart(tmp_path):

@@ -232,7 +232,7 @@ def _resource_payloads() -> dict[str, dict]:
         "workflows": {
             "id": "daily",
             "sources": ["source"],
-            "analyses": [{"id": "task", "ai": "ai", "model": "model"}],
+            "analyses": [{"user_prompt": "analyze input", "id": "task", "ai": "ai", "model": "model"}],
         },
     }
 
@@ -501,7 +501,7 @@ def test_cron_preview_and_schedule_contract():
             "expression": "0 9 * * *", "timezone": "Invalid/Zone",
         }).status_code == 422
         base = {"id": "daily", "sources": ["s"],
-                "analyses": [{"id": "a", "ai": "ai", "model": "model"}]}
+                "analyses": [{"user_prompt": "analyze input", "id": "a", "ai": "ai", "model": "model"}]}
         for field in ("cron", "interval_seconds", "cron_timezone"):
             assert client.post("/api/workflows", json={**base, field: None}).status_code == 422
         for schedule in (

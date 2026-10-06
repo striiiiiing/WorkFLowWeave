@@ -229,7 +229,7 @@ async def test_model_fan_in_publishes_one_aggregate_completion(tmp_path):
     w, store, _, _, _ = service(tmp_path / "runs.sqlite3")
     try:
         async with w.progress_hub.subscribe("run") as queue:
-            await w.trigger(snapshot(channels=False, fan_in=FanInConfig()), session_id="run")
+            await w.trigger(snapshot(channels=False, fan_in=FanInConfig(user_prompt="summarize results", )), session_id="run")
             await w.wait("run")
             events = []
             while not queue.empty():
