@@ -2,34 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
 from contextlib import AbstractAsyncContextManager
 from typing import Any, Protocol
 
 from .contracts import SessionView
 
 
-class SessionRepository(Protocol):
-    def get(self, session_id: str) -> SessionView: ...
-
-    def log(self, session_id: str) -> Any: ...
-
-    async def persist(self, session: SessionView) -> None: ...
-
-    def document(self, session: SessionView) -> dict[str, Any]: ...
-
-
 class ModelLease(Protocol):
     def lease(self, session: SessionView, *, output_tokens: int,
-              ai_config: Any = None, model: str | None = None) -> AsyncIterator[Any]: ...
-
-
-class ResourcePublication(Protocol):
-    def invocation_snapshot(self) -> dict[str, Any]: ...
-
-
-class CheckpointRuntime(Protocol):
-    async def aget_tuple(self, config: dict) -> Any: ...
+              ai_config: Any = None, model: str | None = None
+              ) -> AbstractAsyncContextManager[Any]: ...
 
 class WorkspacePort(Protocol):
     async def read(self, **arguments: Any) -> dict[str, Any]: ...

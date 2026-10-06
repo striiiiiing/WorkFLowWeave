@@ -1,9 +1,10 @@
-"""Compile the Agent's LangGraph with one turn context and tool boundary."""
+"""Build one static LangGraph topology and inject turn values at runtime."""
 
 from __future__ import annotations
 
 from collections.abc import Iterable
-from uuid import uuid4
+from copy import deepcopy
+from typing import Any
 
 from langchain.agents import create_agent
 from langchain_core.utils.function_calling import convert_to_openai_tool
@@ -13,49 +14,121 @@ from logagent.agent.ports import ToolDeclarationPort
 from logagent.agent.runtime.context import AgentContext
 from logagent.agent.runtime.state import AgentState
 from logagent.agent.tools.langchain import build_tools
-from logagent.redaction import redact_text
+from logagent.errors import LogAgentError
+
+
+def _declaration_key(declarations: tuple[ToolDeclarationPort, ...]) -> tuple:
+    return tuple((item.name, item.description, repr(item.input_schema), item.execution)
+                 for item in declarations)
+
+
+class GraphBuilder:
+    """Own the single compiled graph for one checkpointer and tool registry."""
+
+    def __init__(self):
+        self._graph: Any = None
+        self._middleware: ContextMiddleware | None = None
+        self._declarations: tuple | None = None
+        self._generation: int | None = None
+        self._checkpointer: Any = None
+
+    @property
+    def graph(self):
+        """The compiled topology, if the application root has initialized it."""
+        return self._graph
+
+    @property
+    def generation(self):
+        return self._generation
+
+    def bind(self, *, context: AgentContext, generation: int | None = None):
+        """Bind a turn to the already compiled topology.
+
+        Compilation belongs to the application composition root.  A turn may
+        only fail when the published registry generation no longer matches;
+        rebuilding is an admission/lifecycle operation, never a turn concern.
+        """
+        if self._graph is None:
+            raise LogAgentError("graph_uninitialized", "Agent graph 尚未由组合根初始化")
+        if self._generation != generation:
+            raise LogAgentError(
+                "graph_rebuild_required", "Agent 工具 registry 已变化，需要在轮次边界重建 graph",
+                {"expected_generation": self._generation, "actual_generation": generation},
+            )
+        context.scope.context_middleware = self._middleware
+        return self._graph
+
+    def build(self, *, model, declarations: Iterable[ToolDeclarationPort], context: AgentContext,
+              checkpointer=None, use_summarization: bool = True, generation: int | None = None):
+        declarations = tuple(declarations)
+        declaration_key = _declaration_key(declarations)
+        if self._graph is not None:
+            if self._checkpointer is not checkpointer:
+                raise LogAgentError("graph_rebuild_required", "Agent graph 的 checkpointer 已改变")
+            if self._declarations == declaration_key and self._generation == generation:
+                context.scope.context_middleware = self._middleware
+                return self._graph
+            # A new published tool generation is compiled between turns. The
+            # coordinator owns admission, so no active turn can observe a
+            # partially replaced graph.
+            self._graph = None
+            self._middleware = None
+
+        tools = build_tools(tuple(deepcopy(item) for item in declarations))
+        middleware = ContextMiddleware(
+            model=model, config=context.config, system_prompt="",
+            tools=[deepcopy(convert_to_openai_tool(tool)) for tool in tools], summary_model=model,
+        )
+        self._graph = create_agent(
+            model=model,
+            tools=tools,
+            system_prompt=None,
+            middleware=[middleware] if use_summarization else [],
+            state_schema=AgentState,
+            context_schema=AgentContext,
+            checkpointer=checkpointer,
+            name="logagent-agent",
+        )
+        self._middleware = middleware
+        self._declarations = declaration_key
+        self._generation = generation
+        self._checkpointer = checkpointer
+        context.scope.context_middleware = middleware
+        return self._graph
+
+    def build_static(self, *, declarations: Iterable[ToolDeclarationPort], config,
+                     checkpointer=None, generation: int | None = None):
+        """Compile the topology before the first turn; model values arrive via Runtime."""
+        bootstrap_config = config
+        class _RuntimeModel:
+            profile = {"max_input_tokens": bootstrap_config.context_window or 200_000}
+
+            def bind_tools(self, tools, **kwargs):
+                return self
+
+        class _Bootstrap:
+            config = bootstrap_config
+            scope = type("Scope", (), {})()
+
+        return self.build(
+            model=_RuntimeModel(), declarations=declarations,
+            context=type("Context", (), {"config": config, "scope": _Bootstrap.scope})(),
+            checkpointer=checkpointer, generation=generation,
+        )
 
 
 def create_graph(*, model, declarations: Iterable[ToolDeclarationPort], context: AgentContext,
                  system_prompt: str, checkpointer=None, use_summarization: bool = True,
                  summary_model=None, summary_timeout: float | None = None):
-    """Compile a graph for a frozen turn and its leased model dependencies."""
-    declarations = tuple(declarations)
-    tools = build_tools(declarations)
-    middleware = []
-    if use_summarization:
-        async def record_compaction(data):
-            path = f"History/{context.session_id}/summaries/{uuid4().hex}.md"
-            await context.workspace.save_runtime(
-                path, redact_text(data["summary"]).encode("utf-8"),
-            )
-            await context.event_log.append(
-                "context.compacted", turn_id=context.turn_id, artifact_path=path,
-                source_event_range={"start": 1, "end": context.event_log.events[-1]["id"]},
-                **data,
-            )
-
-        async def record_budget(data):
-            await context.event_log.append("context.budget", turn_id=context.turn_id, **data)
-
-        context.scope.context_middleware = ContextMiddleware(
-            model=model, config=context.config, system_prompt=system_prompt,
-            tools=[convert_to_openai_tool(tool) for tool in tools],
-            summary_model=summary_model, summary_timeout=summary_timeout,
-            on_compacted=record_compaction, on_budget=record_budget,
-            on_boundary=context.on_boundary,
-        )
-        middleware.append(context.scope.context_middleware)
-    return create_agent(
-        model=model,
-        tools=tools,
-        system_prompt=system_prompt,
-        middleware=middleware,
-        state_schema=AgentState,
-        context_schema=AgentContext,
-        checkpointer=checkpointer,
-        name="logagent-agent",
+    """Compatibility entry point for callers outside the application root."""
+    context.scope.model = model
+    context.scope.system_prompt = system_prompt
+    context.scope.summary_model = summary_model or model
+    context.scope.summary_timeout = summary_timeout
+    return GraphBuilder().build(
+        model=model, declarations=declarations, context=context,
+        checkpointer=checkpointer, use_summarization=use_summarization,
     )
 
 
-__all__ = ["create_graph"]
+__all__ = ["GraphBuilder", "create_graph"]

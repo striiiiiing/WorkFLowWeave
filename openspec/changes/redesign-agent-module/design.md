@@ -198,12 +198,16 @@ START
 - `AgentContext` 是 `context_schema`，由 `Runtime[AgentContext]` 注入节点和工具；它只包含本轮冻结的配置、workspace view、外部能力 port、取消信号和观察者回调，不从全局变量查服务。
 - 节点可以使用 `Runtime` 提供的 `context`、`stream_writer` 和受控的 `store` 入口：`context` 传本轮依赖，`stream_writer` 只产生 runner 内部进度，`store` 若启用只能保存可重建的派生缓存；用户可见事实仍必须进入 EventLog，不能把 LangGraph store 变成第二个事实源。
 - `RunnableConfig` 是唯一 thread 配置入口，至少包含 `thread_id=session_id`、`checkpoint_ns`、turn/request metadata 和 tags。每次 `invoke`/`astream`/`astream_events` 使用同一 config，不能用另一个内存 session 推断图位置。
-- `builder.py` 编译一次 graph 并注入 checkpointer、middleware、ToolNode 和工具声明；普通 turn 复用 graph topology，不能每个工具调用临时重编译一棵不一致的图。
+- 组合根在 Agent 生命周期初始化阶段编译一次静态 graph，并注入 checkpointer、middleware、ToolNode 和进程级工具声明；运行期间不按 turn、模型租约或工具调用重编译 graph。普通 turn 只通过 `Runtime[AgentContext]` 注入冻结依赖，复用同一份 topology；工具注册代次若确实改变，必须显式重建整棵 graph 并在切换期间停止准入。
 - `runner.py` 只负责把命令转换为 graph input/config、消费 `astream` 或 `astream_events`、等待 graph 终态并释放 turn 资源。Agent SSE 不自己发第二套 graph 事件。
-- `Command` 只用于图内安全边界：`append`/`compact` 在模型返回边界更新 state 或转移节点，`stop` 通过取消当前 run 并提交终态事实完成；不把普通命令伪装成用户消息。
+- `Command` 只用于图内安全边界：`append`/`compact` 在模型或工具组返回边界由独立 command 节点返回 `Command(update=..., goto=...)`，更新 state 或转移到下一次 model；`stop` 通过取消当前 run 并提交终态事实完成；不把普通命令伪装成用户消息，也不把 `jump_to` 字段写入业务 state。
 - `interrupt` 只在未来确实需要用户确认的图节点使用；当前没有确认型工具时不人为插入 interrupt。恢复必须使用 `Command(resume=...)` 和原 thread checkpoint，不能从 JSONL 猜测节点。
 - LangGraph 的 `stream_mode` 按用途选择：`messages`/`updates` 用于 Agent 业务增量，`checkpoints` 仅由存储适配器核对；`astream_events(version="v2")` 只启动一次，内部事件不能全部广播成用户事件。
 - `Runtime[AgentContext]` 与 LangGraph 的 `Runtime` 同名，源码中统一使用明确别名或模块限定，避免和 `agent/runtime/` 包名造成误读。
+
+静态图的装配边界与 Workflow 保持一致：`AgentService.initialize()`（或其组合根调用方）持有唯一 checkpointer，并调用 `build_agent_graph(checkpointer=...)`；`TurnRunner` 不拥有 graph 的编译职责。每次 turn 只构造不可变 `AgentContext`，以同一 `RunnableConfig(thread_id=session_id)` 启动 graph stream；model、prompt、summary model、资源快照和事件端口由 context 读取。这样 graph 的节点和边是可检查、可复用的长期结构，Python turn 对象只负责准入、取消和清理。
+
+用户确认的实现契约补充：静态 graph 的编译输入是进程当前发布的工具 registry，而不是某个 session 的 `tool_names`。session 工具范围通过 `Runtime[AgentContext]` 的允许集合过滤模型请求和工具执行；因此不同 session 不会触发按轮次重编译。工具声明、schema 或 registry generation 发生变化时，应用组合根必须先暂停准入、等待活动 turn 结束，再显式重建整图；`TurnRunner` 只能调用已编译 graph 的绑定入口，不能在 `run()` 内调用 `build()` 或 `create_agent()`。模型租约、system prompt、摘要模型和 workspace/MCP 视图都属于 Runtime context 的 turn 快照，不改变 graph topology。该补充是对 Workflow `start()` 一次 `build_workflow()` 模式的契约化，不引入新的业务行为。
 
 这使 Agent 与 Workflow 使用同一套 LangGraph 思维，但 graph 的 state、节点和 checkpoint 数据库仍然隔离；Workflow 的 `StateGraph` 不被 Agent 直接调用。
 
