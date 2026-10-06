@@ -17,7 +17,7 @@ async def test_cli_workflow_archives_raw_result_and_processing_view(tmp_path):
     }))
     resources.save("ai", AIConfig(id="ai", provider="mock", models={"offline": {}}))
     resources.save("workflows", WorkflowDefinition(id="wf", sources=["source"],
-        analyses=[{"id": "a", "ai": "ai", "model": "offline"}], input_processing={"format": "csv"}))
+        analyses=[{"user_prompt": "analyze input", "id": "a", "ai": "ai", "model": "offline"}], input_processing={"format": "csv"}))
     store = SessionStore(tmp_path / "sessions")
     workflow = WorkflowRunner(CollectorManager(None), AI(), Channel(), resources, session_store=store)
     try:
