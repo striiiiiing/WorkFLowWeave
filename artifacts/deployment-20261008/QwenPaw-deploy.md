@@ -1,0 +1,26 @@
+version: '3.8'
+
+volumes:
+  qwenpaw-data:
+    name: qwenpaw-data
+  qwenpaw-secrets:
+    name: qwenpaw-secrets
+  qwenpaw-backups:
+    name: qwenpaw-backups
+
+services:
+  qwenpaw:
+    image: agentscope/qwenpaw:latest
+    init: true
+    container_name: qwenpaw
+    restart: always
+    ports:
+      - "127.0.0.1:8088:8088"
+    # environment:
+    #   - QWENPAW_AUTH_ENABLED=true
+    #   - QWENPAW_AUTH_USERNAME=admin
+    #   - QWENPAW_AUTH_PASSWORD=yourpassword
+    volumes:
+      - qwenpaw-data:/app/working
+      - qwenpaw-secrets:/app/working.secret
+      - qwenpaw-backups:/app/working.backups

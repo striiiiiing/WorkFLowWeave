@@ -1,0 +1,18 @@
+{
+  "source_id": "benchmark_uname",
+  "status": "success",
+  "raw": {
+    "stdout": "Linux 334182fe6f7a 5.15.0-177-generic #187-Ubuntu SMP Sat Apr 11 22:54:33 UTC 2026 x86_64 GNU/Linux\n",
+    "stderr": "",
+    "exit_code": 0
+  },
+  "items": [],
+  "text": "",
+  "error": null,
+  "metadata": {
+    "kind": "cli",
+    "mode": "argv",
+    "result_known": true
+  },
+  "report": null
+}

@@ -1,0 +1,119 @@
+[
+    {
+        "Id": "sha256:5139eb3ca71ba20d3cd3aa933338e63dbff857d384e482fbdb7dd557849e5529",
+        "RepoTags": [
+            "ghcr.io/openclaw/openclaw@sha256:5139eb3ca71ba20d3cd3aa933338e63dbff857d384e482fbdb7dd557849e5529"
+        ],
+        "RepoDigests": [
+            "ghcr.io/openclaw/openclaw@sha256:5139eb3ca71ba20d3cd3aa933338e63dbff857d384e482fbdb7dd557849e5529"
+        ],
+        "Comment": "buildkit.dockerfile.v0",
+        "Created": "2026-10-02T18:27:50.444321154Z",
+        "Config": {
+            "User": "node",
+            "Env": [
+                "PATH=/home/node/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "NODE_VERSION=24.21.0",
+                "YARN_VERSION=1.22.22",
+                "COREPACK_HOME=/usr/local/share/corepack",
+                "PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright",
+                "NODE_ENV=production"
+            ],
+            "Entrypoint": [
+                "tini",
+                "-s",
+                "--",
+                "node",
+                "/app/docker-entrypoint.mjs"
+            ],
+            "Cmd": [
+                "node",
+                "openclaw.mjs",
+                "gateway"
+            ],
+            "WorkingDir": "/app",
+            "Labels": {
+                "org.opencontainers.image.base.digest": "sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6",
+                "org.opencontainers.image.base.name": "docker.io/library/node:24-bookworm-slim",
+                "org.opencontainers.image.created": "2026-10-02T18:21:06.010Z",
+                "org.opencontainers.image.description": "OpenClaw gateway and CLI runtime container image",
+                "org.opencontainers.image.documentation": "https://docs.openclaw.ai/install/docker",
+                "org.opencontainers.image.licenses": "MIT",
+                "org.opencontainers.image.revision": "fc23bc864e4553c2d215e479eeec47b67a0bf943",
+                "org.opencontainers.image.source": "https://github.com/openclaw/openclaw",
+                "org.opencontainers.image.title": "OpenClaw",
+                "org.opencontainers.image.url": "https://openclaw.ai",
+                "org.opencontainers.image.version": "2026.9.8"
+            },
+            "ArgsEscaped": true,
+            "Healthcheck": {
+                "Test": [
+                    "CMD",
+                    "node",
+                    "dist/docker-healthcheck.js"
+                ],
+                "Interval": 180000000000,
+                "Timeout": 10000000000,
+                "StartPeriod": 15000000000,
+                "Retries": 3
+            }
+        },
+        "Architecture": "amd64",
+        "Os": "linux",
+        "Size": 1228907823,
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:34467cc93912af891dfee8a3902adf9b4f355a9bca4eaa46f658d1181a21de0d",
+                "sha256:d4538219a5351d13fddbd63f69f91967df4615ce1920c8a0f981a6a1382e9c2b",
+                "sha256:be63ab2861093aeb3c3b7a85e837d5d562510736ba39c00c5ad6b9d5714c9035",
+                "sha256:429894d93c7696cccc056cc2caa20da017bbb4f604ad1226327aa060d78b3bd9",
+                "sha256:362feb000ea275c02b50abdf827ccf034ae1f7d50989852ea8fc3cd9b80fd7b3",
+                "sha256:8e45a79e9941146f7dbea909ce669dd2cd75614be4f7952d88975061ee080ed8",
+                "sha256:1ebd1536a882e6afc3205680fb4e4d46d5803e467569e6629761873cd0a6c1a8",
+                "sha256:2f9d3da2e2cce1acd262bcc9b240c3ea325cd599de10a4298244a496cf453830",
+                "sha256:414a482b9ecd2466d0303e6968988e3b2b42f35388396b3a3f9660f545cdd3ec",
+                "sha256:28ae1dffde634d17384668d7f1381ec8ef6d85ff606251040446d6c8c1f1dc6e",
+                "sha256:eb036560f9b1cd15e50e18abc833c2d4c0e03338c2eaf1b6576e60d58eb78790",
+                "sha256:f66ec27f706cf9f5a2477cc92afc33bb61552894e5ed9cbcba81d14f713c68eb",
+                "sha256:d8eaa922817c993853a736d05934fb0cdbad877d50bf218c2e9e76bfd0655a79",
+                "sha256:38316c3f2666697d70eba2edcaa57807d8cbc6d42ee328ab68afac279e0087f1",
+                "sha256:dbf16ec18326166225e18e1d2d1f4c7d28d4e7851ce0b084f679b24887dd2a96",
+                "sha256:e77f2e3294f49b5ac904c6f9d1a62e69b49d36324c67db6acedebb3add4e0a6c",
+                "sha256:9026e3f6777765b586d227214d4a83db15203a1c634254d667c56a730bf442d1",
+                "sha256:5f45ffd4b09f124d6b4376df93f356608d04e91b4daecd1778ae9815c9a3b029",
+                "sha256:29cc0d54ac21935972b0fe92692dcc60783ebce88eaa5fe4872cb8cd23f394f4",
+                "sha256:ea34382f034c5f40055e336a3b38bd9c90a1ed15d1755b6cc1ec43734e482f67",
+                "sha256:94eaee5fcce0e61e4c23460af88901ad6c8e2d9c4483428920f39aa0dd373dc2",
+                "sha256:b9a2d30bf38e768097f7adb96b28d6d33ace5aa3199c48021a90e423a2a01451",
+                "sha256:93a879acf6c1d1a2a150f5953dcb2d22f2f86674120f9f511ea672d4a4ca09fc",
+                "sha256:5d3c4b8f2c150359e87ef31a57cba57379b7a39c0cce1df61390b62ee516ce04",
+                "sha256:06960580ccb6918ec457515de494f892a87f4bcfff3ea76fb5fc504027ac6011",
+                "sha256:42d7747739fcfbac8a9b9fb6ded4f2275bdbd6187ba27c10585a13518b70ab05",
+                "sha256:db005617af0db430819d3807b09aa58bc6afc2fc71603d4dd1c909942a78f5d4",
+                "sha256:4a69a28ecdadbb0db612a04d6907d1cdb5db35c40c4465b0adbe019a36e2e7e1",
+                "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+                "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+                "sha256:91f61d3bc6cce27118c0bb0f2dd2abf382b5929d72eda80b267e309094636143",
+                "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+                "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+                "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+                "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+                "sha256:0e30037782b6c744ff94ecfb003cec99f1a127e8c727dc6095c570d65a64a423",
+                "sha256:11608db722466455e6726f906fb03deafa7a8a282c4c4ffb4870b8cc954f1712",
+                "sha256:293cc714012b43c77cd78236d89ab43a634e9b2b6664b7bdbfb015c702a12f22"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "2026-10-07T19:58:22.50535606Z"
+        },
+        "Descriptor": {
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "digest": "sha256:5139eb3ca71ba20d3cd3aa933338e63dbff857d384e482fbdb7dd557849e5529",
+            "size": 7500,
+            "annotations": {
+                "org.opencontainers.image.ref.name": "ghcr.io/openclaw/openclaw@sha256:5139eb3ca71ba20d3cd3aa933338e63dbff857d384e482fbdb7dd557849e5529"
+            }
+        }
+    }
+]

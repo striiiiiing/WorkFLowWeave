@@ -1,0 +1,221 @@
+{
+  "mode": "native-backend",
+  "date_utc": "2026-10-07T18:45:56Z",
+  "startup_seconds": [
+    11.283035499000107,
+    5.189461740999832,
+    4.93164527800036
+  ],
+  "runtime_versions": {
+    "python": "Python 3.12.15",
+    "docker": "Docker version 29.1.3, build 29.1.3-0ubuntu3~22.04.2",
+    "kernel": "5.15.0-177-generic",
+    "swap": "total        used        free      shared  buff/cache   available\nMem:      1687068672   555769856   178765824     2719744   952532992   928501760\nSwap:              0           0           0"
+  },
+  "idle": {
+    "duration_seconds": 60.10296041199945,
+    "cpu_mean_one_core_percent": 0.11632328571722259,
+    "cpu_peak_one_core_percent": 0.19532710941476394,
+    "rss_mean_mib": 169.4375,
+    "rss_peak_mib": 169.4375,
+    "working_set_mean_mib": 141.015625,
+    "working_set_peak_mib": 141.015625,
+    "host_available_min_mib": 732.65625
+  },
+  "load": {
+    "duration_seconds": 60.139335509000375,
+    "cpu_mean_one_core_percent": 46.253189057741714,
+    "cpu_peak_one_core_percent": 54.753775594529195,
+    "rss_mean_mib": 172.64811731557376,
+    "rss_peak_mib": 339.921875,
+    "working_set_mean_mib": 141.6297387295082,
+    "working_set_peak_mib": 141.97265625,
+    "host_available_min_mib": 732.64453125,
+    "successful_requests": 4191,
+    "failures": [],
+    "latency_p50_ms": 7.017715999609209,
+    "latency_p95_ms": 9.216999000273063
+  },
+  "disk": {
+    "/opt/logagent/.venv": 241303552,
+    "/opt/logagent/src": 1466368,
+    "/opt/logagent/plugins": 4067328,
+    "/opt/logagent/frontend/dist": 2011136,
+    "/opt/workflowweave-python": 113852416,
+    "/usr/local/bin/node": 122892288,
+    "/usr/local/bin/uv": 56963072,
+    "/usr/local/bin/uvx": 393216,
+    "/opt/logagent-native": 315392,
+    "/var/lib/docker": 16015360,
+    "/var/lib/containerd": 939376640,
+    "docker_state": 245760,
+    "images": [
+      {
+        "Id": "sha256:657d84a17b7b4a1a053052090401b4d6080aaba1647b7de94d6f1324b9f3cd22",
+        "RepoTags": [
+          "ghcr.io/striiiiiing/workflowweave-backend:latest"
+        ],
+        "RepoDigests": [
+          "ghcr.io/striiiiiing/workflowweave-backend@sha256:657d84a17b7b4a1a053052090401b4d6080aaba1647b7de94d6f1324b9f3cd22"
+        ],
+        "Comment": "buildkit.dockerfile.v0",
+        "Created": "2026-10-07T17:08:03.737497481Z",
+        "Config": {
+          "User": "workflowweave",
+          "ExposedPorts": {
+            "4300/tcp": {}
+          },
+          "Env": [
+            "PATH=/app/.venv/bin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "LANG=C.UTF-8",
+            "GPG_KEY=7169605F62C751356D054A26A821E680E5FA6305",
+            "PYTHON_VERSION=3.12.15",
+            "PYTHON_SHA256=c2c4321961fab0fb999d66e0cecf521c2ab3994c7992873ea99e306c1094fd5a",
+            "UV_LINK_MODE=copy",
+            "PYTHONUNBUFFERED=1",
+            "WORKFLOWWEAVE_API_URL=http://127.0.0.1:4300"
+          ],
+          "Entrypoint": [
+            "python",
+            "/app/deploy/bootstrap.py"
+          ],
+          "Volumes": {
+            "/var/lib/workflowweave": {}
+          },
+          "WorkingDir": "/var/lib/workflowweave",
+          "Labels": {
+            "com.docker.compose.project": "workflowweave",
+            "com.docker.compose.service": "backend",
+            "com.docker.compose.version": "5.1.2",
+            "org.opencontainers.image.source": "https://github.com/striiiiiing/WorkFLowWeave"
+          },
+          "Healthcheck": {
+            "Test": [
+              "CMD-SHELL",
+              "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:4300/api/health', timeout=4).read()\""
+            ],
+            "Interval": 10000000000,
+            "Timeout": 5000000000,
+            "StartPeriod": 60000000000,
+            "Retries": 3
+          }
+        },
+        "Architecture": "amd64",
+        "Os": "linux",
+        "Size": 188197357,
+        "RootFS": {
+          "Type": "layers",
+          "Layers": [
+            "sha256:e58989146fcec76699871403b9897b5c014af1ccd85f5a9300a215e7975525d7",
+            "sha256:916eda96356f5280ba200349e111e70c46d7ec98a4a3dd2c38e88f7b133c17ba",
+            "sha256:694fd645f7c3f2166f87f2929facc4eccb7e1cfda9bfb5d1373f77e6c9c57ea6",
+            "sha256:742affd58633b3e2b85ef86583f2775486468b1317f7214d12e193d948421098",
+            "sha256:9a8026043eafd226fd9ae5ac5a7dd28709b198b14cbf6599ae5184d38dfb8583",
+            "sha256:00e6cb47d4479e51c3c88739f6f01689e5b60bedd4c61e6e8d3978afa77cbaa0",
+            "sha256:8e914a204336bf6ba471721b611da41b014e49df6cd289f8798bc084a9a4e6e6",
+            "sha256:ab31a1377a83361f5eee819fdb26d61bc42b0f43cb87352a83c0f9457b9765db",
+            "sha256:01e4c5220bbe69ce11bad648aafc8b31b972fdb560a6ec3b6582860a6f41a9da",
+            "sha256:321fe2db9f02bb3be0ed4b6664fd60455129dae676446d513f681bdfd6975932",
+            "sha256:116e1aab9ce1be3031818c11866c830aab7d5b27cff28fc146f857eeb561e53c",
+            "sha256:18ea9a3f4f4ed148f6c9b5ab672153f2fe8cc94d59d4bf15e96f73a052d2d4d0",
+            "sha256:8811b79a1d751b7f386e53ce3a84e73248d45842e02a9c248ec63e578bc1d421",
+            "sha256:616978273684d0d633c49fea0968419d72c0e82f6f3313be594bc47d9acf7277",
+            "sha256:69cacf633ce71c6c7f12beeaaf27864a17d8eaafb6b69cf105333da523f2c8f8",
+            "sha256:5530c44ae71e521a2bd343157af78cca2b9931701962b4619665c836f44bb3ee",
+            "sha256:2a5141346be484d3a71ab1aa7b26dbcddf90dd9cb2a9b187895dc64fee46bb8c",
+            "sha256:d1fcaf8805709cb4a469d36ce7fdac0df15d8ab83c01d1016ed15d9d3bf4f6a5",
+            "sha256:579d65412b922dabc495a3e5faf6d1e7a4852c92865dd10ad2b367bc0d4710b7",
+            "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"
+          ]
+        },
+        "Metadata": {
+          "LastTagTime": "2026-10-07T18:32:57.854408193Z"
+        },
+        "Descriptor": {
+          "mediaType": "application/vnd.oci.image.index.v1+json",
+          "digest": "sha256:657d84a17b7b4a1a053052090401b4d6080aaba1647b7de94d6f1324b9f3cd22",
+          "size": 856,
+          "annotations": {
+            "containerd.io/distribution.source.ghcr.io": "striiiiiing/workflowweave-backend",
+            "io.containerd.image.name": "ghcr.io/striiiiiing/workflowweave-backend:latest",
+            "org.opencontainers.image.ref.name": "latest"
+          }
+        }
+      },
+      {
+        "Id": "sha256:e5b4eb58bc27fbaae7bda91f1f3fdb8a7ccbe8f62008040a7a4af3c4ef77ebd1",
+        "RepoTags": [
+          "ghcr.io/striiiiiing/workflowweave-frontend:latest"
+        ],
+        "RepoDigests": [
+          "ghcr.io/striiiiiing/workflowweave-frontend@sha256:e5b4eb58bc27fbaae7bda91f1f3fdb8a7ccbe8f62008040a7a4af3c4ef77ebd1"
+        ],
+        "Comment": "buildkit.dockerfile.v0",
+        "Created": "2026-10-07T16:45:47.650466227Z",
+        "Config": {
+          "ExposedPorts": {
+            "80/tcp": {}
+          },
+          "Env": [
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "NGINX_VERSION=1.28.3",
+            "PKG_RELEASE=1",
+            "DYNPKG_RELEASE=1",
+            "NJS_VERSION=0.9.6",
+            "NJS_RELEASE=1",
+            "ACME_VERSION=0.3.1"
+          ],
+          "Entrypoint": [
+            "/docker-entrypoint.sh"
+          ],
+          "Cmd": [
+            "nginx",
+            "-g",
+            "daemon off;"
+          ],
+          "WorkingDir": "/",
+          "Labels": {
+            "com.docker.compose.project": "workflowweave",
+            "com.docker.compose.service": "frontend",
+            "com.docker.compose.version": "5.1.2",
+            "maintainer": "NGINX Docker Maintainers <docker-maint@nginx.com>",
+            "org.opencontainers.image.source": "https://github.com/striiiiiing/WorkFLowWeave"
+          },
+          "StopSignal": "SIGQUIT"
+        },
+        "Architecture": "amd64",
+        "Os": "linux",
+        "Size": 26533219,
+        "RootFS": {
+          "Type": "layers",
+          "Layers": [
+            "sha256:989e799e634906e94dc9a5ee2ee26fc92ad260522990f26e707861a5f52bf64e",
+            "sha256:a2738b08d7114c9d5581dd5482d3b5cc297fcf73b8d330c3ba38d24c43939119",
+            "sha256:47a53288c3ef0ee51df84ef47d217f18c1762412532fded9af1fd88ecee14294",
+            "sha256:9e707aa6db4786355904a1b794c80f378b690f8f0384af56117708a23a91f1da",
+            "sha256:a3446cc6c821fa11b704a45811ab554675f0327307af71b3f4ff5a70c7a4eec8",
+            "sha256:42608b42cb5e68548abf1c71aa851acfd65816d0ceaff6ee85849c7c478463f0",
+            "sha256:53c769b49ca0a2f0f6cf5e4a807af8933cec6cde9302d56d91a78bc38ea407a8",
+            "sha256:f76f397f2ce6b266573b70eb60ef1335e9984a1941eedd2a3505af4870c3afa0",
+            "sha256:1272e96237a5d976550eea934507d3a33620b6300d64e92e2fdbf991b92ecde3",
+            "sha256:3504494c99485eff1406f3a49bb7886191fc3f40947a10e53bc42a5596f52e48"
+          ]
+        },
+        "Metadata": {
+          "LastTagTime": "2026-10-07T18:32:57.858617134Z"
+        },
+        "Descriptor": {
+          "mediaType": "application/vnd.oci.image.index.v1+json",
+          "digest": "sha256:e5b4eb58bc27fbaae7bda91f1f3fdb8a7ccbe8f62008040a7a4af3c4ef77ebd1",
+          "size": 856,
+          "annotations": {
+            "containerd.io/distribution.source.ghcr.io": "striiiiiing/workflowweave-frontend",
+            "io.containerd.image.name": "ghcr.io/striiiiiing/workflowweave-frontend:latest",
+            "org.opencontainers.image.ref.name": "latest"
+          }
+        }
+      }
+    ]
+  },
+  "infrastructure_processes": "PID   RSS COMMAND\n    809 35572 containerd\n   1135 177468 dockerd"
+}

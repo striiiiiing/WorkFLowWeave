@@ -1,0 +1,2 @@
+curl: (52) Empty reply from server
+curl_exit=52

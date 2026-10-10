@@ -1,0 +1,111 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile.benchmark
+#1 transferring dockerfile: 2.72kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.m.daocloud.io/library/node:24.15.0-bookworm-slim
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.m.daocloud.io/library/python:3.12-slim-bookworm
+#3 DONE 0.0s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 318B done
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 DONE 0.0s
+
+#6 [backend  1/17] FROM docker.m.daocloud.io/library/python:3.12-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258
+#6 resolve docker.m.daocloud.io/library/python:3.12-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258 0.1s done
+#6 DONE 0.1s
+
+#7 [node 1/1] FROM docker.m.daocloud.io/library/node:24.15.0-bookworm-slim@sha256:4e6b70dd6cbfc88c8157ba19aa3d9f9cce6ba4703576d55459e45efcbc9c5f5d
+#7 resolve docker.m.daocloud.io/library/node:24.15.0-bookworm-slim@sha256:4e6b70dd6cbfc88c8157ba19aa3d9f9cce6ba4703576d55459e45efcbc9c5f5d 0.1s done
+#7 DONE 0.1s
+
+#5 [internal] load build context
+#5 transferring context: 318.69kB 0.1s done
+#5 DONE 0.1s
+
+#8 [wechat-deps 1/3] WORKDIR /bridge
+#8 CACHED
+
+#9 [backend  2/17] RUN sed -i 's|http://deb.debian.org|https://mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources     && apt-get -o Acquire::https::Timeout=30 update     && apt-get -o Acquire::https::Timeout=30 install -y --no-install-recommends git ca-certificates     && rm -rf /var/lib/apt/lists/*     && pip install --no-cache-dir uv==0.11.2
+#9 CACHED
+
+#10 [backend  3/17] COPY --from=node /usr/local/bin/node /usr/local/bin/node
+#10 CACHED
+
+#11 [backend  5/17] RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm     && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
+#11 CACHED
+
+#12 [backend  6/17] WORKDIR /app
+#12 CACHED
+
+#13 [backend  4/17] COPY --from=node /usr/local/lib/node_modules/ /usr/local/lib/node_modules/
+#13 CACHED
+
+#14 [backend  8/17] COPY uv.benchmark.lock ./uv.lock
+#14 CACHED
+
+#15 [backend  7/17] COPY pyproject.toml ./
+#15 CACHED
+
+#16 [backend  9/17] RUN --mount=type=cache,target=/root/.cache/uv     uv sync --frozen --no-dev --extra channels --no-install-project
+#16 CACHED
+
+#17 [backend 10/17] COPY README.md LICENSE ./
+#17 CACHED
+
+#18 [wechat-deps 2/3] COPY plugins/channel/wechat_openclaw/package*.json ./
+#18 DONE 0.1s
+
+#19 [backend 11/17] COPY src/ ./src/
+#19 DONE 0.4s
+
+#20 [wechat-deps 3/3] RUN npm config set registry https://registry.npmmirror.com && npm ci --ignore-scripts --no-audit --no-fund
+#20 ...
+
+#21 [backend 12/17] RUN --mount=type=cache,target=/root/.cache/uv     uv sync --frozen --no-dev --extra channels --no-editable
+#21 1.598    Building workflowweave @ file:///app
+#21 3.129       Built workflowweave @ file:///app
+#21 3.165 Prepared 1 package in 1.56s
+#21 3.247 Installed 1 package in 81ms
+#21 3.249  + workflowweave==0.1.0 (from file:///app)
+#21 DONE 3.3s
+
+#22 [backend 13/17] COPY plugins/channel/ ./plugins/channel/
+#22 DONE 0.2s
+
+#20 [wechat-deps 3/3] RUN npm config set registry https://registry.npmmirror.com && npm ci --ignore-scripts --no-audit --no-fund
+#20 12.09 npm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead
+#20 84.04 
+#20 84.04 added 334 packages in 1m
+#20 DONE 84.2s
+
+#23 [backend 14/17] COPY --from=wechat-deps /bridge/node_modules/ ./plugins/channel/wechat_openclaw/node_modules/
+#23 DONE 42.9s
+
+#24 [backend 15/17] COPY deploy/docker/bootstrap.py /app/deploy/bootstrap.py
+#24 DONE 0.4s
+
+#25 [backend 16/17] RUN useradd --uid 10001 --create-home workflowweave     && mkdir -p /var/lib/workflowweave && chown workflowweave:workflowweave /var/lib/workflowweave
+#25 DONE 1.0s
+
+#26 [backend 17/17] WORKDIR /var/lib/workflowweave
+#26 DONE 0.2s
+
+#27 exporting to image
+#27 exporting layers
+#27 exporting layers 74.3s done
+#27 exporting manifest sha256:564460a0d44b7ba15c11aa6b1d689d8e9389a6785a6f78d429a170e39d39d52f 0.0s done
+#27 exporting config sha256:babcb7963873fb8f77ce60f7e48fd4ad50a8d552ae4f150ddd1c54c55cf50529 0.0s done
+#27 exporting attestation manifest sha256:348f2785e9720af8e7f0a49a016f4c2c86ef5a66a8a30d960974be10084cae83 0.0s done
+#27 exporting manifest list sha256:d544a1f4ef161678c29be1a62b4d47474c630b06c39dbc4cbf2cc93aece52169 0.0s done
+#27 naming to docker.io/library/workflowweave-backend:local
+#27 naming to docker.io/library/workflowweave-backend:local 0.0s done
+#27 unpacking to docker.io/library/workflowweave-backend:local
+#27 unpacking to docker.io/library/workflowweave-backend:local 14.5s done
+#27 DONE 89.0s

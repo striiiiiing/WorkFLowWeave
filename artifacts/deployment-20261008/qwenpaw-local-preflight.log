@@ -1,0 +1,119 @@
+⚠️  No config.json found in /app/working
+📦 Running initialization...
+INFO venv/lib/python3.11/site-packages/qwenpaw/agents/tools/__init__.py:73 | 2026-10-07 20:27:49 | Unified browser experimental beta is enabled (subprocess isolation; OS sandboxing is planned). Set browser.experimental=false to use the deprecated stable browser implementation.
+Working dir: /app/working
+╭───────────────────── 🐾 Security warning — please read ──────────────────────╮
+│ Security warning — please read.                                              │
+│                                                                              │
+│ QwenPaw is a personal assistant that runs in your own environment. It can    │
+│ connect to                                                                   │
+│ channels (DingTalk, Feishu, QQ, Discord, iMessage, etc.) and run skills that │
+│ read                                                                         │
+│ files, run commands, and call external APIs. By default it is a              │
+│ single-operator                                                              │
+│ boundary: one trusted user. A malicious or confused prompt can lead the      │
+│ agent to                                                                     │
+│ do unsafe things if tools are enabled.                                       │
+│                                                                              │
+│ If multiple people can message the same QwenPaw instance with tools enabled, │
+│ they                                                                         │
+│ share the same delegated authority (files, commands, secrets the agent can   │
+│ use).                                                                        │
+│                                                                              │
+│ If you are not comfortable with access control and hardening, do not run     │
+│ QwenPaw with                                                                 │
+│ tools or expose it to untrusted users. Get help from someone experienced     │
+│ before                                                                       │
+│ enabling powerful skills or exposing the bot to the internet.                │
+│                                                                              │
+│ Recommended baseline:                                                        │
+│ - Restrict which channels and users can trigger the agent; use allowlists    │
+│ where possible.                                                              │
+│ - Multi-user or shared inbox: use separate config/credentials and ideally    │
+│ separate                                                                     │
+│   OS users or hosts per trust boundary.                                      │
+│ - Run skills with least privilege; sandbox where you can.                    │
+│ - Keep secrets out of the agent's working directory and skill-accessible     │
+│ paths.                                                                       │
+│ - Use a capable model when the agent has tools or handles untrusted input.   │
+│                                                                              │
+│ Review your config and skills regularly; limit tool scope to what you need.  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+Security acceptance assumed (--accept-security with --defaults).
+
+=== Default Workspace Initialization ===
+✓ Default workspace initialized
+INFO venv/lib/python3.11/site-packages/qwenpaw/app/migration.py:864 | 2026-10-07 20:27:51 | Creating builtin QA agent...
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'guidance' completed in 0.00s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'QA_source_index' completed in 0.00s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/app/migration.py:885 | 2026-10-07 20:27:51 | Created builtin QA agent with workspace: /app/working/workspaces/QwenPaw_QA_Agent_0.2
+✓ Builtin QA agent workspace ensured
+
+✓ Configuration saved to /app/working/config.json
+
+=== LLM Provider Configuration (required) ===
+No default model for QwenPaw Local. Run 'qwenpaw models config' to set one.
+Syncing pool skills into workspace...
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'QA_source_index' completed in 0.00s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'browser' completed in 0.00s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'channel_message' completed in 0.00s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'chat_with_agent' completed in 0.00s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'cron' completed in 0.00s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'dingtalk_channel' completed in 0.00s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'docx' completed in 0.11s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'file_reader' completed in 0.00s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'guidance' completed in 0.00s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'mailbox' completed in 0.01s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'make-skill' completed in 0.04s – 1 finding(s), safe=False
+WARNING venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/__init__.py:478 | 2026-10-07 20:27:51 | Skill 'make-skill' has 1 security finding(s) (max severity: CRITICAL) but blocking is disabled – proceeding anyway.
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'make_plan' completed in 0.00s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'multi_agent_collaboration' completed in 0.01s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'pdf' completed in 0.04s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'pptx' completed in 0.13s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'xlsx' completed in 0.10s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'QA_source_index' completed in 0.00s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'browser' completed in 0.00s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'channel_message' completed in 0.00s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'chat_with_agent' completed in 0.00s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'cron' completed in 0.00s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'dingtalk_channel' completed in 0.00s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'docx' completed in 0.11s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'file_reader' completed in 0.00s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'guidance' completed in 0.00s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:51 | Scan of 'mailbox' completed in 0.00s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:52 | Scan of 'make-skill' completed in 0.05s – 1 finding(s), safe=False
+WARNING venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/__init__.py:478 | 2026-10-07 20:27:52 | Skill 'make-skill' has 1 security finding(s) (max severity: CRITICAL) but blocking is disabled – proceeding anyway.
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:52 | Scan of 'make_plan' completed in 0.00s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:52 | Scan of 'multi_agent_collaboration' completed in 0.01s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:52 | Scan of 'pdf' completed in 0.03s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:52 | Scan of 'pptx' completed in 0.13s – 0 finding(s), safe=True
+INFO venv/lib/python3.11/site-packages/qwenpaw/security/skill_scanner/scanner.py:235 | 2026-10-07 20:27:52 | Scan of 'xlsx' completed in 0.12s – 0 finding(s), safe=True
+✓ 16 new skill(s) enabled.
+
+Checking MD files [language: zh]...
+✓ Copied 8 md file(s): SOUL.md, BOOTSTRAP.md, AGENTS.md, PROFILE.md, HEARTBEAT.md, MEMORY.md, CONTACTS.md, MAIL_TRIAGE.md
+✓ Heartbeat query saved to /app/working/HEARTBEAT.md
+
+✓ Initialization complete!
+✅ Initialization complete!
+============================================================
+SECURITY NOTICE: QwenPaw is running in Docker without authentication.
+
+QwenPaw cannot verify whether access to the service is limited to a trusted
+network. Anyone who can reach the service may access QwenPaw APIs without login.
+
+Recommended:
+  - Restrict access to a trusted network or protected environment.
+  - Enable authentication with QWENPAW_AUTH_ENABLED=true if untrusted users or
+    processes may reach the service.
+============================================================
+2026-10-07 20:27:52,891 INFO Set uid to user 0 succeeded
+2026-10-07 20:27:52,892 INFO supervisord started with pid 7
+2026-10-07 20:27:53,895 INFO spawned: 'xvfb' with pid 62
+2026-10-07 20:27:53,898 INFO spawned: 'xfce4' with pid 63
+2026-10-07 20:27:53,900 INFO spawned: 'app' with pid 65
+2026-10-07 20:27:53,901 INFO spawned: 'dbus' with pid 67
+2026-10-07 20:27:55,748 INFO success: xvfb entered RUNNING state, process has stayed up for > than 1 seconds (startsecs)
+2026-10-07 20:27:55,748 INFO success: xfce4 entered RUNNING state, process has stayed up for > than 1 seconds (startsecs)
+2026-10-07 20:27:55,748 INFO success: dbus entered RUNNING state, process has stayed up for > than 1 seconds (startsecs)
+2026-10-07 20:28:03,914 INFO success: app entered RUNNING state, process has stayed up for > than 10 seconds (startsecs)

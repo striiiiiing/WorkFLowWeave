@@ -1,26 +1,21 @@
 name: workflowweave
 services:
   backend:
-    image: ${BACKEND_IMAGE:-workflowweave-backend:local}
-    build:
-      context: .
-      target: backend
-    ports:
-      - "127.0.0.1:${BACKEND_PORT:-4300}:4300"
+    image: ${BACKEND_IMAGE:-ghcr.io/striiiiiing/workflowweave-backend:latest}
     volumes:
       - state:/var/lib/workflowweave
+      - user_plugins:/var/lib/workflowweave/user-plugins
+      - ./data/references:/var/lib/workflowweave/data/references
     restart: unless-stopped
     stop_grace_period: 180s
   frontend:
-    image: ${FRONTEND_IMAGE:-workflowweave-frontend:local}
-    build:
-      context: .
-      target: frontend
+    image: ${FRONTEND_IMAGE:-ghcr.io/striiiiiing/workflowweave-frontend:latest}
     ports:
-      - "127.0.0.1:${FRONTEND_PORT:-3000}:80"
+      - "${FRONTEND_PORT:-3000}:80"
     depends_on:
       backend:
         condition: service_healthy
     restart: unless-stopped
 volumes:
   state:
+  user_plugins:

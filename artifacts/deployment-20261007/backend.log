@@ -1,0 +1,9 @@
+[后端启动] 正在加载命令行模块...
+[后端启动] 正在加载运行时模块...
+[后端启动] 运行时模块加载完成，正在读取配置并装配后端...
+INFO:     Started server process [16576]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:4300 (Press CTRL+C to quit)
+INFO:     127.0.0.1:36272 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36284 - "GET /api/health HTTP/1.1" 200 OK

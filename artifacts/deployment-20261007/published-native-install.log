@@ -1,0 +1,169 @@
+Using CPython 3.12.15 interpreter at: /opt/workflowweave-python/bin/python3.12
+Creating virtual environment at: .venv
+   Updating https://github.com/toon-format/toon-python.git (e475c82e9da03dfaf88c0b277dee6b5d17100b13)
+   Building workflowweave @ file:///opt/logagent
+Downloading tiktoken (1.1MiB)
+Downloading pycryptodome (2.2MiB)
+Downloading zstandard (5.3MiB)
+Downloading pydantic-core (2.0MiB)
+Downloading aiohttp (1.7MiB)
+Downloading pygments (1.2MiB)
+Downloading cryptography (4.3MiB)
+Downloading openai (1.9MiB)
+Downloading sqlalchemy (3.3MiB)
+Downloading lark-oapi (7.4MiB)
+    Updated https://github.com/toon-format/toon-python.git (e475c82e9da03dfaf88c0b277dee6b5d17100b13)
+   Building toon-format @ git+https://github.com/toon-format/toon-python.git@e475c82e9da03dfaf88c0b277dee6b5d17100b13
+Downloading pycryptodome (2.2MiB)
+Downloading aiohttp (1.7MiB)
+Downloading pydantic-core (2.0MiB)
+Downloading tiktoken (1.1MiB)
+Downloading openai (1.9MiB)
+Downloading cryptography (4.3MiB)
+Downloading zstandard (5.3MiB)
+Downloading pygments (1.2MiB)
+Downloading sqlalchemy (3.3MiB)
+Downloading lark-oapi (7.4MiB)
+ Downloaded tiktoken
+ Downloaded pygments
+ Downloaded aiohttp
+ Downloaded pydantic-core
+ Downloaded openai
+ Downloaded pycryptodome
+ Downloaded sqlalchemy
+      Built toon-format @ git+https://github.com/toon-format/toon-python.git@e475c82e9da03dfaf88c0b277dee6b5d17100b13
+      Built workflowweave @ file:///opt/logagent
+ Downloaded cryptography
+ Downloaded zstandard
+ Downloaded lark-oapi
+Prepared 106 packages in 20.15s
+Installed 106 packages in 289ms
+ + aiohappyeyeballs==2.7.1
+ + aiohttp==3.14.3
+ + aiorwlock==1.5.1
+ + aiosignal==1.4.0
+ + aiosmtplib==5.1.3
+ + aiosqlite==0.21.0
+ + annotated-doc==0.0.5
+ + annotated-types==0.8.0
+ + anyio==4.15.1
+ + apscheduler==3.11.3
+ + arrow==1.4.0
+ + attrs==26.1.0
+ + certifi==2026.7.22
+ + cffi==2.1.1
+ + charset-normalizer==3.5.1
+ + click==8.5.0
+ + cron-descriptor==2.1.0
+ + cryptography==46.0.7
+ + distro==1.9.0
+ + fastapi==0.141.1
+ + fqdn==1.5.1
+ + frozenlist==1.8.0
+ + greenlet==3.5.6
+ + h11==0.16.0
+ + httpcore==1.0.9
+ + httpcore2==2.13.0
+ + httpx==0.28.1
+ + httpx-sse==0.4.3
+ + httpx2==2.13.0
+ + idna==3.19
+ + isoduration==20.11.0
+ + ison-py==1.2.0
+ + jiter==0.17.0
+ + jsonpatch==1.33
+ + jsonpointer==3.1.1
+ + jsonschema==4.26.0
+ + jsonschema-specifications==2025.9.1
+ + langchain==1.4.2
+ + langchain-core==1.6.4
+ + langchain-openai==1.6.2
+ + langchain-protocol==0.0.19
+ + langgraph==1.2.12
+ + langgraph-checkpoint==4.2.0
+ + langgraph-checkpoint-sqlite==3.1.1
+ + langgraph-prebuilt==1.1.0
+ + langgraph-sdk==0.4.5
+ + langsmith==0.12.4
+ + lark-oapi==1.7.3
+ + markdown-it-py==4.2.0
+ + mcp==1.30.0
+ + mdurl==0.1.2
+ + multidict==6.9.1
+ + openai==3.14.1
+ + orjson==3.12.0
+ + ormsgpack==1.12.2
+ + packaging==26.3
+ + propcache==0.5.4
+ + pycparser==3.0
+ + pycryptodome==3.23.0
+ + pydantic==2.13.5
+ + pydantic-core==2.46.5
+ + pydantic-settings==2.15.0
+ + pygments==2.21.0
+ + pyjwt==2.15.0
+ + python-dateutil==2.9.0.post0
+ + python-dotenv==1.2.3
+ + python-multipart==0.0.32
+ + python-telegram-bot==22.8
+ + pyyaml==6.0.3
+ + qq-botpy==1.2.1
+ + referencing==0.37.0
+ + regex==2026.9.10
+ + requests==2.34.2
+ + requests-toolbelt==1.0.0
+ + rfc3339-validator==0.1.4
+ + rfc3987==1.3.8
+ + rich==15.0.0
+ + rpds-py==2026.6.3
+ + shellingham==1.5.4
+ + six==1.17.0
+ + sniffio==1.3.1
+ + sqlalchemy==2.0.54
+ + sqlite-vec==0.1.9
+ + sqlmodel==0.0.42
+ + sse-starlette==3.4.11
+ + starlette==1.6.0
+ + tenacity==9.1.4
+ + tiktoken==0.14.0
+ + toon-format==0.9.0b1 (from git+https://github.com/toon-format/toon-python.git@e475c82e9da03dfaf88c0b277dee6b5d17100b13)
+ + truststore==0.10.4
+ + typer==0.27.2
+ + typing-extensions==4.16.0
+ + typing-inspection==0.4.4
+ + tzdata==2026.4
+ + tzlocal==5.4.4
+ + uri-template==1.3.0
+ + urllib3==2.7.0
+ + uuid-utils==0.17.1
+ + uvicorn==0.53.0
+ + webcolors==25.10.0
+ + websockets==15.0.1
+ + workflowweave==0.1.0 (from file:///opt/logagent)
+ + xxhash==4.0.1
+ + yarl==1.25.1
+ + zon-format==1.2.3
+ + zstandard==0.25.0
+	Command being timed: "uv sync --frozen --no-dev --extra channels --no-editable --python /opt/workflowweave-python/bin/python3.12"
+	User time (seconds): 6.87
+	System time (seconds): 4.34
+	Percent of CPU this job got: 53%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:21.08
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 64220
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 96
+	Minor (reclaiming a frame) page faults: 50327
+	Voluntary context switches: 83738
+	Involuntary context switches: 21702
+	Swaps: 0
+	File system inputs: 187680
+	File system outputs: 459768
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

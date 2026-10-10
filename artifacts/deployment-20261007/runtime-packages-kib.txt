@@ -1,0 +1,6 @@
+containerd 100805
+docker-compose-v2 64997
+docker.io 134186
+git 18484
+nginx-core 1272
+runc 36052

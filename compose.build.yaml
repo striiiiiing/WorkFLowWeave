@@ -1,0 +1,9 @@
+services:
+  backend:
+    build:
+      context: .
+      target: backend
+  frontend:
+    build:
+      context: .
+      target: frontend

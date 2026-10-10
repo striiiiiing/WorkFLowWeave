@@ -1,0 +1,4 @@
+*.tar
+*.tar.gz
+published-source/
+published-source$item/

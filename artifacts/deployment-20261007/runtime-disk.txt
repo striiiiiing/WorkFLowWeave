@@ -1,0 +1,12 @@
+241303552	/opt/logagent/.venv
+1466368	/opt/logagent/src
+4067328	/opt/logagent/plugins
+2011136	/opt/logagent/frontend/dist
+113852416	/opt/workflowweave-python
+122892288	/usr/local/bin/node
+56963072	/usr/local/bin/uv
+393216	/usr/local/bin/uvx
+270336	/opt/logagent-native
+16015360	/var/lib/docker
+939376640	/var/lib/containerd
+11857920	/root/.cache/uv

@@ -1,0 +1,149 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile.benchmark
+#1 transferring dockerfile: 2.72kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.m.daocloud.io/library/node:24.15.0-bookworm-slim
+#2 DONE 0.1s
+
+#3 [internal] load metadata for docker.m.daocloud.io/library/nginx:1.28-alpine
+#3 DONE 0.1s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 318B done
+#4 DONE 0.0s
+
+#5 [frontend 1/3] FROM docker.m.daocloud.io/library/nginx:1.28-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
+#5 resolve docker.m.daocloud.io/library/nginx:1.28-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236 0.1s done
+#5 DONE 0.1s
+
+#6 [node 1/1] FROM docker.m.daocloud.io/library/node:24.15.0-bookworm-slim@sha256:4e6b70dd6cbfc88c8157ba19aa3d9f9cce6ba4703576d55459e45efcbc9c5f5d
+#6 resolve docker.m.daocloud.io/library/node:24.15.0-bookworm-slim@sha256:4e6b70dd6cbfc88c8157ba19aa3d9f9cce6ba4703576d55459e45efcbc9c5f5d 0.1s done
+#6 DONE 0.1s
+
+#7 [internal] load build context
+#7 transferring context: 38.48kB 0.1s done
+#7 DONE 0.2s
+
+#8 [frontend-build 1/5] WORKDIR /frontend
+#8 CACHED
+
+#9 [frontend-build 2/5] COPY frontend/package*.json ./
+#9 CACHED
+
+#10 [frontend-build 3/5] RUN npm config set registry https://registry.npmmirror.com && npm ci --no-audit --no-fund
+#10 CACHED
+
+#11 [frontend 2/3] COPY deploy/docker/nginx.conf /etc/nginx/conf.d/default.conf
+#11 CACHED
+
+#12 [frontend-build 4/5] COPY frontend/ ./
+#12 CACHED
+
+#13 [frontend-build 5/5] RUN npm run build
+#13 1.243 
+#13 1.243 > workflowweave-frontend@0.1.0 build
+#13 1.243 > vue-tsc && vite build
+#13 1.243 
+#13 32.59 vite v6.4.3 building for production...
+#13 34.04 transforming...
+#13 50.68 node_modules/zod/v4/core/regexes.js (74:0): A comment
+#13 50.68 
+#13 50.68 "/** Anchors a pattern source. The interpolation lives here rather than at the call site because
+#13 50.68  * esbuild will not drop a `@__PURE__` call whose own argument interpolates a variable, but it
+#13 50.68  * will drop `anchor(dateSource)`. Keeping it inline pinned `date` into every bundle. */"
+#13 50.68 
+#13 50.68 in "node_modules/zod/v4/core/regexes.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+#13 50.72 node_modules/zod/v4/core/util.js (400:0): A comment
+#13 50.72 
+#13 50.72 "// Wrapped in a `@__PURE__` IIFE: esbuild never tree-shakes a top-level initializer that contains a member access on `Number`, so the bare object literal survived into every bundle."
+#13 50.72 
+#13 50.72 in "node_modules/zod/v4/core/util.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+#13 62.14 ✓ 4220 modules transformed.
+#13 63.32 rendering chunks...
+#13 65.24 computing gzip size...
+#13 65.42 dist/index.html                                                                                     1.00 kB │ gzip:   0.66 kB
+#13 65.42 dist/assets/WorkflowEditPage-uuxIQgKZ.css                                                           0.05 kB │ gzip:   0.07 kB
+#13 65.42 dist/assets/RunDetailPage-CHQRvaAL.css                                                              0.11 kB │ gzip:   0.12 kB
+#13 65.42 dist/assets/SourceEditorSession-Du35flcx.css                                                        0.14 kB │ gzip:   0.14 kB
+#13 65.42 dist/assets/AgentPage-iEXxxex2.css                                                                  0.89 kB │ gzip:   0.42 kB
+#13 65.43 dist/assets/el-card-BAyktVMS.css                                                                    0.92 kB │ gzip:   0.32 kB
+#13 65.43 dist/assets/RunProgress-BXh58GHF.css                                                                1.04 kB │ gzip:   0.40 kB
+#13 65.43 dist/assets/NotFoundPage-CF-sYK2h.css                                                               1.46 kB │ gzip:   0.38 kB
+#13 65.43 dist/assets/el-skeleton-BjvgS5Bk.css                                                                1.57 kB │ gzip:   0.53 kB
+#13 65.43 dist/assets/el-dialog-Dwj42Kqm.css                                                                  4.74 kB │ gzip:   1.31 kB
+#13 65.43 dist/assets/el-radio-button-mUGqmzuy.css                                                            7.60 kB │ gzip:   1.42 kB
+#13 65.43 dist/assets/el-popconfirm-BQ-So9k7.css                                                             21.84 kB │ gzip:   3.66 kB
+#13 65.43 dist/assets/el-form-item-2W6kqDBI.css                                                              30.69 kB │ gzip:   4.39 kB
+#13 65.43 dist/assets/NotificationCard-sxKMJHDR.css                                                          33.49 kB │ gzip:   4.84 kB
+#13 65.43 dist/assets/AgentGlobalSettingsModal-BlbHs580.css                                                  37.39 kB │ gzip:   6.25 kB
+#13 65.43 dist/assets/el-table-column-K1bMOgAm.css                                                           40.96 kB │ gzip:   5.92 kB
+#13 65.43 dist/assets/index-DdUDrBnm.css                                                                     58.87 kB │ gzip:  10.80 kB
+#13 65.43 dist/assets/useResourceTransport-Bahwyrpx.js                                                        0.08 kB │ gzip:   0.10 kB
+#13 65.43 dist/assets/_plugin-vue_export-helper-DlAUqK2U.js                                                   0.09 kB │ gzip:   0.10 kB
+#13 65.43 dist/assets/useSystemHealth--AcUqWcD.js                                                             0.15 kB │ gzip:   0.15 kB
+#13 65.43 dist/assets/idRule-mA5Q3phZ.js                                                                      0.16 kB │ gzip:   0.18 kB
+#13 65.43 dist/assets/clamp-CT_M8BoX.js                                                                       0.28 kB │ gzip:   0.19 kB
+#13 65.43 dist/assets/capabilities-YyAVBJIR.js                                                                0.31 kB │ gzip:   0.23 kB
+#13 65.43 dist/assets/ReportText-BY5fw_3V.js                                                                  0.51 kB │ gzip:   0.39 kB
+#13 65.43 dist/assets/SectionCard.vue_vue_type_script_setup_true_lang-Knx6S067.js                             0.61 kB │ gzip:   0.41 kB
+#13 65.43 dist/assets/StatusBadge.vue_vue_type_script_setup_true_lang-CLIGUey-.js                             1.11 kB │ gzip:   0.71 kB
+#13 65.43 dist/assets/PhaseReport-DT0MCJyN.js                                                                 1.12 kB │ gzip:   0.48 kB
+#13 65.43 dist/assets/catalog-BFqwx1aM.js                                                                     1.18 kB │ gzip:   0.60 kB
+#13 65.43 dist/assets/el-card-Be1RoeIJ.js                                                                     1.22 kB │ gzip:   0.56 kB
+#13 65.43 dist/assets/NotFoundPage--Go_tbP7.js                                                                1.69 kB │ gzip:   0.85 kB
+#13 65.43 dist/assets/RunProcessDetails-CqppFkbF.js                                                           1.71 kB │ gzip:   0.86 kB
+#13 65.43 dist/assets/index-8X3iqaun.js                                                                       1.73 kB │ gzip:   0.90 kB
+#13 65.43 dist/assets/AgentModelSelect.vue_vue_type_script_setup_true_lang-CM_Kvun0.js                        2.08 kB │ gzip:   1.16 kB
+#13 65.43 dist/assets/index-CLaGTVDv.js                                                                       2.83 kB │ gzip:   1.25 kB
+#13 65.43 dist/assets/useSourceUsage-Cw6kvzz_.js                                                              3.64 kB │ gzip:   1.62 kB
+#13 65.43 dist/assets/WorkflowListPage-BpjcOy44.js                                                            4.32 kB │ gzip:   2.07 kB
+#13 65.43 dist/assets/index-DkqxVTfE.js                                                                       4.42 kB │ gzip:   1.59 kB
+#13 65.43 dist/assets/ContinueInAgent.vue_vue_type_script_setup_true_lang-DAmV-Erm.js                         4.58 kB │ gzip:   2.21 kB
+#13 65.43 dist/assets/PhaseReport.vue_vue_type_script_setup_true_lang-BAFXP8iy.js                             4.60 kB │ gzip:   2.09 kB
+#13 65.43 dist/assets/DashboardPage-B0nvrRuM.js                                                               4.68 kB │ gzip:   2.22 kB
+#13 65.43 dist/assets/directive-DgUPrTfM.js                                                                   4.73 kB │ gzip:   2.02 kB
+#13 65.43 dist/assets/RunListPage-BbeOwtO-.js                                                                 4.74 kB │ gzip:   2.08 kB
+#13 65.43 dist/assets/index-zpNLQmXC.js                                                                       5.09 kB │ gzip:   1.78 kB
+#13 65.43 dist/assets/useCapabilities-DMJbQN_t.js                                                             5.50 kB │ gzip:   2.27 kB
+#13 65.43 dist/assets/omit-HkTTnJ4_.js                                                                        5.62 kB │ gzip:   2.33 kB
+#13 65.43 dist/assets/useAsyncTask-B1GNJC6R.js                                                                6.29 kB │ gzip:   2.74 kB
+#13 65.43 dist/assets/el-table-column-DvWnjbFu.js                                                             7.52 kB │ gzip:   3.19 kB
+#13 65.43 dist/assets/index-oucYusWq.js                                                                       7.62 kB │ gzip:   3.29 kB
+#13 65.43 dist/assets/PluginsPage-DjJk2IC9.js                                                                 9.05 kB │ gzip:   3.48 kB
+#13 65.43 dist/assets/ChannelEditor-9y11foTz.js                                                               9.98 kB │ gzip:   4.04 kB
+#13 65.43 dist/assets/index-BxspPJKZ.js                                                                      10.57 kB │ gzip:   3.87 kB
+#13 65.43 dist/assets/AIProviderEditor-C0UeOKZS.js                                                           11.59 kB │ gzip:   4.92 kB
+#13 65.43 dist/assets/index-CH8GslrD.js                                                                      12.82 kB │ gzip:   5.36 kB
+#13 65.43 dist/assets/SourceEditorSession-CbN_sdSJ.js                                                        13.44 kB │ gzip:   4.86 kB
+#13 65.43 dist/assets/index-Bi81nm8M.js                                                                      15.36 kB │ gzip:   5.62 kB
+#13 65.43 dist/assets/RunDetailPage-BIyHGEfo.js                                                              23.44 kB │ gzip:   8.54 kB
+#13 65.43 dist/assets/ResourcesPage-BvoH8iGj.js                                                              24.05 kB │ gzip:   8.07 kB
+#13 65.43 dist/assets/index-BqXMsPJ6.js                                                                      33.56 kB │ gzip:  11.43 kB
+#13 65.43 dist/assets/ParameterField.vue_vue_type_script_setup_true_lang-I6Wbv9_t.js                         35.10 kB │ gzip:  11.57 kB
+#13 65.43 dist/assets/index-DrDH64aK.js                                                                      35.38 kB │ gzip:  12.48 kB
+#13 65.43 dist/assets/el-popconfirm-BEhWTSPl.js                                                              49.04 kB │ gzip:  17.46 kB
+#13 65.43 dist/assets/useRunList-iyE42zaX.js                                                                 84.06 kB │ gzip:  29.37 kB
+#13 65.43 dist/assets/NotificationCard.vue_vue_type_style_index_0_scoped_d4cbf952_lang-upZCLNmu.js          138.12 kB │ gzip:  43.31 kB
+#13 65.43 dist/assets/WorkflowEditPage-Bn5dyo_R.js                                                          157.67 kB │ gzip:  46.20 kB
+#13 65.43 dist/assets/AgentGlobalSettingsModal.vue_vue_type_style_index_0_scoped_494d853b_lang-DVkjrLnB.js  211.31 kB │ gzip:  72.83 kB
+#13 65.43 dist/assets/index-uZL3iPAF.js                                                                     299.95 kB │ gzip: 111.41 kB
+#13 65.43 dist/assets/AgentPage-BvqsgAUF.js                                                                 301.51 kB │ gzip:  88.28 kB
+#13 65.43 ✓ built in 32.78s
+#13 DONE 65.9s
+
+#14 [frontend 3/3] COPY --from=frontend-build /frontend/dist/ /usr/share/nginx/html/
+#14 DONE 0.2s
+
+#15 exporting to image
+#15 exporting layers
+#15 exporting layers 0.3s done
+#15 exporting manifest sha256:eb34b8c3cd815aa3e5c0cf2587839ec2bfb3af46a1b6afaa3dc771e2523c699d 0.0s done
+#15 exporting config sha256:5984d1b61232b26459419c4a830944bdf639eca1e42249f0121b7401f83cba92 0.0s done
+#15 exporting attestation manifest sha256:1afcff656bf0774b4114af011c93dc98d761526911bea34ab2b77f2e729e54c8 0.0s done
+#15 exporting manifest list sha256:76aa019d76cb8845250f27ac8ec1bd35254cc2f6fc60c2fe5ac108de2887eb47 0.0s done
+#15 naming to docker.io/library/workflowweave-frontend:local
+#15 naming to docker.io/library/workflowweave-frontend:local done
+#15 unpacking to docker.io/library/workflowweave-frontend:local 0.1s done
+#15 DONE 0.6s

@@ -1,0 +1,23 @@
+{
+  "openclaw": {
+    "version": "2026.9.8",
+    "source": "https://github.com/openclaw/openclaw/releases/tag/v2026.9.8",
+    "image": "ghcr.io/openclaw/openclaw@sha256:5139eb3ca71ba20d3cd3aa933338e63dbff857d384e482fbdb7dd557849e5529",
+    "url": "http://127.0.0.1:18789/startupz",
+    "notes": "Official default gateway image; bundled codex/diagnostics plugins; no browser variant, sandbox image, model or messaging account."
+  },
+  "hermes": {
+    "version": "v2026.9.24 / 0.21.5",
+    "source": "https://github.com/NousResearch/hermes-agent/releases/tag/v2026.9.24",
+    "image": "nousresearch/hermes-agent@sha256:2fd023efbb8d3d2b0ce1a73d028b07370cff34f567cfe0e999553e8c327ea283",
+    "url": "http://127.0.0.1:9119/",
+    "notes": "Official default image, actual dashboard command with s6 supervision, host network and localhost binding as documented; no desktop variant, model or messaging gateway."
+  },
+  "qwenpaw": {
+    "version": "v2.2.1",
+    "source": "https://github.com/agentscope-ai/QwenPaw/releases/tag/v2.2.1",
+    "image": "agentscope/qwenpaw@sha256:1987eed11fbcd5d594f219ff34156e81fb7dee6120117f5ce0f647837ef5a31b",
+    "url": "http://127.0.0.1:8088/",
+    "notes": "Official standard image and three state volumes, init enabled as official Compose; includes Chromium and desktop processes (Xvfb/Xfce/dbus). No configured model or messaging account."
+  }
+}

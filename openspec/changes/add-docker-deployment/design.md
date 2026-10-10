@@ -6,7 +6,9 @@
 
 多阶段 Dockerfile 提供 backend/frontend target。后端采用 Python 3.12 和 uv 0.11.2，通过 uv.lock 安装 channels extra；Node 24.15.0 满足微信官方 SDK engines，使用 package-lock.json 安装依赖。前端以相同 Node 构建 Vue，以 Nginx 提供 SPA 和 /api 代理；SSE 禁用缓存与缓冲。镜像不复制宿主虚拟环境、node_modules、配置、密钥或数据库。
 
-后端沿用 `workflowweave start` 的单进程生命周期，以 uid 10001 运行，工作目录为可写持久卷 /var/lib/workflowweave，使 QQ SDK 默认的 botpy.log 有可写位置而无需改 SDK。Compose 默认仅在本机暴露前端 3000、后端 4300，镜像名为 workflowweave-backend:local / workflowweave-frontend:local，可通过环境变量覆盖。健康检查读取真实 /api/health，前端等待后端健康。
+依据用户 2026-10-08 授权的分层与发布要求及后续顺序修正，增加独立可发布的 runtime target：Python/Debian 基础层之后依次安装 Node/npm、Git/系统依赖、uv/uvx，优先保留更常用的 Python/Node 环境作为层前缀；backend 继承 runtime，再安装项目 Python/微信依赖并复制应用源码。前端继续采用独立 Nginx 镜像，不引入 Python 工具链。Compose 只拉取 backend/frontend；runtime 是扩展镜像的复用入口，不要求部署者额外拉取。相同内容的层由 Docker 共享；重排不承诺缩小单套部署，不能将 runtime 与 backend 的大小重复相加。
+
+后端沿用 `workflowweave start` 的单进程生命周期，以 uid 10001 运行，工作目录为可写持久卷 /var/lib/workflowweave，使 QQ SDK 默认的 botpy.log 有可写位置而无需改 SDK。依据用户 2026-10-07 的部署要求，完整 Compose 仅发布前端 3000，后端通过内部服务名 backend:4300 访问；后端单独部署测试叠加 compose.backend.yaml，仅发布本机 4300。镜像名为 workflowweave-backend:local / workflowweave-frontend:local，可通过环境变量覆盖。健康检查读取真实 /api/health，前端等待后端健康。
 
 ## 状态与插件更新
 

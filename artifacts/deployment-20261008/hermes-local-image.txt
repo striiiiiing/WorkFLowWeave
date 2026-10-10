@@ -1,0 +1,100 @@
+[
+    {
+        "Id": "sha256:2fd023efbb8d3d2b0ce1a73d028b07370cff34f567cfe0e999553e8c327ea283",
+        "RepoTags": [
+            "nousresearch/hermes-agent@sha256:2fd023efbb8d3d2b0ce1a73d028b07370cff34f567cfe0e999553e8c327ea283"
+        ],
+        "RepoDigests": [],
+        "Comment": "buildkit.dockerfile.v0",
+        "Created": "2026-09-24T10:12:03.20370671Z",
+        "Config": {
+            "User": "root",
+            "Env": [
+                "PATH=/opt/hermes/bin:/opt/hermes/.venv/bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "PYTHONUNBUFFERED=1",
+                "PYTHONDONTWRITEBYTECODE=1",
+                "PLAYWRIGHT_BROWSERS_PATH=/opt/hermes/.playwright",
+                "npm_config_install_links=false",
+                "HERMES_WEB_DIST=/opt/hermes/hermes_cli/web_dist",
+                "HERMES_TUI_DIR=/opt/hermes/ui-tui",
+                "HERMES_HOME=/opt/data",
+                "HERMES_WRITE_SAFE_ROOT=/opt/data",
+                "HERMES_DISABLE_LAZY_INSTALLS=1",
+                "HERMES_LAZY_INSTALL_TARGET=/opt/data/lazy-packages",
+                "XDG_RUNTIME_DIR=/tmp/hermes-runtime"
+            ],
+            "Entrypoint": [
+                "/opt/hermes/docker/entrypoint-dispatch.sh"
+            ],
+            "Volumes": {
+                "/opt/data": {}
+            },
+            "WorkingDir": "/opt/hermes",
+            "Labels": {
+                "org.opencontainers.image.revision": "f97608f178d1ffeca59860195ab7da295f7c8e5f"
+            },
+            "ArgsEscaped": true
+        },
+        "Architecture": "amd64",
+        "Os": "linux",
+        "Size": 967837626,
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:5222f025e44ae24949e8880713955891ae0bd339afd3adb699d66e1cd603e2fa",
+                "sha256:f40c3ba877ca32ed30a1a99f3619a92cc59b128ef42879409c585e4c482a74e9",
+                "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+                "sha256:1dae4715762cc2f0ecc0a00823b00ccaf7ade19fcd25e3415c2752a9dce8903a",
+                "sha256:5834774d353c5ea5061bc0fcacbb7603101e6ab0506a616d36aac1914a28226d",
+                "sha256:b342ea4da0c0432382a9c9b54c3572d4f4c7e1b643abd66ed7545ece941680ef",
+                "sha256:5b1e8aa9111c26200172728e5efef5c9347b42effccaef61ac6d761f8a86d0ca",
+                "sha256:049b481cce5a0110a6838a29e78179a8242b0cc12b7e194979e68ba2f8f1d80a",
+                "sha256:feed267c63135725e8e0d6bde03fc9e03802e32ff8faa0aec8bd16f1f815bc68",
+                "sha256:e352c725a137aa1eebf48d4c5b9d99a75d9548a1093ca4a9233ce4d85b263615",
+                "sha256:9ee63ddac053d7caac65957d38e630a0fc8b28a4fc9d7dc8a1279a506061ac53",
+                "sha256:20086727b4d25991f1ab1b28c590c2705539cf8ff0015ab89710da7fad2bc748",
+                "sha256:ee3f833c65dfdabd074833ca9012c3cfa3d775b9cc4c4ec3116b86d611ba6213",
+                "sha256:c5b4d47acef7740874e856d0c73aa90dea17bc9584e4deff0fab555f1fd7859f",
+                "sha256:bfd001aa91e71975c4caffe6679a948f4d83dd91e5f2af437b4ba1a84ffac68a",
+                "sha256:7ad736e539be515ca2a2bf3c42bc3ecd475a1c80263809056af74ceb7f41a342",
+                "sha256:946a3349be52230429727768094cf673a40a5b0678dae8e3fc7ac4bfc64cc13d",
+                "sha256:0f0fcb492a66c59357ed341fbc2afc6fa2e68f46f6ac2c8d9b4ea16c35d66a87",
+                "sha256:fdadbe191e78b33597cb3b43121befd6f8a5703b4972dda35417b16f4224da3d",
+                "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+                "sha256:cc338837b480cb4e47d8a0ddead3219f7abf18ac34e1c065ca14a17c1760e6aa",
+                "sha256:05a0279d80e2c6450c0c4c50707756996989a597a9fe7f2c1cdacdf0f9072f7b",
+                "sha256:4b93bd3339077e2bd8c350d29d14149c1f327194f4114636bb009052dd488ce0",
+                "sha256:8692607e2c27f5a9262a6a9ca540e7b98a40b6137203a3d23c7d9dc26f50af5c",
+                "sha256:f52c06f752a12df0c18f586cd833d2e896ac6c10f83c9d16a4419138ae4fe26f",
+                "sha256:6a1ad74ff603662227604c1aeb05b7e9e07e699a4731bbc6cd8477a838dcf7c2",
+                "sha256:26a635e5a98a142948f0bab04de8e2f9ea45f799ec38a10a069f1aabed18e17b",
+                "sha256:7e7470dc97d1aaf1b27523b2838e22570eb60893125b7b9535b48c8608496e74",
+                "sha256:e8a3d03ee88f42e3fbb1ac1f473ee02b0fec3f1d00c00c75b95025b817f550db",
+                "sha256:61dfb7f864543ecc69dd34e5f7e5909b77c39cbd6de0d404d0bd4d35b29594f9",
+                "sha256:c3b4166b41f13f24ee1eb497b01840e7637d9f19c5d5341adfcaa2455acc773a",
+                "sha256:cf27633c59c6b38018ff62f629a31b6fca9bf87412c3156c06ec07fb49b91187",
+                "sha256:b5c80743f7219a35ad476e7678dba4a9bcbb6076b617d21d87a77ba544561a56",
+                "sha256:8d23e7f0525283c76607d8e5d7db353b73e86f01f576550541f40eb4bff109de",
+                "sha256:06d63f18492b97249488a505246e9ed347a952ba2b4ee35b6cba0e4b2567b327",
+                "sha256:7c2bcd6bc6fd1dac7dcb76915060d8417816213163d89fbed9fe11f7f809dfac",
+                "sha256:0f829f6da70fc106543198252a124fce330bbcf182e9eef0d67abefa90ed2884",
+                "sha256:c6f4268c60861ecff0855f0d0b97c5abe5d012ea0a89e1dbcec8d84f615639da",
+                "sha256:8788b5a2cb2ac137fe9c6fbab9e7d8018ee7a47cc419db62fcc1ee3a9a5b4618",
+                "sha256:cd3460ceae7eaeb627eeabd8f9670b5c3748da02c2d0c4ac0a5d4f91c2392fe2",
+                "sha256:60845b3ff8b6812d20c52b438dfce2c51c28c5533efbbb2a86d40a1c25a8510b",
+                "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "2026-10-07T19:53:40.589886786Z"
+        },
+        "Descriptor": {
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "digest": "sha256:2fd023efbb8d3d2b0ce1a73d028b07370cff34f567cfe0e999553e8c327ea283",
+            "size": 8277,
+            "annotations": {
+                "org.opencontainers.image.ref.name": "nousresearch/hermes-agent@sha256:2fd023efbb8d3d2b0ce1a73d028b07370cff34f567cfe0e999553e8c327ea283"
+            }
+        }
+    }
+]

@@ -1,0 +1,15 @@
+{
+  "mode": "docker-backend",
+  "date_utc": "2026-10-07T18:34:47Z",
+  "startup_seconds": [
+    22.208318838000196,
+    17.847286310001437,
+    16.959753332999753
+  ],
+  "runtime_versions": {
+    "python": "Python 3.12.15 (published image)",
+    "docker": "Docker version 29.1.3, build 29.1.3-0ubuntu3~22.04.2",
+    "kernel": "5.15.0-177-generic",
+    "swap": "total        used        free      shared  buff/cache   available\nMem:      1687068672   720199680    97796096     2719744   869072896   817668096\nSwap:              0           0           0"
+  }
+}

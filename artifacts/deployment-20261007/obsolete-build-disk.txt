@@ -1,0 +1,80 @@
+Images space usage:
+
+REPOSITORY                            TAG                     IMAGE ID       CREATED        SIZE      SHARED SIZE   UNIQUE SIZE   CONTAINERS
+workflowweave-backend                 local                   d544a1f4ef16   3 hours ago    2.03GB    149.5MB       1.88GB        0
+workflowweave-frontend                local                   76aa019d76cb   4 hours ago    95.1MB    66.49MB       28.57MB       0
+docker.m.daocloud.io/library/python   3.12-slim-bookworm      34386ef0cb08   40 hours ago   200MB     149.5MB       50.17MB       0
+docker.m.daocloud.io/library/node     24.15.0-bookworm-slim   4e6b70dd6cbf   4 months ago   325MB     0B            325.1MB       0
+docker.m.daocloud.io/library/nginx    1.28-alpine             a8b39bd9cf0f   6 months ago   93.4MB    66.49MB       26.87MB       0
+
+Containers space usage:
+
+CONTAINER ID   IMAGE     COMMAND   LOCAL VOLUMES   SIZE      CREATED   STATUS    NAMES
+
+Local Volumes space usage:
+
+VOLUME NAME   LINKS     SIZE
+
+Build cache usage: 6.242GB
+
+CACHE ID       CACHE TYPE        SIZE      CREATED       LAST USED     USAGE     SHARED
+20rwmx2fq3n3   regular           8.19kB    5 hours ago                 0         true
+oakjzgu6ggtp   regular           424MB     5 hours ago                 0         true
+p5gidz0im5iy   source.local      8.19kB    5 hours ago                 0         false
+qq0c2rpdhih9   regular           20.3MB    5 hours ago                 0         true
+qqmvvntnyh1b   source.local      8.19kB    5 hours ago                 0         false
+s5nbx5w20rb0   regular           197kB     5 hours ago                 0         true
+turdu1ycxquk   regular           184kB     5 hours ago                 0         true
+vc39ubudhqbw   regular           8.19kB    5 hours ago                 0         true
+xvt8l6ookxbs   regular           448B      5 hours ago                 0         true
+zgktplm1pzve   source.local      2.65MB    5 hours ago                 0         false
+0ghyief0n6ia   regular           28.2MB    5 hours ago   5 hours ago   1         true
+q00ph0ob5ggj   regular           28.2MB    5 hours ago   5 hours ago   1         true
+r7fmzabgek7p   regular           3.34MB    5 hours ago   5 hours ago   1         true
+th564y5vxpp4   regular           16MB      5 hours ago   5 hours ago   1         true
+e3n0z598bma5   regular           3.31kB    5 hours ago   5 hours ago   1         true
+bg6vjgvb7f3e   regular           49.7MB    5 hours ago   5 hours ago   1         true
+iwxb2dtxhhk1   regular           1.71MB    5 hours ago   5 hours ago   1         true
+3tuaa7qi94el   regular           3.86MB    5 hours ago   5 hours ago   1         true
+x31voeujvedp   regular           1.83MB    5 hours ago   5 hours ago   1         true
+lg6eloty2g9z   regular           626B      5 hours ago   5 hours ago   1         true
+8bz4hs5kbhvp   regular           956B      5 hours ago   5 hours ago   1         true
+i9caebumuazb   regular           405B      5 hours ago   5 hours ago   1         true
+51bpnw9z7hu0   regular           1.21kB    5 hours ago   5 hours ago   1         true
+vj1f3hgowg8a   regular           1.4kB     5 hours ago   5 hours ago   1         true
+rgvdcwicu1gz   regular           29.1kB    5 hours ago   4 hours ago   1         true
+pdnu3pmsv41h   regular           9.47MB    4 hours ago   4 hours ago   1         true
+qjeu10c1skb4   regular           2.59MB    4 hours ago   4 hours ago   1         false
+0jji87i8wqm3   regular           13.1MB    5 hours ago   4 hours ago   2         true
+oxpg1nz185l0   regular           4.13kB    4 hours ago   4 hours ago   1         false
+c4hi21u8njph   regular           1.18GB    4 hours ago   4 hours ago   1         false
+xr99sjmeaemx   regular           249B      5 hours ago   4 hours ago   2         true
+v9sdeoxxqqac   regular           218MB     4 hours ago   4 hours ago   1         false
+kidavddttmkk   regular           168MB     4 hours ago   4 hours ago   1         false
+v21zjxs4behi   regular           20.6MB    4 hours ago   4 hours ago   1         false
+qoqkwgpkoty0   regular           942kB     4 hours ago   4 hours ago   1         false
+vziqpqeqss63   regular           1.67MB    4 hours ago   4 hours ago   1         false
+33vjdhy3kl6p   regular           1.83MB    4 hours ago   4 hours ago   1         false
+kzws462mx8io   regular           8.29kB    4 hours ago   4 hours ago   1         false
+a807tcp5qucp   regular           17.2kB    4 hours ago   4 hours ago   1         false
+4b9j10mxpyij   regular           242MB     4 hours ago   4 hours ago   1         false
+jq2aiim7dr0l   regular           28.9kB    4 hours ago   4 hours ago   1         false
+dcfvqznjrcqy   regular           13.4kB    4 hours ago   4 hours ago   1         false
+y74qag5sd7zd   regular           491kB     4 hours ago   4 hours ago   1         false
+tx97dgztf0b1   regular           1.19GB    5 hours ago   4 hours ago   1         true
+ikmsi0wruh2e   regular           93.5kB    4 hours ago   4 hours ago   1         false
+w3ve0sgv2o3h   regular           17.2kB    3 hours ago   3 hours ago   1         false
+vq9pbz7wp3ym   regular           93.5kB    3 hours ago   3 hours ago   1         false
+ki6zyax295an   regular           4.13kB    3 hours ago   3 hours ago   1         false
+22i02odm89ca   regular           531kB     4 hours ago   3 hours ago   1         false
+vqlz0m42o8dp   regular           1.83MB    4 hours ago   3 hours ago   1         false
+mvsz8l3l67l9   regular           184kB     4 hours ago   3 hours ago   1         true
+d5c065d5athq   regular           1.68MB    4 hours ago   3 hours ago   1         false
+4ry6ozpmq3i1   regular           1.19GB    4 hours ago   3 hours ago   1         true
+qo519lqweroq   regular           47.2kB    4 hours ago   3 hours ago   2         false
+n997vkx5be20   regular           1.18GB    3 hours ago   3 hours ago   1         false
+m928095zs2v8   exec.cachemount   212MB     4 hours ago   3 hours ago   5         false
+2amru8mfb6sr   source.local      8.19kB    5 hours ago   3 hours ago   4         false
+o6879vwihe86   source.local      18.3MB    5 hours ago   3 hours ago   4         false
+nmuj95oppcij   source.local      8.19kB    9 hours ago   3 hours ago   5         false
+rkc9ulc00jd7   regular           18.3MB    3 hours ago   3 hours ago   1         true

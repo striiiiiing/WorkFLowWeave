@@ -1,0 +1,15 @@
+{
+  "mode": "native-full",
+  "date_utc": "2026-10-07T18:48:35Z",
+  "startup_seconds": [
+    5.041206714999134,
+    4.983323738999388,
+    4.984477944000901
+  ],
+  "runtime_versions": {
+    "python": "Python 3.12.15",
+    "docker": "Docker version 29.1.3, build 29.1.3-0ubuntu3~22.04.2",
+    "kernel": "5.15.0-177-generic",
+    "swap": "total        used        free      shared  buff/cache   available\nMem:      1687068672   557051904   217780224     2719744   912236544   918933504\nSwap:              0           0           0"
+  }
+}

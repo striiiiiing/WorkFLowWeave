@@ -1,0 +1,77 @@
+{
+  "cpu_basis": "100%=one logical core",
+  "measurements": [
+    {
+      "mode": "native-backend",
+      "startup_seconds": [
+        14.09,
+        5.18,
+        4.94
+      ],
+      "startup_median_seconds": 5.18,
+      "idle_cpu_one_core_percent": 0.12,
+      "load_cpu_one_core_percent": 45.82,
+      "idle_rss_mib": 169.2,
+      "load_rss_peak_mib": 339.0,
+      "idle_working_set_mib": 141.0,
+      "load_working_set_peak_mib": 142.0,
+      "host_available_min_mib": 594.1,
+      "requests": 4190,
+      "latency_p95_ms": 9.24
+    },
+    {
+      "mode": "native-full",
+      "startup_seconds": [
+        5.01,
+        5.04,
+        5.04
+      ],
+      "startup_median_seconds": 5.04,
+      "idle_cpu_one_core_percent": 0.12,
+      "load_cpu_one_core_percent": 50.51,
+      "idle_rss_mib": 183.0,
+      "load_rss_peak_mib": 356.9,
+      "idle_working_set_mib": 147.2,
+      "load_working_set_peak_mib": 148.7,
+      "host_available_min_mib": 635.3,
+      "requests": 4170,
+      "latency_p95_ms": 9.73
+    },
+    {
+      "mode": "docker-backend",
+      "startup_seconds": [
+        18.03,
+        16.17,
+        15.07
+      ],
+      "startup_median_seconds": 16.17,
+      "idle_cpu_one_core_percent": 2.88,
+      "load_cpu_one_core_percent": 55.17,
+      "idle_rss_mib": 187.9,
+      "load_rss_peak_mib": 396.1,
+      "idle_working_set_mib": 164.7,
+      "load_working_set_peak_mib": 176.6,
+      "host_available_min_mib": 656.4,
+      "requests": 4002,
+      "latency_p95_ms": 18.73
+    },
+    {
+      "mode": "docker-full",
+      "startup_seconds": [
+        18.41,
+        18.37,
+        18.38
+      ],
+      "startup_median_seconds": 18.38,
+      "idle_cpu_one_core_percent": 2.45,
+      "load_cpu_one_core_percent": 61.15,
+      "idle_rss_mib": 202.4,
+      "load_rss_peak_mib": 390.4,
+      "idle_working_set_mib": 175.0,
+      "load_working_set_peak_mib": 187.0,
+      "host_available_min_mib": 622.0,
+      "requests": 3963,
+      "latency_p95_ms": 19.71
+    }
+  ]
+}

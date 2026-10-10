@@ -1,0 +1,18 @@
+Images space usage:
+
+REPOSITORY                                   TAG       IMAGE ID       CREATED       SIZE      SHARED SIZE   UNIQUE SIZE   CONTAINERS
+ghcr.io/striiiiiing/workflowweave-backend    latest    657d84a17b7b   2 hours ago   841MB     0B            840.9MB       0
+ghcr.io/striiiiiing/workflowweave-frontend   latest    e5b4eb58bc27   2 hours ago   95.1MB    0B            95.07MB       0
+
+Containers space usage:
+
+CONTAINER ID   IMAGE     COMMAND   LOCAL VOLUMES   SIZE      CREATED   STATUS    NAMES
+
+Local Volumes space usage:
+
+VOLUME NAME           LINKS     SIZE
+workflowweave_state   0         173.6kB
+
+Build cache usage: 0B
+
+CACHE ID   CACHE TYPE   SIZE      CREATED   LAST USED   USAGE     SHARED

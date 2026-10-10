@@ -1,0 +1,65 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile.benchmark
+#1 transferring dockerfile: 2.72kB 0.0s done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.m.daocloud.io/library/nginx:1.28-alpine
+#2 DONE 0.1s
+
+#3 [internal] load metadata for docker.m.daocloud.io/library/node:24.15.0-bookworm-slim
+#3 DONE 0.1s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 318B done
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 DONE 0.0s
+
+#6 [node 1/1] FROM docker.m.daocloud.io/library/node:24.15.0-bookworm-slim@sha256:4e6b70dd6cbfc88c8157ba19aa3d9f9cce6ba4703576d55459e45efcbc9c5f5d
+#6 resolve docker.m.daocloud.io/library/node:24.15.0-bookworm-slim@sha256:4e6b70dd6cbfc88c8157ba19aa3d9f9cce6ba4703576d55459e45efcbc9c5f5d 0.1s done
+#6 DONE 0.1s
+
+#7 [frontend 1/3] FROM docker.m.daocloud.io/library/nginx:1.28-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
+#7 resolve docker.m.daocloud.io/library/nginx:1.28-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
+#7 resolve docker.m.daocloud.io/library/nginx:1.28-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236 0.1s done
+#7 DONE 0.1s
+
+#5 [internal] load build context
+#5 transferring context: 16.54MB 1.5s done
+#5 DONE 1.5s
+
+#8 [frontend-build 1/5] WORKDIR /frontend
+#8 CACHED
+
+#9 [frontend-build 2/5] COPY frontend/package*.json ./
+#9 CACHED
+
+#10 [frontend-build 3/5] RUN npm config set registry https://registry.npmmirror.com && npm ci --no-audit --no-fund
+#10 CACHED
+
+#11 [frontend-build 4/5] COPY frontend/ ./
+#11 DONE 0.6s
+
+#12 [frontend-build 5/5] RUN npm run build
+#12 2.586 
+#12 2.586 > workflowweave-frontend@0.1.0 build
+#12 2.586 > vue-tsc && vite build
+#12 2.586 
+#12 35.61 vite v6.4.3 building for production...
+#12 37.14 transforming...
+#12 54.61 node_modules/zod/v4/core/regexes.js (74:0): A comment
+#12 54.61 
+#12 54.61 "/** Anchors a pattern source. The interpolation lives here rather than at the call site because
+#12 54.61  * esbuild will not drop a `@__PURE__` call whose own argument interpolates a variable, but it
+#12 54.61  * will drop `anchor(dateSource)`. Keeping it inline pinned `date` into every bundle. */"
+#12 54.61 
+#12 54.61 in "node_modules/zod/v4/core/regexes.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+#12 54.61 node_modules/zod/v4/core/util.js (400:0): A comment
+#12 54.61 
+#12 54.61 "// Wrapped in a `@__PURE__` IIFE: esbuild never tree-shakes a top-level initializer that contains a member access on `Number`, so the bare object literal survived into every bundle."
+#12 54.61 
+#12 54.61 in "node_modules/zod/v4/core/util.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+#12 CANCELED
+ERROR: failed to build: failed to solve: Canceled: context canceled

@@ -1,0 +1,65 @@
+-N DOCKER-USER
+-P FORWARD DROP
+-A FORWARD -j DOCKER-USER
+-A FORWARD -j DOCKER-FORWARD
+-A FORWARD -j ufw-before-logging-forward
+-A FORWARD -j ufw-before-forward
+-A FORWARD -j ufw-after-forward
+-A FORWARD -j ufw-after-logging-forward
+-A FORWARD -j ufw-reject-forward
+-A FORWARD -j ufw-track-forward
+-N DOCKER
+-A DOCKER ! -i br-3edbd63cfb72 -p tcp -m tcp --dport 3000 -j DNAT --to-destination 172.18.0.3:80
+HTTP/1.1 200 OK
+Server: nginx/1.28.3
+Date: Wed, 07 Oct 2026 19:33:39 GMT
+Content-Type: application/json
+Content-Length: 1414
+Connection: keep-alive
+
+{"status":"ready","accepting_runs":true,"checked_at":"2026-10-07T19:33:39.293737Z","components":[{"component":"system_config","status":"available","required":true,"error":null,"checked_at":"2026-10-07T19:33:39.293737Z"},{"component":"credentials","status":"available","required":true,"error":null,"checked_at":"2026-10-07T19:33:39.293737Z"},{"component":"resource_store","status":"available","required":true,"error":null,"checked_at":"2026-10-07T19:33:39.293737Z"},{"component":"session_store","status":"available","required":true,"error":null,"checked_at":"2026-10-07T19:33:39.293737Z"},{"component":"checkpointer","status":"available","required":true,"error":null,"checked_at":"2026-10-07T19:33:39.293737Z"},{"component":"workflow","status":"available","required":true,"error":null,"checked_at":"2026-10-07T19:33:39.293737Z"},{"component":"intervals","status":"available","required":true,"error":null,"checked_at":"2026-10-07T19:33:39.293737Z"},{"component":"ai","status":"available","required":true,"error":null,"checked_at":"2026-10-07T19:33:39.293737Z"},{"component":"channels","status":"available","required":true,"error":null,"checked_at":"2026-10-07T19:33:39.293737Z"},{"component":"logging","status":"available","required":false,"error":null,"checked_at":"2026-10-07T19:33:39.293737Z"},{"component":"plugins","status":"available","required":false,"error":null,"checked_at":"2026-10-07T19:33:39.293737Z"}]}# /lib/systemd/system/nginx.service
+# Stop dance for nginx
+# =======================
+#
+# ExecStop sends SIGSTOP (graceful stop) to the nginx process.
+# If, after 5s (--retry QUIT/5) nginx is still running, systemd takes control
+# and sends SIGTERM (fast shutdown) to the main process.
+# After another 5s (TimeoutStopSec=5), and if nginx is alive, systemd sends
+# SIGKILL to all the remaining processes in the process group (KillMode=mixed).
+#
+# nginx signals reference doc:
+# http://nginx.org/en/docs/control.html
+#
+[Unit]
+Description=A high performance web server and a reverse proxy server
+Documentation=man:nginx(8)
+After=network.target nss-lookup.target
+
+[Service]
+Type=forking
+PIDFile=/run/nginx.pid
+ExecStartPre=/usr/sbin/nginx -t -q -g 'daemon on; master_process on;'
+ExecStart=/usr/sbin/nginx -g 'daemon on; master_process on;'
+ExecReload=/usr/sbin/nginx -g 'daemon on; master_process on;' -s reload
+ExecStop=-/sbin/start-stop-daemon --quiet --stop --retry QUIT/5 --pidfile /run/nginx.pid
+TimeoutStopSec=5
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target
+/etc/nginx/sites-enabled:
+total 8
+drwxr-xr-x 2 root root 4096 Oct  7 16:03 .
+drwxr-xr-x 8 root root 4096 Oct  7 16:03 ..
+lrwxrwxrwx 1 root root   34 Oct  7 16:03 default -> /etc/nginx/sites-available/default
+
+/www/server/panel/vhost/nginx:
+total 32
+drw------- 3 root root 4096 May 15 15:16 .
+drw------- 8 root root 4096 May 15 15:07 ..
+-rw------- 1 root root  287 May 15 15:07 0.fastcgi_cache.conf
+-rw------- 1 root root 2051 May 15 15:16 0.site_total_log_format.conf
+-rw------- 1 root root   77 May 15 15:07 0.websocket.conf
+-rw------- 1 root root 3200 May 15 15:16 phpfpm_status.conf
+drw------- 2 root root 4096 May 15 15:16 tcp
+-rw------- 1 root root  169 May 15 15:16 waf2monitor_data.conf
