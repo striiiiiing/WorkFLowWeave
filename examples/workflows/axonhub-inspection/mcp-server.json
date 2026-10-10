@@ -1,0 +1,6 @@
+{
+  "id": "axonhub_inspection_mcp",
+  "transport": "streamable_http",
+  "url": "http://127.0.0.1:19036/mcp",
+  "timeout": 30
+}

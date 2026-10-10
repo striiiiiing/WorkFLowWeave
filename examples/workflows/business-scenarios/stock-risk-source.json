@@ -1,0 +1,18 @@
+{
+  "id": "stock_risk",
+  "display_name": "股票：风险事件",
+  "call": {
+    "kind": "mcp",
+    "server": "business_yfinance",
+    "tool": "yfinance_search",
+    "arguments": {
+      "query": "NVDA",
+      "search_type": "news"
+    }
+  },
+  "limits": {
+    "item_tokens": 5000
+  },
+  "timeout": 120,
+  "on_error": "stop"
+}

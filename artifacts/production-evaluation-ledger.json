@@ -1,0 +1,2137 @@
+[
+  {
+    "call_id": "retry-cancel/json_full/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "5e1981603ae13d461891177fe21c94cb5714d11c135fca185a19da6648370184",
+    "started_at": "2026-10-06T07:27:23.531985+00:00",
+    "finished_at": "2026-10-06T07:27:41.278290+00:00",
+    "response_id": "resp_0283b4e8c22f61d3016ac4a2e0a77487d086095a3f886e2dbb",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 5823,
+      "completion_tokens": 476,
+      "total_tokens": 6299,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "retry-cancel/json_full/analysis",
+      "request": {
+        "id": 202459,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186603,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 5823,
+          "completion_tokens": 476,
+          "total_tokens": 6299,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.016406
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "bgl-02/ison_filtered/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "45342d0a940814dbf499d8a81d31f2e3aed728c9651884f203db1b05e085d144",
+    "started_at": "2026-10-06T07:27:22.956863+00:00",
+    "finished_at": "2026-10-06T07:27:43.570693+00:00",
+    "response_id": "resp_08c25ac467bf368f016ac4a2e0873887d0a4f62b8364951483",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 503,
+      "completion_tokens": 584,
+      "total_tokens": 1087,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 50,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "bgl-02/ison_filtered/analysis",
+      "request": {
+        "id": 202457,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186605,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 503,
+          "completion_tokens": 584,
+          "total_tokens": 1087,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.006846
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "retry-cancel/json_filtered/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "02549c53c5823b7daef2363b188ff6e6692588d16d09faa8bf16de4780ab311b",
+    "started_at": "2026-10-06T07:27:23.585162+00:00",
+    "finished_at": "2026-10-06T07:27:56.248226+00:00",
+    "response_id": "resp_0a73d4b5ceefa9e4016ac4a2f0fc3c87d0b03c2c9179373a99",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 1771,
+      "completion_tokens": 463,
+      "total_tokens": 2234,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "retry-cancel/json_filtered/analysis",
+      "request": {
+        "id": 202461,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186607,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 1771,
+          "completion_tokens": 463,
+          "total_tokens": 2234,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.008172
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "long-errors/json_filtered/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "73a17692c87728e377658d2e09fab75a52631e7b4ef7ba427197bd9589fa3812",
+    "started_at": "2026-10-06T07:27:23.566925+00:00",
+    "finished_at": "2026-10-06T07:27:56.745712+00:00",
+    "response_id": "resp_0c54d3791a458aa7016ac4a2ee7f9887d2b2b967b0306a6341",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 2151,
+      "completion_tokens": 425,
+      "total_tokens": 2576,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "long-errors/json_filtered/analysis",
+      "request": {
+        "id": 202460,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186608,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 2151,
+          "completion_tokens": 425,
+          "total_tokens": 2576,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.008552
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "bgl-01/zon_summary/summary",
+    "configured_model": "gpt-5.6-luna",
+    "reasoning_effort": "low",
+    "status": "success",
+    "input_sha256": "545e64a04592558e29788b4f5328cf715ea4f89b45557063349b14b453c8ee59",
+    "started_at": "2026-10-06T07:27:23.523715+00:00",
+    "finished_at": "2026-10-06T07:28:14.676963+00:00",
+    "response_id": "resp_0fc9edc0fb908ec2016ac4a304d3b487d28c2623d2e34e383c",
+    "response_model": "gpt-5.6-luna",
+    "usage": {
+      "prompt_tokens": 5848,
+      "completion_tokens": 824,
+      "total_tokens": 6672,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 5472
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 439,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "bgl-01/zon_summary/summary",
+      "request": {
+        "id": 202458,
+        "model_id": "gpt-5.6-luna",
+        "reasoning_effort": "low",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186611,
+          "model_id": "gpt-5.6-luna",
+          "prompt_tokens": 5848,
+          "completion_tokens": 824,
+          "total_tokens": 6672,
+          "prompt_cached_tokens": 5472,
+          "total_cost": 0.00117344
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "bgl-02/ison_summary/summary",
+    "configured_model": "gpt-5.6-luna",
+    "reasoning_effort": "low",
+    "status": "success",
+    "input_sha256": "ab88935ea38d32d2bf0a43c1f11e4f6f0dbe562c51aed88977d9fc5d7341d0f3",
+    "started_at": "2026-10-06T07:27:23.645534+00:00",
+    "finished_at": "2026-10-06T07:28:40.263727+00:00",
+    "response_id": "resp_0e01a1360cf97366016ac4a323723c87d081b56cf71b8446c6",
+    "response_model": "gpt-5.6-luna",
+    "usage": {
+      "prompt_tokens": 4190,
+      "completion_tokens": 405,
+      "total_tokens": 4595,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 3925
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 48,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "bgl-02/ison_summary/summary",
+      "request": {
+        "id": 202464,
+        "model_id": "gpt-5.6-luna",
+        "reasoning_effort": "low",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186614,
+          "model_id": "gpt-5.6-luna",
+          "prompt_tokens": 4190,
+          "completion_tokens": 405,
+          "total_tokens": 4595,
+          "prompt_cached_tokens": 3925,
+          "total_cost": 0.0006175
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "long-errors/ison_summary/summary",
+    "configured_model": "gpt-5.6-luna",
+    "reasoning_effort": "low",
+    "status": "success",
+    "input_sha256": "f9ed4400b380e0b1f7fdb5015e83149ec13d59ce323a28541905c0c71de5ebd7",
+    "started_at": "2026-10-06T07:27:23.664224+00:00",
+    "finished_at": "2026-10-06T07:28:41.182753+00:00",
+    "response_id": "resp_09efd22563a0861e016ac4a3261b8887d0a706a31ff4fd77b8",
+    "response_model": "gpt-5.6-luna",
+    "usage": {
+      "prompt_tokens": 4646,
+      "completion_tokens": 364,
+      "total_tokens": 5010,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 4309
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 37,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "long-errors/ison_summary/summary",
+      "request": {
+        "id": 202465,
+        "model_id": "gpt-5.6-luna",
+        "reasoning_effort": "low",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186615,
+          "model_id": "gpt-5.6-luna",
+          "prompt_tokens": 4646,
+          "completion_tokens": 364,
+          "total_tokens": 5010,
+          "prompt_cached_tokens": 4309,
+          "total_cost": 0.00059038
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "retry-cancel/zon_summary/summary",
+    "configured_model": "gpt-5.6-luna",
+    "reasoning_effort": "low",
+    "status": "success",
+    "input_sha256": "e6c33db9f2502c4f8842ab70167594ff23b0374d9bc4df23eeebbcafe2ce9df0",
+    "started_at": "2026-10-06T07:27:23.711474+00:00",
+    "finished_at": "2026-10-06T07:28:56.892439+00:00",
+    "response_id": "resp_03d642537dcb1541016ac4a331c37887d0b13c3e2e1f14ae1b",
+    "response_model": "gpt-5.6-luna",
+    "usage": {
+      "prompt_tokens": 5284,
+      "completion_tokens": 512,
+      "total_tokens": 5796,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 4766
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 146,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "retry-cancel/zon_summary/summary",
+      "request": {
+        "id": 202468,
+        "model_id": "gpt-5.6-luna",
+        "reasoning_effort": "low",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186616,
+          "model_id": "gpt-5.6-luna",
+          "prompt_tokens": 5284,
+          "completion_tokens": 512,
+          "total_tokens": 5796,
+          "prompt_cached_tokens": 4766,
+          "total_cost": 0.00081332
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "long-errors/json_full/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "626390f556d242a46c2ccfa529f65b57361d85db3db616dc4839b3b2842ec2a7",
+    "started_at": "2026-10-06T07:27:23.720191+00:00",
+    "finished_at": "2026-10-06T07:28:57.972931+00:00",
+    "response_id": "resp_0626d0a671e423d5016ac4a32c439c87d08a8990a3c63d708d",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 7752,
+      "completion_tokens": 472,
+      "total_tokens": 8224,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "long-errors/json_full/analysis",
+      "request": {
+        "id": 202471,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186617,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 7752,
+          "completion_tokens": 472,
+          "total_tokens": 8224,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.020224
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "retry-cancel/ison_filtered/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "6d2c2988c699488449ee5774e7cef22552985b304102742fdc27a92785be32c1",
+    "started_at": "2026-10-06T07:27:23.957907+00:00",
+    "finished_at": "2026-10-06T07:29:14.550350+00:00",
+    "response_id": "resp_0510d0f509e246e6016ac4a33ba4b087d0a496b385065d96fa",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 435,
+      "completion_tokens": 562,
+      "total_tokens": 997,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 62,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "retry-cancel/ison_filtered/analysis",
+      "request": {
+        "id": 202474,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186620,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 435,
+          "completion_tokens": 562,
+          "total_tokens": 997,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.00649
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "bgl-01/ison_summary/summary",
+    "configured_model": "gpt-5.6-luna",
+    "reasoning_effort": "low",
+    "status": "success",
+    "input_sha256": "970a13001749908d1389920195cf14e15c66ee07213ff4764fec7627c2b50690",
+    "started_at": "2026-10-06T07:27:23.790479+00:00",
+    "finished_at": "2026-10-06T07:29:18.582059+00:00",
+    "response_id": "resp_0f175971e262bc58016ac4a34adc8887d1ade641e112299700",
+    "response_model": "gpt-5.6-luna",
+    "usage": {
+      "prompt_tokens": 5507,
+      "completion_tokens": 493,
+      "total_tokens": 6000,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 5100
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 44,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "bgl-01/ison_summary/summary",
+      "request": {
+        "id": 202472,
+        "model_id": "gpt-5.6-luna",
+        "reasoning_effort": "low",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186621,
+          "model_id": "gpt-5.6-luna",
+          "prompt_tokens": 5507,
+          "completion_tokens": 493,
+          "total_tokens": 6000,
+          "prompt_cached_tokens": 5100,
+          "total_cost": 0.000775
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "bgl-01/json_full/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "1fa2cbcbfe5aedb4c2c606f2bbd007bcb56429b6b4837814fa9a32a64cea978c",
+    "started_at": "2026-10-06T07:27:24.274754+00:00",
+    "finished_at": "2026-10-06T07:29:34.934092+00:00",
+    "response_id": "resp_0686692e669bfa65016ac4a352747487d1a7c769e3de9e914e",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 27713,
+      "completion_tokens": 547,
+      "total_tokens": 28260,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "bgl-01/json_full/analysis",
+      "request": {
+        "id": 202478,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186624,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 27713,
+          "completion_tokens": 547,
+          "total_tokens": 28260,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.060896
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "bgl-01/zon_filtered/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "15a2ae67a1b335f21049e9f940fea657b67f1386236296818fe9d2f3cee883c1",
+    "started_at": "2026-10-06T07:27:24.253970+00:00",
+    "finished_at": "2026-10-06T07:29:36.930431+00:00",
+    "response_id": "resp_0ce60df4bcfe514f016ac4a34dc9e887d1981aa810d74b3fa5",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 2161,
+      "completion_tokens": 670,
+      "total_tokens": 2831,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 95,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "bgl-01/zon_filtered/analysis",
+      "request": {
+        "id": 202477,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186625,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 2161,
+          "completion_tokens": 670,
+          "total_tokens": 2831,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.011022
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "bgl-02/zon_summary/summary",
+    "configured_model": "gpt-5.6-luna",
+    "reasoning_effort": "low",
+    "status": "success",
+    "input_sha256": "ff43321cf09cd060fd6817de2f982959de0e8654165cf544a1b403fe8935c6db",
+    "started_at": "2026-10-06T07:27:23.939722+00:00",
+    "finished_at": "2026-10-06T07:29:40.624392+00:00",
+    "response_id": "resp_042646e2fef9ce82016ac4a360a7ec87d1bbf50367ec8f2cb1",
+    "response_model": "gpt-5.6-luna",
+    "usage": {
+      "prompt_tokens": 5316,
+      "completion_tokens": 369,
+      "total_tokens": 5685,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 4849
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 36,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "bgl-02/zon_summary/summary",
+      "request": {
+        "id": 202473,
+        "model_id": "gpt-5.6-luna",
+        "reasoning_effort": "low",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186627,
+          "model_id": "gpt-5.6-luna",
+          "prompt_tokens": 5316,
+          "completion_tokens": 369,
+          "total_tokens": 5685,
+          "prompt_cached_tokens": 4849,
+          "total_cost": 0.00063318
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "bgl-02/json_filtered/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "1597567dad9127ce9ce165ccd0b28679f5fdb6a2376c049eec89fa8d3db487de",
+    "started_at": "2026-10-06T07:27:24.455212+00:00",
+    "finished_at": "2026-10-06T07:29:55.436891+00:00",
+    "response_id": "resp_0013405dece9fbd1016ac4a3670a3887d29b50edff7c788856",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 1746,
+      "completion_tokens": 526,
+      "total_tokens": 2272,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "bgl-02/json_filtered/analysis",
+      "request": {
+        "id": 202483,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186631,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 1746,
+          "completion_tokens": 526,
+          "total_tokens": 2272,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.008752
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "bgl-01/json_filtered/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "d514f34f3e26f4cf741a0879bebcac9e93edf03e4d7eabfb49d63c9ae65002a8",
+    "started_at": "2026-10-06T07:27:24.411452+00:00",
+    "finished_at": "2026-10-06T07:30:09.595870+00:00",
+    "response_id": "resp_015e8f0b633c1fa8016ac4a362fa6487d097a24b6d41615134",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 2159,
+      "completion_tokens": 863,
+      "total_tokens": 3022,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 170,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "bgl-01/json_filtered/analysis",
+      "request": {
+        "id": 202482,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186634,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 2159,
+          "completion_tokens": 863,
+          "total_tokens": 3022,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.012948
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "long-errors/zon_summary/summary",
+    "configured_model": "gpt-5.6-luna",
+    "reasoning_effort": "low",
+    "status": "success",
+    "input_sha256": "4e6cf446f00c9a388edeaf444ff318563f4c176d8e6de2fedcf25300f532c54d",
+    "started_at": "2026-10-06T07:27:24.326660+00:00",
+    "finished_at": "2026-10-06T07:30:19.533895+00:00",
+    "response_id": "resp_04459ca98bafae1a016ac4a385643487d0b620f12ec50ee6d2",
+    "response_model": "gpt-5.6-luna",
+    "usage": {
+      "prompt_tokens": 5808,
+      "completion_tokens": 488,
+      "total_tokens": 6296,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 5283
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 116,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "long-errors/zon_summary/summary",
+      "request": {
+        "id": 202481,
+        "model_id": "gpt-5.6-luna",
+        "reasoning_effort": "low",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186636,
+          "model_id": "gpt-5.6-luna",
+          "prompt_tokens": 5808,
+          "completion_tokens": 488,
+          "total_tokens": 6296,
+          "prompt_cached_tokens": 5283,
+          "total_cost": 0.00079626
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "retry-cancel/ison_summary/summary",
+    "configured_model": "gpt-5.6-luna",
+    "reasoning_effort": "low",
+    "status": "success",
+    "input_sha256": "441598472be98011400fc516b37b901e64a8bebcdf444af8eea42a7d94b0081b",
+    "started_at": "2026-10-06T07:27:24.488508+00:00",
+    "finished_at": "2026-10-06T07:31:00.331140+00:00",
+    "response_id": "resp_06e8855a4cb53b33016ac4a3b0328087d19c6cf7f317e3b395",
+    "response_model": "gpt-5.6-luna",
+    "usage": {
+      "prompt_tokens": 4122,
+      "completion_tokens": 352,
+      "total_tokens": 4474,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 3839
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 38,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "retry-cancel/ison_summary/summary",
+      "request": {
+        "id": 202491,
+        "model_id": "gpt-5.6-luna",
+        "reasoning_effort": "low",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186641,
+          "model_id": "gpt-5.6-luna",
+          "prompt_tokens": 4122,
+          "completion_tokens": 352,
+          "total_tokens": 4474,
+          "prompt_cached_tokens": 3839,
+          "total_cost": 0.00055578
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "bgl-02/json_full/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "3f3500c808c51191f3c59781bb5150e7ca67a842c92e0dbf498de793ca893c10",
+    "started_at": "2026-10-06T07:27:24.473983+00:00",
+    "finished_at": "2026-10-06T07:31:05.269130+00:00",
+    "response_id": "resp_049720aa2f536de1016ac4a377b188819aafc7933f612ac840",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 27386,
+      "completion_tokens": 1154,
+      "total_tokens": 28540,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 280,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "bgl-02/json_full/analysis",
+      "request": {
+        "id": 202488,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186642,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 27386,
+          "completion_tokens": 1154,
+          "total_tokens": 28540,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.066312
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "long-errors/ison_filtered/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "7b5ad745b3c9e8dba6a5c99fd3d19b89ee8d4dded19e0b69ad830002d1c05272",
+    "started_at": "2026-10-06T07:27:24.510337+00:00",
+    "finished_at": "2026-10-06T07:31:14.994686+00:00",
+    "response_id": "resp_011835480d3830e0016ac4a390691887d0a1f357809e5c326c",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 959,
+      "completion_tokens": 900,
+      "total_tokens": 1859,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 254,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "long-errors/ison_filtered/analysis",
+      "request": {
+        "id": 202493,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186644,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 959,
+          "completion_tokens": 900,
+          "total_tokens": 1859,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.010918
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "long-errors/zon_filtered/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "dc5504d0c4d2fcf7f7921bd0e2234c06afbf2efc741022c3d49cb2e0201316af",
+    "started_at": "2026-10-06T07:27:24.793734+00:00",
+    "finished_at": "2026-10-06T07:31:18.435760+00:00",
+    "response_id": "resp_036ac0b806ecf06f016ac4a3bd4af887d0a5dd1780f25135ba",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 2121,
+      "completion_tokens": 469,
+      "total_tokens": 2590,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "long-errors/zon_filtered/analysis",
+      "request": {
+        "id": 202499,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186646,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 2121,
+          "completion_tokens": 469,
+          "total_tokens": 2590,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.008932
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "bgl-01/ison_filtered/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "f8be86b6d4dd43e6c2187cb883530f267e95bdefe22344e006a1b5b237134e74",
+    "started_at": "2026-10-06T07:27:24.871019+00:00",
+    "finished_at": "2026-10-06T07:31:32.078294+00:00",
+    "response_id": "resp_08698b8aefad03e7016ac4a3c795f887d088709d85b7ec3fed",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 1820,
+      "completion_tokens": 565,
+      "total_tokens": 2385,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 33,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "bgl-01/ison_filtered/analysis",
+      "request": {
+        "id": 202501,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186648,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 1820,
+          "completion_tokens": 565,
+          "total_tokens": 2385,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.00929
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "bgl-01/zon_summary/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "212ebdc2a0dabd3c1a9367035e1e062b47e7cd86623d370724de7dd655d027d0",
+    "started_at": "2026-10-06T07:28:14.679362+00:00",
+    "finished_at": "2026-10-06T07:31:53.198927+00:00",
+    "response_id": "resp_03e9c077f36edda9016ac4a3d9232c87d093e9b5a3c73a518e",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 540,
+      "completion_tokens": 590,
+      "total_tokens": 1130,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 80,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "bgl-01/zon_summary/analysis",
+      "request": {
+        "id": 202505,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186652,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 540,
+          "completion_tokens": 590,
+          "total_tokens": 1130,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.00698
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "bgl-02/zon_filtered/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "8b0ef13e926a6db5e1c6d6ff2cafcda74c28bfb114e6f673a9c522c26b5f8b6a",
+    "started_at": "2026-10-06T07:27:24.739834+00:00",
+    "finished_at": "2026-10-06T07:32:07.133162+00:00",
+    "response_id": "resp_08b17b94ae7ced52016ac4a3b7aa3487d2864b6215c8322569",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 1629,
+      "completion_tokens": 1063,
+      "total_tokens": 2692,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 358,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "bgl-02/zon_filtered/analysis",
+      "request": {
+        "id": 202498,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186657,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 1629,
+          "completion_tokens": 1063,
+          "total_tokens": 2692,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.013888
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "bgl-02/ison_summary/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "67141646bb4cc4ef470b709419d9a421e04f1a3fdf8b4d448596f70f05dc63e4",
+    "started_at": "2026-10-06T07:28:40.266645+00:00",
+    "finished_at": "2026-10-06T07:32:07.452874+00:00",
+    "response_id": "resp_097753b7fd0f48a3016ac4a3ea038c87d1b2d30bac899c6018",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 512,
+      "completion_tokens": 520,
+      "total_tokens": 1032,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "bgl-02/ison_summary/analysis",
+      "request": {
+        "id": 202509,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186658,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 512,
+          "completion_tokens": 520,
+          "total_tokens": 1032,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.006224
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "retry-cancel/zon_filtered/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "0e0c77d279d3a0a98f36524e5c8ddeeaba1a9ef611ec6743b118a07b91e49637",
+    "started_at": "2026-10-06T07:27:24.921014+00:00",
+    "finished_at": "2026-10-06T07:32:13.968606+00:00",
+    "response_id": "resp_0719a573773d81a7016ac4a3cb808087d09ff41cc1f4609cf6",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 1597,
+      "completion_tokens": 838,
+      "total_tokens": 2435,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 288,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "retry-cancel/zon_filtered/analysis",
+      "request": {
+        "id": 202502,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186659,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 1597,
+          "completion_tokens": 838,
+          "total_tokens": 2435,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.011574
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "retry-cancel/zon_summary/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "938de882333d7ffca168b8e0d9f5c3b324cafad2d489d6be0b98074b98916ff9",
+    "started_at": "2026-10-06T07:28:56.894693+00:00",
+    "finished_at": "2026-10-06T07:32:21.880289+00:00",
+    "response_id": "resp_0873a0539e28a570016ac4a3f8593c87d08b7b01269829295a",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 511,
+      "completion_tokens": 486,
+      "total_tokens": 997,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "retry-cancel/zon_summary/analysis",
+      "request": {
+        "id": 202514,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186660,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 511,
+          "completion_tokens": 486,
+          "total_tokens": 997,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.005882
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "bgl-01/ison_summary/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "70ff5d0ce145c96e61464a321b7aa0668fe8aaedacce2eec8027cff71df22d80",
+    "started_at": "2026-10-06T07:29:18.584464+00:00",
+    "finished_at": "2026-10-06T07:32:30.815807+00:00",
+    "response_id": "resp_04406fffc7e9b490016ac4a4002fc087d08acfb0b1f64efae1",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 604,
+      "completion_tokens": 572,
+      "total_tokens": 1176,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 45,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "bgl-01/ison_summary/analysis",
+      "request": {
+        "id": 202516,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186662,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 604,
+          "completion_tokens": 572,
+          "total_tokens": 1176,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.006928
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "bgl-02/zon_summary/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "291567b99e14939674e092b3633507c8d02770ccc80264298f1c58137a4923b0",
+    "started_at": "2026-10-06T07:29:40.627912+00:00",
+    "finished_at": "2026-10-06T07:32:35.996450+00:00",
+    "response_id": "resp_0868295e9a9a4254016ac4a4072bc087d1bd71b7418706471d",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 488,
+      "completion_tokens": 517,
+      "total_tokens": 1005,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "bgl-02/zon_summary/analysis",
+      "request": {
+        "id": 202517,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186664,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 488,
+          "completion_tokens": 517,
+          "total_tokens": 1005,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.006146
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "long-errors/zon_summary/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "700d8f89615b60f22f2f8b8ddfc697ad903e57ecde5e35e26072188460f78cf4",
+    "started_at": "2026-10-06T07:30:19.537281+00:00",
+    "finished_at": "2026-10-06T07:32:45.458042+00:00",
+    "response_id": "resp_0a59fa688bd488a6016ac4a410bafc87d2943b47270db509b6",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 517,
+      "completion_tokens": 482,
+      "total_tokens": 999,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "long-errors/zon_summary/analysis",
+      "request": {
+        "id": 202518,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186667,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 517,
+          "completion_tokens": 482,
+          "total_tokens": 999,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.005854
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "long-errors/ison_summary/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "508d62526e52671f9ef46e13f6e589fa0a56d1812b52385685683563706c3e2d",
+    "started_at": "2026-10-06T07:28:41.185563+00:00",
+    "finished_at": "2026-10-06T07:32:46.225420+00:00",
+    "response_id": "resp_09cb319116027b54016ac4a3f7f16887d0b642ef799f397d6a",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 472,
+      "completion_tokens": 723,
+      "total_tokens": 1195,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 150,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "long-errors/ison_summary/analysis",
+      "request": {
+        "id": 202513,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186668,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 472,
+          "completion_tokens": 723,
+          "total_tokens": 1195,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.008174
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "retry-cancel/ison_summary/analysis",
+    "configured_model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "status": "success",
+    "input_sha256": "144919fb9be576b60af808881b23b79794c8650fbdd246269b6c89608fa85f16",
+    "started_at": "2026-10-06T07:31:00.333359+00:00",
+    "finished_at": "2026-10-06T07:32:51.354739+00:00",
+    "response_id": "resp_0951e9094613c13b016ac4a41667e487d282130a30d57b94ef",
+    "response_model": "gpt-5.6-sol",
+    "usage": {
+      "prompt_tokens": 459,
+      "completion_tokens": 525,
+      "total_tokens": 984,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "http_status": 200,
+    "billing": {
+      "call_id": "retry-cancel/ison_summary/analysis",
+      "request": {
+        "id": 202519,
+        "model_id": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "status": "completed"
+      },
+      "usage": [
+        {
+          "id": 186670,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 459,
+          "completion_tokens": 525,
+          "total_tokens": 984,
+          "prompt_cached_tokens": 0,
+          "total_cost": 0.006168
+        }
+      ],
+      "status": "resolved"
+    }
+  },
+  {
+    "call_id": "bgl-01/judge/zon_summary/BA",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "9cd3af4ffdd9b03e5a71b89e07a3103d116d1257431b9b064de32adec9690184",
+    "started_at": "2026-10-06T07:32:51.363648+00:00",
+    "finished_at": "2026-10-06T07:33:39.258810+00:00",
+    "http_status": 403,
+    "error": "HTTPStatusError: Client error '403 Forbidden' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403",
+    "billing": {
+      "call_id": "bgl-01/judge/zon_summary/BA",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "bgl-01/judge/ison_summary/AB",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "7f4070e76c824ab751be48e9a9900c464fb0aafb64571c2efa1bcbf62c65e589",
+    "started_at": "2026-10-06T07:32:51.365157+00:00",
+    "finished_at": "2026-10-06T07:33:39.382116+00:00",
+    "http_status": 403,
+    "error": "HTTPStatusError: Client error '403 Forbidden' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403",
+    "billing": {
+      "call_id": "bgl-01/judge/ison_summary/AB",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "bgl-01/judge/ison_summary/BA",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "9f12c86aa8ed68c7c2757cfc6da5a75300d9cce7db0055a223fc678fa7187bfb",
+    "started_at": "2026-10-06T07:32:51.366957+00:00",
+    "finished_at": "2026-10-06T07:33:40.514841+00:00",
+    "http_status": 403,
+    "error": "HTTPStatusError: Client error '403 Forbidden' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403",
+    "billing": {
+      "call_id": "bgl-01/judge/ison_summary/BA",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "bgl-01/judge/zon_filtered/AB",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "f8f730b76072df5eaed56eacf1632df4a5a46ca22f126899c207e1e2a912d8df",
+    "started_at": "2026-10-06T07:32:51.368342+00:00",
+    "finished_at": "2026-10-06T07:33:40.719566+00:00",
+    "http_status": 403,
+    "error": "HTTPStatusError: Client error '403 Forbidden' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403",
+    "billing": {
+      "call_id": "bgl-01/judge/zon_filtered/AB",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "bgl-01/judge/zon_filtered/BA",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "d3b232ae796a84027c158bbcb8326a9ad0d00ddf50fc562fbb6116b062ffd407",
+    "started_at": "2026-10-06T07:32:51.369729+00:00",
+    "finished_at": "2026-10-06T07:33:41.908560+00:00",
+    "http_status": 403,
+    "error": "HTTPStatusError: Client error '403 Forbidden' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403",
+    "billing": {
+      "call_id": "bgl-01/judge/zon_filtered/BA",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "bgl-01/judge/json_filtered/AB",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "84706e72d1496e9dba38c7c3cc93c837e0e2a1940029da983ee7661a4ab8dda3",
+    "started_at": "2026-10-06T07:32:51.371238+00:00",
+    "finished_at": "2026-10-06T07:33:41.992538+00:00",
+    "http_status": 403,
+    "error": "HTTPStatusError: Client error '403 Forbidden' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403",
+    "billing": {
+      "call_id": "bgl-01/judge/json_filtered/AB",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "bgl-01/judge/json_filtered/BA",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "f8c16cf5ac1fabe23fde8ac4f12fb90b7ad5aca16dd96f008e67111fe77bce11",
+    "started_at": "2026-10-06T07:32:51.373065+00:00",
+    "finished_at": "2026-10-06T07:33:42.866507+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "bgl-01/judge/json_filtered/BA",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "bgl-01/judge/ison_filtered/AB",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "3e330a4b276dd63732a81de75c8ed8fc797c60b06666e0732b0019c90d43de8c",
+    "started_at": "2026-10-06T07:32:51.374738+00:00",
+    "finished_at": "2026-10-06T07:33:42.956041+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "bgl-01/judge/ison_filtered/AB",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "bgl-01/judge/ison_filtered/BA",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "90b294f048cb306eff6663ed896054483263c296f706412c3b8c6c1b87ba92f1",
+    "started_at": "2026-10-06T07:32:51.376228+00:00",
+    "finished_at": "2026-10-06T07:33:43.827916+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "bgl-01/judge/ison_filtered/BA",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "bgl-02/judge/ison_filtered/AB",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "607534e62119ff27d3ef915042d299eb47bddfb0662e65bb1485df42bbabe6de",
+    "started_at": "2026-10-06T07:32:51.377784+00:00",
+    "finished_at": "2026-10-06T07:33:43.916505+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "bgl-02/judge/ison_filtered/AB",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "bgl-02/judge/ison_filtered/BA",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "1cf87034009a6f003b6d79c25a7e3a92a4833e4c53c9928ae6685517681f7441",
+    "started_at": "2026-10-06T07:32:51.379062+00:00",
+    "finished_at": "2026-10-06T07:33:44.793544+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "bgl-02/judge/ison_filtered/BA",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "bgl-02/judge/ison_summary/AB",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "835c2ab3229be6253a428009dfcafcc68bfbb4f353001ec81937f842092979e5",
+    "started_at": "2026-10-06T07:32:51.380257+00:00",
+    "finished_at": "2026-10-06T07:33:44.874911+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "bgl-02/judge/ison_summary/AB",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "bgl-02/judge/ison_summary/BA",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "2000d147d64e3ccf7935524ad77a5b22a6ecace20b083a9af6e6380f5dc7bd08",
+    "started_at": "2026-10-06T07:32:51.381332+00:00",
+    "finished_at": "2026-10-06T07:33:45.756826+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "bgl-02/judge/ison_summary/BA",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "bgl-02/judge/zon_summary/AB",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "b9f9f7e78548c52f1e5dccfa49765041774a62f94c8c407f44e261eb9269f7d7",
+    "started_at": "2026-10-06T07:32:51.382398+00:00",
+    "finished_at": "2026-10-06T07:33:45.837309+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "bgl-02/judge/zon_summary/AB",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "bgl-02/judge/zon_summary/BA",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "7c9f5788848882b58a7b30b547630a152abca6befebeda99840e8209ec9b731b",
+    "started_at": "2026-10-06T07:32:51.383660+00:00",
+    "finished_at": "2026-10-06T07:33:46.724335+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "bgl-02/judge/zon_summary/BA",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "bgl-02/judge/json_filtered/AB",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "edd35a9971b1ced303c67702044441aeedf36daa2c72b3faab8dcf56907fcbe7",
+    "started_at": "2026-10-06T07:32:51.384997+00:00",
+    "finished_at": "2026-10-06T07:33:46.827122+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "bgl-02/judge/json_filtered/AB",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "bgl-02/judge/json_filtered/BA",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "5f97bd5ca0b39db2636faa3f48a1c7967c18b4e69109dd5a8072ec406ae80c05",
+    "started_at": "2026-10-06T07:32:51.386405+00:00",
+    "finished_at": "2026-10-06T07:33:47.684964+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "bgl-02/judge/json_filtered/BA",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "bgl-02/judge/zon_filtered/AB",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "304b9047267661896983455e377b61016da10be2b59a7f7cd0a6df4abebcf71a",
+    "started_at": "2026-10-06T07:32:51.387943+00:00",
+    "finished_at": "2026-10-06T07:33:47.787981+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "bgl-02/judge/zon_filtered/AB",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "bgl-02/judge/zon_filtered/BA",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "8820fc5fa28a39f797bfe5e9894e965aa21bb6d7fa7fea28d5fea10c2fa84c92",
+    "started_at": "2026-10-06T07:32:51.389974+00:00",
+    "finished_at": "2026-10-06T07:33:48.645317+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "bgl-02/judge/zon_filtered/BA",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "retry-cancel/judge/json_filtered/AB",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "db7c7efe100bcdf4945b1c43448a6d7ca20dede744269738f09a9fe630427c1b",
+    "started_at": "2026-10-06T07:32:51.391842+00:00",
+    "finished_at": "2026-10-06T07:33:48.758146+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "retry-cancel/judge/json_filtered/AB",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "retry-cancel/judge/json_filtered/BA",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "58653b110c95bb125f02fc335c017f5d9b1ac1355c4cba2c4d04e66e7c968950",
+    "started_at": "2026-10-06T07:32:51.393355+00:00",
+    "finished_at": "2026-10-06T07:33:49.605877+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "retry-cancel/judge/json_filtered/BA",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "retry-cancel/judge/zon_summary/AB",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "f82a86fb9214c61325a186247f72d3afbe63dbd7d6702a2b68e25a0c1821e866",
+    "started_at": "2026-10-06T07:32:51.394891+00:00",
+    "finished_at": "2026-10-06T07:33:49.720306+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "retry-cancel/judge/zon_summary/AB",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "retry-cancel/judge/zon_summary/BA",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "51a162b7276ecdfd3e78418e863edee9951f8e50ef95c968397e9b6c3d8bf4c6",
+    "started_at": "2026-10-06T07:32:51.396205+00:00",
+    "finished_at": "2026-10-06T07:33:50.663737+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "retry-cancel/judge/zon_summary/BA",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "retry-cancel/judge/ison_filtered/AB",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "ff5317841d8a8e5c043ac14c11c972cddea58118db4fbffe3f70106b39798df5",
+    "started_at": "2026-10-06T07:32:51.397710+00:00",
+    "finished_at": "2026-10-06T07:33:50.679268+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "retry-cancel/judge/ison_filtered/AB",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "retry-cancel/judge/ison_filtered/BA",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "291104ac81b978dc98deea6c8c271528d136f82eab651db2982cbf138232e1b3",
+    "started_at": "2026-10-06T07:32:51.398975+00:00",
+    "finished_at": "2026-10-06T07:33:51.623909+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "retry-cancel/judge/ison_filtered/BA",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "retry-cancel/judge/ison_summary/AB",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "70e10cb95d716c8f2846fc3662381721126f2d488ce44e3a4398e98805595e46",
+    "started_at": "2026-10-06T07:32:51.400796+00:00",
+    "finished_at": "2026-10-06T07:33:51.646967+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "retry-cancel/judge/ison_summary/AB",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "retry-cancel/judge/ison_summary/BA",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "9c92c33ce29ebe568b6a7e69f027558f399ef71f5614d2b9ecff809cfdcbbbd7",
+    "started_at": "2026-10-06T07:32:51.402466+00:00",
+    "finished_at": "2026-10-06T07:33:52.592143+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "retry-cancel/judge/ison_summary/BA",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "retry-cancel/judge/zon_filtered/AB",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "f899526564828609c13731706c2bd2a50506380c0bf53fdbd621c58bc39e2a20",
+    "started_at": "2026-10-06T07:32:51.404247+00:00",
+    "finished_at": "2026-10-06T07:33:52.608623+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "retry-cancel/judge/zon_filtered/AB",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "retry-cancel/judge/zon_filtered/BA",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "4e8645b512fc3eaebf7000af081fce4d0e6104ae9cfd50fae38afda426d32aea",
+    "started_at": "2026-10-06T07:32:51.405844+00:00",
+    "finished_at": "2026-10-06T07:33:53.569447+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "retry-cancel/judge/zon_filtered/BA",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "long-errors/judge/json_filtered/AB",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "befefa0395f7876543eceb9e58951022b8442e89e7f17102979aebaceec933d7",
+    "started_at": "2026-10-06T07:32:51.407387+00:00",
+    "finished_at": "2026-10-06T07:33:53.582100+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "long-errors/judge/json_filtered/AB",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "long-errors/judge/json_filtered/BA",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "b818de2f5729c72e974d19f08b1189ff47dfd0af6ab8b0025f5bc0b39939c20a",
+    "started_at": "2026-10-06T07:32:51.408730+00:00",
+    "finished_at": "2026-10-06T07:33:54.530829+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "long-errors/judge/json_filtered/BA",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "long-errors/judge/ison_summary/AB",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "fcdcc3ca613eba5ce2dc6a86b1b5e5087c26869fd0c1fb57e61a5d7e1f406d57",
+    "started_at": "2026-10-06T07:32:51.410170+00:00",
+    "finished_at": "2026-10-06T07:33:54.544341+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "long-errors/judge/ison_summary/AB",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "long-errors/judge/ison_summary/BA",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "304a082abc38d519bff771615ddec5a1ab4fe93d5e58a452f2de8f4b8eb2c444",
+    "started_at": "2026-10-06T07:32:51.411615+00:00",
+    "finished_at": "2026-10-06T07:33:55.495829+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "long-errors/judge/ison_summary/BA",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "long-errors/judge/zon_summary/AB",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "61fecd582ef9b228964453e2b4d55480317f238ff6b00bd0516ec414481e6022",
+    "started_at": "2026-10-06T07:32:51.413070+00:00",
+    "finished_at": "2026-10-06T07:33:55.508421+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "long-errors/judge/zon_summary/AB",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "long-errors/judge/zon_summary/BA",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "a6a73d5762136c4bdc54a16901ccb332a893d232c01ef370d568de984403da96",
+    "started_at": "2026-10-06T07:32:51.414481+00:00",
+    "finished_at": "2026-10-06T07:33:56.460493+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "long-errors/judge/zon_summary/BA",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "long-errors/judge/ison_filtered/AB",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "dff0439621066d399a0244146699920c917fd2e0dff55f3a5bd82749c58ecb87",
+    "started_at": "2026-10-06T07:32:51.415921+00:00",
+    "finished_at": "2026-10-06T07:33:56.469428+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "long-errors/judge/ison_filtered/AB",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "long-errors/judge/ison_filtered/BA",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "f2d642e94d85707c84545aeb3d33b486418d4b745ad723d28ebc78e8d6f51c5a",
+    "started_at": "2026-10-06T07:32:51.417432+00:00",
+    "finished_at": "2026-10-06T07:33:57.426252+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "long-errors/judge/ison_filtered/BA",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "long-errors/judge/zon_filtered/AB",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "4de4ab92e70ebda9bbea685326d7839a9138916b33bae3284e764ee5d0d81ef1",
+    "started_at": "2026-10-06T07:32:51.419059+00:00",
+    "finished_at": "2026-10-06T07:33:57.554437+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "long-errors/judge/zon_filtered/AB",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "long-errors/judge/zon_filtered/BA",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "9d8bce77b86b3f3fba743a5b2477ef713ba4109f7a71ddf493a39eec24414000",
+    "started_at": "2026-10-06T07:32:51.420773+00:00",
+    "finished_at": "2026-10-06T07:33:58.387660+00:00",
+    "http_status": 500,
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:19026/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "billing": {
+      "call_id": "long-errors/judge/zon_filtered/BA",
+      "status": "ledger_request_missing"
+    }
+  },
+  {
+    "call_id": "bgl-01/judge/zon_summary/AB",
+    "configured_model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "status": "failed",
+    "input_sha256": "798feef44b7218e70b8daa74a2d410a2078f34407e50db894c54319ff752529e",
+    "started_at": "2026-10-06T07:32:51.362126+00:00",
+    "finished_at": "2026-10-06T07:38:19.937313+00:00",
+    "error": "ReadTimeout: ",
+    "billing": {
+      "call_id": "bgl-01/judge/zon_summary/AB",
+      "status": "ledger_request_missing"
+    }
+  }
+]

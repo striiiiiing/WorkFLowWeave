@@ -1,0 +1,50 @@
+{
+  "dataset": "kaggle-synthetic-security-logs-v1",
+  "sample": "evals/data/kaggle-security-logs-sample.json",
+  "scope": "field length switch only; no item or total input token limit; no model calls",
+  "results": [
+    {
+      "case": "cloudtrail-accessdenied",
+      "format": "json",
+      "field_limit_off_tokens": 83753,
+      "field_limit_on_tokens": 83753,
+      "saved_tokens": 0,
+      "saved_percent": 0.0,
+      "status": "measured"
+    },
+    {
+      "case": "okta-auth-outcomes",
+      "format": "json",
+      "field_limit_off_tokens": 120340,
+      "field_limit_on_tokens": 120340,
+      "saved_tokens": 0,
+      "saved_percent": 0.0,
+      "status": "measured"
+    },
+    {
+      "case": "cloudtrail-accessdenied",
+      "format": "zon",
+      "status": "blocked",
+      "error": "input_format_unsupported: converter cannot preserve JSON types and values"
+    },
+    {
+      "case": "okta-auth-outcomes",
+      "format": "zon",
+      "status": "blocked",
+      "error": "input_format_unsupported: converter cannot preserve JSON types and values"
+    },
+    {
+      "case": "cloudtrail-accessdenied",
+      "format": "ison",
+      "status": "blocked",
+      "error": "input_format_unsupported: requires identical ordered fields and scalar cells"
+    },
+    {
+      "case": "okta-auth-outcomes",
+      "format": "ison",
+      "status": "blocked",
+      "error": "input_format_unsupported: requires identical ordered fields and scalar cells"
+    }
+  ],
+  "interpretation": "This artifact reports token counts and serializer errors only. It makes no quality or field-preservation claim."
+}

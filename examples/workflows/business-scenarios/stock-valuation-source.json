@@ -1,0 +1,8 @@
+{
+  "id": "stock_valuation",
+  "display_name": "股票：估值行情",
+  "call": {"kind": "mcp", "server": "business_yfinance", "tool": "yfinance_get_price_history", "arguments": {"symbol": "NVDA", "period": "1y", "interval": "1wk"}},
+  "limits": {"item_tokens": 5000},
+  "timeout": 120,
+  "on_error": "stop"
+}

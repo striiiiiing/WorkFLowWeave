@@ -1,0 +1,28 @@
+{
+  "baseUrl": "http://127.0.0.1:3010",
+  "verifiedAt": "2026-10-06T06:59:26.610Z",
+  "checks": [
+    {
+      "page": "inspection configuration",
+      "status": "passed",
+      "errorsFirst": true,
+      "models": [
+        "gpt-5.6-luna",
+        "gpt-5.6-sol"
+      ]
+    },
+    {
+      "page": "inspection report",
+      "status": "passed",
+      "session": "83c74cef296e4352b3a76989b01441c2",
+      "reportCharacters": 4364
+    },
+    {
+      "page": "GitHub configuration",
+      "status": "passed",
+      "successfulRun": false,
+      "reason": "gh authentication required"
+    }
+  ],
+  "errors": []
+}

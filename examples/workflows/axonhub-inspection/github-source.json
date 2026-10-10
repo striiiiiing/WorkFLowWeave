@@ -1,0 +1,24 @@
+{
+  "id": "hermes_github_updates",
+  "display_name": "Hermes Agent：近期 GitHub 更新",
+  "call": {
+    "kind": "cli",
+    "mode": "argv",
+    "executable": "python3",
+    "argv": [
+      "examples/workflows/axonhub-inspection/github_updates.py",
+      "--repo",
+      "NousResearch/hermes-agent",
+      "--days",
+      "7",
+      "--limit",
+      "30"
+    ]
+  },
+  "timeout": 75,
+  "on_error": "stop",
+  "limits": {
+    "field_tokens": 512,
+    "item_tokens": 8000
+  }
+}

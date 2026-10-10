@@ -1,0 +1,8 @@
+{
+  "id": "github_new_issue",
+  "display_name": "GitHub：一个新 issue",
+  "call": {"kind": "mcp", "server": "business_github", "tool": "search_issues", "arguments": {"query": "repo:pallets/flask is:issue is:open sort:created-desc", "perPage": 1, "page": 1}},
+  "limits": {"item_tokens": 4000},
+  "timeout": 120,
+  "on_error": "stop"
+}

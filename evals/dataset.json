@@ -1,0 +1,22 @@
+{
+  "id": "kaggle-synthetic-security-logs-v1",
+  "source_url": "https://www.kaggle.com/datasets/beaaaaaan/programmatically-generated-security-logs-v1",
+  "version": 1,
+  "license": "MIT",
+  "citation": "beaaaaaan, Synthetic Security Logs V1, Kaggle, 2026.",
+  "sample_file": "data/kaggle-security-logs-sample.json",
+  "sample_sha256": "5f56a28c4dd33a38caa933ea0d3982127c13c6c6d7d4a349605ca97124eea011",
+  "source_archive_sha256": "997b2941af57d66f66ad4475b3f5c0d5b9a84dee1c3ce5fd557ed932e5ccf855",
+  "source_archive_size_bytes": 1798787,
+  "selected_files": [
+    "aws_cloudtrail.csv",
+    "okta_system_log.csv"
+  ],
+  "selection": {
+    "per_case": 200,
+    "errors_first": 100,
+    "recent_success_or_other": 100,
+    "order": "newest within each class, errors before recent records"
+  },
+  "normalization": "All original CSV columns retained as strings, including empty cells. Dots in column names replaced by __; original-to-normalized key mapping saved per case. No field selection or truncation."
+}

@@ -1,0 +1,12 @@
+Dataset: Synthetic Security Logs V1
+Source: https://www.kaggle.com/datasets/beaaaaaan/programmatically-generated-security-logs-v1
+License declared by the dataset publisher: MIT
+
+This repository includes only a deterministic, JSON-normalized sample of two
+source files (aws_cloudtrail.csv and okta_system_log.csv). The sample is not
+claimed to be production telemetry: the publisher describes the source as
+synthetic security logs. Preserve the source URL and this notice when
+redistributing the sample.
+
+The source archive checksum used for the selection is recorded in
+evals/dataset.json. The sample checksum is recorded there as well.

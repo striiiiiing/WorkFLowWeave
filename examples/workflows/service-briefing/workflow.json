@@ -1,0 +1,25 @@
+{
+  "id": "service_briefing",
+  "name": "服务巡检简报",
+  "sources": [
+    "service_health_sample"
+  ],
+  "analyses": [
+    {
+      "id": "briefing",
+      "ai": "briefing_ai",
+      "model": "qwen2.5:7b",
+      "user_prompt": "请根据输入生成中文服务巡检简报，列出状态、延迟、错误数，并指出需要跟进的异常；若无异常请明确写出“无异常”。"
+    }
+  ],
+  "channels": [
+    "briefing_file"
+  ],
+  "input_processing": {
+    "format": "md",
+    "total_tokens": 1000
+  },
+  "schedule": null,
+  "analysis_failure": "continue",
+  "send_partial": true
+}
