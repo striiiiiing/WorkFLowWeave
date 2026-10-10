@@ -105,6 +105,23 @@ function publish(id: string) {
       @refresh="$emit('refresh')"
       @remove="(sourceId) => select(draft().sources.filter((id) => id !== sourceId))"
     />
+    <el-form-item label="输入格式">
+      <el-select
+        aria-label="输入格式"
+        :model-value="draft().input_processing.format"
+        @update:model-value="
+          editor.update({ input_processing: { ...draft().input_processing, format: $event } })
+        "
+      >
+        <el-option
+          v-for="format in ['none', 'ison', 'toon', 'zon', 'md', 'csv']"
+          :key="format"
+          :value="format"
+          :label="format === 'none' ? '原始表示（JSON / 文本）' : format.toUpperCase()"
+        />
+      </el-select>
+    </el-form-item>
+    <p class="muted text-sm">JSON 内容可转换为下列格式；默认保留原始表示。格式转换不等同于 LLM 摘要。</p>
     <div v-if="advanced" class="form-grid">
       <el-form-item label="采集并发数">
         <el-input-number
@@ -131,21 +148,6 @@ function publish(id: string) {
           :rows="2"
           @update:model-value="editor.update({ input_separator: $event })"
         />
-      </el-form-item>
-      <el-form-item label="输入格式">
-        <el-select
-          :model-value="draft().input_processing.format"
-          @update:model-value="
-            editor.update({ input_processing: { ...draft().input_processing, format: $event } })
-          "
-        >
-          <el-option
-            v-for="format in ['none', 'ison', 'toon', 'zon', 'md', 'csv']"
-            :key="format"
-            :value="format"
-            :label="format === 'none' ? '原始表示' : format.toUpperCase()"
-          />
-        </el-select>
       </el-form-item>
       <el-form-item
         v-for="limit in [

@@ -14,7 +14,7 @@ describe('provider HTTP actions', () => {
     const adapter = respond(['model-a'])
     const draft = {
       id: 'provider',
-      provider: 'http',
+      provider: 'openai_compatible_api',
       base_url: 'https://example.test/v1',
       api_key: null,
       system_prompt: '',

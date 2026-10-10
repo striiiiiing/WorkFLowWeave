@@ -1,16 +1,13 @@
 import type { ErrorInfo, JsonObject } from '@/shared/types'
 
 export interface CapabilityDescription {
-  kind: 'collector' | 'channel' | 'tool'
+  kind: 'channel' | 'tool'
   name: string
   id_prefix?: string | null
   description: string
   plugin: string
   capabilities: string[]
   options_schema: JsonObject
-  setters_schema: JsonObject | null
-  fields: string[]
-  count_unit: string | null
   input_schema?: JsonObject | null
   execution?: 'read' | 'exclusive'
 }

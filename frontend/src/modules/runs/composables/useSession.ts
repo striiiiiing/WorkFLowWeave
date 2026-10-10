@@ -17,13 +17,13 @@ export function useSession(id: Ref<string>, api: SessionApi = useRunsApi()) {
   const connection = ref<RunConnectionState>('connecting')
   const connectionError = ref('')
   const formatError = useErrorFormatter()
-  let generation = 0
+  let connectionGeneration = 0
   let disposed = false
   let unsubscribe: (() => void) | undefined
   let controller: AbortController | undefined
 
   function closeConnection() {
-    generation++
+    connectionGeneration++
     unsubscribe?.()
     unsubscribe = undefined
   }
@@ -44,7 +44,7 @@ export function useSession(id: Ref<string>, api: SessionApi = useRunsApi()) {
     readAt.value = Date.now()
   }
 
-  async function query(sessionId: string, owner: number) {
+  async function query(sessionId: string) {
     controller?.abort()
     const request = new AbortController()
     controller = request
@@ -52,10 +52,10 @@ export function useSession(id: Ref<string>, api: SessionApi = useRunsApi()) {
     error.value = ''
     try {
       const snapshot = await api.get(sessionId, request.signal)
-      if (owner !== generation || request.signal.aborted || controller !== request) return
+      if (request.signal.aborted || controller !== request || id.value !== sessionId) return
       accept(snapshot, sessionId)
     } catch (cause) {
-      if (owner === generation && !request.signal.aborted && controller === request)
+      if (!request.signal.aborted && controller === request && id.value === sessionId)
         error.value = formatError(cause)
     } finally {
       if (controller === request) {
@@ -68,7 +68,7 @@ export function useSession(id: Ref<string>, api: SessionApi = useRunsApi()) {
   function connect() {
     if (disposed) return
     closeConnection()
-    const owner = generation
+    const owner = connectionGeneration
     const sessionId = id.value
     connection.value = 'connecting'
     connectionError.value = ''
@@ -76,13 +76,13 @@ export function useSession(id: Ref<string>, api: SessionApi = useRunsApi()) {
     if (!subscribe || subscribe.available === false) {
       connection.value = 'reconnecting'
       connectionError.value = '当前浏览器不支持进度订阅，请手动同步'
-      void query(sessionId, owner)
+      void query(sessionId)
       return
     }
     pending.value = !data.value
     unsubscribe = subscribe(sessionId, {
       snapshot: (snapshot) => {
-        if (owner !== generation || disposed) return
+        if (owner !== connectionGeneration || disposed) return
         try {
           accept(snapshot, sessionId)
         } catch (cause) {
@@ -101,15 +101,14 @@ export function useSession(id: Ref<string>, api: SessionApi = useRunsApi()) {
         } else connection.value = 'connected'
       },
       state: (state) => {
-        if (owner !== generation || disposed) return
+        if (owner !== connectionGeneration || disposed) return
         connection.value = state
-        connectionError.value = state === 'reconnecting'
-          ? '进度连接中断，正在重新连接；当前显示最后已知结果'
-          : ''
+        connectionError.value =
+          state === 'reconnecting' ? '进度连接中断，正在重新连接；当前显示最后已知结果' : ''
         if (state === 'reconnecting') pending.value = false
       },
       error: (cause) => {
-        if (owner !== generation || disposed) return
+        if (owner !== connectionGeneration || disposed) return
         closeConnection()
         connection.value = 'closed'
         connectionError.value = formatError(cause)
@@ -121,17 +120,21 @@ export function useSession(id: Ref<string>, api: SessionApi = useRunsApi()) {
   async function refresh() {
     if (disposed) return
     if (api.subscribe && api.subscribe.available !== false) connect()
-    await query(id.value, generation)
+    await query(id.value)
   }
 
-  watch(id, () => {
-    release()
-    data.value = undefined
-    snapshotVersion.value = undefined
-    error.value = ''
-    readAt.value = undefined
-    connect()
-  }, { immediate: true })
+  watch(
+    id,
+    () => {
+      release()
+      data.value = undefined
+      snapshotVersion.value = undefined
+      error.value = ''
+      readAt.value = undefined
+      connect()
+    },
+    { immediate: true },
+  )
   onScopeDispose(() => {
     disposed = true
     release()

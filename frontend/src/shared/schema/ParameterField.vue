@@ -38,7 +38,12 @@ function rebuild(value: JsonObject) {
     .map((key) =>
       hasOwn(value, key)
         ? makeRow(key, true, value[key])
-        : makeRow(key, false, field.value.property(key).initialValue),
+        : makeRow(
+            key,
+            required.value.includes(key) &&
+              properties.value[key]?.['x-workflowweave-credential'] === true,
+            field.value.property(key).initialValue,
+          ),
     )
 }
 watch(

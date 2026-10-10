@@ -22,15 +22,12 @@ vi.mock('@/app/services', () => ({
 }))
 
 const capability: CapabilityDescription = {
-  kind: 'collector',
-  name: 'logs',
+  kind: 'channel',
+  name: 'email',
   plugin: 'builtin',
-  description: '日志采集',
+  description: '邮件渠道',
   capabilities: [],
   options_schema: {},
-  setters_schema: null,
-  fields: [],
-  count_unit: null,
 }
 const healthReport: HealthReport = {
   status: 'ready',
@@ -51,7 +48,7 @@ const healthReport: HealthReport = {
             {
               code: 'capability_missing',
               message: '已保存资源引用的插件能力不可用',
-              details: { kind: 'source', name: 'logs', resources: ['source-a'] },
+              details: { kind: 'channel', name: 'email', resources: ['source-a'] },
             },
           ],
           reload_error: null,

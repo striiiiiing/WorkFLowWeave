@@ -2,7 +2,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { expect, it } from 'vitest'
 import { router as applicationRouter } from '@/app/router'
 
-it('keeps the established route paths, names, query state and collector demo redirect', async () => {
+it('keeps the established route paths, names and query state', async () => {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: applicationRouter.options.routes.map((record) => ({
@@ -24,7 +24,4 @@ it('keeps the established route paths, names, query state and collector demo red
   expect(router.currentRoute.value.name).toBe('run-detail')
   expect(router.currentRoute.value.query).toEqual({ tab: 'notify' })
 
-  await router.push('/collector-demo?source=legacy')
-  expect(router.currentRoute.value.path).toBe('/workflows')
-  expect(router.currentRoute.value.query).toEqual({ source: 'legacy' })
 })

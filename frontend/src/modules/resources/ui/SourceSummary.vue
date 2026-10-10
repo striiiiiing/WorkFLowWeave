@@ -8,13 +8,13 @@ defineProps<{ source: SourceConfig }>()
       <dt>调用</dt>
       <dd>
         {{
-          source.call?.kind === 'mcp'
+          source.call.kind === 'mcp'
             ? `${source.call.server} / ${source.call.tool}`
-            : source.call?.kind === 'cli'
+            : source.call.kind === 'cli'
               ? source.call.mode === 'argv'
                 ? source.call.executable
                 : source.call.command
-              : `插件 / ${source.collector}`
+              : `${source.call.file_type === 'text' ? '文本' : source.call.file_type} / ${source.call.path}`
         }}
       </dd>
     </div>

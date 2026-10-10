@@ -108,7 +108,20 @@ describe('channel instance conversation binding', () => {
   })
 
   it('shows the entry only on existing duplex instances', () => {
-    const api = { ...bindingApi(), protectCredential: vi.fn() } as unknown as ResourcesApi
+    const api = {
+      ...bindingApi(),
+      protectCredential: vi.fn(),
+      channelConnection: vi.fn().mockResolvedValue({
+        channel_id: 'instance',
+        state: 'idle',
+        message: '尚未开始连接',
+        error: null,
+        target_options: {},
+      }),
+      startChannelConnection: vi.fn(),
+      cancelChannelConnection: vi.fn(),
+      get: vi.fn(),
+    } as unknown as ResourcesApi
     const capability = {
       name: 'telegram',
       kind: 'channel',

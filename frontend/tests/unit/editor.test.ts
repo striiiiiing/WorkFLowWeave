@@ -128,7 +128,7 @@ describe('editor task regressions', () => {
     vi.mocked(resourcesApi.protectCredential).mockRejectedValueOnce(new Error('master key missing'))
     const initial = {
       ...createResource('ai'),
-      provider: 'http',
+      provider: 'openai_compatible_api',
       base_url: 'http://127.0.0.1:1/v1',
     }
     const wrapper = mount(ResourceEditor, { props: { kind: 'ai', initial }, global })
@@ -147,12 +147,13 @@ describe('editor task regressions', () => {
     const initial = {
       ...createWorkflow(),
       sources: ['first', 'second'],
-      source_overrides: { first: { options: { limit: 3 }, setters: {}, template: null } },
+      source_overrides: {
+        first: { arguments: { limit: 3 }, limits: { item_tokens: null, field_tokens: null } },
+      },
     }
     const sources = ['first', 'second'].map((id) => ({
       ...createResource('sources'),
       id,
-      collector: 'mock',
     }))
     const wrapper = mount(
       defineComponent({
@@ -172,7 +173,7 @@ describe('editor task regressions', () => {
     expect(wrapper.text()).not.toContain('采集并发数')
     await wrapper.get('article:nth-of-type(2)').findAll('button')[0].trigger('click')
     expect(workflow.value.sources).toEqual(['second', 'first'])
-    expect(workflow.value.source_overrides.first.options).toEqual({ limit: 3 })
+    expect(workflow.value.source_overrides.first.arguments).toEqual({ limit: 3 })
     await wrapper
       .findAll('article.source-card')[1]
       .findAll('button')

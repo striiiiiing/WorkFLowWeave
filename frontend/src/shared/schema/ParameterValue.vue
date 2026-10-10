@@ -1,8 +1,12 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { ParameterInput, ValueDraft, ValueType } from '@/shared/schema/parameters'
 
 const props = defineProps<{ modelValue: ValueDraft; field: ParameterInput; label: string }>()
 const emit = defineEmits<{ 'update:modelValue': [value: ValueDraft] }>()
+const secret = computed(
+  () => props.field.schema['x-workflowweave-credential'] === true || /secret/i.test(props.label),
+)
 function update(value: ValueDraft) {
   emit('update:modelValue', value)
 }
@@ -124,7 +128,14 @@ function setType(type: ValueType) {
     <el-input
       v-else
       :model-value="modelValue.text"
-      :type="modelValue.type === 'object' ? 'textarea' : 'text'"
+      :type="
+        modelValue.type === 'object'
+          ? 'textarea'
+          : modelValue.type === 'string' && secret
+            ? 'password'
+            : 'text'
+      "
+      :show-password="modelValue.type === 'string' && secret"
       :placeholder="
         field.schema.format === 'date'
           ? 'YYYY-MM-DD'

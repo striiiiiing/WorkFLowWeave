@@ -7,6 +7,8 @@ import FanOutTaskCard from '@/modules/workflows/ui/FanOutTaskCard.vue'
 import PromptOverrides from '@/modules/workflows/ui/PromptOverrides.vue'
 import WorkflowBasicInfo from '@/modules/workflows/ui/WorkflowBasicInfo.vue'
 import NotificationCard from '@/modules/workflows/ui/NotificationCard.vue'
+import SourceStepCard from '@/modules/workflows/ui/SourceStepCard.vue'
+import type { SourceConfigEditorGateway } from '@/modules/resources/public'
 import { createWorkflow, useWorkflowEditor } from '@/modules/workflows/public'
 import { workflowsApiKey } from '@/modules/workflows/api/dependencies'
 
@@ -17,6 +19,31 @@ function setup() {
 }
 
 describe('workflow module UI', () => {
+  it('shows format choices without advanced mode and keeps budgets while editing', async () => {
+    const { editor, scope } = setup()
+    editor.update({ input_processing: { format: 'none', total_tokens: 5000, item_tokens: 500, field_tokens: 100 } })
+    const wrapper = mount(SourceStepCard, {
+      props: { editor, sources: [], advanced: false, gateway: {} as SourceConfigEditorGateway },
+      global: { plugins: [ElementPlus] },
+    })
+    const selector = wrapper.getComponent(ElSelect)
+    expect(wrapper.find('[aria-label="输入格式"]').exists()).toBe(true)
+    expect(selector.findAllComponents(ElOption).map((option) => option.props('value'))).toEqual([
+      'none', 'ison', 'toon', 'zon', 'md', 'csv',
+    ])
+    expect(wrapper.text()).not.toContain('采集并发数')
+    await selector.vm.$emit('update:modelValue', 'ison')
+    expect(editor.draft.value?.input_processing).toEqual({
+      format: 'ison', total_tokens: 5000, item_tokens: 500, field_tokens: 100,
+    })
+    await wrapper.setProps({ advanced: true })
+    expect(wrapper.text()).toContain('采集并发数')
+    await wrapper.setProps({ advanced: false })
+    expect(wrapper.getComponent(ElSelect).props('modelValue')).toBe('ison')
+    wrapper.unmount()
+    scope.stop()
+  })
+
   it('edits fan-out tasks through named controller actions', async () => {
     const { editor, scope } = setup()
     const wrapper = mount(FanOutTaskCard, {

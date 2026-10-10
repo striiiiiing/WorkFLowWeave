@@ -13,7 +13,6 @@ import type { ResourcesApi } from '@/modules/resources/api/resourcesApi'
 const source = {
   ...createResource('sources'),
   id: 's',
-  collector: 'mock',
   enabled: false,
 } as SourceConfig
 
@@ -92,7 +91,9 @@ it('replaces the current server workflow with its draft exactly once for usage p
   const stored = { ...createWorkflow(), id: 'current', sources: ['s'] }
   const draft = ref({
     ...stored,
-    source_overrides: { s: { source, options: {}, setters: {}, template: null } },
+    source_overrides: {
+      s: { source, arguments: null, limits: { item_tokens: null, field_tokens: null } },
+    },
   })
   const list = vi.fn().mockResolvedValue([stored, { ...stored, id: 'peer' }])
   let usage!: ReturnType<typeof useSourceUsage>

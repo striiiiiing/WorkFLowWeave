@@ -174,16 +174,12 @@ describe('workflow model and editor', () => {
     const { editor, scope } = setup(workflow)
     const source = {
       id: 'logs',
-      collector: 'mock',
+      call: { kind: 'mcp' as const, server: 'server', tool: 'read', arguments: {} },
       enabled: true,
-      options: { limit: 3 },
-      setters: {},
-      template: null,
+      limits: { item_tokens: null, field_tokens: null },
       timeout: 60,
       on_error: 'stop' as const,
-      on_missing: 'stop' as const,
       on_empty: 'stop' as const,
-      on_filtered_empty: 'stop' as const,
     }
     const gateway: SourceConfigEditorGateway = {
       resolve: vi.fn().mockResolvedValue(source),

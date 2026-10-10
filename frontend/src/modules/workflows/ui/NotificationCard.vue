@@ -7,7 +7,7 @@ import { optionSchema } from '@/shared/schema/capabilities'
 import ParameterField from '@/shared/schema/ParameterField.vue'
 import SectionCard from '@/shared/ui/SectionCard.vue'
 type WorkflowCapability = {
-  kind: 'channel' | 'collector' | 'tool'
+  kind: 'channel' | 'tool'
   name: string
   options_schema: JsonObject
 }

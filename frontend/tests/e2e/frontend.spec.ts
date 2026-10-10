@@ -224,7 +224,7 @@ test('workflow create, reload, run, and versioned phase reading', async ({ page,
     },
     ai: {
       id: 'offline_ai',
-      provider: 'http',
+      provider: 'openai_compatible_api',
       base_url: 'http://127.0.0.1:1/v1',
       models: { offline_model: {} },
       retries: 0,
@@ -293,7 +293,7 @@ test('workflow create, reload, run, and versioned phase reading', async ({ page,
     },
   ])
   expect(saved.backup.enabled).toBe(true)
-  expect(saved.include_counts).toBe(true)
+  expect(saved.include_counts).toBeUndefined()
   expect(saved.schedule).toEqual({
     type: 'cron',
     expression: '0 9 * * *',
@@ -307,9 +307,6 @@ test('workflow create, reload, run, and versioned phase reading', async ({ page,
   saved.source_overrides = {
     offline_source: {
       source: null,
-      options: {},
-      setters: {},
-      template: null,
       arguments: null,
       limits: { item_tokens: null, field_tokens: null },
     },
@@ -758,7 +755,6 @@ test('workflow designer persists independent sources and the resource center onl
     expect(saved.source_overrides[sourceId].source).toMatchObject({
       display_name: '本流专用巡检数据',
       timeout: 25,
-      template: null,
     })
     expect(saved.analyses[0].user_prompt).toBe('保留这个未保存草稿 {input}')
 

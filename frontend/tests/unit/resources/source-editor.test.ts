@@ -1,6 +1,6 @@
 import { defineComponent, h, effectScope } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElSelect } from 'element-plus'
 import { describe, it, expect, vi } from 'vitest'
 import { useSourceEditor } from '@/modules/resources/composables/useSourceEditor'
 import { createResource } from '@/modules/resources/model/public'
@@ -8,6 +8,7 @@ import { filterSources } from '@/modules/resources/model/public'
 import { resourcesApiKey } from '@/modules/resources/api/dependencies'
 import SourceConfigEditor from '@/modules/resources/ui/SourceConfigEditor.vue'
 import SourceSummary from '@/modules/resources/ui/SourceSummary.vue'
+import SourceFileFields from '@/modules/resources/ui/SourceFileFields.vue'
 import { ApiError } from '@/shared/api/errors'
 import type {
   SourceConfig,
@@ -35,6 +36,11 @@ const api = {
     inputSchema: { type: 'object', properties: { limit: { type: 'integer' } } },
   }),
   loadMcpCatalog: vi.fn(),
+  createTextReference: vi.fn().mockImplementation(async (path: string) => ({
+    kind: 'file',
+    file_type: 'text',
+    path,
+  })),
 }
 function setup(target: SourceSaveTarget, gateway: SourceConfigEditorGateway, initial = source()) {
   let editor!: ReturnType<typeof useSourceEditor>
@@ -179,40 +185,15 @@ describe('MCP/CLI source editor', () => {
   })
 })
 
-it('renders and edits a collector source without a call', async () => {
-  const pluginSource: SourceConfig = {
+it('renders and searches a CLI source', async () => {
+  const cliSource: SourceConfig = {
     ...source(),
-    collector: 'qwenpaw_flomo',
-    call: null,
-    options: { kind: 'hourly', limit: 8 },
+    call: { kind: 'cli', mode: 'argv', executable: 'log-reader', argv: ['--recent'], cwd: null },
   }
-  const summary = mount(SourceSummary, { props: { source: pluginSource } })
-  expect(summary.text()).toContain('插件 / qwenpaw_flomo')
-  expect(filterSources([pluginSource], 'qwenpaw_flomo', 'all', () => undefined)).toEqual([
-    pluginSource,
-  ])
+  const summary = mount(SourceSummary, { props: { source: cliSource } })
+  expect(summary.text()).toContain('log-reader')
+  expect(filterSources([cliSource], 'log-reader', 'all', () => undefined)).toEqual([cliSource])
   summary.unmount()
-
-  const saved = vi.fn()
-  const { wrapper, editor } = setup(
-    { kind: 'shared-resource', resourceId: pluginSource.id },
-    { resolve: async () => pluginSource, save: saved },
-    pluginSource,
-  )
-  await flushPromises()
-  expect(wrapper.text()).toContain('采集插件')
-  editor.updateOptions({ kind: 'hourly', limit: 10 })
-  await wrapper.get('form').trigger('submit')
-  await flushPromises()
-  expect(saved).toHaveBeenCalledWith(
-    { kind: 'shared-resource', resourceId: pluginSource.id },
-    expect.objectContaining({
-      collector: 'qwenpaw_flomo',
-      call: null,
-      options: { kind: 'hourly', limit: 10 },
-    }),
-  )
-  wrapper.unmount()
 })
 
 it('keeps source usage filtering independent of resource kind', () => {
@@ -222,4 +203,56 @@ it('keeps source usage filtering independent of resource kind', () => {
   expect(
     filterSources(sources, '', 'shared', () => [{ id: 'wf', name: 'W', detached: false }]),
   ).toEqual(sources)
+})
+
+it.each(['shared-resource', 'workflow-draft'] as const)(
+  'saves a file reference to %s and retries the resource without creating the file again',
+  async (kind) => {
+    api.createTextReference.mockReset().mockImplementation(async (path: string) => ({
+      kind: 'file',
+      file_type: 'text',
+      path,
+    }))
+    const saved = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('来源保存失败'))
+      .mockResolvedValue(undefined)
+    const target: SourceSaveTarget =
+      kind === 'shared-resource'
+        ? { kind, resourceId: 'logs' }
+        : { kind, workflowId: 'wf', sourceId: 'logs' }
+    const { wrapper } = setup(target, { resolve: async () => source(), save: saved })
+    await flushPromises()
+    await wrapper.get('input[value="file"]').setValue(true)
+    await flushPromises()
+    const fields = wrapper.getComponent(SourceFileFields)
+    fields.getComponent(ElSelect).vm.$emit('update:modelValue', 'text')
+    await fields.get('input[aria-label="相对保存位置"]').setValue('notes/online.txt')
+    await fields.get('input[type="checkbox"]').setValue(true)
+    await fields.get('textarea').setValue('online body')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.text()).toContain('来源保存失败')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(api.createTextReference).toHaveBeenCalledTimes(1)
+    expect(saved).toHaveBeenLastCalledWith(
+      target,
+      expect.objectContaining({
+        call: { kind: 'file', file_type: 'text', path: 'notes/online.txt' },
+      }),
+    )
+    wrapper.unmount()
+  },
+)
+
+it('renders and searches the file type and relative path', () => {
+  const fileSource: SourceConfig = {
+    ...source(),
+    call: { kind: 'file', file_type: 'text', path: 'team/notes.txt' },
+  }
+  const summary = mount(SourceSummary, { props: { source: fileSource } })
+  expect(summary.text()).toContain('文本 / team/notes.txt')
+  expect(filterSources([fileSource], 'team/notes', 'all', () => undefined)).toEqual([fileSource])
+  summary.unmount()
 })

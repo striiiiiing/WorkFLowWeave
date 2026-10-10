@@ -8,11 +8,54 @@ import type {
   SourceConfig,
   SourceOverride,
   AIConfig,
+  FileCall,
 } from '../model/public'
 import type { McpConfig } from '../model/mcp/import'
 
 export function createResourcesApi(http: HttpClient) {
   return {
+    createTextReference: (path: string, text: string) =>
+      http.request<FileCall>({
+        url: '/collection/files/text',
+        method: 'POST',
+        data: { path, file_type: 'text', text },
+      }),
+    importTextReference: (path: string, file: File) =>
+      http.request<FileCall>({
+        url: '/collection/files/import',
+        method: 'POST',
+        params: { path, file_type: 'text' },
+        headers: { 'Content-Type': 'application/octet-stream' },
+        data: file,
+      }),
+    startChannelConnection: (id: string) =>
+      http.request<ChannelConnectionStatus>({
+        url: `/channels/${segment(id)}/connection`,
+        method: 'POST',
+      }),
+    channelConnection: (id: string) =>
+      http.request<ChannelConnectionStatus>({ url: `/channels/${segment(id)}/connection` }),
+    cancelChannelConnection: (id: string) =>
+      http.request<ChannelConnectionStatus>({
+        url: `/channels/${segment(id)}/connection`,
+        method: 'DELETE',
+      }),
+    startChannelLogin: (capability: string, options: JsonObject) =>
+      http.request<ChannelLoginStatus>({
+        url: `/channels/login/${segment(capability)}`,
+        method: 'POST',
+        data: { options },
+      }),
+    channelLoginStatus: (id: string) =>
+      http.request<ChannelLoginStatus>({ url: `/channels/login/sessions/${segment(id)}` }),
+    verifyChannelLogin: (id: string, code: string) =>
+      http.request<ChannelLoginStatus>({
+        url: `/channels/login/sessions/${segment(id)}/verify`,
+        method: 'POST',
+        data: { code },
+      }),
+    cancelChannelLogin: (id: string) =>
+      http.request<void>({ url: `/channels/login/sessions/${segment(id)}`, method: 'DELETE' }),
     channelConversation: (id: string, signal?: AbortSignal) =>
       http.request<ChannelConversation>({
         url: `/channels/${segment(id)}/conversation`,
@@ -83,6 +126,22 @@ export function createResourcesApi(http: HttpClient) {
 }
 export interface ChannelConversation {
   session_id: string | null
+}
+export interface ChannelConnectionStatus {
+  channel_id: string
+  state: 'idle' | 'connecting' | 'waiting_message' | 'connected' | 'failed' | 'cancelled'
+  message: string
+  error: { code: string; message: string; details: Record<string, unknown> } | null
+  target_options: JsonObject
+}
+export interface ChannelLoginStatus {
+  session_id: string
+  state: 'waiting' | 'scanned' | 'verify_required' | 'connected' | 'failed'
+  qr_url: string | null
+  qr_image: string | null
+  account_id: string | null
+  message: string
+  options: JsonObject
 }
 export interface ConversationOption {
   session_id: string

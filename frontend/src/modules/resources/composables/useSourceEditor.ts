@@ -62,7 +62,6 @@ export function useSourceEditor(input: SourceEditorInput, gateway: SourceConfigE
     updateBasic: (fields: SourceBasicChanges) => update(fields),
     updateId,
     updateCall,
-    updateOptions: (options: NonNullable<SourceConfig['options']>) => update({ options }),
     updateAdvanced: (fields: SourceAdvancedChanges) => update(fields),
     submit,
   }

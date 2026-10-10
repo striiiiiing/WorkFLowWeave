@@ -15,13 +15,13 @@ export function filterSources(
         sourceName(source),
         source.id,
         source.description ?? '',
-        source.call?.kind === 'mcp'
+        source.call.kind === 'mcp'
           ? `${source.call.server} ${source.call.tool}`
-          : source.call?.kind === 'cli'
+          : source.call.kind === 'cli'
             ? source.call.mode === 'argv'
               ? source.call.executable
               : source.call.command
-            : (source.collector ?? ''),
+            : source.call.path,
       ]
         .join(' ')
         .toLocaleLowerCase()

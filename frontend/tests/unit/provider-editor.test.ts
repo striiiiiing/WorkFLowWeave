@@ -23,7 +23,7 @@ function config(overrides: Partial<AIConfig> = {}): AIConfig {
   return {
     ...(createResource('ai') as AIConfig),
     id: 'provider',
-    provider: 'http',
+    provider: 'openai_compatible_api',
     base_url: 'https://example.test/v1',
     api_key: null,
     models: {},
@@ -38,6 +38,25 @@ function button(wrapper: ReturnType<typeof mount>, text: string) {
 afterEach(() => vi.clearAllMocks())
 
 describe('AI provider editor', () => {
+  it('uses the canonical provider returned by the resource boundary when editing and saving', async () => {
+    const initial = config()
+    const saved = config({ provider: 'openai_compatible_api' })
+    vi.mocked(resourcesApi.replace).mockResolvedValue(saved)
+    const wrapper = mount(AIProviderEditor, { props: { initial }, global })
+    await flushPromises()
+
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(resourcesApi.replace).toHaveBeenCalledWith(
+      'ai',
+      'provider',
+      expect.objectContaining({ provider: 'openai_compatible_api' }),
+    )
+    expect(wrapper.emitted('saved')?.[0]).toEqual([saved])
+    wrapper.unmount()
+  })
+
   it('reports missing connection details without saving a new provider', async () => {
     const wrapper = mount(AIProviderEditor, { global })
     await flushPromises()

@@ -22,8 +22,7 @@ function setup() {
   const source = {
     ...createResource('sources'),
     id: 'logs',
-    collector: 'mock',
-    options: { limit: 3 },
+    call: { kind: 'mcp', server: 'tools', tool: 'echo', arguments: { limit: 3 } },
   } as SourceConfig
   const initial: WorkflowDefinition = {
     ...createWorkflow(),
@@ -65,23 +64,29 @@ it('requires detaching a shared source and retains the independent configuration
   await button('脱离共用配置').trigger('click')
   await flushPromises()
   expect(resourcesApi.resolveSource).toHaveBeenCalledWith('logs', undefined)
-  sources.value = [{ ...source, options: { limit: 99 } }]
+  sources.value = [
+    { ...source, call: { ...source.call, arguments: { limit: 99 } } } as SourceConfig,
+  ]
   await flushPromises()
-  expect(wrapper.getComponent(SourceSummary).props('source').options).toEqual({ limit: 3 })
-  expect(workflow.value.source_overrides.logs.source?.options).toEqual({ limit: 3 })
+  expect(wrapper.getComponent(SourceSummary).props('source').call.arguments).toEqual({ limit: 3 })
+  expect(workflow.value.source_overrides.logs.source?.call).toMatchObject({
+    arguments: { limit: 3 },
+  })
   expect(resourcesApi.replace).not.toHaveBeenCalled()
 
   await button('编辑配置').trigger('click')
   const sourceEditor = wrapper.getComponent(SourceEditorSession)
-  sourceEditor.vm.$emit('saved', { ...source, options: { limit: 8 } })
+  sourceEditor.vm.$emit('saved', { ...source, call: { ...source.call, arguments: { limit: 8 } } })
   await flushPromises()
-  expect(workflow.value.source_overrides.logs.source?.options).toEqual({ limit: 8 })
-  expect(sources.value[0].options).toEqual({ limit: 99 })
+  expect(workflow.value.source_overrides.logs.source?.call).toMatchObject({
+    arguments: { limit: 8 },
+  })
+  expect(sources.value[0].call).toMatchObject({ arguments: { limit: 99 } })
 
   wrapper.getComponent(ElPopconfirm).vm.$emit('confirm', new MouseEvent('click'))
   await flushPromises()
   expect(workflow.value.source_overrides).toEqual({})
-  expect(wrapper.getComponent(SourceSummary).props('source').options).toEqual({ limit: 99 })
+  expect(wrapper.getComponent(SourceSummary).props('source').call.arguments).toEqual({ limit: 99 })
 })
 
 it('surfaces resolution failure and keeps the original binding intact', async () => {
@@ -94,10 +99,13 @@ it('surfaces resolution failure and keeps the original binding intact', async ()
   expect(wrapper.text()).toContain('全局同步 (2)')
 })
 
-it('requires explicit detachment before editing a legacy sparse override', async () => {
+it('requires explicit detachment before editing an argument override', async () => {
   const { wrapper, workflow, button } = setup()
   const editor = wrapper.getComponent(SourceStepCard).props('editor')
-  editor.setSource('logs', { options: { limit: 5 }, setters: {}, template: null })
+  editor.setSource('logs', {
+    arguments: { limit: 5 },
+    limits: { item_tokens: null, field_tokens: null },
+  })
   await flushPromises()
   expect(button('编辑配置').attributes('disabled')).toBeDefined()
   expect(wrapper.text()).toContain('多个工作流共用此数据源')
@@ -114,14 +122,16 @@ it('adds the persisted source to the workflow without replacing other bindings',
   expect(workflow.value.sources).toEqual(['logs', 'new-source'])
 })
 
-it('counts sparse legacy overrides as shared and complete snapshots as independent', () => {
+it('counts argument overrides as shared and complete snapshots as independent', () => {
   const shared = {
     ...createWorkflow(),
     id: 'shared',
     sources: ['logs'],
-    source_overrides: { logs: { options: { limit: 5 }, setters: {}, template: null } },
+    source_overrides: {
+      logs: { arguments: { limit: 5 }, limits: { item_tokens: null, field_tokens: null } },
+    },
   }
-  const source = { ...createResource('sources'), id: 'logs', collector: 'mock' } as SourceConfig
+  const source = { ...createResource('sources'), id: 'logs' } as SourceConfig
   const independent = {
     ...shared,
     id: 'independent',

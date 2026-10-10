@@ -15,7 +15,7 @@ test('existing frontend receives real API data and saves a resource', async ({ p
   await page.goto('/')
   await expect(page.getByText('系统状态', { exact: true })).toBeVisible()
   await expect(page.locator('.el-alert--error')).toHaveCount(0)
-  for (const kind of ['sources', 'setters', 'ai', 'channels', 'workflows', 'sessions', 'plugins']) {
+  for (const kind of ['sources', 'mcp_servers', 'ai', 'channels', 'workflows', 'sessions', 'plugins']) {
     const response = await request.get(`/api/${kind}`)
     expect(response.status(), `${kind}: ${await response.text()}`).toBe(200)
     expect(Array.isArray(await response.json())).toBe(true)

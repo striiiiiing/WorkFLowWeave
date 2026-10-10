@@ -63,8 +63,6 @@ export function progressStatusLabel(item: WorkflowProgress) {
     running: '执行中',
     success: '已完成',
     empty: '没有内容',
-    filtered_empty: '筛选后没有内容',
-    missing: '来源不可用',
     failed: '失败',
     timeout: '超时',
     cancelled: '已取消',
@@ -74,8 +72,8 @@ export function progressStatusLabel(item: WorkflowProgress) {
 }
 
 export function progressTagType(item: WorkflowProgress) {
-  if (['failed', 'timeout', 'delivery_uncertain', 'missing'].includes(item.status)) return 'danger'
+  if (['failed', 'timeout', 'delivery_uncertain'].includes(item.status)) return 'danger'
   if (['pending', 'running'].includes(item.status)) return 'info'
-  if (['empty', 'filtered_empty', 'skipped', 'cancelled'].includes(item.status)) return 'warning'
+  if (['empty', 'skipped', 'cancelled'].includes(item.status)) return 'warning'
   return 'success'
 }
