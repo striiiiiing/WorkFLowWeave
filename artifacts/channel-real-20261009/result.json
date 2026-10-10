@@ -1,0 +1,138 @@
+{
+  "started_at": "2026-10-08T17:52:13.632935+00:00",
+  "marker": "LOGAGENT_CHANNEL_TEST_20261008T175213Z",
+  "email_excluded": true,
+  "instances": [
+    {
+      "id": "default_file",
+      "channel": "file",
+      "enabled": true,
+      "delivery": {
+        "channel_id": "default_file",
+        "output_id": "LOGAGENT_CHANNEL_TEST_20261008T175213Z",
+        "status": "success",
+        "attempts": 1,
+        "error": null
+      },
+      "status": "success",
+      "file_readback": true,
+      "file_path": "/mnt/d/code/LogAgent/data/notifications.txt"
+    },
+    {
+      "id": "feishu_44226623-a381-4231-bb17-9a233010ad1b",
+      "channel": "feishu",
+      "enabled": true,
+      "authentication": {
+        "status": "success",
+        "platform_code": 0,
+        "http_status": 200
+      },
+      "delivery": {
+        "channel_id": "feishu_44226623-a381-4231-bb17-9a233010ad1b",
+        "output_id": "LOGAGENT_CHANNEL_TEST_20261008T175213Z",
+        "status": "failed",
+        "attempts": 1,
+        "error": {
+          "code": "feishu_target_missing",
+          "message": "飞书普通发送需要设置 target_kind 和 target_id",
+          "details": {
+            "delivery_uncertain": false
+          }
+        }
+      },
+      "status": "failed"
+    },
+    {
+      "id": "file_20b660e3-3ea4-4d0e-9461-5a6bd012a23b",
+      "channel": "file",
+      "enabled": true,
+      "delivery": {
+        "channel_id": "file_20b660e3-3ea4-4d0e-9461-5a6bd012a23b",
+        "output_id": "LOGAGENT_CHANNEL_TEST_20261008T175213Z",
+        "status": "success",
+        "attempts": 1,
+        "error": null
+      },
+      "status": "success",
+      "file_readback": true,
+      "file_path": "/mnt/d/code/LogAgent/data/logs/notifications.log"
+    },
+    {
+      "id": "inspection_file",
+      "channel": "file",
+      "enabled": true,
+      "delivery": {
+        "channel_id": "inspection_file",
+        "output_id": "LOGAGENT_CHANNEL_TEST_20261008T175213Z",
+        "status": "success",
+        "attempts": 1,
+        "error": null
+      },
+      "status": "success",
+      "file_readback": true,
+      "file_path": "/mnt/d/code/LogAgent/data/reports/inspection.log"
+    },
+    {
+      "id": "qq_9f8e2c4c-860d-4aa2-afec-5f9ee25fb0ef",
+      "channel": "qq",
+      "enabled": true,
+      "delivery": {
+        "channel_id": "qq_9f8e2c4c-860d-4aa2-afec-5f9ee25fb0ef",
+        "output_id": "LOGAGENT_CHANNEL_TEST_20261008T175213Z",
+        "status": "failed",
+        "attempts": 0,
+        "error": {
+          "code": "qq_authentication_failed",
+          "message": "QQ Bot 登录失败",
+          "details": {
+            "exception_type": "ClientConnectorError",
+            "delivery_uncertain": false
+          }
+        }
+      },
+      "status": "failed"
+    },
+    {
+      "id": "qq_AIBot",
+      "channel": "qq",
+      "enabled": true,
+      "delivery": {
+        "channel_id": "qq_AIBot",
+        "output_id": "LOGAGENT_CHANNEL_TEST_20261008T175213Z",
+        "status": "failed",
+        "attempts": 0,
+        "error": {
+          "code": "qq_authentication_failed",
+          "message": "QQ Bot 登录失败",
+          "details": {
+            "exception_type": "ClientConnectorError",
+            "delivery_uncertain": false
+          }
+        }
+      },
+      "status": "failed"
+    },
+    {
+      "id": "telegram_2c90d0bb-5d35-4f8e-998b-208df0d03f8a",
+      "channel": "telegram",
+      "enabled": true,
+      "delivery": {
+        "channel_id": "telegram_2c90d0bb-5d35-4f8e-998b-208df0d03f8a",
+        "output_id": "LOGAGENT_CHANNEL_TEST_20261008T175213Z",
+        "status": "failed",
+        "attempts": 0,
+        "error": {
+          "code": "channel_prepare_failed",
+          "message": "通知渠道准备失败",
+          "details": {
+            "delivery_uncertain": false,
+            "exception_type": "TimedOut"
+          }
+        }
+      },
+      "status": "failed"
+    }
+  ],
+  "cleanup": "success",
+  "finished_at": "2026-10-08T17:52:33.644659+00:00"
+}

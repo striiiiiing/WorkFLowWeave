@@ -1,0 +1,42 @@
+{
+  "started_at": "2026-10-09T03:36:31.426990+00:00",
+  "marker": "LOGAGENT_CHANNEL_TEST_20261009T033631Z",
+  "email_excluded": true,
+  "source": "saved_resources_read_only",
+  "instances": [
+    {
+      "id": "qq_9f8e2c4c-860d-4aa2-afec-5f9ee25fb0ef",
+      "channel": "qq",
+      "enabled": true,
+      "mode": "conversation",
+      "target_source": "first_private_inbound_event",
+      "ignored_non_private_events": 0,
+      "stage": "receiver_starting",
+      "status": "failed",
+      "exception_type": "ChannelDeliveryError",
+      "elapsed_seconds": 0.51,
+      "cause_types": [],
+      "code": "qq_authentication_rejected",
+      "details": {
+        "http_status": 200,
+        "platform_code": 100016
+      }
+    },
+    {
+      "id": "qq_AIBot",
+      "channel": "qq",
+      "enabled": true,
+      "mode": "conversation",
+      "target_source": "first_private_inbound_event",
+      "ignored_non_private_events": 0,
+      "stage": "waiting_first_message",
+      "startup_seconds": 0.78,
+      "receiver_state": "running",
+      "connected": true,
+      "status": "awaiting_first_message",
+      "inbound_received": false
+    }
+  ],
+  "cleanup": "success",
+  "finished_at": "2026-10-09T03:37:04.617830+00:00"
+}

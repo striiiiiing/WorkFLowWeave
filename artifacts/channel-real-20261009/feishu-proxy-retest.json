@@ -1,0 +1,28 @@
+{
+  "started_at": "2026-10-09T03:34:39.855878+00:00",
+  "marker": "LOGAGENT_CHANNEL_TEST_20261009T033439Z",
+  "email_excluded": true,
+  "source": "saved_resources_read_only",
+  "instances": [
+    {
+      "id": "feishu_44226623-a381-4231-bb17-9a233010ad1b",
+      "channel": "feishu",
+      "enabled": true,
+      "authentication": {
+        "status": "success",
+        "platform_code": 0,
+        "http_status": 200
+      },
+      "mode": "conversation",
+      "target_source": "first_private_inbound_event",
+      "ignored_non_private_events": 0,
+      "stage": "waiting_first_message",
+      "startup_seconds": 4.51,
+      "connected": true,
+      "status": "awaiting_first_message",
+      "inbound_received": false
+    }
+  ],
+  "cleanup": "success",
+  "finished_at": "2026-10-09T03:35:17.200975+00:00"
+}

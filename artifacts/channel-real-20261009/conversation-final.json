@@ -1,0 +1,73 @@
+{
+  "started_at": "2026-10-09T03:43:38.363063+00:00",
+  "marker": "LOGAGENT_CHANNEL_TEST_20261009T034338Z",
+  "email_excluded": true,
+  "source": "saved_resources_read_only",
+  "instances": [
+    {
+      "id": "qq_9f8e2c4c-860d-4aa2-afec-5f9ee25fb0ef",
+      "channel": "qq",
+      "enabled": true,
+      "mode": "conversation",
+      "target_source": "first_private_inbound_event",
+      "ignored_non_private_events": 0,
+      "stage": "receiver_starting",
+      "status": "failed",
+      "exception_type": "ChannelDeliveryError",
+      "elapsed_seconds": 2.13,
+      "cause_types": [],
+      "code": "qq_authentication_rejected",
+      "details": {
+        "http_status": 200,
+        "platform_code": 100016
+      }
+    },
+    {
+      "id": "qq_AIBot",
+      "channel": "qq",
+      "enabled": true,
+      "mode": "conversation",
+      "target_source": "first_private_inbound_event",
+      "ignored_non_private_events": 0,
+      "stage": "waiting_first_message",
+      "startup_seconds": 2.51,
+      "receiver_state": "running",
+      "connected": true,
+      "status": "awaiting_first_message",
+      "inbound_received": false
+    },
+    {
+      "id": "feishu_44226623-a381-4231-bb17-9a233010ad1b",
+      "channel": "feishu",
+      "enabled": true,
+      "authentication": {
+        "status": "success",
+        "platform_code": 0,
+        "http_status": 200
+      },
+      "mode": "conversation",
+      "target_source": "first_private_inbound_event",
+      "ignored_non_private_events": 0,
+      "stage": "waiting_first_message",
+      "startup_seconds": 4.39,
+      "connected": true,
+      "status": "awaiting_first_message",
+      "inbound_received": false
+    },
+    {
+      "id": "telegram_2c90d0bb-5d35-4f8e-998b-208df0d03f8a",
+      "channel": "telegram",
+      "enabled": true,
+      "mode": "conversation",
+      "target_source": "first_private_inbound_event",
+      "ignored_non_private_events": 0,
+      "stage": "waiting_first_message",
+      "startup_seconds": 3.34,
+      "connected": true,
+      "status": "awaiting_first_message",
+      "inbound_received": false
+    }
+  ],
+  "cleanup": "success",
+  "finished_at": "2026-10-09T03:44:17.435842+00:00"
+}
