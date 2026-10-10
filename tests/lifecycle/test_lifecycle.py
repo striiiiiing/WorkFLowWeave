@@ -133,6 +133,7 @@ def _config(tmp_path: Path, **kwargs) -> SystemConfig:
     return SystemConfig(
         data_dir=str(tmp_path / "data"),
         plugin_dir=str(tmp_path / "plugins"),
+        builtin_plugin_dir=str(tmp_path / "builtin-plugins"),
         log_file=str(tmp_path / "logs" / "app.jsonl"),
         **kwargs,
     )
@@ -318,6 +319,7 @@ async def test_temporary_config_full_assembly_health_and_idempotent_shutdown(tmp
             {
                 "data_dir": "data",
                 "plugin_dir": "plugins",
+                "builtin_plugin_dir": "builtin-plugins",
                 "log_file": "logs/app.jsonl",
                 "max_concurrent_runs": 2,
             }
