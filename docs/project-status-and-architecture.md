@@ -13,7 +13,7 @@
 | 最初目标或边界                     | 当前情况                                                                                      |
 | ---------------------------------- | --------------------------------------------------------------------------------------------- |
 | 固定触发、多来源采集               | 已有手动运行与 APScheduler 调度；持久化计划统一为 `schedule`，支持 `at/every/cron`            |
-| Collector 插件与 Setter 配置       | 新建来源采用 MCP/CLI `call` 契约；旧 Collector 仅留有限兼容路径，不再作为新来源的主要扩展方式 |
+| 来源配置与执行       | 统一采用 MCP/CLI `call` 契约 |
 | 一份共享输入、多模型分析、可选汇总 | 已实现逐项并行分析、分层提示词、声明顺序与可选模型 fan-in                                     |
 | session 备份、查询和失败恢复       | 已拆分执行 checkpoint 与长期业务归档，增加执行轮次、分类正文、提示词索引和独立保留期          |
 | 单向通知                           | 保留独立发送路径，并实现并行通知分支、持久化意图与回执                                        |
@@ -39,7 +39,7 @@ flowchart TB
     CM --> Q[UnifiedQueue]
     Q --> ACP[AgentChannelProcessor]
     ACP --> AS[AgentService / create_agent]
-    WG --> COL[CollectorManager / MCP 与 CLI 来源]
+    WG --> COL[来源执行管理 / MCP 与 CLI]
     COL --> MCP[MCPRuntime / 官方 SDK]
     COL --> PROC[CLI 子进程]
     WG --> AI[AIService]
@@ -124,7 +124,7 @@ flowchart TB
 
 ## 4. 采集与 MCP：当前能力和设计差距
 
-[CollectorManager](../src/workflowweave/collection/manager.py)仍沿用这个类名，但新来源执行契约已是 MCP/CLI。CLI 支持 `argv` 和 `shell`，保留 stdout、stderr 与退出码；MCP 保留原始协议结果，输入转换由 Workflow 负责。旧 Collector/Setter 不应继续作为当前架构的主干。
+[来源执行管理器](../src/workflowweave/collection/manager.py)统一处理 MCP/CLI。CLI 支持 `argv` 和 `shell`，保留 stdout、stderr 与退出码；MCP 保留原始协议结果，输入转换由 Workflow 负责。来源参数使用 MCP arguments 或 CLI 调用描述。
 
 [MCPRuntime](../src/workflowweave/mcp/runtime.py)与[transport](../src/workflowweave/mcp/transport.py)基于官方 SDK，支持 stdio、SSE 和 Streamable HTTP，已有按配置版本的目录缓存、`server/discover` 优先探测及 `tools/list` 兼容、JSON Schema 校验，以及 `phase/result_known` 记录。`_meta.workflowweave_count` 仅接受非负整数；缺失或非法为 `count_unavailable`，不从正文猜测业务条数，也不自动向模型输入追加计数。
 
@@ -151,19 +151,19 @@ flowchart TB
 
 默认 Agent 数据分为 `data/agents/workspace` 和 `data/agents/runtime`：用户文件与记忆属于工作区，运行时保存 `History/<session>/events.jsonl`、artifacts 和独立的 `checkpoints.sqlite`。Agent 的事件日志与 Workflow 业务归档不是同一套存储，也不共用恢复位置。
 
-从运行结果继续讨论时，Agent 读取关联 session 的归档，并获得当次 MCP scope 和来源调用描述；由 Agent 决定是否补充查询，不自动重新执行原采集。旧 Agent 设计中的 Collector PluginGateway 已被固定 MCP 代理取代。
+从运行结果继续讨论时，Agent 读取关联 session 的归档，并获得当次 MCP scope 和来源调用描述；由 Agent 决定是否补充查询，不自动重新执行原采集。Agent 通过固定 MCP 代理补充查询。
 
 ### 统一渠道入站，独立 Workflow 通知
 
 依据：[最新 ChannelManager 设计](../openspec/changes/redesign-agent-channel-manager/design.md)与[当前 ChannelManager](../src/workflowweave/channel/manager.py)。
 
-Web、QQ、Test 的对话输入都经 `ChannelManager → UnifiedQueue → AgentChannelProcessor → AgentService`。Manager 拥有入站队列、渠道消费与发送任务、回执及启停；AgentService 拥有模型轮次、工具执行、取消和事件日志。`unified_queue_manager.py` 当前仅为 `UnifiedQueue` 的别名，并不存在额外的独立队列服务。
+Web、QQ、Test 的对话输入都经 `ChannelManager → UnifiedQueue → AgentChannelProcessor → AgentService`。Manager 拥有入站队列、渠道消费与发送任务、回执及启停；AgentService 拥有模型轮次、工具执行、取消和事件日志。
 
 队列协调普通消息、命令、会话切换与 stop；平台对话身份和 Agent session 身份分开。渠道绑定与请求/发送回执保存于 `data/agents/channels.sqlite3`，对话正文仍在 Agent 原事件日志。请求完成、平台接受发送与用户实际读到消息是不同事实。
 
 Workflow 通知调用 `ChannelManager.send`，不进入 Agent 入站队列、不创建或切换 Agent 会话。Email 与文件渠道提供通知；QQ/Test 可提供通知和对话；Web 当前提供对话及 Agent SSE，不是任意 Workflow 通知的接收面板。QQ 使用官方 Bot Gateway/REST，目前的协议和 Manager 闭环证据来自模拟网络，真实平台仍待联调。
 
-具体适配器实现在 [plugins/](../plugins/README.md)：邮件、文件通知、QQ/Test 各自作为 channel 插件，mock/logs/history 各自作为 Collector 插件，由 PluginRegistry 统一发现。核心 channel/collection 模块只保留通用运行机制与应用 Web 入口；配置插件目录为空时不会自动补注册这些适配器。
+具体适配器实现在包内 [plugins/](../src/workflowweave/plugins/README.md)：邮件、文件通知和双向渠道作为 channel 插件，由 PluginRegistry 统一发现；采集来源使用 MCP/CLI。用户导入插件从 `plugin_dir` 发现，默认适配器从包内插件根发现。
 
 ## 6. 两种 SSE 协议
 

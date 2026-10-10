@@ -16,7 +16,12 @@ Typora_Hook_Log.txt
 /config.json
 /data/
 /frontend/node_modules
+/node_modules/
+/data-*/
+/.remote-workflow-patch/
+/frontend/1.json
 /botpy.log
+/botpy.log.*
 /backup/
 /compose.override.yaml
 .env
