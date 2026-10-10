@@ -7,6 +7,8 @@ import pytest
 from langchain_core.messages import AIMessage
 from pydantic import Field
 
+from tests.agent.helpers import ScriptedModel
+from tests.fixtures.plugin_helpers import install_test_channel_plugin
 from workflowweave.agent.commands import AgentCommand
 from workflowweave.agent.config import AgentConfig
 from workflowweave.channel import ChannelManager
@@ -27,8 +29,6 @@ from workflowweave.models import (
     WorkflowSnapshot,
 )
 from workflowweave.workflow.execution.runner import WorkflowRunner
-from tests.agent.helpers import ScriptedModel
-from tests.fixtures.plugin_helpers import install_test_channel_plugin
 
 
 def _config(*, enabled=True, agent_enabled=True, target="local"):
@@ -44,7 +44,7 @@ def _config(*, enabled=True, agent_enabled=True, target="local"):
 async def _registry(tmp_path):
     plugin_dir = tmp_path / "plugins"
     install_test_channel_plugin(plugin_dir)
-    registry = PluginRegistry([])
+    registry = PluginRegistry()
     await registry.discover_plugins(SystemConfig(plugin_dir=str(plugin_dir)))
     return registry
 
@@ -574,6 +574,7 @@ async def test_reply_uses_the_inbound_address_and_one_way_send_uses_config_targe
         assert reply["address"] == {
             "kind": "group", "target": "group-9", "sender": "user-7",
             "message_id": "message-addressed",
+            "conversation_type": None,
         }
 
         one_way_config = _config(agent_enabled=False, target="workflow-output")
@@ -625,11 +626,11 @@ class _WorkflowAI:
 async def test_workflow_notification_uses_manager_and_test_channel_one_way_send(tmp_path):
     plugin_dir = tmp_path / "plugins"
     install_test_channel_plugin(plugin_dir)
-    registry = PluginRegistry([])
+    registry = PluginRegistry()
     await registry.discover_plugins(SystemConfig(plugin_dir=str(plugin_dir), data_dir=str(tmp_path)))
     channels = ChannelManager(registry.channelRegister)
     workflow = WorkflowRunner(
-        CollectorManager(registry.collectorRegister),
+        CollectorManager(None),
         _WorkflowAI(),
         channels,
         database=tmp_path / "workflows.sqlite3",

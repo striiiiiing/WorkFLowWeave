@@ -3,10 +3,10 @@ import asyncio
 
 import pytest
 
+from tests.interaction.test_interaction import Lifecycle, _client
 from workflowweave.config.credentials import CredentialManager
 from workflowweave.interaction.schemas import ProtectCredentialRequest
 from workflowweave.models import EncryptedCredential, SystemConfig
-from tests.interaction.test_interaction import Lifecycle, _client
 
 
 def lifecycle_with_credentials(tmp_path):
@@ -25,7 +25,7 @@ def test_protect_roundtrip_and_save_without_plaintext(tmp_path, caplog):
         assert secret not in protected.text
         credential = EncryptedCredential.model_validate(protected.json())
         assert asyncio.run(lifecycle.services.credentials.resolve(credential)) == secret
-        saved = client.post("/api/ai", json={"id": "ai", "provider": "http", "models": {"model": {}}, "api_key": protected.json()})
+        saved = client.post("/api/ai", json={"id": "ai", "provider": "openai_compatible_api", "models": {"model": {}}, "api_key": protected.json()})
         assert saved.status_code == 201
         assert secret not in saved.text
         assert client.get("/api/ai/ai").json()["api_key"] == protected.json()

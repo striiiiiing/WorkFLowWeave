@@ -1,7 +1,7 @@
 """系统配置读取、插件发现及能力发布测试。
 
-在临时目录生成真实插件清单、入口和私有配置，验证路径解析、默认值、Setter
-展开与 schema/语义校验；通过非法入口、重复声明、导入异常验证整插件回滚、
+在临时目录生成真实插件清单、入口和私有配置，验证路径解析、默认值与
+schema 校验；通过非法入口、重复声明、导入异常验证整插件回滚、
 错误脱敏及已发布视图隔离。插件为测试生成，不加载用户插件或远程服务。
 """
 
@@ -15,8 +15,7 @@ import pytest
 from workflowweave.config import ConfigurationReader, PluginRegistry
 from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.models import (
-    CollectionContext,
-    CollectorOutput,
+    ChannelConfig,
     SystemConfig,
 )
 
@@ -30,21 +29,19 @@ def object_schema(properties=None, *, required=()):
     }
 
 
-class SampleCollector:
-    description = "A deterministic test collector"
-    fields = ["message", "level"]
-    count_unit = "records"
+class SampleChannel:
+    description = "A deterministic test channel"
+    capabilities = ["notification"]
     options_schema = object_schema()
-    setters_schema = object_schema()
 
     def __init__(self, name="sample"):
         self.name = name
 
-    async def collect(self, options, setters, context):
-        return CollectorOutput(status="success", text="original", count=1)
+    async def create(self, config, credentials):
+        return "original"
 
 
-class ConfigurableCollector(SampleCollector):
+class ConfigurableChannel(SampleChannel):
     options_schema = object_schema(
         {
             "required_value": {"type": "string", "description": "An instance value"},
@@ -63,28 +60,13 @@ class ConfigurableCollector(SampleCollector):
         },
         required=["required_value"],
     )
-    setters_schema = object_schema(
-        {
-            "fields": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Selected fields",
-            },
-            "filter": {
-                "type": "object",
-                "description": "Equals filter",
-                "additionalProperties": {"type": "string"},
-            },
-        }
-    )
 
 
-PLUGIN_SUPPORT = """from workflowweave.models import CollectorOutput
 
-class SampleCollector:
-    description = "Plugin test collector"
-    fields = ["message"]
-    count_unit = "records"
+PLUGIN_SUPPORT = """
+class SampleChannel:
+    description = "Plugin test channel"
+    capabilities = ["notification"]
     options_schema = {
         "type": "object",
         "properties": {
@@ -94,18 +76,17 @@ class SampleCollector:
         "required": ["required_value"],
         "additionalProperties": False
     }
-    setters_schema = {"type": "object", "additionalProperties": False}
 
     def __init__(self, name):
         self.name = name
 
-    async def collect(self, options, setters, context):
-        return CollectorOutput(status="success", text=self.name, count=1)
+    async def create(self, config, credentials):
+        return self.name
 """
 
 
 def write_plugin(
-    root, directory, *, plugin_id=None, body=None, kind="collector", backend="main.py"
+    root, directory, *, plugin_id=None, body=None, kind="channel", backend="main.py"
 ):
     package = root / directory
     package.mkdir(parents=True)
@@ -128,10 +109,10 @@ def write_plugin(
         path.write_text(
             body
             or (
-                "from .support import SampleCollector\n"
+                "from .support import SampleChannel\n"
                 "class Plugin:\n"
                 "    def register(self, api):\n"
-                f"        api.register_collector(SampleCollector({directory!r}))\n"
+                f"        api.register_channel(SampleChannel({directory!r}))\n"
                 "plugin = Plugin()\n"
             ),
             encoding="utf-8",
@@ -140,8 +121,10 @@ def write_plugin(
 
 
 async def discover(root, *, builtins=()):
-    registry = PluginRegistry(builtin_collectors=builtins)
-    report = await registry.discover_plugins(SystemConfig(plugin_dir=str(root)))
+    registry = PluginRegistry(builtin_channels=builtins)
+    report = await registry.discover_plugins(SystemConfig(
+        plugin_dir=str(root), builtin_plugin_dir=str(root.parent / f"{root.name}-builtins"),
+    ))
     return registry, report
 
 
@@ -149,11 +132,16 @@ async def test_system_paths_are_relative_to_config_and_defaults_are_fixed(tmp_pa
     directory = tmp_path / "configuration"
     directory.mkdir()
     location = directory / "system.json"
-    location.write_text(json.dumps({"plugin_dir": "../extensions", "log_file": "logs/tool.jsonl"}))
+    location.write_text(json.dumps({
+        "plugin_dir": "../extensions",
+        "builtin_plugin_dir": "../builtin-extensions",
+        "log_file": "logs/tool.jsonl",
+    }))
     monkeypatch.chdir(tmp_path)
     config = await ConfigurationReader().load_system(location)
     assert config.data_dir == str(directory / "data")
     assert config.plugin_dir == str(tmp_path / "extensions")
+    assert config.builtin_plugin_dir == str(tmp_path / "builtin-extensions")
     assert config.log_file == str(directory / "logs/tool.jsonl")
     assert config.master_key_file == str(directory / "master.key")
     assert config.host == "127.0.0.1"
@@ -185,7 +173,7 @@ async def test_optional_plugin_settings_are_missing_only_not_invalid_or_unreadab
     assert await reader.load_plugin_config(path) == {}
     with pytest.raises(WorkFLowWeaveError, match="不存在"):
         await reader.load_system(path)
-    path.write_text('{"collector": {"demo": {"enabled": "invalid"}}}')
+    path.write_text('{"channel": {"demo": {"enabled": "invalid"}}}')
     with pytest.raises(WorkFLowWeaveError):
         await reader.load_plugin_config(path)
     path.unlink()
@@ -196,86 +184,67 @@ async def test_optional_plugin_settings_are_missing_only_not_invalid_or_unreadab
 
 async def test_valid_plugin_config_and_invalid_top_level_kind(tmp_path):
     path = tmp_path / "config.json"
-    path.write_text('{"collector": {"demo": {"enabled": false}}}')
+    path.write_text('{"channel": {"demo": {"enabled": false}}}')
     config = await ConfigurationReader().load_plugin_config(path)
-    assert config["collector"]["demo"].enabled is False
+    assert config["channel"]["demo"].enabled is False
     path.write_text('{"unsupported": {}}')
     with pytest.raises(WorkFLowWeaveError):
         await ConfigurationReader().load_plugin_config(path)
 
 
 async def test_builtin_views_and_captured_implementation_are_isolated(tmp_path):
-    original = ConfigurableCollector()
+    original = ConfigurableChannel()
     registry, report = await discover(tmp_path / "missing", builtins=[original])
     assert report.errors == []
-    view = registry.collectorRegister
+    view = registry.channelRegister
     exposed = view.get("sample")
     assert view.get("absent") is None
-    exposed.fields.clear()
     exposed.options_schema["properties"].clear()
-    exposed.setters_schema["properties"].clear()
-    report.registered[0].fields.clear()
     described = view.describe()
     described[0].options_schema.clear()
     described.clear()
 
-    async def replacement(options, setters, context):
+    async def replacement(config, credentials):
         raise AssertionError("The stable original implementation must be called")
 
-    original.collect = replacement
+    original.create = replacement
     original.options_schema = object_schema()
-    assert view.get("sample").fields == ["message", "level"]
+    assert view.get("sample").capabilities == ["notification"]
     assert "limit" in view.get("sample").options_schema["properties"]
-    result = await exposed.collect({}, {}, CollectionContext("workflow", "session"))
-    assert result.text == "original"
-    assert not hasattr(view, "register_collector")
+    result = await exposed.create(None, None)
+    assert result == "original"
+    assert not hasattr(view, "register_channel")
 
 
-@pytest.mark.parametrize("invalid", ["sync", "signature", "name", "fields", "schema", "default"])
+@pytest.mark.parametrize("invalid", ["sync", "signature", "name", "capabilities", "schema", "default"])
 async def test_invalid_builtin_declarations_prevent_publication(tmp_path, invalid):
-    collector = SampleCollector()
+    channel = SampleChannel()
     if invalid == "sync":
-        collector.collect = lambda options, setters, context: None
+        channel.create = lambda config, credentials: None
     elif invalid == "signature":
 
         async def wrong_signature(options):
             pass
 
-        collector.collect = wrong_signature
+        channel.create = wrong_signature
     elif invalid == "name":
-        collector.name = "../outside"
-    elif invalid == "fields":
-        collector.fields = ["message", "message"]
+        channel.name = "../outside"
+    elif invalid == "capabilities":
+            channel.capabilities = [object()]
     elif invalid == "schema":
-        collector.options_schema = {"type": "array"}
+        channel.options_schema = {"type": "array"}
     else:
-        collector.options_schema = object_schema(
+        channel.options_schema = object_schema(
             {"limit": {"type": "integer", "default": "invalid", "description": "Limit"}}
         )
-    registry = PluginRegistry(builtin_collectors=[collector])
+    registry = PluginRegistry(builtin_channels=[channel])
     with pytest.raises(WorkFLowWeaveError) as error:
         await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path)))
     assert error.value.code == "builtin_registration_failed"
-    assert registry.collectorRegister.describe() == []
+    assert registry.channelRegister.describe() == []
 
 
-async def test_semantic_validation_is_captured_and_receives_copies(tmp_path):
-    collector = ConfigurableCollector()
-    calls = []
 
-    def check(options, setters):
-        calls.append(options["required_value"])
-        options.clear()
-        setters.clear()
-
-    collector.validate = check
-    registry, _ = await discover(tmp_path, builtins=[collector])
-    registered = registry.collectorRegister.get("sample")
-    collector.validate = lambda options, setters: (_ for _ in ()).throw(AssertionError("replaced"))
-    options = {"required_value": "ok"}
-    registered.validate(options, {})
-    assert calls == ["ok"]
-    assert options == {"required_value": "ok"}
 
 
 async def test_multiple_capabilities_and_package_relative_import(tmp_path):
@@ -283,28 +252,28 @@ async def test_multiple_capabilities_and_package_relative_import(tmp_path):
         tmp_path,
         "demo",
         backend="nested/main.py",
-        body="""from ..support import SampleCollector
+        body="""from ..support import SampleChannel
 class Plugin:
     def register(self, api):
-        api.register_collector(SampleCollector("first"))
-        api.register_collector(SampleCollector("second"))
+        api.register_channel(SampleChannel("first"))
+        api.register_channel(SampleChannel("second"))
 plugin = Plugin()
 """,
     )
     registry, report = await discover(tmp_path)
-    assert [item.name for item in report.registered if item.kind == "collector"] == ["first", "second"]
-    assert all(item.plugin == "demo" for item in report.registered if item.kind == "collector")
-    result = await registry.collectorRegister.get("second").collect(
-        {}, {}, CollectionContext("workflow", "session")
+    assert [item.name for item in report.registered if item.kind == "channel"] == ["first", "second"]
+    assert all(item.plugin == "demo" for item in report.registered if item.kind == "channel")
+    result = await registry.channelRegister.get("second").create(
+        None, None
     )
-    assert result.text == "second"
+    assert result == "second"
 
 
 async def test_package_initializer_can_be_the_backend(tmp_path):
     write_plugin(tmp_path, "demo", backend="__init__.py")
     registry, report = await discover(tmp_path)
     assert not report.errors
-    assert registry.collectorRegister.get("demo") is not None
+    assert registry.channelRegister.get("demo") is not None
 
 
 async def test_initializer_importing_backend_does_not_execute_it_twice(tmp_path):
@@ -313,12 +282,12 @@ async def test_initializer_importing_backend_does_not_execute_it_twice(tmp_path)
         tmp_path,
         "demo",
         body=f"""from pathlib import Path
-from .support import SampleCollector
+from .support import SampleChannel
 with Path({str(marker)!r}).open("a") as log:
     log.write("imported\\n")
 class Plugin:
     def register(self, api):
-        api.register_collector(SampleCollector("demo"))
+        api.register_channel(SampleChannel("demo"))
 plugin = Plugin()
 """,
     )
@@ -344,86 +313,59 @@ async def test_manifest_validation_precedes_backend_import(tmp_path, change):
     assert not marker.exists()
 
 
-@pytest.mark.parametrize("mode", ["async", "wrong_signature", "not_callable"])
-async def test_invalid_optional_semantic_hooks_reject_declaration(tmp_path, mode):
-    collector = SampleCollector()
-    if mode == "async":
-
-        async def validator(options, setters):
-            pass
-
-        collector.validate = validator
-    elif mode == "wrong_signature":
-        collector.validate = lambda options: None
-    else:
-        collector.validate = 5
-    with pytest.raises(WorkFLowWeaveError) as error:
-        await discover(tmp_path, builtins=[collector])
-    assert error.value.code == "builtin_registration_failed"
 
 
-async def test_semantic_hook_error_does_not_mutate_options(tmp_path):
-    collector = SampleCollector()
 
-    def validator(options, setters):
-        options["modified"] = True
-        raise RuntimeError("credential-super-secret")
 
-    collector.validate = validator
-    registry, _ = await discover(tmp_path, builtins=[collector])
-    options = {}
-    with pytest.raises(RuntimeError, match="credential-super-secret"):
-        registry.collectorRegister.get("sample").validate(options, {})
-    assert options == {}
 
 
 async def test_builtin_conflict_discards_every_capability_of_plugin(tmp_path):
     write_plugin(
         tmp_path,
         "bad",
-        body="""from .support import SampleCollector
+        body="""from .support import SampleChannel
 class Plugin:
     def register(self, api):
-        api.register_collector(SampleCollector("orphan"))
-        api.register_collector(SampleCollector("sample"))
+        api.register_channel(SampleChannel("orphan"))
+        api.register_channel(SampleChannel("sample"))
 plugin = Plugin()
 """,
     )
     write_plugin(tmp_path, "good")
-    registry, report = await discover(tmp_path, builtins=[SampleCollector()])
-    assert [item.name for item in report.registered if item.kind == "collector"] == ["sample", "good"]
-    assert registry.collectorRegister.get("orphan") is None
-    assert registry.collectorRegister.get("sample").description == SampleCollector.description
-    errors = registry.collectorRegister.diagnostics("orphan")
+    registry, report = await discover(tmp_path, builtins=[SampleChannel()])
+    assert [item.name for item in report.registered if item.kind == "channel"] == ["sample", "good"]
+    assert registry.channelRegister.get("orphan") is None
+    assert registry.channelRegister.get("sample").description == SampleChannel.description
+    errors = registry.channelRegister.diagnostics("orphan")
     assert errors[0].details["reason"] == "registration_conflict"
     errors[0].details.clear()
-    assert registry.collectorRegister.diagnostics("orphan")[0].details["plugin"] == "bad"
+    assert registry.channelRegister.diagnostics("orphan")[0].details["plugin"] == "bad"
 
 
 async def test_plugin_cannot_swallow_declaration_failure_and_publish_partial_state(tmp_path):
     write_plugin(
         tmp_path,
         "bad",
-        body="""from .support import SampleCollector
+        body="""from .support import SampleChannel
 class Plugin:
     def register(self, api):
-        api.register_collector(SampleCollector("same"))
+        api.register_channel(SampleChannel("same"))
         try:
-            api.register_collector(SampleCollector("same"))
+            api.register_channel(SampleChannel("same"))
         except Exception:
             pass
 plugin = Plugin()
 """,
     )
     registry, report = await discover(tmp_path)
-    assert registry.collectorRegister.get("same") is None
+    assert registry.channelRegister.get("same") is None
     assert report.errors[0].details["reason"] == "registration_aborted"
 
 
 @pytest.mark.parametrize("defaults", [{}, {"demo": {"limit": 4}}])
 async def test_old_framework_plugin_defaults_are_explicitly_rejected(tmp_path, defaults):
     (tmp_path / "config.json").write_text(
-        json.dumps({"collector": {"demo": {"defaults": defaults}}})
+        json.dumps({"channel": {"demo": {"defaults": defaults}}})
     )
     with pytest.raises(WorkFLowWeaveError):
         await discover(tmp_path)
@@ -432,45 +374,45 @@ async def test_old_framework_plugin_defaults_are_explicitly_rejected(tmp_path, d
 async def test_plugin_reads_private_json_and_injects_constructor_dependencies(tmp_path):
     package = write_plugin(tmp_path, "private", body='''
 import json
-from .support import SampleCollector
-from workflowweave.models import CollectorOutput
+from .support import SampleChannel
+from workflowweave.models import ChannelConfig
 
-class ConfiguredCollector(SampleCollector):
+class ConfiguredChannel(SampleChannel):
     def __init__(self, prefix):
         super().__init__("private")
         self.prefix = prefix
 
-    async def collect(self, options, setters, context):
-        return CollectorOutput(status="success", text=self.prefix + options["required_value"], count=1)
+    async def create(self, config, credentials):
+        return self.prefix + config.options["required_value"]
 
 class Plugin:
     def register(self, api):
         assert api.config_path.is_absolute()
         settings = json.loads(api.config_path.read_text())
-        api.register_collector(ConfiguredCollector(settings["prefix"]))
+        api.register_channel(ConfiguredChannel(settings["prefix"]))
 plugin = Plugin()
 ''')
     private = package / "config.json"
     private.write_text('{"prefix": "original:"}')
     registry, report = await discover(tmp_path)
     assert not report.errors
-    original = registry.collectorRegister.get("private")
+    original = registry.channelRegister.get("private")
     private.write_text('{"prefix": "new:"}')
     await registry.reload_plugins(SystemConfig(plugin_dir=str(tmp_path)), owners=["private"])
-    context = CollectionContext("workflow", "session")
-    assert (await original.collect({"required_value": "value"}, {}, context)).text == "original:value"
-    current = registry.collectorRegister.get("private")
-    assert (await current.collect({"required_value": "value"}, {}, context)).text == "new:value"
+    config = ChannelConfig(id="test", channel="private", options={"required_value": "value"})
+    assert await original.create(config, None) == "original:value"
+    current = registry.channelRegister.get("private")
+    assert await current.create(config, None) == "new:value"
 
 
 @pytest.mark.parametrize("private", [None, "broken JSON", '{"unexpected": 1}'])
 async def test_invalid_private_configuration_rolls_back_only_its_plugin(tmp_path, private):
     package = write_plugin(tmp_path, "private", body='''
 import json
-from .support import SampleCollector
+from .support import SampleChannel
 class Plugin:
     def register(self, api):
-        api.register_collector(SampleCollector("temporary"))
+        api.register_channel(SampleChannel("temporary"))
         settings = json.loads(api.config_path.read_text())
         if settings["required"] != "valid":
             raise ValueError("bad private configuration")
@@ -481,8 +423,8 @@ plugin = Plugin()
     write_plugin(tmp_path, "good")
     registry, report = await discover(tmp_path)
     assert len(report.errors) == 1
-    assert registry.collectorRegister.get("temporary") is None
-    assert registry.collectorRegister.get("good") is not None
+    assert registry.channelRegister.get("temporary") is None
+    assert registry.channelRegister.get("good") is not None
 
 
 async def test_disabled_plugin_is_not_imported(tmp_path):
@@ -490,18 +432,18 @@ async def test_disabled_plugin_is_not_imported(tmp_path):
     write_plugin(
         tmp_path, "disabled", body=f"from pathlib import Path\nPath({str(marker)!r}).touch()"
     )
-    (tmp_path / "config.json").write_text('{"collector": {"disabled": {"enabled": false}}}')
+    (tmp_path / "config.json").write_text('{"channel": {"disabled": {"enabled": false}}}')
     registry, report = await discover(tmp_path)
     assert not marker.exists()
-    assert [item for item in report.registered if item.kind == "collector"] == report.errors == []
-    assert registry.collectorRegister.get("disabled") is None
+    assert [item for item in report.registered if item.kind == "channel"] == report.errors == []
+    assert registry.channelRegister.get("disabled") is None
 
 
 async def test_duplicate_plugin_ids_use_stable_directory_order(tmp_path):
     write_plugin(tmp_path, "z_last", plugin_id="same")
     write_plugin(tmp_path, "a_first", plugin_id="same")
     _, report = await discover(tmp_path)
-    assert [item.name for item in report.registered if item.kind == "collector"] == ["a_first"]
+    assert [item.name for item in report.registered if item.kind == "channel"] == ["a_first"]
     assert report.errors[0].details["reason"] == "plugin_id_conflict"
 
 
@@ -509,26 +451,24 @@ async def test_plugin_id_prefix_is_validated_and_published(tmp_path):
     write_plugin(
         tmp_path,
         "prefixed",
-        body="""from workflowweave.models import CollectorOutput
-class Collector:
+        body="""from workflowweave.models import ChannelConfig
+class Channel:
     name = "prefixed"
     id_prefix = "logs"
-    description = "Prefixed collector"
-    fields = []
-    count_unit = "records"
+    description = "Prefixed channel"
+    capabilities = ["notification"]
     options_schema = {"type": "object", "additionalProperties": False}
-    setters_schema = {"type": "object", "additionalProperties": False}
-    async def collect(self, options, setters, context):
-        return CollectorOutput(status="success", text="", count=0)
+    async def create(self, config, credentials):
+        return ""
 class Plugin:
     def register(self, api):
-        api.register_collector(Collector())
+        api.register_channel(Channel())
 plugin = Plugin()
 """,
     )
     registry, report = await discover(tmp_path)
     assert report.registered[0].id_prefix == "logs"
-    assert registry.collectorRegister.describe()[0].id_prefix == "logs"
+    assert registry.channelRegister.describe()[0].id_prefix == "logs"
 
 
 @pytest.mark.parametrize("prefix", [123, "", "has space", "x" * 44])
@@ -536,25 +476,23 @@ async def test_invalid_plugin_id_prefix_is_rejected(tmp_path, prefix):
     write_plugin(
         tmp_path,
         "invalid_prefix",
-        body=f"""from workflowweave.models import CollectorOutput
-class Collector:
+        body=f"""from workflowweave.models import ChannelConfig
+class Channel:
     name = "invalid_prefix"
     id_prefix = {prefix!r}
-    description = "Invalid prefix collector"
-    fields = []
-    count_unit = "records"
+    description = "Invalid prefix channel"
+    capabilities = ["notification"]
     options_schema = {{"type": "object", "additionalProperties": False}}
-    setters_schema = {{"type": "object", "additionalProperties": False}}
-    async def collect(self, options, setters, context):
-        return CollectorOutput(status="success", text="", count=0)
+    async def create(self, config, credentials):
+        return ""
 class Plugin:
     def register(self, api):
-        api.register_collector(Collector())
+        api.register_channel(Channel())
 plugin = Plugin()
 """,
     )
     _, report = await discover(tmp_path)
-    assert not [item for item in report.registered if item.kind == "collector"]
+    assert not [item for item in report.registered if item.kind == "channel"]
     assert report.errors[0].details["reason"] == "invalid_declaration"
 
 
@@ -566,7 +504,7 @@ async def test_entry_must_be_a_python_file_inside_plugin(tmp_path, backend):
     (package / "plugin.json").write_text(json.dumps(manifest))
     (tmp_path / "outside.py").write_text("raise AssertionError('must not import')")
     _, report = await discover(tmp_path)
-    assert not [item for item in report.registered if item.kind == "collector"]
+    assert not [item for item in report.registered if item.kind == "channel"]
     assert report.errors[0].details["reason"] == "plugin_entry_invalid"
 
 
@@ -597,11 +535,11 @@ async def test_bad_entry_is_isolated_and_arbitrary_exception_data_is_redacted(tm
     write_plugin(tmp_path, "bad", body=body)
     write_plugin(tmp_path, "good")
     registry, report = await discover(tmp_path)
-    assert registry.collectorRegister.get("good") is not None
+    assert registry.channelRegister.get("good") is not None
     assert len(report.errors) == 1
     assert "super-secret-password" not in report.model_dump_json()
     assert "custom-secret-code" not in report.model_dump_json()
-    assert registry.collectorRegister.diagnostics("missing")
+    assert registry.channelRegister.diagnostics("missing")
 
 
 async def test_kind_api_is_restricted_and_channel_view_is_independent(tmp_path):
@@ -610,7 +548,7 @@ async def test_kind_api_is_restricted_and_channel_view_is_independent(tmp_path):
         "wrong",
         body="""class Plugin:
     def register(self, api):
-        api.register_channel(object())
+        api.register_tool(object())
 plugin = Plugin()
 """,
     )
@@ -637,36 +575,35 @@ plugin = Plugin()
     channel.capabilities.clear()
     channel.options_schema.clear()
     assert registry.channelRegister.get("mail").capabilities == ["notification"]
-    assert registry.collectorRegister.get("mail") is None
+    assert registry.toolRegister.get("mail") is None
     assert len(report.errors) == 1
 
 
 async def test_invalid_global_settings_leave_previous_published_view_intact(tmp_path):
     write_plugin(tmp_path, "demo")
     registry, _ = await discover(tmp_path)
-    old_view = registry.collectorRegister
+    old_view = registry.channelRegister
     (tmp_path / "config.json").write_text("not JSON")
     with pytest.raises(WorkFLowWeaveError):
         await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path)))
-    assert registry.collectorRegister is old_view
-    assert registry.collectorRegister.get("demo") is not None
+    assert registry.channelRegister is old_view
+    assert registry.channelRegister.get("demo") is not None
 
 
 async def test_string_config_values_normalize_through_readers_and_store(tmp_path):
     from workflowweave.config.store import ResourceStore
-    from plugins.channel.file.channel import FileChannelType
-    from tests.fixtures.collectors import MockCollector
+    from workflowweave.plugins.channel.file.channel import FileChannelType
 
     system = tmp_path / "system.json"
     system.write_text('{"port": "4300"}')
     assert (await ConfigurationReader().load_system(system)).port == 4300
     plugins = tmp_path / "plugins.json"
-    plugins.write_text('{"collector": {"demo": {"enabled": "false"}}}')
+    plugins.write_text('{"channel": {"demo": {"enabled": "false"}}}')
     config = await ConfigurationReader().load_plugin_config(plugins)
-    assert config["collector"]["demo"].enabled is False
-    registry = PluginRegistry([MockCollector()], builtin_channels=[FileChannelType()])
+    assert config["channel"]["demo"].enabled is False
+    registry = PluginRegistry(builtin_channels=[FileChannelType()])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
-    store = ResourceStore(tmp_path / "resources.json", collector_register=registry.collectorRegister, channel_register=registry.channelRegister)
+    store = ResourceStore(tmp_path / "resources.json", channel_register=registry.channelRegister)
     source = store.save("sources", {"id": "source", "call": {
         "kind": "cli", "mode": "argv", "executable": "printf", "argv": ["%s", "example"],
     }, "timeout": "2.5"})

@@ -13,8 +13,8 @@ from pathlib import Path
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-from workflowweave.workflow.storage.facts import SessionStore
 from tests.workflow.helpers import archived
+from workflowweave.workflow.storage.facts import SessionStore
 
 _CHILD_PROGRAM = """
 import asyncio
@@ -72,7 +72,7 @@ class Collector:
     async def collect(self, config, context):
         record("collect", source_id=config.id)
         return CollectionResult(
-            source_id=config.id, status="success", text="durable input", count=1
+            source_id=config.id, status="success", raw={"stdout": "durable input", "stderr": "", "exit_code": 0}
         )
 
 
@@ -89,7 +89,7 @@ class AI:
                     )
                     if collected is None:
                         await asyncio.sleep(0.01)
-            assert collected["body"]["text"] == "durable input"
+            assert collected["body"]["raw"]["stdout"] == "durable input"
             async with asyncio.timeout(5):
                 first = None
                 while first is None:
@@ -143,7 +143,7 @@ async def main():
                 analyses=[AnalysisTask(id=key, ai="ai", model="original-model", user_prompt="analyze input") for key in tasks],
                 channels=channels, analysis_concurrency=1,
             ),
-            sources={"source": SourceConfig(id="source", collector="mock")},
+            sources={"source": SourceConfig(id="source", call={"kind": "cli", "mode": "argv", "executable": "printf"})},
             ai={"ai": AIConfig(id="ai", provider="mock", models={"original-model": {}})},
             channels={key: ChannelConfig(id=key, channel="mock") for key in channels},
             created_at=datetime.now(UTC),
@@ -209,7 +209,7 @@ def test_hard_exit_during_analysis_recovers_only_unfinished_branch(tmp_path):
     store = SessionStore(database)
     try:
         collected = archived(store, "run", "collect:item:source")
-        assert collected["body"]["text"] == "durable input"
+        assert collected["body"]["raw"]["stdout"] == "durable input"
         assert archived(store, "run", "phase:analyze") is None
         assert archived(store, "run", "analyze:item:first") is not None
     finally:
@@ -297,7 +297,7 @@ def test_hard_exit_after_checkpoint_fact_commit_reuses_collector(tmp_path):
     store = SessionStore(tmp_path / "runs.sqlite3")
     try:
         collected = archived(store, "run", "collect:item:source")
-        assert collected["body"]["text"] == "durable input"
+        assert collected["body"]["raw"]["stdout"] == "durable input"
     finally:
         store.close()
     _run_child(tmp_path, "recover", 0)

@@ -10,7 +10,7 @@ def install_plugin(source: str | Path, destination: str | Path) -> Path:
         source,
         destination,
         dirs_exist_ok=True,
-        ignore=ignore_patterns("__pycache__", "*.pyc"),
+        ignore=ignore_patterns("__pycache__", "*.pyc", "node_modules"),
     )
     return destination
 
@@ -21,5 +21,9 @@ def install_test_channel_plugin(destination: str | Path) -> Path:
 
 
 def install_channel_plugin(name: str, destination: str | Path) -> Path:
-    root = Path(__file__).resolve().parents[2] / "plugins" / "channel" / name
+    root = (
+        Path(__file__).resolve().parents[2]
+        / "src/workflowweave/plugins/channel"
+        / name
+    )
     return install_plugin(root, Path(destination) / name)

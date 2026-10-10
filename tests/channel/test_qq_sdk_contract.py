@@ -1,18 +1,28 @@
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import json
 import logging
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from workflowweave.channel.errors import ChannelDeliveryError
 from workflowweave.models import ChannelConfig, Notification
 
-_QQ_PLUGIN = Path(__file__).parents[2] / "plugins" / "channel" / "qq" / "channel.py"
+_QQ_PLUGIN = (
+    Path(__file__).parents[2]
+    / "src"
+    / "workflowweave"
+    / "plugins"
+    / "channel"
+    / "qq"
+    / "channel.py"
+)
 
 
 class _Token:
@@ -83,6 +93,137 @@ def _json_response(web, payload, *, status=200):
         headers={"Content-Type": "application/json"},
         status=status,
     )
+
+
+@pytest.mark.asyncio
+async def test_qq_sdk_rest_and_gateway_sessions_honor_environment_proxy(monkeypatch):
+    botpy = pytest.importorskip("botpy")
+    gateway_module = importlib.import_module("botpy.gateway")
+    monkeypatch.setenv("https_proxy", "http://proxy.invalid:8080")
+    monkeypatch.delenv("ws_proxy", raising=False)
+    monkeypatch.delenv("WS_PROXY", raising=False)
+    monkeypatch.delenv("wss_proxy", raising=False)
+    monkeypatch.delenv("WSS_PROXY", raising=False)
+    monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")
+
+    sessions = []
+
+    class _WebSocket:
+        closed = False
+
+        async def receive(self):
+            await asyncio.Future()
+
+    class _WebSocketContext:
+        async def __aenter__(self):
+            return _WebSocket()
+
+        async def __aexit__(self, *_args):
+            return None
+
+    class _GatewaySession:
+        def __init__(self, *, connector, trust_env=False):
+            self.connector = connector
+            self.trust_env = trust_env
+            sessions.append(self)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        def ws_connect(self, _url, *, proxy):
+            assert proxy == "http://proxy.invalid:8080"
+            return _WebSocketContext()
+
+    monkeypatch.setattr(gateway_module, "ClientSession", _GatewaySession)
+    channel, client = _new_channel(botpy, 0, monkeypatch)
+    try:
+        await client.http.check_session()
+        assert client.http._session._trust_env is True
+
+        client._connection = SimpleNamespace(parser={})
+        gateway_task = asyncio.create_task(client.bot_connect({"url": "ws://gateway.invalid"}))
+        await asyncio.sleep(0)
+        assert sessions and sessions[0].trust_env is True
+        gateway_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await gateway_task
+    finally:
+        await channel.stop()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("rejected", [False, True])
+async def test_qq_sdk_token_authentication_and_refresh_use_environment_proxy(monkeypatch, rejected):
+    botpy = pytest.importorskip("botpy")
+    token_type = importlib.import_module("botpy.robot").Token
+    aiohttp = importlib.import_module("aiohttp")
+    session_factory = aiohttp.ClientSession
+    requests = []
+
+    class Response:
+        status = 200
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def json(self):
+            if rejected:
+                return {"code": 100016}
+            return {"access_token": f"token-{len(requests)}", "expires_in": "7200"}
+
+    class TokenSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        def post(self, url, *, timeout, json):
+            assert url == "https://bots.qq.com/app/getAppAccessToken"
+            assert timeout.total == 30.0
+            assert json == {"appId": "test-app", "clientSecret": "test-secret"}
+            requests.append(json)
+            return Response()
+
+    def make_session(**kwargs):
+        assert kwargs["trust_env"] is True
+        return session_factory(**kwargs) if "connector" in kwargs else TokenSession()
+
+    async def me(_http, _route, **_kwargs):
+        return {"id": "123", "username": "bot"}
+
+    monkeypatch.setattr(aiohttp, "ClientSession", make_session)
+    monkeypatch.setattr(botpy.http.BotHttp, "request", me)
+    channel, client = _new_channel(botpy, 0, monkeypatch)
+    token = token_type(app_id="test-app", secret="test-secret")
+    try:
+        if rejected:
+            with pytest.raises(ChannelDeliveryError) as raised:
+                await client.http.login(token)
+            assert raised.value.code == "qq_authentication_rejected"
+            assert raised.value.info.message == (
+                "QQ Bot 凭据无效（100016）：请核对该机器人的 AppID 和当前 Client Secret，"
+                "并确认没有使用已重置的旧密钥"
+            )
+            assert raised.value.details == {"http_status": 200, "platform_code": 100016}
+            assert len(requests) == 1
+            return
+        await client.http.login(token)
+        assert client.http._token is token
+        assert token.access_token == "token-1"
+        assert client.http._session.trust_env is True
+        token.expires_in = 0
+        await token.check_token()
+        assert token.access_token == "token-2"
+        assert len(requests) == 2
+    finally:
+        await channel.stop()
 
 
 @pytest.mark.parametrize(
@@ -166,3 +307,17 @@ async def test_qq_sdk_client_keeps_authorization_out_of_debug_logs(monkeypatch, 
             assert "QQBot test-token" not in caplog.text
         finally:
             await channel.stop()
+
+
+@pytest.mark.asyncio
+async def test_qq_sdk_client_does_not_install_synchronous_file_handler(monkeypatch):
+    botpy = pytest.importorskip("botpy")
+    from logging.handlers import TimedRotatingFileHandler
+
+    channel, _client = _new_channel(botpy, 0, monkeypatch)
+    try:
+        logger = logging.getLogger("botpy")
+        assert not any(isinstance(handler, TimedRotatingFileHandler) for handler in logger.handlers)
+        assert logger.propagate is True
+    finally:
+        await channel.stop()

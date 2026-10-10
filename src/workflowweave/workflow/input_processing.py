@@ -17,16 +17,21 @@ class Part:
 def extract(raw, kind):
     if raw is None:
         raise WorkFLowWeaveError("raw_unavailable", "原始获取结果不可用，不能隐式重新采集")
-    if kind == "text":
-        return [Part(False, raw, raw)]
-    if kind == "cli":
-        text = raw["stdout"]
+    if kind in {"cli", "file"}:
+        text = raw["stdout"] if kind == "cli" else raw["text"]
         valid, value = strict_json(text)
         return [Part(valid, value if valid else text, text)]
     structured = "structuredContent" in raw
     value = raw.get("structuredContent")
     parts, original = [], None
     for block in raw.get("content", []):
+        if block.get("type") == "resource":
+            resource = block.get("resource")
+            if (isinstance(resource, dict) and isinstance(resource.get("uri"), str)
+                    and isinstance(resource.get("text"), str)):
+                text = f"[resource={resource['uri']}]\n{resource['text']}"
+                parts.append(Part(False, text, text))
+                continue
         if block.get("type") != "text":
             raise WorkFLowWeaveError("input_content_unsupported", "Workflow 文本输入不支持此 MCP 内容块",
                                 {"type": block.get("type")})
@@ -165,8 +170,8 @@ def process_input(snapshot, results, counters=()):
             views[source.id] = InputView(source_id=source.id, status="skipped")
             continue
         try:
-            raw = result.raw if result.raw is not None else result.text
-            kind = source.call.kind if source.call is not None else "text"
+            raw = result.raw
+            kind = source.call.kind
             parts = extract(raw, kind)
             filtered = [Part(p.structured, fields(p.value, source.limits.field_tokens, counters), p.original)
                         if p.structured else p for p in parts]

@@ -15,7 +15,7 @@ from workflowweave.models import WorkflowSnapshot
 
 def legacy_resource():
     return {
-        "format_version": 2, "sources": {}, "setters": {}, "channels": {},
+        "format_version": 2, "sources": {}, "channels": {},
         "ai": {"ai": {"id": "ai", "provider": "mock", "models": {"model": {}},
                       "system_prompt": "old system"}},
         "workflows": {"wf": {
