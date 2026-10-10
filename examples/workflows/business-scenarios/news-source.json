@@ -1,0 +1,17 @@
+{
+  "id": "business_news_feed",
+  "display_name": "新闻源（可替换为日志等信息）",
+  "description": "通过 Fetch MCP 读取 BBC World RSS；条目含标题、摘要、时间和链接，运行时记录抓取时间。",
+  "call": {
+    "kind": "mcp",
+    "server": "business_news_fetch",
+    "tool": "fetch",
+    "arguments": {
+      "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+      "max_length": 30000,
+      "raw": true
+    }
+  },
+  "timeout": 120,
+  "on_error": "stop"
+}

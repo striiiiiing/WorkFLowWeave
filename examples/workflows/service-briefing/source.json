@@ -1,0 +1,18 @@
+{
+  "id": "service_health_sample",
+  "display_name": "服务巡检样例输入",
+  "description": "使用本地 printf 生成一条可重复的巡检记录；替换为真实 CLI 或 MCP 来源即可。",
+  "call": {
+    "kind": "cli",
+    "mode": "argv",
+    "executable": "printf",
+    "argv": [
+      "%s",
+      "{\"service\":\"api\",\"status\":\"ok\",\"latency_ms\":120,\"errors\":0}"
+    ]
+  },
+  "timeout": 30,
+  "on_error": "notice",
+  "on_missing": "notice",
+  "on_empty": "notice"
+}

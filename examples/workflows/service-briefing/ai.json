@@ -1,0 +1,16 @@
+{
+  "id": "briefing_ai",
+  "provider": "openai_compatible_api",
+  "base_url": "http://127.0.0.1:11434/v1",
+  "api_key": {
+    "kind": "env",
+    "name": "WORKFLOWWEAVE_API_KEY"
+  },
+  "models": {
+    "qwen2.5:7b": {
+      "temperature": 0.2
+    }
+  },
+  "timeout": 120,
+  "retries": 2
+}

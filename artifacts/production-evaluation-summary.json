@@ -1,0 +1,501 @@
+{
+  "frequency": "manual, one trial per condition; AB and BA judges",
+  "cases": 4,
+  "rows": [
+    {
+      "condition": "json_full",
+      "successful_cases": 4,
+      "business_calls": 4,
+      "resolved_business_calls": 4,
+      "mean_input_tokens": 17012.5,
+      "prompt_tokens": 68674,
+      "cached_prompt_tokens": 0,
+      "completion_tokens": 2649,
+      "total_tokens": 71323,
+      "business_cost_usd": "0.163838",
+      "cost_complete": true,
+      "actual_models": [
+        "gpt-6.1-sol"
+      ],
+      "public_score": null,
+      "synthetic_score": null,
+      "overall_score": null,
+      "position_conflicts": 0,
+      "paired_wins": 0,
+      "paired_ties": 0,
+      "score_cases": 0
+    },
+    {
+      "condition": "json_filtered",
+      "successful_cases": 4,
+      "business_calls": 4,
+      "resolved_business_calls": 4,
+      "mean_input_tokens": 1800.75,
+      "prompt_tokens": 7827,
+      "cached_prompt_tokens": 0,
+      "completion_tokens": 2277,
+      "total_tokens": 10104,
+      "business_cost_usd": "0.038424",
+      "cost_complete": true,
+      "actual_models": [
+        "gpt-6.1-sol"
+      ],
+      "public_score": null,
+      "synthetic_score": null,
+      "overall_score": null,
+      "position_conflicts": 0,
+      "paired_wins": 0,
+      "paired_ties": 0,
+      "score_cases": 0
+    },
+    {
+      "condition": "ison_filtered",
+      "successful_cases": 4,
+      "business_calls": 4,
+      "resolved_business_calls": 4,
+      "mean_input_tokens": 773.25,
+      "prompt_tokens": 3717,
+      "cached_prompt_tokens": 0,
+      "completion_tokens": 2611,
+      "total_tokens": 6328,
+      "business_cost_usd": "0.033544",
+      "cost_complete": true,
+      "actual_models": [
+        "gpt-6.1-sol"
+      ],
+      "public_score": null,
+      "synthetic_score": null,
+      "overall_score": null,
+      "position_conflicts": 0,
+      "paired_wins": 0,
+      "paired_ties": 0,
+      "score_cases": 0
+    },
+    {
+      "condition": "zon_filtered",
+      "successful_cases": 4,
+      "business_calls": 4,
+      "resolved_business_calls": 4,
+      "mean_input_tokens": 1721,
+      "prompt_tokens": 7508,
+      "cached_prompt_tokens": 0,
+      "completion_tokens": 3040,
+      "total_tokens": 10548,
+      "business_cost_usd": "0.045416",
+      "cost_complete": true,
+      "actual_models": [
+        "gpt-6.1-sol"
+      ],
+      "public_score": null,
+      "synthetic_score": null,
+      "overall_score": null,
+      "position_conflicts": 0,
+      "paired_wins": 0,
+      "paired_ties": 0,
+      "score_cases": 0
+    },
+    {
+      "condition": "ison_summary",
+      "successful_cases": 4,
+      "business_calls": 8,
+      "resolved_business_calls": 8,
+      "mean_input_tokens": 773.25,
+      "prompt_tokens": 20512,
+      "cached_prompt_tokens": 17173,
+      "completion_tokens": 3954,
+      "total_tokens": 24466,
+      "business_cost_usd": "0.03003266",
+      "cost_complete": true,
+      "actual_models": [
+        "gpt-5.6-luna",
+        "gpt-6.1-sol"
+      ],
+      "public_score": null,
+      "synthetic_score": null,
+      "overall_score": null,
+      "position_conflicts": 0,
+      "paired_wins": 0,
+      "paired_ties": 0,
+      "score_cases": 0
+    },
+    {
+      "condition": "zon_summary",
+      "successful_cases": 4,
+      "business_calls": 8,
+      "resolved_business_calls": 8,
+      "mean_input_tokens": 1721,
+      "prompt_tokens": 24312,
+      "cached_prompt_tokens": 20370,
+      "completion_tokens": 4268,
+      "total_tokens": 28580,
+      "business_cost_usd": "0.02827820",
+      "cost_complete": true,
+      "actual_models": [
+        "gpt-5.6-luna",
+        "gpt-6.1-sol"
+      ],
+      "public_score": null,
+      "synthetic_score": null,
+      "overall_score": null,
+      "position_conflicts": 0,
+      "paired_wins": 0,
+      "paired_ties": 0,
+      "score_cases": 0
+    }
+  ],
+  "pairs": [],
+  "input_retention": [
+    {
+      "case": "bgl-02",
+      "condition": "ison_filtered",
+      "rows": {
+        "errors": {
+          "retained": 4,
+          "original": 4
+        },
+        "recent": {
+          "retained": 1,
+          "original": 396
+        }
+      }
+    },
+    {
+      "case": "bgl-01",
+      "condition": "zon_summary",
+      "rows": {
+        "errors": {
+          "retained": 27,
+          "original": 211
+        },
+        "recent": {
+          "retained": 18,
+          "original": 189
+        }
+      }
+    },
+    {
+      "case": "retry-cancel",
+      "condition": "json_full",
+      "rows": {
+        "errors": {
+          "retained": 6,
+          "original": 6
+        },
+        "recent": {
+          "retained": 97,
+          "original": 97
+        }
+      }
+    },
+    {
+      "case": "long-errors",
+      "condition": "json_filtered",
+      "rows": {
+        "errors": {
+          "retained": 6,
+          "original": 6
+        },
+        "recent": {
+          "retained": 27,
+          "original": 97
+        }
+      }
+    },
+    {
+      "case": "retry-cancel",
+      "condition": "json_filtered",
+      "rows": {
+        "errors": {
+          "retained": 6,
+          "original": 6
+        },
+        "recent": {
+          "retained": 28,
+          "original": 97
+        }
+      }
+    },
+    {
+      "case": "bgl-02",
+      "condition": "ison_summary",
+      "rows": {
+        "errors": {
+          "retained": 4,
+          "original": 4
+        },
+        "recent": {
+          "retained": 1,
+          "original": 396
+        }
+      }
+    },
+    {
+      "case": "long-errors",
+      "condition": "ison_summary",
+      "rows": {
+        "errors": {
+          "retained": 6,
+          "original": 6
+        },
+        "recent": {
+          "retained": 1,
+          "original": 97
+        }
+      }
+    },
+    {
+      "case": "retry-cancel",
+      "condition": "zon_summary",
+      "rows": {
+        "errors": {
+          "retained": 6,
+          "original": 6
+        },
+        "recent": {
+          "retained": 44,
+          "original": 97
+        }
+      }
+    },
+    {
+      "case": "long-errors",
+      "condition": "json_full",
+      "rows": {
+        "errors": {
+          "retained": 6,
+          "original": 6
+        },
+        "recent": {
+          "retained": 97,
+          "original": 97
+        }
+      }
+    },
+    {
+      "case": "bgl-01",
+      "condition": "ison_summary",
+      "rows": {
+        "errors": {
+          "retained": 28,
+          "original": 211
+        },
+        "recent": {
+          "retained": 11,
+          "original": 189
+        }
+      }
+    },
+    {
+      "case": "bgl-02",
+      "condition": "zon_summary",
+      "rows": {
+        "errors": {
+          "retained": 4,
+          "original": 4
+        },
+        "recent": {
+          "retained": 28,
+          "original": 396
+        }
+      }
+    },
+    {
+      "case": "retry-cancel",
+      "condition": "ison_filtered",
+      "rows": {
+        "errors": {
+          "retained": 6,
+          "original": 6
+        },
+        "recent": {
+          "retained": 1,
+          "original": 97
+        }
+      }
+    },
+    {
+      "case": "bgl-01",
+      "condition": "zon_filtered",
+      "rows": {
+        "errors": {
+          "retained": 27,
+          "original": 211
+        },
+        "recent": {
+          "retained": 18,
+          "original": 189
+        }
+      }
+    },
+    {
+      "case": "bgl-01",
+      "condition": "json_full",
+      "rows": {
+        "errors": {
+          "retained": 211,
+          "original": 211
+        },
+        "recent": {
+          "retained": 189,
+          "original": 189
+        }
+      }
+    },
+    {
+      "case": "long-errors",
+      "condition": "zon_summary",
+      "rows": {
+        "errors": {
+          "retained": 6,
+          "original": 6
+        },
+        "recent": {
+          "retained": 44,
+          "original": 97
+        }
+      }
+    },
+    {
+      "case": "bgl-01",
+      "condition": "json_filtered",
+      "rows": {
+        "errors": {
+          "retained": 20,
+          "original": 211
+        },
+        "recent": {
+          "retained": 13,
+          "original": 189
+        }
+      }
+    },
+    {
+      "case": "bgl-02",
+      "condition": "json_filtered",
+      "rows": {
+        "errors": {
+          "retained": 4,
+          "original": 4
+        },
+        "recent": {
+          "retained": 21,
+          "original": 396
+        }
+      }
+    },
+    {
+      "case": "bgl-02",
+      "condition": "json_full",
+      "rows": {
+        "errors": {
+          "retained": 4,
+          "original": 4
+        },
+        "recent": {
+          "retained": 396,
+          "original": 396
+        }
+      }
+    },
+    {
+      "case": "retry-cancel",
+      "condition": "ison_summary",
+      "rows": {
+        "errors": {
+          "retained": 6,
+          "original": 6
+        },
+        "recent": {
+          "retained": 1,
+          "original": 97
+        }
+      }
+    },
+    {
+      "case": "long-errors",
+      "condition": "ison_filtered",
+      "rows": {
+        "errors": {
+          "retained": 6,
+          "original": 6
+        },
+        "recent": {
+          "retained": 1,
+          "original": 97
+        }
+      }
+    },
+    {
+      "case": "bgl-02",
+      "condition": "zon_filtered",
+      "rows": {
+        "errors": {
+          "retained": 4,
+          "original": 4
+        },
+        "recent": {
+          "retained": 28,
+          "original": 396
+        }
+      }
+    },
+    {
+      "case": "long-errors",
+      "condition": "zon_filtered",
+      "rows": {
+        "errors": {
+          "retained": 6,
+          "original": 6
+        },
+        "recent": {
+          "retained": 44,
+          "original": 97
+        }
+      }
+    },
+    {
+      "case": "bgl-01",
+      "condition": "ison_filtered",
+      "rows": {
+        "errors": {
+          "retained": 28,
+          "original": 211
+        },
+        "recent": {
+          "retained": 11,
+          "original": 189
+        }
+      }
+    },
+    {
+      "case": "retry-cancel",
+      "condition": "zon_filtered",
+      "rows": {
+        "errors": {
+          "retained": 6,
+          "original": 6
+        },
+        "recent": {
+          "retained": 44,
+          "original": 97
+        }
+      }
+    }
+  ],
+  "judge_calls": 40,
+  "judge_max_verified": false,
+  "judge_cost_usd": null,
+  "judge_observed_cost_usd": "0",
+  "judge_cost_complete": false,
+  "limitations": [
+    "Small pilot: two public windows and two authored fixtures; no statistical superiority claim.",
+    "Scores are LLM-assisted, without independent human validation.",
+    "Cache effects and provider routing are observed, not held constant."
+  ],
+  "status": "partial_judge_unavailable",
+  "upstream_errors": [
+    "INSUFFICIENT_BALANCE (HTTP 403)",
+    "10 requests/minute including failures (HTTP 429)",
+    "subsequent HTTP 500 / read timeout"
+  ]
+}
