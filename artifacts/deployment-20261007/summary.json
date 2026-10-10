@@ -1,0 +1,77 @@
+{
+  "cpu_basis": "100%=one logical core",
+  "measurements": [
+    {
+      "mode": "native-backend",
+      "startup_seconds": [
+        11.28,
+        5.19,
+        4.93
+      ],
+      "startup_median_seconds": 5.19,
+      "idle_cpu_one_core_percent": 0.12,
+      "load_cpu_one_core_percent": 46.25,
+      "idle_rss_mib": 169.4,
+      "load_rss_peak_mib": 339.9,
+      "idle_working_set_mib": 141.0,
+      "load_working_set_peak_mib": 142.0,
+      "host_available_min_mib": 732.6,
+      "requests": 4191,
+      "latency_p95_ms": 9.22
+    },
+    {
+      "mode": "native-full",
+      "startup_seconds": [
+        5.04,
+        4.98,
+        4.98
+      ],
+      "startup_median_seconds": 4.98,
+      "idle_cpu_one_core_percent": 0.12,
+      "load_cpu_one_core_percent": 51.2,
+      "idle_rss_mib": 183.7,
+      "load_rss_peak_mib": 183.3,
+      "idle_working_set_mib": 147.2,
+      "load_working_set_peak_mib": 149.1,
+      "host_available_min_mib": 730.6,
+      "requests": 4131,
+      "latency_p95_ms": 13.18
+    },
+    {
+      "mode": "docker-backend",
+      "startup_seconds": [
+        22.21,
+        17.85,
+        16.96
+      ],
+      "startup_median_seconds": 17.85,
+      "idle_cpu_one_core_percent": 3.41,
+      "load_cpu_one_core_percent": 58.77,
+      "idle_rss_mib": 187.7,
+      "load_rss_peak_mib": 212.1,
+      "idle_working_set_mib": 169.1,
+      "load_working_set_peak_mib": 182.3,
+      "host_available_min_mib": 558.7,
+      "requests": 3778,
+      "latency_p95_ms": 30.82
+    },
+    {
+      "mode": "docker-full",
+      "startup_seconds": [
+        24.73,
+        18.6,
+        31.32
+      ],
+      "startup_median_seconds": 24.73,
+      "idle_cpu_one_core_percent": 3.01,
+      "load_cpu_one_core_percent": 60.2,
+      "idle_rss_mib": 196.4,
+      "load_rss_peak_mib": 397.9,
+      "idle_working_set_mib": 185.1,
+      "load_working_set_peak_mib": 198.6,
+      "host_available_min_mib": 678.9,
+      "requests": 3980,
+      "latency_p95_ms": 17.65
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+Reading package lists...
+Building dependency tree...
+Reading state information...
+The following packages were automatically installed and are no longer required:
+  bolt cups-bsd cups-client cups-common debugedit dh-autoreconf
+  dh-strip-nondeterminism dwz fwupd-signed gir1.2-packagekitglib-1.0
+  libarchive-cpio-perl libarchive-zip-perl libatasmart4 libavahi-client3
+  libavahi-common-data libavahi-common3 libblockdev-crypto2 libblockdev-fs2
+  libblockdev-loop2 libblockdev-part-err2 libblockdev-part2 libblockdev-swap2
+  libblockdev-utils2 libblockdev2 libcups2 libdebhelper-perl
+  libfile-stripnondeterminism-perl libfsverity0 libfwupd2 libgcab-1.0-0
+  libgpgme11 libgstreamer1.0-0 libgudev-1.0-0 libgusb2 libinih1 libintl-perl
+  libintl-xs-perl libjcat1 libjson-glib-1.0-0 libjson-glib-1.0-common liblmdb0
+  libmail-sendmail-perl libmbim-glib4 libmbim-proxy libmm-glib0
+  libmodule-find-perl libmodule-scandeps-perl libmspack0 libnspr4 libnss3
+  libpackagekit-glib2-18 libparted-fs-resize0 libproc-processtable-perl
+  libqmi-glib5 libqmi-proxy librpm9 librpmbuild9 librpmio9 librpmsign9
+  libsmbios-c2 libsort-naturally-perl libstemmer0d libsub-override-perl
+  libsys-hostname-long-perl libterm-readkey-perl libudisks2-0 libvolume-key1
+  libxmlb2 lsb-security modemmanager pax python3-pip-whl
+  python3-setuptools-whl python3-software-properties rpm-common udisks2
+  usb-modeswitch usb-modeswitch-data zerofree
+Use 'apt autoremove' to remove them.
+The following packages will be REMOVED:
+  docker-buildx* libpython3.11* libpython3.11-dev* libpython3.11-minimal*
+  libpython3.11-stdlib* python3.11* python3.11-dev* python3.11-minimal*
+  python3.11-venv*
+0 upgraded, 0 newly installed, 9 to remove and 186 not upgraded.
+After this operation, 128 MB disk space will be freed.
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 93508 files and directories currently installed.)
+Removing docker-buildx (0.30.1-0ubuntu1~22.04.1) ...
+Removing python3.11-dev (3.11.0~rc1-1~22.04.1) ...
+Removing libpython3.11-dev:amd64 (3.11.0~rc1-1~22.04.1) ...
+Removing libpython3.11:amd64 (3.11.0~rc1-1~22.04.1) ...
+Removing python3.11-venv (3.11.0~rc1-1~22.04.1) ...
+Removing python3.11 (3.11.0~rc1-1~22.04.1) ...
+Removing libpython3.11-stdlib:amd64 (3.11.0~rc1-1~22.04.1) ...
+Removing python3.11-minimal (3.11.0~rc1-1~22.04.1) ...
+Unlinking and removing bytecode for runtime python3.11
+Removing libpython3.11-minimal:amd64 (3.11.0~rc1-1~22.04.1) ...
+Processing triggers for man-db (2.10.2-1) ...
+Processing triggers for libc-bin (2.35-0ubuntu3.13) ...
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 92595 files and directories currently installed.)
+Purging configuration files for python3.11-minimal (3.11.0~rc1-1~22.04.1) ...
+Purging configuration files for python3.11-venv (3.11.0~rc1-1~22.04.1) ...
+Purging configuration files for libpython3.11-minimal:amd64 (3.11.0~rc1-1~22.04.1) ...

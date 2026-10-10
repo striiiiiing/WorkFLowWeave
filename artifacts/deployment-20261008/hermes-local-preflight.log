@@ -1,0 +1,89 @@
+/package/admin/s6-overlay/libexec/preinit: info: container permissions: uid=0 (root), euid=0, gid=0 (root), egid=0
+/package/admin/s6-overlay/libexec/preinit: info: /run permissions: uid=0 (root), gid=0 (root), perms=oxorgxgruxuwur
+s6-rc: info: service s6rc-oneshot-runner: starting
+s6-rc: info: service s6rc-oneshot-runner successfully started
+s6-rc: info: service fix-attrs: starting
+s6-rc: info: service fix-attrs successfully started
+s6-rc: info: service legacy-cont-init: starting
+cont-init: info: running /etc/cont-init.d/01-hermes-setup
+[stage2] Generated API_SERVER_KEY for the loopback gateway api_server
+Syncing bundled skills into ~/.hermes/skills/ ...
+  + systematic-debugging
+  + test-driven-development
+  + requesting-code-review
+  + python-debugpy
+  + node-inspect-debugger
+  + github
+  + dogfood
+  + codebase-inspection
+  + hermes-agent-skill-authoring
+  + inspecting-hermes-desktop-dom
+  + spike
+  + simplify-code
+  + obsidian
+  + sdlc-review
+  + youtube-content
+  + gif-search
+  + songsee
+  + computer-use
+  + codex
+  + opencode
+  + hermes-agent
+  + claude-code
+  + architecture-diagram
+  + humanizer
+  + p5js
+  + claude-design
+  + baoyu-infographic
+  + popular-web-designs
+  + design-md
+  + manim-video
+  + songwriting-and-ai-music
+  + ascii-video
+  + himalaya
+  + email-inbox-triage
+  + notion
+  + product-price-monitor
+  + meeting-action-items
+  + document-to-action-items
+  + powerpoint
+  + maps
+  + teams-meeting-pipeline
+  + google-workspace
+  + pdf
+  + xlsx
+  + box
+  + airtable
+  + weekly-review-planning
+  + docx
+  + xurl
+  + blocked-page-recovery
+  + llm-wiki
+  + competitor-news-monitor
+  + arxiv
+  + grounded-citations
+  + imessage
+  + apple-notes
+  + apple-reminders
+  + findmy
+
+Done: 58 new, 0 updated, 0 unchanged. 58 total bundled.
+[stage2] Found agent-browser Chromium binary: /opt/hermes/.playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+[stage2] Setup complete; starting user services
+cont-init: info: /etc/cont-init.d/01-hermes-setup exited 0
+cont-init: info: running /etc/cont-init.d/015-supervise-perms
+[supervise-perms] chowned supervise/ trees for static s6-rc services
+cont-init: info: /etc/cont-init.d/015-supervise-perms exited 0
+cont-init: info: running /etc/cont-init.d/02-reconcile-profiles
+reconcile: skipping (dashboard container — does not need per-profile gateways)
+cont-init: info: /etc/cont-init.d/02-reconcile-profiles exited 0
+s6-rc: info: service legacy-cont-init successfully started
+s6-rc: info: service main-hermes: starting
+s6-rc: info: service dashboard: starting
+s6-rc: info: service dashboard successfully started
+s6-rc: info: service main-hermes successfully started
+s6-rc: info: service legacy-services: starting
+s6-rc: info: service legacy-services successfully started
+→ Using web dist from HERMES_WEB_DIST: /opt/hermes/hermes_cli/web_dist
+HERMES_DASHBOARD_READY port=19119
+  Hermes Web UI → http://127.0.0.1:19119

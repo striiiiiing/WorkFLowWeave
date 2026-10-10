@@ -1,0 +1,33 @@
+name: workflowweave
+services:
+  backend:
+    image: ghcr.io/striiiiiing/workflowweave-backend@sha256:657d84a17b7b4a1a053052090401b4d6080aaba1647b7de94d6f1324b9f3cd22
+    networks:
+      default: null
+    restart: unless-stopped
+    stop_grace_period: 3m0s
+    volumes:
+      - type: volume
+        source: state
+        target: /var/lib/workflowweave
+        volume: {}
+  frontend:
+    depends_on:
+      backend:
+        condition: service_healthy
+        required: true
+    image: ghcr.io/striiiiiing/workflowweave-frontend@sha256:e5b4eb58bc27fbaae7bda91f1f3fdb8a7ccbe8f62008040a7a4af3c4ef77ebd1
+    networks:
+      default: null
+    ports:
+      - mode: ingress
+        target: 80
+        published: "3000"
+        protocol: tcp
+    restart: unless-stopped
+networks:
+  default:
+    name: workflowweave_default
+volumes:
+  state:
+    name: workflowweave_state

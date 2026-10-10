@@ -1,0 +1,21 @@
+Images space usage:
+
+REPOSITORY                                   TAG       IMAGE ID       CREATED          SIZE      SHARED SIZE   UNIQUE SIZE   CONTAINERS
+ghcr.io/striiiiiing/workflowweave-backend    latest    d38ae390a4f7   42 minutes ago   841MB     149.5MB       691.4MB       1
+<none>                                       <none>    657d84a17b7b   3 hours ago      841MB     149.5MB       691.4MB       0
+ghcr.io/striiiiiing/workflowweave-frontend   latest    e5b4eb58bc27   3 hours ago      95.1MB    0B            95.07MB       1
+
+Containers space usage:
+
+CONTAINER ID   IMAGE          COMMAND                  LOCAL VOLUMES   SIZE      CREATED         STATUS                   NAMES
+5b5b6bcb5249   e5b4eb58bc27   "/docker-entrypoint.…"   0               81.9kB    2 minutes ago   Up 2 minutes             workflowweave-frontend-1
+a98f75408f5a   d38ae390a4f7   "python /app/deploy/…"   1               270kB     2 minutes ago   Up 2 minutes (healthy)   workflowweave-backend-1
+
+Local Volumes space usage:
+
+VOLUME NAME           LINKS     SIZE
+workflowweave_state   1         239.1kB
+
+Build cache usage: 0B
+
+CACHE ID   CACHE TYPE   SIZE      CREATED   LAST USED   USAGE     SHARED

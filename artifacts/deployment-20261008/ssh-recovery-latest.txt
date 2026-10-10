@@ -1,0 +1,10 @@
+Connection timed out during banner exchange
+Connection to UNKNOWN port 65535 timed out
+Traceback (most recent call last):
+  File "/mnt/d/code/LogAgent/artifacts/deployment-20261008/remote.py", line 37, in <module>
+    main()
+  File "/mnt/d/code/LogAgent/artifacts/deployment-20261008/remote.py", line 24, in main
+    subprocess.run([*SSH, args.value], check=True)
+  File "/usr/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=12', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3', '-o', 'KexAlgorithms=curve25519-sha256', '-o', 'ProxyCommand=python3 /mnt/d/code/LogAgent/artifacts/deployment-20261007/ssh-tcp.py %h %p', 'root@8.160.169.249', 'date -Ins; free -m; docker ps --format "{{.Names}} {{.Status}}"']' returned non-zero exit status 255.

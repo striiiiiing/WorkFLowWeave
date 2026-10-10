@@ -1,0 +1,3 @@
+051966145fdcc21bd4b5252d94c57352e4f851552975a13415201e5032bfe39a  /tmp/ww-comparison-images/openclaw.tar
+5c8f79159b13cd78aa51e63e5d5db40e3aeb7e18934d21313d200f0e5d874222  /tmp/ww-comparison-images/hermes.tar
+9b1fdeaccc15cb515452292b91639e8a61f846ea9390aa3d52dd4a8a1b7b7928  /tmp/ww-comparison-images/qwenpaw.tar

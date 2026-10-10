@@ -1,0 +1,62 @@
+{
+  "status": "preflight_only_not_final_comparison",
+  "server": {
+    "os": "Ubuntu 22.04.5 LTS",
+    "kernel": "5.15.0-177-generic",
+    "architecture": "x86_64",
+    "vcpus": 2,
+    "cpu_model": "Intel Xeon Platinum",
+    "memory_mib_rounded": 1608,
+    "swap_bytes": 0,
+    "root_disk_gib_rounded": 20
+  },
+  "native_core_backend": {
+    "startup_seconds_single_run": 9.375,
+    "rss_kib_snapshot": 178928,
+    "health_http_status": 200,
+    "channels_extra_installed": false
+  },
+  "native_core_full": {
+    "startup_seconds_single_run": 8.393,
+    "backend_rss_kib_at_startup": 166464,
+    "nginx_worker_rss_kib_snapshot": 3772,
+    "health_response_bytes": 1414,
+    "index_response_bytes": 996,
+    "channels_extra_installed": false
+  },
+  "native_frontend": {
+    "npm_ci_seconds": 29.93,
+    "npm_ci_max_rss_kib": 236504,
+    "vite_build_seconds": 41.66,
+    "dist_mib_rounded": 2
+  },
+  "ssh": {
+    "direct_root_authenticated": true,
+    "kex_algorithm": "curve25519-sha256",
+    "authorized_local_public_key_installed": true
+  },
+  "connection_incident": {
+    "observed_at_local": "2026-10-07T21:32:34+08:00",
+    "icmp_responding": true,
+    "ssh_tcp_connection_established": true,
+    "ssh_server_banner_timeout": true,
+    "panel_http_timeout": true,
+    "also_reproduced_from_myserver": true,
+    "root_cause": "unknown_until_server_logs_are_available",
+    "last_observed_available_memory_mib": 557,
+    "docker_backend_and_frontend_builds_were_concurrent": true
+  },
+  "validation": {
+    "targeted_unit_tests_passed": 10,
+    "targeted_unit_test_seconds": 13.0,
+    "full_stack_published_ports": [3000],
+    "full_stack_backend_published_ports": []
+  },
+  "limitations": [
+    "Startup values are one preflight run each, with dependencies already installed and warm filesystem caches.",
+    "The preflight native deployment did not include all channel SDKs; do not compare directly to the full-channel Docker image.",
+    "No idle/load sampling or Docker readiness claims are justified by these preflight snapshots.",
+    "Python 3.11.0rc1 was an unsuitable initial system interpreter; no captured evidence proves it was the sole cause of download delays.",
+    "UV_INDEX_URL alone does not rewrite pinned wheel URLs in uv.lock. The explicit mirror build preparation preserves package versions and SHA256 hashes."
+  ]
+}

@@ -1,0 +1,25 @@
+Status: active
+
+To                         Action      From
+--                         ------      ----
+8888/tcp                   ALLOW       Anywhere                  
+20/tcp                     ALLOW       Anywhere                  
+21/tcp                     ALLOW       Anywhere                  
+22/tcp                     ALLOW       Anywhere                  
+80/tcp                     ALLOW       Anywhere                  
+443/tcp                    ALLOW       Anywhere                  
+888/tcp                    ALLOW       Anywhere                  
+27567/tcp                  ALLOW       Anywhere                  
+39000:40000/tcp            ALLOW       Anywhere                  
+3000/tcp                   ALLOW       Anywhere                   # WorkFLowWeave frontend
+8888/tcp (v6)              ALLOW       Anywhere (v6)             
+20/tcp (v6)                ALLOW       Anywhere (v6)             
+21/tcp (v6)                ALLOW       Anywhere (v6)             
+22/tcp (v6)                ALLOW       Anywhere (v6)             
+80/tcp (v6)                ALLOW       Anywhere (v6)             
+443/tcp (v6)               ALLOW       Anywhere (v6)             
+888/tcp (v6)               ALLOW       Anywhere (v6)             
+27567/tcp (v6)             ALLOW       Anywhere (v6)             
+39000:40000/tcp (v6)       ALLOW       Anywhere (v6)             
+3000/tcp (v6)              ALLOW       Anywhere (v6)              # WorkFLowWeave frontend
+

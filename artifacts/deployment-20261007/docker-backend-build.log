@@ -1,0 +1,371 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile.benchmark
+#1 transferring dockerfile: 2.72kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.m.daocloud.io/library/python:3.12-slim-bookworm
+#2 DONE 0.1s
+
+#3 [internal] load metadata for docker.m.daocloud.io/library/node:24.15.0-bookworm-slim
+#3 DONE 0.1s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 318B done
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 DONE 0.0s
+
+#6 [node 1/1] FROM docker.m.daocloud.io/library/node:24.15.0-bookworm-slim@sha256:4e6b70dd6cbfc88c8157ba19aa3d9f9cce6ba4703576d55459e45efcbc9c5f5d
+#6 resolve docker.m.daocloud.io/library/node:24.15.0-bookworm-slim@sha256:4e6b70dd6cbfc88c8157ba19aa3d9f9cce6ba4703576d55459e45efcbc9c5f5d 0.1s done
+#6 DONE 0.1s
+
+#7 [backend  1/17] FROM docker.m.daocloud.io/library/python:3.12-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258
+#7 resolve docker.m.daocloud.io/library/python:3.12-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258 0.1s done
+#7 CACHED
+
+#6 [node 1/1] FROM docker.m.daocloud.io/library/node:24.15.0-bookworm-slim@sha256:4e6b70dd6cbfc88c8157ba19aa3d9f9cce6ba4703576d55459e45efcbc9c5f5d
+#6 CACHED
+
+#5 [internal] load build context
+#5 transferring context: 1.90MB 0.8s done
+#5 DONE 0.9s
+
+#8 [wechat-deps 1/3] WORKDIR /bridge
+#8 CACHED
+
+#9 [wechat-deps 2/3] COPY plugins/channel/wechat_openclaw/package*.json ./
+#9 CACHED
+
+#10 [wechat-deps 3/3] RUN npm config set registry https://registry.npmmirror.com && npm ci --ignore-scripts --no-audit --no-fund
+#10 CACHED
+
+#11 [backend  2/17] RUN sed -i 's|http://deb.debian.org|https://mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources     && apt-get -o Acquire::https::Timeout=30 update     && apt-get -o Acquire::https::Timeout=30 install -y --no-install-recommends git ca-certificates     && rm -rf /var/lib/apt/lists/*     && pip install --no-cache-dir uv==0.11.2
+#11 1.340 Get:1 https://mirrors.aliyun.com/debian bookworm InRelease [151 kB]
+#11 2.806 Get:2 https://mirrors.aliyun.com/debian bookworm-updates InRelease [55.4 kB]
+#11 3.234 Get:3 https://mirrors.aliyun.com/debian-security bookworm-security InRelease [34.8 kB]
+#11 3.463 Get:4 https://mirrors.aliyun.com/debian bookworm/main amd64 Packages [8790 kB]
+#11 112.8 Get:5 https://mirrors.aliyun.com/debian bookworm-updates/main amd64 Packages [6924 B]
+#11 112.8 Get:6 https://mirrors.aliyun.com/debian-security bookworm-security/main amd64 Packages [349 kB]
+#11 117.0 Fetched 9388 kB in 1min 56s (81.1 kB/s)
+#11 117.0 Reading package lists...
+#11 117.8 Reading package lists...
+#11 118.5 Building dependency tree...
+#11 118.7 Reading state information...
+#11 119.0 ca-certificates is already the newest version (20250419~deb12u1).
+#11 119.0 The following additional packages will be installed:
+#11 119.0   git-man libbrotli1 libcurl3-gnutls liberror-perl libexpat1 libgdbm-compat4
+#11 119.0   libldap-2.5-0 libnghttp2-14 libperl5.36 libpsl5 librtmp1 libsasl2-2
+#11 119.0   libsasl2-modules-db libssh2-1 perl perl-modules-5.36
+#11 119.0 Suggested packages:
+#11 119.0   gettext-base git-daemon-run | git-daemon-sysvinit git-doc git-email git-gui
+#11 119.0   gitk gitweb git-cvs git-mediawiki git-svn sensible-utils perl-doc
+#11 119.0   libterm-readline-gnu-perl | libterm-readline-perl-perl make
+#11 119.0   libtap-harness-archive-perl
+#11 119.0 Recommended packages:
+#11 119.0   patch less ssh-client libldap-common publicsuffix libsasl2-modules
+#11 119.1 The following NEW packages will be installed:
+#11 119.1   git git-man libbrotli1 libcurl3-gnutls liberror-perl libexpat1
+#11 119.1   libgdbm-compat4 libldap-2.5-0 libnghttp2-14 libperl5.36 libpsl5 librtmp1
+#11 119.1   libsasl2-2 libsasl2-modules-db libssh2-1 perl perl-modules-5.36
+#11 119.3 0 upgraded, 17 newly installed, 0 to remove and 0 not upgraded.
+#11 119.3 Need to get 18.1 MB of archives.
+#11 119.3 After this operation, 100 MB of additional disk space will be used.
+#11 119.3 Get:1 https://mirrors.aliyun.com/debian-security bookworm-security/main amd64 perl-modules-5.36 all 5.36.0-7+deb12u4 [2817 kB]
+#11 153.1 Get:2 https://mirrors.aliyun.com/debian bookworm/main amd64 libgdbm-compat4 amd64 1.23-3 [48.2 kB]
+#11 153.3 Get:3 https://mirrors.aliyun.com/debian-security bookworm-security/main amd64 libperl5.36 amd64 5.36.0-7+deb12u4 [4208 kB]
+#11 203.7 Get:4 https://mirrors.aliyun.com/debian-security bookworm-security/main amd64 perl amd64 5.36.0-7+deb12u4 [239 kB]
+#11 206.3 Get:5 https://mirrors.aliyun.com/debian bookworm/main amd64 libbrotli1 amd64 1.0.9-2+b6 [275 kB]
+#11 209.5 Get:6 https://mirrors.aliyun.com/debian bookworm/main amd64 libsasl2-modules-db amd64 2.1.28+dfsg-10 [20.3 kB]
+#11 209.5 Get:7 https://mirrors.aliyun.com/debian bookworm/main amd64 libsasl2-2 amd64 2.1.28+dfsg-10 [59.7 kB]
+#11 209.8 Get:8 https://mirrors.aliyun.com/debian bookworm/main amd64 libldap-2.5-0 amd64 2.5.13+dfsg-5 [183 kB]
+#11 211.6 Get:9 https://mirrors.aliyun.com/debian bookworm/main amd64 libnghttp2-14 amd64 1.52.0-1+deb12u3 [72.4 kB]
+#11 212.1 Get:10 https://mirrors.aliyun.com/debian bookworm/main amd64 libpsl5 amd64 0.21.2-1 [58.7 kB]
+#11 212.5 Get:11 https://mirrors.aliyun.com/debian bookworm/main amd64 librtmp1 amd64 2.4+20151223.gitfa8646d.1-2+b2 [60.8 kB]
+#11 212.9 Get:12 https://mirrors.aliyun.com/debian-security bookworm-security/main amd64 libssh2-1 amd64 1.10.0-3+deb12u1 [176 kB]
+#11 214.7 Get:13 https://mirrors.aliyun.com/debian bookworm/main amd64 libcurl3-gnutls amd64 7.88.1-10+deb12u15 [386 kB]
+#11 218.9 Get:14 https://mirrors.aliyun.com/debian-security bookworm-security/main amd64 libexpat1 amd64 2.5.0-1+deb12u4 [106 kB]
+#11 219.9 Get:15 https://mirrors.aliyun.com/debian bookworm/main amd64 liberror-perl all 0.17029-2 [29.0 kB]
+#11 220.2 Get:16 https://mirrors.aliyun.com/debian bookworm/main amd64 git-man all 1:2.39.5-0+deb12u3 [2053 kB]
+#11 246.1 Get:17 https://mirrors.aliyun.com/debian bookworm/main amd64 git amd64 1:2.39.5-0+deb12u3 [7264 kB]
+#11 339.8 debconf: delaying package configuration, since apt-utils is not installed
+#11 339.8 Fetched 18.1 MB in 3min 40s (82.0 kB/s)
+#11 339.9 Selecting previously unselected package perl-modules-5.36.
+#11 339.9 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 6704 files and directories currently installed.)
+#11 340.0 Preparing to unpack .../00-perl-modules-5.36_5.36.0-7+deb12u4_all.deb ...
+#11 340.0 Unpacking perl-modules-5.36 (5.36.0-7+deb12u4) ...
+#11 340.4 Selecting previously unselected package libgdbm-compat4:amd64.
+#11 340.4 Preparing to unpack .../01-libgdbm-compat4_1.23-3_amd64.deb ...
+#11 340.4 Unpacking libgdbm-compat4:amd64 (1.23-3) ...
+#11 340.5 Selecting previously unselected package libperl5.36:amd64.
+#11 340.5 Preparing to unpack .../02-libperl5.36_5.36.0-7+deb12u4_amd64.deb ...
+#11 340.5 Unpacking libperl5.36:amd64 (5.36.0-7+deb12u4) ...
+#11 341.0 Selecting previously unselected package perl.
+#11 341.0 Preparing to unpack .../03-perl_5.36.0-7+deb12u4_amd64.deb ...
+#11 341.0 Unpacking perl (5.36.0-7+deb12u4) ...
+#11 341.1 Selecting previously unselected package libbrotli1:amd64.
+#11 341.1 Preparing to unpack .../04-libbrotli1_1.0.9-2+b6_amd64.deb ...
+#11 341.1 Unpacking libbrotli1:amd64 (1.0.9-2+b6) ...
+#11 341.1 Selecting previously unselected package libsasl2-modules-db:amd64.
+#11 341.1 Preparing to unpack .../05-libsasl2-modules-db_2.1.28+dfsg-10_amd64.deb ...
+#11 341.1 Unpacking libsasl2-modules-db:amd64 (2.1.28+dfsg-10) ...
+#11 341.2 Selecting previously unselected package libsasl2-2:amd64.
+#11 341.2 Preparing to unpack .../06-libsasl2-2_2.1.28+dfsg-10_amd64.deb ...
+#11 341.2 Unpacking libsasl2-2:amd64 (2.1.28+dfsg-10) ...
+#11 341.2 Selecting previously unselected package libldap-2.5-0:amd64.
+#11 341.2 Preparing to unpack .../07-libldap-2.5-0_2.5.13+dfsg-5_amd64.deb ...
+#11 341.2 Unpacking libldap-2.5-0:amd64 (2.5.13+dfsg-5) ...
+#11 341.3 Selecting previously unselected package libnghttp2-14:amd64.
+#11 341.3 Preparing to unpack .../08-libnghttp2-14_1.52.0-1+deb12u3_amd64.deb ...
+#11 341.3 Unpacking libnghttp2-14:amd64 (1.52.0-1+deb12u3) ...
+#11 341.4 Selecting previously unselected package libpsl5:amd64.
+#11 341.4 Preparing to unpack .../09-libpsl5_0.21.2-1_amd64.deb ...
+#11 341.4 Unpacking libpsl5:amd64 (0.21.2-1) ...
+#11 341.4 Selecting previously unselected package librtmp1:amd64.
+#11 341.4 Preparing to unpack .../10-librtmp1_2.4+20151223.gitfa8646d.1-2+b2_amd64.deb ...
+#11 341.4 Unpacking librtmp1:amd64 (2.4+20151223.gitfa8646d.1-2+b2) ...
+#11 341.5 Selecting previously unselected package libssh2-1:amd64.
+#11 341.5 Preparing to unpack .../11-libssh2-1_1.10.0-3+deb12u1_amd64.deb ...
+#11 341.5 Unpacking libssh2-1:amd64 (1.10.0-3+deb12u1) ...
+#11 341.5 Selecting previously unselected package libcurl3-gnutls:amd64.
+#11 341.5 Preparing to unpack .../12-libcurl3-gnutls_7.88.1-10+deb12u15_amd64.deb ...
+#11 341.5 Unpacking libcurl3-gnutls:amd64 (7.88.1-10+deb12u15) ...
+#11 341.6 Selecting previously unselected package libexpat1:amd64.
+#11 341.6 Preparing to unpack .../13-libexpat1_2.5.0-1+deb12u4_amd64.deb ...
+#11 341.6 Unpacking libexpat1:amd64 (2.5.0-1+deb12u4) ...
+#11 341.7 Selecting previously unselected package liberror-perl.
+#11 341.7 Preparing to unpack .../14-liberror-perl_0.17029-2_all.deb ...
+#11 341.7 Unpacking liberror-perl (0.17029-2) ...
+#11 341.7 Selecting previously unselected package git-man.
+#11 341.7 Preparing to unpack .../15-git-man_1%3a2.39.5-0+deb12u3_all.deb ...
+#11 341.7 Unpacking git-man (1:2.39.5-0+deb12u3) ...
+#11 341.9 Selecting previously unselected package git.
+#11 341.9 Preparing to unpack .../16-git_1%3a2.39.5-0+deb12u3_amd64.deb ...
+#11 341.9 Unpacking git (1:2.39.5-0+deb12u3) ...
+#11 342.5 Setting up libexpat1:amd64 (2.5.0-1+deb12u4) ...
+#11 342.5 Setting up libpsl5:amd64 (0.21.2-1) ...
+#11 342.5 Setting up libbrotli1:amd64 (1.0.9-2+b6) ...
+#11 342.5 Setting up libnghttp2-14:amd64 (1.52.0-1+deb12u3) ...
+#11 342.6 Setting up libsasl2-modules-db:amd64 (2.1.28+dfsg-10) ...
+#11 342.6 Setting up perl-modules-5.36 (5.36.0-7+deb12u4) ...
+#11 342.6 Setting up librtmp1:amd64 (2.4+20151223.gitfa8646d.1-2+b2) ...
+#11 342.6 Setting up libgdbm-compat4:amd64 (1.23-3) ...
+#11 342.6 Setting up libsasl2-2:amd64 (2.1.28+dfsg-10) ...
+#11 342.6 Setting up git-man (1:2.39.5-0+deb12u3) ...
+#11 342.6 Setting up libssh2-1:amd64 (1.10.0-3+deb12u1) ...
+#11 342.6 Setting up libperl5.36:amd64 (5.36.0-7+deb12u4) ...
+#11 342.7 Setting up libldap-2.5-0:amd64 (2.5.13+dfsg-5) ...
+#11 342.7 Setting up perl (5.36.0-7+deb12u4) ...
+#11 342.7 Setting up libcurl3-gnutls:amd64 (7.88.1-10+deb12u15) ...
+#11 342.7 Setting up liberror-perl (0.17029-2) ...
+#11 342.7 Setting up git (1:2.39.5-0+deb12u3) ...
+#11 342.7 Processing triggers for libc-bin (2.36-9+deb12u14) ...
+#11 346.0 Looking in indexes: https://mirrors.aliyun.com/pypi/simple
+#11 353.3 Collecting uv==0.11.2
+#11 353.5   Downloading https://mirrors.aliyun.com/pypi/packages/9f/6e/f49ca8ad037919e5d44a2070af3d369792be3419c594cfb92f4404ab7832/uv-0.11.2-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (11 kB)
+#11 354.0 Downloading https://mirrors.aliyun.com/pypi/packages/9f/6e/f49ca8ad037919e5d44a2070af3d369792be3419c594cfb92f4404ab7832/uv-0.11.2-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (24.6 MB)
+#11 642.5    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 24.6/24.6 MB 81.3 kB/s eta 0:00:00
+#11 642.6 Installing collected packages: uv
+#11 643.1 Successfully installed uv-0.11.2
+#11 643.1 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+#11 643.5 
+#11 643.5 [notice] A new release of pip is available: 25.0.1 -> 26.2.1
+#11 643.5 [notice] To update, run: pip install --upgrade pip
+#11 DONE 644.1s
+
+#12 [backend  3/17] COPY --from=node /usr/local/bin/node /usr/local/bin/node
+#12 DONE 0.8s
+
+#13 [backend  4/17] COPY --from=node /usr/local/lib/node_modules/ /usr/local/lib/node_modules/
+#13 DONE 2.2s
+
+#14 [backend  5/17] RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm     && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
+#14 DONE 0.4s
+
+#15 [backend  6/17] WORKDIR /app
+#15 DONE 0.1s
+
+#16 [backend  7/17] COPY pyproject.toml ./
+#16 DONE 0.1s
+
+#17 [backend  8/17] COPY uv.benchmark.lock ./uv.lock
+#17 DONE 0.1s
+
+#18 [backend  9/17] RUN --mount=type=cache,target=/root/.cache/uv     uv sync --frozen --no-dev --extra channels --no-install-project
+#18 0.480 Using CPython 3.12.15 interpreter at: /usr/local/bin/python3
+#18 0.480 Creating virtual environment at: .venv
+#18 0.537    Updating https://github.com/toon-format/toon-python.git (e475c82e9da03dfaf88c0b277dee6b5d17100b13)
+#18 0.720 Downloading zstandard (5.3MiB)
+#18 0.727 Downloading lark-oapi (7.4MiB)
+#18 0.730 Downloading cryptography (4.3MiB)
+#18 0.740 Downloading sqlalchemy (3.3MiB)
+#18 0.742 Downloading pycryptodome (2.2MiB)
+#18 0.743 Downloading pydantic-core (2.0MiB)
+#18 0.756 Downloading pygments (1.2MiB)
+#18 0.757 Downloading tiktoken (1.1MiB)
+#18 0.764 Downloading openai (1.9MiB)
+#18 0.800 Downloading aiohttp (1.7MiB)
+#18 2.800     Updated https://github.com/toon-format/toon-python.git (e475c82e9da03dfaf88c0b277dee6b5d17100b13)
+#18 2.801    Building toon-format @ git+https://github.com/toon-format/toon-python.git@e475c82e9da03dfaf88c0b277dee6b5d17100b13
+#18 7.989  Downloaded pygments
+#18 8.130  Downloaded tiktoken
+#18 10.62  Downloaded pydantic-core
+#18 10.62  Downloaded openai
+#18 11.08  Downloaded pycryptodome
+#18 11.64  Downloaded aiohttp
+#18 12.82  Downloaded sqlalchemy
+#18 13.85  Downloaded cryptography
+#18 14.57  Downloaded zstandard
+#18 15.34  Downloaded lark-oapi
+#18 35.07       Built toon-format @ git+https://github.com/toon-format/toon-python.git@e475c82e9da03dfaf88c0b277dee6b5d17100b13
+#18 35.07 Prepared 105 packages in 34.56s
+#18 43.39 Installed 105 packages in 8.31s
+#18 43.40  + aiohappyeyeballs==2.7.1
+#18 43.40  + aiohttp==3.14.3
+#18 43.40  + aiorwlock==1.5.1
+#18 43.40  + aiosignal==1.4.0
+#18 43.40  + aiosmtplib==5.1.3
+#18 43.40  + aiosqlite==0.21.0
+#18 43.40  + annotated-doc==0.0.5
+#18 43.40  + annotated-types==0.8.0
+#18 43.40  + anyio==4.15.1
+#18 43.40  + apscheduler==3.11.3
+#18 43.40  + arrow==1.4.0
+#18 43.40  + attrs==26.1.0
+#18 43.40  + certifi==2026.7.22
+#18 43.40  + cffi==2.1.1
+#18 43.40  + charset-normalizer==3.5.1
+#18 43.40  + click==8.5.0
+#18 43.40  + cron-descriptor==2.1.0
+#18 43.40  + cryptography==46.0.7
+#18 43.40  + distro==1.9.0
+#18 43.40  + fastapi==0.141.1
+#18 43.40  + fqdn==1.5.1
+#18 43.40  + frozenlist==1.8.0
+#18 43.40  + greenlet==3.5.6
+#18 43.40  + h11==0.16.0
+#18 43.40  + httpcore==1.0.9
+#18 43.40  + httpcore2==2.13.0
+#18 43.40  + httpx==0.28.1
+#18 43.40  + httpx-sse==0.4.3
+#18 43.40  + httpx2==2.13.0
+#18 43.40  + idna==3.19
+#18 43.40  + isoduration==20.11.0
+#18 43.40  + ison-py==1.2.0
+#18 43.40  + jiter==0.17.0
+#18 43.40  + jsonpatch==1.33
+#18 43.40  + jsonpointer==3.1.1
+#18 43.40  + jsonschema==4.26.0
+#18 43.40  + jsonschema-specifications==2025.9.1
+#18 43.40  + langchain==1.4.2
+#18 43.40  + langchain-core==1.6.4
+#18 43.40  + langchain-openai==1.6.2
+#18 43.40  + langchain-protocol==0.0.19
+#18 43.40  + langgraph==1.2.12
+#18 43.40  + langgraph-checkpoint==4.2.0
+#18 43.40  + langgraph-checkpoint-sqlite==3.1.1
+#18 43.40  + langgraph-prebuilt==1.1.0
+#18 43.40  + langgraph-sdk==0.4.5
+#18 43.40  + langsmith==0.12.4
+#18 43.40  + lark-oapi==1.7.3
+#18 43.40  + markdown-it-py==4.2.0
+#18 43.40  + mcp==1.30.0
+#18 43.40  + mdurl==0.1.2
+#18 43.40  + multidict==6.9.1
+#18 43.40  + openai==3.14.1
+#18 43.40  + orjson==3.12.0
+#18 43.40  + ormsgpack==1.12.2
+#18 43.40  + packaging==26.3
+#18 43.40  + propcache==0.5.4
+#18 43.40  + pycparser==3.0
+#18 43.40  + pycryptodome==3.23.0
+#18 43.40  + pydantic==2.13.5
+#18 43.40  + pydantic-core==2.46.5
+#18 43.40  + pydantic-settings==2.15.0
+#18 43.40  + pygments==2.21.0
+#18 43.40  + pyjwt==2.15.0
+#18 43.40  + python-dateutil==2.9.0.post0
+#18 43.40  + python-dotenv==1.2.3
+#18 43.40  + python-multipart==0.0.32
+#18 43.40  + python-telegram-bot==22.8
+#18 43.40  + pyyaml==6.0.3
+#18 43.40  + qq-botpy==1.2.1
+#18 43.40  + referencing==0.37.0
+#18 43.40  + regex==2026.9.10
+#18 43.40  + requests==2.34.2
+#18 43.40  + requests-toolbelt==1.0.0
+#18 43.40  + rfc3339-validator==0.1.4
+#18 43.40  + rfc3987==1.3.8
+#18 43.40  + rich==15.0.0
+#18 43.40  + rpds-py==2026.6.3
+#18 43.40  + shellingham==1.5.4
+#18 43.40  + six==1.17.0
+#18 43.40  + sniffio==1.3.1
+#18 43.40  + sqlalchemy==2.0.54
+#18 43.40  + sqlite-vec==0.1.9
+#18 43.40  + sqlmodel==0.0.42
+#18 43.40  + sse-starlette==3.4.11
+#18 43.40  + starlette==1.6.0
+#18 43.40  + tenacity==9.1.4
+#18 43.40  + tiktoken==0.14.0
+#18 43.40  + toon-format==0.9.0b1 (from git+https://github.com/toon-format/toon-python.git@e475c82e9da03dfaf88c0b277dee6b5d17100b13)
+#18 43.40  + truststore==0.10.4
+#18 43.40  + typer==0.27.2
+#18 43.40  + typing-extensions==4.16.0
+#18 43.40  + typing-inspection==0.4.4
+#18 43.40  + tzdata==2026.4
+#18 43.40  + tzlocal==5.4.4
+#18 43.40  + uri-template==1.3.0
+#18 43.40  + urllib3==2.7.0
+#18 43.40  + uuid-utils==0.17.1
+#18 43.40  + uvicorn==0.53.0
+#18 43.40  + webcolors==25.10.0
+#18 43.40  + websockets==15.0.1
+#18 43.40  + xxhash==4.0.1
+#18 43.40  + yarl==1.25.1
+#18 43.40  + zon-format==1.2.3
+#18 43.40  + zstandard==0.25.0
+#18 DONE 43.9s
+
+#19 [backend 10/17] COPY README.md LICENSE ./
+#19 DONE 0.2s
+
+#20 [backend 11/17] COPY src/ ./src/
+#20 DONE 0.2s
+
+#21 [backend 12/17] RUN --mount=type=cache,target=/root/.cache/uv     uv sync --frozen --no-dev --extra channels --no-editable
+#21 0.558    Building workflowweave @ file:///app
+#21 1.324       Built workflowweave @ file:///app
+#21 1.339 Prepared 1 package in 782ms
+#21 1.366 Installed 1 package in 27ms
+#21 1.366  + workflowweave==0.1.0 (from file:///app)
+#21 DONE 1.5s
+
+#22 [backend 13/17] COPY plugins/channel/ ./plugins/channel/
+#22 DONE 0.2s
+
+#23 [backend 14/17] COPY --from=wechat-deps /bridge/node_modules/ ./plugins/channel/wechat_openclaw/node_modules/
+#23 DONE 45.2s
+
+#24 [backend 15/17] COPY deploy/docker/bootstrap.py /app/deploy/bootstrap.py
+#24 DONE 0.4s
+
+#25 [backend 16/17] RUN useradd --uid 10001 --create-home workflowweave     && mkdir -p /var/lib/workflowweave && chown workflowweave:workflowweave /var/lib/workflowweave
+#25 DONE 0.8s
+
+#26 [backend 17/17] WORKDIR /var/lib/workflowweave
+#26 DONE 0.1s
+
+#27 exporting to image
+#27 exporting layers
+#27 exporting layers 100.6s done
+#27 exporting manifest sha256:9eb4bcb0829a9926004ac3b73a5012307bf7860a4fb2350a936ec426be45fa9a 0.0s done
+#27 exporting config sha256:dfb5dc645d1f9275006bd78b1363febc781847c76a17b7e9f7557fb64dda783d 0.0s done
+#27 exporting attestation manifest sha256:250df84d1f46d84179f9a2e6533a47709fe3c71c9e1d42a0e893a9d961c514d5
+#27 exporting attestation manifest sha256:250df84d1f46d84179f9a2e6533a47709fe3c71c9e1d42a0e893a9d961c514d5 0.0s done
+#27 exporting manifest list sha256:5727feee623143ff61dcc0efc415af7e556622743d5307e4be5aefe4eee7a104 0.0s done
+#27 naming to docker.io/library/workflowweave-backend:local 0.0s done
+#27 unpacking to docker.io/library/workflowweave-backend:local
+#27 unpacking to docker.io/library/workflowweave-backend:local 22.1s done
+#27 DONE 123.1s

@@ -1,0 +1,84 @@
+{
+  "status": "ready",
+  "accepting_runs": true,
+  "checked_at": "2026-10-07T18:41:33.196599Z",
+  "components": [
+    {
+      "component": "system_config",
+      "status": "available",
+      "required": true,
+      "error": null,
+      "checked_at": "2026-10-07T18:41:33.196599Z"
+    },
+    {
+      "component": "credentials",
+      "status": "available",
+      "required": true,
+      "error": null,
+      "checked_at": "2026-10-07T18:41:33.196599Z"
+    },
+    {
+      "component": "resource_store",
+      "status": "available",
+      "required": true,
+      "error": null,
+      "checked_at": "2026-10-07T18:41:33.196599Z"
+    },
+    {
+      "component": "session_store",
+      "status": "available",
+      "required": true,
+      "error": null,
+      "checked_at": "2026-10-07T18:41:33.196599Z"
+    },
+    {
+      "component": "checkpointer",
+      "status": "available",
+      "required": true,
+      "error": null,
+      "checked_at": "2026-10-07T18:41:33.196599Z"
+    },
+    {
+      "component": "workflow",
+      "status": "available",
+      "required": true,
+      "error": null,
+      "checked_at": "2026-10-07T18:41:33.196599Z"
+    },
+    {
+      "component": "intervals",
+      "status": "available",
+      "required": true,
+      "error": null,
+      "checked_at": "2026-10-07T18:41:33.196599Z"
+    },
+    {
+      "component": "ai",
+      "status": "available",
+      "required": true,
+      "error": null,
+      "checked_at": "2026-10-07T18:41:33.196599Z"
+    },
+    {
+      "component": "channels",
+      "status": "available",
+      "required": true,
+      "error": null,
+      "checked_at": "2026-10-07T18:41:33.196599Z"
+    },
+    {
+      "component": "logging",
+      "status": "available",
+      "required": false,
+      "error": null,
+      "checked_at": "2026-10-07T18:41:33.196599Z"
+    },
+    {
+      "component": "plugins",
+      "status": "available",
+      "required": false,
+      "error": null,
+      "checked_at": "2026-10-07T18:41:33.196599Z"
+    }
+  ]
+}

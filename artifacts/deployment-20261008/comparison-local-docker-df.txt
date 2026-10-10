@@ -1,0 +1,218 @@
+Images space usage:
+
+REPOSITORY                           TAG                  IMAGE ID       CREATED          SIZE      SHARED SIZE   UNIQUE SIZE   CONTAINERS
+striiiiiing/workflowweave-backend    20261007T190805Z     d38ae390a4f7   56 minutes ago   841MB     437.3MB       403.6MB       0
+striiiiiing/workflowweave-backend    runtime              0f12dff0a2e7   57 minutes ago   586MB     437.3MB       149MB         0
+<none>                               <none>               657d84a17b7b   3 hours ago      841MB     149.5MB       691.4MB       2
+striiiiiing/workflowweave-frontend   20261007T190805Z     e5b4eb58bc27   3 hours ago      95.1MB    0B            95.07MB       1
+<none>                               <none>               5139eb3ca71b   5 days ago       4.96GB    85.26MB       4.872GB       0
+python                               3.12-slim-bookworm   54c85f3c4760   5 days ago       194MB     85.26MB       108.4MB       0
+<none>                               <none>               2fd023efbb8d   13 days ago      3.97GB    0B            3.968GB       0
+<none>                               <none>               1987eed11fbc   3 weeks ago      4.15GB    0B            4.152GB       0
+ghcr.io/james-6-23/codex2api         latest               3220b15fbdb0   5 months ago     67.7MB    0B            67.66MB       1
+caddy                                2                    25cdc846626b   5 months ago     87.9MB    0B            87.95MB       1
+ghcr.io/astral-sh/uv                 0.11.2               c4f5de312ee6   6 months ago     84.5MB    0B            84.5MB        0
+
+Containers space usage:
+
+CONTAINER ID   IMAGE                                               COMMAND                  LOCAL VOLUMES   SIZE      CREATED        STATUS                 NAMES
+56f46b2a36e3   657d84a17b7b                                        "python /app/deploy/…"   1               4.1kB     2 hours ago    Created                wwbench-source
+d2acc63615dc   ghcr.io/striiiiiing/workflowweave-frontend:latest   "/docker-entrypoint.…"   0               81.9kB    2 hours ago    Up 2 hours             workflowweave-frontend-1
+b0f1d78396a6   657d84a17b7b                                        "python /app/deploy/…"   1               270kB     2 hours ago    Up 2 hours (healthy)   workflowweave-backend-1
+6b1cb5407851   caddy:2                                             "caddy run --config …"   0               45.1kB    4 months ago   Up 5 hours             caddy-19004-to-3002
+72b5a744ba7e   ghcr.io/james-6-23/codex2api:latest                 "/usr/local/bin/code…"   1               467kB     5 months ago   Up 5 hours             codex2api-sqlite
+
+Local Volumes space usage:
+
+VOLUME NAME                                                        LINKS     SIZE
+qwenpaw-data                                                       0         8.334MB
+qwenpaw-secrets                                                    0         0B
+workflowweave_state                                                1         292.8kB
+d2c93c616a5637ec03a55e0237587db9071f34d9ce06adb2629304cff060a9f0   0         292.8kB
+c1b4c2567a27cf9be00821a004ce3530fcd3900a0656c80b4adf471e35abb0f6   1         0B
+97f637359971cefd687fdbbbfb19c418bc6e5cc23b88786e44ebb7c99ee375c3   0         3.551kB
+codex2api-sqlite_sqlite-data                                       1         8.081MB
+ebdc34f1fe561867ac32a83ca9a0b052659ad204cfe24aae3fea00b8e163897e   0         57.85kB
+qwenpaw-backups                                                    0         0B
+workflowweave-notification-smoke_state                             0         176.8kB
+
+Build cache usage: 14.4GB
+
+CACHE ID       CACHE TYPE        SIZE      CREATED             LAST USED           USAGE     SHARED
+qbwd3tpvbsrl   regular           113MB     3 days ago          3 days ago          1         false
+uqaou3ed8ikq   regular           28.2MB    3 days ago          3 days ago          1         true
+67b5v9iv2d9y   regular           13MB      3 days ago          3 days ago          1         true
+9ul2bkeks264   regular           72.9kB    3 days ago          3 days ago          1         false
+fui0057l4gd1   regular           3.98MB    3 days ago          3 days ago          1         true
+2j2ljt7mohnq   regular           7.34MB    3 days ago          3 days ago          1         true
+hu4jzmcfagkj   regular           200MB     3 days ago          3 days ago          1         false
+meqfzb7gsfi7   regular           13.7MB    3 days ago          3 days ago          1         true
+8z3wj00959az   regular           8.82kB    3 days ago          3 days ago          1         true
+q7558hm12dj5   regular           9.03MB    3 days ago          3 days ago          1         false
+pmx3gjp6eckv   regular           13.2kB    3 days ago          3 days ago          1         true
+6buwu6i6yygs   regular           12.7kB    3 days ago          3 days ago          1         true
+n4k5xei17pe4   regular           13.5kB    3 days ago          3 days ago          1         true
+9knzyi2gb21t   regular           17.8kB    3 days ago          3 days ago          1         true
+jko5zlq7dtbz   regular           188kB     3 days ago          3 days ago          1         false
+vx323w2z15f5   regular           349MB     3 days ago          3 days ago          1         false
+fdytpoww2g8i   regular           9.15MB    3 days ago          3 days ago          1         false
+tgahe3g2ydzr   regular           29.1kB    3 days ago          3 days ago          1         false
+i9szy4yhkwjt   regular           2.59MB    3 days ago          3 days ago          1         false
+r2z8x5oqnsx2   regular           8.19kB    3 days ago          3 days ago          1         false
+iqs92qdhtfgm   regular           72.1MB    3 days ago          3 days ago          1         true
+hm840vfzfwww   source.local      2.61MB    3 days ago          3 days ago          2         false
+aca75pgyw9r0   regular           349MB     3 days ago          3 days ago          1         false
+s16ygf5wasps   regular           188kB     3 days ago          3 days ago          1         false
+28myvdai5rey   regular           9.15MB    3 days ago          3 days ago          1         false
+7vtr54y7mg1b   regular           8.19kB    3 days ago          3 days ago          1         false
+zmi86zsg89kn   regular           2.59MB    3 days ago          3 days ago          1         false
+i6rk6zzpyqh7   regular           20.6MB    3 days ago          3 days ago          1         false
+716o3p68n86s   regular           968kB     3 days ago          3 days ago          1         false
+mg99z7nr4yzv   regular           244MB     3 days ago          3 days ago          1         false
+70i62a3pdx30   regular           480kB     3 days ago          3 days ago          1         false
+y74ti8awg82y   regular           93.5kB    3 days ago          3 days ago          1         false
+h0ap0uaa4t1t   regular           218MB     3 days ago          3 days ago          1         false
+vxakr6ztn83i   regular           8.29kB    3 days ago          3 days ago          1         false
+ksncz4sqswo5   source.local      8.19kB    3 days ago          3 days ago          1         false
+nka3k0raba92   regular           28.9kB    3 days ago          3 days ago          1         false
+jb4o4mvzjlc9   regular           1.42MB    3 days ago          3 days ago          1         false
+uj8sj5asxymb   regular           1.18GB    3 days ago          3 days ago          1         false
+m34rqf8j4fov   regular           17.2kB    3 days ago          3 days ago          1         false
+dy85garbuhks   regular           168MB     3 days ago          3 days ago          1         false
+q6t8yvgzucar   regular           168MB     3 days ago          3 days ago          1         false
+tbuw1r6ec341   regular           1.42MB    3 days ago          3 days ago          1         false
+kg2w61axq8my   regular           218MB     3 days ago          3 days ago          1         false
+sdcd0tjcqab6   regular           28.9kB    3 days ago          3 days ago          1         false
+j7mnzerytbjv   regular           244MB     3 days ago          3 days ago          1         false
+xo0gl3ezk0si   regular           480kB     3 days ago          3 days ago          1         false
+9apv0mutd3nj   regular           1.18GB    3 days ago          3 days ago          1         false
+vviq4tp1r6tz   regular           17.2kB    3 days ago          3 days ago          1         false
+0fm23wp9yyra   regular           20.9kB    3 days ago          3 days ago          1         false
+nimphm0bsqcr   regular           249B      3 days ago          3 days ago          1         true
+wwdou214ydkl   regular           20.6MB    3 days ago          3 days ago          1         false
+sodzflu9rzrn   source.local      2.38MB    3 days ago          3 days ago          1         false
+o0k5izenv6d0   regular           184kB     3 days ago          3 days ago          1         false
+qe6pcw1j3rtp   regular           8.19kB    3 days ago          3 days ago          1         false
+jkd2gkipyniq   regular           968kB     3 days ago          3 days ago          1         false
+0f76w77k8wxz   regular           2.18MB    3 days ago          3 days ago          3         false
+rvqy86degrti   regular           4.13kB    3 days ago          3 days ago          1         false
+4noaewl9u0ht   regular           93.5kB    3 days ago          3 days ago          2         false
+wu2eceofjjw3   source.local      8.19kB    3 days ago          3 days ago          2         false
+1bzyru2t75lf   regular           1.42MB    3 days ago          3 days ago          1         false
+4xobqnjfwpqb   regular           242MB     3 days ago          3 days ago          1         false
+to5w4clciuxd   regular           31.6kB    3 days ago          3 days ago          1         false
+6suxn4rhtsob   regular           93.5kB    3 days ago          3 days ago          1         false
+ly7sg7iwxyj1   regular           4.13kB    3 days ago          3 days ago          1         false
+56bij701c7vh   regular           943kB     3 days ago          3 days ago          1         false
+fur9qs71dqk9   source.local      2.39MB    3 days ago          3 days ago          4         false
+7fnkmv62gmv1   regular           8.29kB    3 days ago          3 days ago          2         false
+f3s7mozv0bi0   regular           1.18GB    3 days ago          3 days ago          1         false
+umyj58o7jn7i   regular           1.55MB    3 days ago          3 days ago          1         false
+6ekj107rzasx   regular           480kB     3 days ago          3 days ago          1         false
+52nhldzl9b8n   source.local      8.19kB    3 days ago          3 days ago          2         false
+jc853if9r0oh   source.local      8.19kB    3 days ago          3 days ago          4         false
+qddpcjccfkmt   regular           17.2kB    3 days ago          3 days ago          1         false
+gibt6rcobymr   regular           29.1kB    2 days ago          2 days ago          1         true
+jt2hr5gpriy9   regular           188kB     2 days ago          2 days ago          1         false
+x5iz67tk3kkl   regular           349MB     2 days ago          2 days ago          1         false
+94yq4oywq8e3   regular           2.17MB    2 days ago          2 days ago          1         false
+7dytxak8q4yq   regular           2.63MB    2 days ago          2 days ago          1         false
+bqusgia68aor   regular           9.14MB    2 days ago          2 days ago          1         false
+bzdcgt0vtfhg   regular           1.18GB    2 days ago          2 days ago          1         false
+6ix5v964kuds   regular           943kB     2 days ago          2 days ago          1         false
+zkgjnhvd4xoj   regular           31.6kB    2 days ago          2 days ago          1         false
+0o4zrclm8dvs   regular           1.45MB    2 days ago          2 days ago          1         false
+8bf0sr82hy06   regular           1.19GB    2 days ago          2 days ago          1         false
+rabnufzhgziz   regular           4.13kB    2 days ago          2 days ago          1         false
+397248q06fel   regular           242MB     2 days ago          2 days ago          1         false
+srnrruwtnb2z   regular           480kB     2 days ago          2 days ago          1         false
+7x6ep6y3oet7   regular           184kB     2 days ago          2 days ago          1         false
+5hv2s8xjnefk   regular           17.2kB    2 days ago          2 days ago          1         false
+11flplwguk2h   regular           1.87MB    2 days ago          2 days ago          1         false
+obwmopi3zrhq   regular           93.5kB    2 days ago          2 days ago          1         false
+mt2fdwp15ra6   source.local      2.64MB    2 days ago          2 days ago          1         false
+ox2t4ah4hajp   regular           2.17MB    2 days ago          2 days ago          1         false
+dsyf7s7tm543   regular           2.63MB    2 days ago          2 days ago          1         false
+gi7r3ji7zwdd   regular           9.14MB    2 days ago          2 days ago          1         false
+pi9ifsztotjn   source.local      2.42MB    2 days ago          2 days ago          1         false
+r8hzm5ip9flp   regular           1.18GB    2 days ago          2 days ago          1         false
+46pv4zl5m6zm   regular           93.5kB    2 days ago          2 days ago          1         false
+alinw9balr8u   regular           4.13kB    2 days ago          2 days ago          1         false
+wax5l6pd9n7q   regular           1.19GB    3 days ago          2 days ago          3         false
+lv9tsgzz5mhv   regular           1.45MB    2 days ago          2 days ago          1         false
+gskkyczbm7qs   source.local      8.19kB    2 days ago          2 days ago          1         false
+fixfjoe908g5   regular           1.57MB    2 days ago          2 days ago          1         false
+oxqyb6uz9um6   regular           31.6kB    2 days ago          2 days ago          1         false
+qwkrx7oyh5vy   regular           17.2kB    2 days ago          2 days ago          1         false
+jkt2iyrr6u8s   source.local      8.19kB    2 days ago          2 days ago          3         false
+reko24ghg03o   regular           480kB     2 days ago          2 days ago          1         false
+87ksfuggrwuh   regular           114MB     5 hours ago         5 hours ago         1         true
+pfrtrqpzsb1k   regular           13MB      5 hours ago         5 hours ago         1         true
+swb9rcf9mn4w   regular           70.5MB    5 hours ago         5 hours ago         1         true
+2znnhba7nqzw   regular           197kB     3 hours ago         3 hours ago         1         false
+83jnk56jg02x   regular           9.48MB    3 hours ago         3 hours ago         1         false
+rkp81ocqx6n5   regular           424MB     3 hours ago         3 hours ago         1         false
+4jsnm132t8pi   regular           2.86MB    3 hours ago         3 hours ago         1         false
+udh66641oh5a   regular           8.19kB    3 hours ago         3 hours ago         1         false
+anqx6qw69rug   regular           24.6kB    3 hours ago         3 hours ago         1         false
+o3x2aw5hc3fq   regular           24.8MB    3 hours ago         3 hours ago         1         true
+scz4068wm8un   source.local      2.87MB    2 days ago          3 hours ago         3         false
+y3hg2uq7t3at   regular           53.3kB    3 hours ago         3 hours ago         1         true
+twlcx0116muo   regular           1.68MB    3 hours ago         3 hours ago         1         true
+cxbzbehxzaqo   regular           20.6MB    3 hours ago         3 hours ago         1         true
+axoeglftxply   regular           943kB     3 hours ago         3 hours ago         1         true
+55cbob8guttg   regular           321kB     3 hours ago         3 hours ago         1         true
+lxargnh5zd62   regular           17.2kB    3 hours ago         3 hours ago         1         true
+95kx86mz7oci   regular           8.29kB    3 hours ago         3 hours ago         1         true
+zg2ks7uj4b0l   regular           168MB     3 hours ago         3 hours ago         1         true
+75vkzfvtmbyt   regular           93.5kB    3 hours ago         3 hours ago         1         true
+njlauntxfafz   regular           5.68MB    3 hours ago         3 hours ago         1         true
+hztxv21i4us7   regular           4.07MB    3 hours ago         3 hours ago         1         true
+hbei81l3fyt2   regular           28.9kB    3 hours ago         3 hours ago         1         true
+ykbmhs27505g   regular           242MB     3 hours ago         3 hours ago         1         true
+83t0rr4nmyo8   regular           81.4MB    3 hours ago         3 hours ago         1         true
+p6u411gn17wo   regular           2.6MB     3 hours ago         3 hours ago         3         true
+16jma412ojs2   source.local      8.19kB    2 days ago          3 hours ago         5         false
+jph55jtaqyot   source.local      8.19kB    2 days ago          3 hours ago         6         false
+n8jhrkv4vjdo   regular           4.13kB    3 hours ago         3 hours ago         2         true
+n36zzkwhztu8   source.local      2.52MB    2 days ago          3 hours ago         6         false
+jisu8bh9s1zu   regular           20.6MB    About an hour ago   About an hour ago   1         false
+j2ar5uifqvke   regular           120MB     3 hours ago         About an hour ago   2         true
+necyuarap4qi   regular           81.4MB    About an hour ago   About an hour ago   1         false
+c0g3vhambejp   regular           168MB     About an hour ago   About an hour ago   1         false
+32hkidn392va   regular           943kB     About an hour ago   About an hour ago   1         false
+6yyndr0x0kuh   regular           242MB     About an hour ago   About an hour ago   1         false
+5mo1cwnd6t11   regular           321kB     About an hour ago   About an hour ago   1         false
+o7a24fikhtrf   regular           4.07MB    About an hour ago   About an hour ago   1         false
+xi8vqsgb9p5y   regular           93.5kB    About an hour ago   About an hour ago   1         false
+ig6uisq6knpr   regular           17.2kB    About an hour ago   About an hour ago   1         false
+ylyyg5cicxrf   regular           1.68MB    About an hour ago   About an hour ago   1         false
+wv3t9savoou1   regular           5.68MB    About an hour ago   About an hour ago   1         false
+ygssh366m2gg   regular           4.13kB    About an hour ago   About an hour ago   1         false
+ri2fwd6eb3za   regular           8.28kB    About an hour ago   About an hour ago   1         false
+bjtrhla7allo   regular           53.3kB    About an hour ago   About an hour ago   1         false
+uttlufpucqh3   regular           28.9kB    About an hour ago   About an hour ago   2         false
+yov1k8ddh8f3   regular           98B       3 hours ago         57 minutes ago      3         true
+ur6gs8iltskt   regular           168MB     59 minutes ago      57 minutes ago      1         true
+qzh0xaiv9juc   regular           16.6kB    5 hours ago         57 minutes ago      4         true
+percqtmrbz89   regular           20.6MB    59 minutes ago      57 minutes ago      1         true
+ymk1pd9t7vr0   regular           120MB     57 minutes ago      57 minutes ago      1         true
+j3jjqoqlkem7   regular           28.9kB    59 minutes ago      57 minutes ago      1         true
+3j71ulp2mwfw   regular           321kB     56 minutes ago      56 minutes ago      1         true
+glp1uhcwwu98   source.local      2.52MB    About an hour ago   56 minutes ago      2         false
+2wt71q3jndwz   regular           4.07MB    56 minutes ago      56 minutes ago      1         true
+yvieclo0s85d   regular           93.5kB    56 minutes ago      56 minutes ago      1         true
+sp7zjr9rl1bu   regular           8.29kB    56 minutes ago      56 minutes ago      1         true
+dolpnwy05feh   regular           53.3kB    56 minutes ago      56 minutes ago      1         true
+gi4jxw8xo1ds   regular           17.2kB    56 minutes ago      56 minutes ago      1         true
+un11pw1983s6   regular           242MB     56 minutes ago      56 minutes ago      1         true
+qgha2p0985no   regular           5.68MB    56 minutes ago      56 minutes ago      1         true
+tww4oivaw0jn   regular           4.13kB    56 minutes ago      56 minutes ago      1         true
+s5wmbv0m09d2   regular           943kB     56 minutes ago      56 minutes ago      1         true
+xyt2oesardzr   regular           1.68MB    56 minutes ago      56 minutes ago      1         true
+yh8hj423v6l0   regular           7.39MB    3 hours ago         56 minutes ago      4         false
+pmxhy8swf9pv   regular           81.4MB    57 minutes ago      56 minutes ago      2         true
+y978iyfghtx5   exec.cachemount   219MB     3 days ago          56 minutes ago      17        false
+wns6ecp63kva   frontend          43.1MB    3 days ago          50 minutes ago      13        false
+x0l85i0oyksg   source.local      8.19kB    About an hour ago   50 minutes ago      5         false
+wajaosw6o9o3   source.local      8.19kB    About an hour ago   50 minutes ago      5         false

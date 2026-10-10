@@ -1,0 +1,81 @@
+[
+    {
+        "Id": "sha256:1987eed11fbcd5d594f219ff34156e81fb7dee6120117f5ce0f647837ef5a31b",
+        "RepoTags": [
+            "agentscope/qwenpaw@sha256:1987eed11fbcd5d594f219ff34156e81fb7dee6120117f5ce0f647837ef5a31b"
+        ],
+        "RepoDigests": [],
+        "Comment": "buildkit.dockerfile.v0",
+        "Created": "2026-09-11T03:36:41.198027967Z",
+        "Config": {
+            "ExposedPorts": {
+                "8088/tcp": {}
+            },
+            "Env": [
+                "PATH=/app/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "NODE_VERSION=25.6.0",
+                "YARN_VERSION=1.22.22",
+                "NODE_ENV=production",
+                "WORKSPACE_DIR=/app",
+                "QWENPAW_WORKING_DIR=/app/working",
+                "QWENPAW_SECRET_DIR=/app/working.secret",
+                "QWENPAW_BACKUP_DIR=/app/working.backups",
+                "QWENPAW_DISABLED_CHANNELS=imessage",
+                "QWENPAW_ENABLED_CHANNELS=",
+                "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium",
+                "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1",
+                "QWENPAW_RUNNING_IN_CONTAINER=1",
+                "QWENPAW_PORT=8088"
+            ],
+            "Entrypoint": [
+                "docker-entrypoint.sh"
+            ],
+            "Cmd": [
+                "/entrypoint.sh"
+            ],
+            "WorkingDir": "/app",
+            "Labels": {
+                "io.qwenpaw.managed-runtime-boundary.version": "2.2.1"
+            },
+            "ArgsEscaped": true
+        },
+        "Architecture": "amd64",
+        "Os": "linux",
+        "Size": 993168892,
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:e48af84b2108a5d73effd9e16685b42ac33e7994e606398c46690918f5f3604a",
+                "sha256:189284c1b263a4327407b0a71fda68ed254e73bac146d5326ee3863db27ffe7b",
+                "sha256:c7c92f70de59658501dfe12417ccefe7b5b325eace3dc5d15f793e9fd1ca1959",
+                "sha256:cab73764aca4c4b2c5b5aa45c55e07f5a7db3f9cfd11482a201fb38f7435fc05",
+                "sha256:bc56bafc02bf8a8e3583250464eb8b2c917e076c26366524b53d0197e6abd1bb",
+                "sha256:67aeb504eba69fcdbd9c9d127fe1b200bdb1b728f4bbc34ca348a9635f45576a",
+                "sha256:3a161e31aff0994dae2cadd6e53b991c51a128c849019fa0ba515bbebde35092",
+                "sha256:d17cc7e1daf09a4bb1851a8e6d05ad479991569262a645f91a45c14f4f70e881",
+                "sha256:fa5e4c15bcd1e58e5f4fe7ae026f3954ffb08ce497da353c0e856e2dcd404d5c",
+                "sha256:32035fc95956a9ee8cafe2ea7f22e6cddb83c00c468cf55ffbcbb9629ecb9cc5",
+                "sha256:1192793288251b52b8799a2ce7a007a6a132b6551498c857261b8647cdf38206",
+                "sha256:ebfdf234d29308369841ed1732b9a94f659c0322761baf579978c4f09ee6914b",
+                "sha256:4556c1e1653ce9904a0cee9c07c174f5b61a084f03d91062afc2b93856c9be37",
+                "sha256:1edb039cd5fee7f9c43f1121ab0b1eceb6ee1339ccacef5dc262da406c019a2d",
+                "sha256:c55e4381ebac8c4e6403641d815331480a7305ddcad18325a8e489571e46016f",
+                "sha256:0dfb4af8913b1fcf5e70d573751d0cbe5a1c6eec1e87c734e4cfff280817f89c",
+                "sha256:fe0c71da8312c3041608c35efe60f5d828d142b9cbef54e0ac2510aeea36971f",
+                "sha256:bea3903be7c8215be75a70d7720431913622c044d0ea494981084f6850d58629",
+                "sha256:abd7942fda08528c387be8ebd580931f821d237907aabd44375a7f4da761c316"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "2026-10-07T19:53:37.137982427Z"
+        },
+        "Descriptor": {
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "digest": "sha256:1987eed11fbcd5d594f219ff34156e81fb7dee6120117f5ce0f647837ef5a31b",
+            "size": 3920,
+            "annotations": {
+                "org.opencontainers.image.ref.name": "agentscope/qwenpaw@sha256:1987eed11fbcd5d594f219ff34156e81fb7dee6120117f5ce0f647837ef5a31b"
+            }
+        }
+    }
+]

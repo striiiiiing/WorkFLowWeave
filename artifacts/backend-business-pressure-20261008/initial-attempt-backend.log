@@ -1,0 +1,311 @@
+[后端启动] 正在加载运行时模块...
+[后端启动] 运行时模块加载完成，正在读取配置并装配后端...
+INFO:     Started server process [9659]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:4399 (Press CTRL+C to quit)
+INFO:     127.0.0.1:60803 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60803 - "POST /api/mcp_servers HTTP/1.1" 201 Created
+INFO:     127.0.0.1:60803 - "POST /api/sources HTTP/1.1" 201 Created
+INFO:     127.0.0.1:60803 - "POST /api/sources HTTP/1.1" 201 Created
+INFO:     127.0.0.1:60803 - "POST /api/sources HTTP/1.1" 201 Created
+INFO:     127.0.0.1:60803 - "POST /api/ai HTTP/1.1" 201 Created
+INFO:     127.0.0.1:60803 - "POST /api/channels HTTP/1.1" 201 Created
+INFO:     127.0.0.1:60803 - "POST /api/workflows HTTP/1.1" 201 Created
+INFO:     127.0.0.1:60803 - "POST /api/workflows HTTP/1.1" 201 Created
+INFO:     127.0.0.1:60803 - "POST /api/workflows HTTP/1.1" 201 Created
+INFO:     127.0.0.1:60803 - "POST /api/workflows HTTP/1.1" 201 Created
+INFO:     127.0.0.1:60803 - "POST /api/workflows/stock/run HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:60803 - "GET /api/sessions/8c6d1c4cce73451fb4a0fb873ddb16af/events HTTP/1.1" 200 OK
+[10/08/26 12:51:07] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+INFO:     127.0.0.1:60803 - "GET /api/sessions/8c6d1c4cce73451fb4a0fb873ddb16af HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60803 - "GET /api/sessions/8c6d1c4cce73451fb4a0fb873ddb16af/phases/collect?version=25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60803 - "GET /api/sessions/8c6d1c4cce73451fb4a0fb873ddb16af/phases/analyze?version=25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60803 - "GET /api/sessions/8c6d1c4cce73451fb4a0fb873ddb16af/phases/aggregate?version=25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60803 - "GET /api/sessions/8c6d1c4cce73451fb4a0fb873ddb16af/phases/notify?version=25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60185 - "POST /api/workflows/news/run HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:60177 - "GET /api/sessions/9eb46e3214a449809b102c73002d6281/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60185 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60185 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60185 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60185 - "GET /api/workflows HTTP/1.1" 200 OK
+[10/08/26 12:51:33] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+INFO:     127.0.0.1:60185 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60185 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60185 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60185 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60185 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/9eb46e3214a449809b102c73002d6281 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/9eb46e3214a449809b102c73002d6281/phases/collect?version=21 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/9eb46e3214a449809b102c73002d6281/phases/analyze?version=21 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/9eb46e3214a449809b102c73002d6281/phases/aggregate?version=21 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/9eb46e3214a449809b102c73002d6281/phases/notify?version=21 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57463 - "POST /api/workflows/news/run HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57463 - "GET /api/sessions/295a1a62c365438eb3176ceebd50863e/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+[10/08/26 12:51:51] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/295a1a62c365438eb3176ceebd50863e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/295a1a62c365438eb3176ceebd50863e/phases/collect?version=21 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/295a1a62c365438eb3176ceebd50863e/phases/analyze?version=21 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/295a1a62c365438eb3176ceebd50863e/phases/aggregate?version=21 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/295a1a62c365438eb3176ceebd50863e/phases/notify?version=21 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58463 - "POST /api/workflows/news/run HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:60177 - "GET /api/sessions/d3a2df0abaa348b4a08442888b9d9cac/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58463 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58463 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58463 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58463 - "GET /api/workflows HTTP/1.1" 200 OK
+[10/08/26 12:52:06] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+INFO:     127.0.0.1:58463 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58463 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58463 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58463 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58463 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/d3a2df0abaa348b4a08442888b9d9cac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/d3a2df0abaa348b4a08442888b9d9cac/phases/collect?version=21 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/d3a2df0abaa348b4a08442888b9d9cac/phases/analyze?version=21 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/d3a2df0abaa348b4a08442888b9d9cac/phases/aggregate?version=21 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/d3a2df0abaa348b4a08442888b9d9cac/phases/notify?version=21 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59935 - "POST /api/workflows/news/run HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:59935 - "GET /api/sessions/df689888f45245ff93258f1a93b02391/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+[10/08/26 12:52:22] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/df689888f45245ff93258f1a93b02391 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/df689888f45245ff93258f1a93b02391/phases/collect?version=21 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/df689888f45245ff93258f1a93b02391/phases/analyze?version=21 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/df689888f45245ff93258f1a93b02391/phases/aggregate?version=21 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/df689888f45245ff93258f1a93b02391/phases/notify?version=21 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60835 - "POST /api/workflows/news/run HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:60841 - "POST /api/workflows/stock/run HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:60177 - "GET /api/sessions/abf94842872347649e839e88787bba9a/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60847 - "POST /api/workflows/issues/run HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:60835 - "GET /api/sessions/af5ec062897e4d929b6b2e03d5dca739/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/sessions/f3d8602349574da19bf49154b926376f/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "POST /api/workflows/stock/run HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:60847 - "GET /api/sessions/815b28215b8c4b8398c5351b37638939/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/sessions/f3d8602349574da19bf49154b926376f HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/sessions/f3d8602349574da19bf49154b926376f/phases/collect?version=27 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/sessions/f3d8602349574da19bf49154b926376f/phases/analyze?version=27 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/sessions/f3d8602349574da19bf49154b926376f/phases/aggregate?version=27 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/sessions/f3d8602349574da19bf49154b926376f/phases/notify?version=27 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60853 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/sources HTTP/1.1" 200 OK
+[10/08/26 12:52:42] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+[10/08/26 12:52:42] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+INFO:     127.0.0.1:60841 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/sources HTTP/1.1" 200 OK
+[10/08/26 12:52:43] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+INFO:     127.0.0.1:60841 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/abf94842872347649e839e88787bba9a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60835 - "GET /api/sessions/af5ec062897e4d929b6b2e03d5dca739 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/abf94842872347649e839e88787bba9a/phases/collect?version=21 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60835 - "GET /api/sessions/af5ec062897e4d929b6b2e03d5dca739/phases/collect?version=25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/abf94842872347649e839e88787bba9a/phases/analyze?version=21 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60835 - "GET /api/sessions/af5ec062897e4d929b6b2e03d5dca739/phases/analyze?version=25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/abf94842872347649e839e88787bba9a/phases/aggregate?version=21 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60835 - "GET /api/sessions/af5ec062897e4d929b6b2e03d5dca739/phases/aggregate?version=25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/abf94842872347649e839e88787bba9a/phases/notify?version=21 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60835 - "GET /api/sessions/af5ec062897e4d929b6b2e03d5dca739/phases/notify?version=25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60841 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60835 - "GET /api/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/815b28215b8c4b8398c5351b37638939 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/815b28215b8c4b8398c5351b37638939/phases/collect?version=25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/815b28215b8c4b8398c5351b37638939/phases/analyze?version=25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/815b28215b8c4b8398c5351b37638939/phases/aggregate?version=25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "GET /api/sessions/815b28215b8c4b8398c5351b37638939/phases/notify?version=25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60177 - "POST /api/workflows/news/run HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:60835 - "POST /api/workflows/stock/run HTTP/1.1" 429 Too Many Requests
+INFO:     127.0.0.1:60841 - "POST /api/workflows/issues/run HTTP/1.1" 429 Too Many Requests
+INFO:     127.0.0.1:60847 - "POST /api/workflows/stock/run HTTP/1.1" 429 Too Many Requests
+INFO:     127.0.0.1:60177 - "GET /api/sessions/270e2c731fcf462cb0dc957350f2572f/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60835 - "GET /api/sources HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [9659]

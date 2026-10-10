@@ -1,0 +1,40 @@
+{
+  "mode": "native-full",
+  "date_utc": "2026-10-07T19:49:40Z",
+  "startup_seconds": [
+    5.008334456997545,
+    5.036135073998594,
+    5.04381365700101
+  ],
+  "runtime_versions": {
+    "python": "Python 3.12.15",
+    "docker": "Docker version 29.1.3, build 29.1.3-0ubuntu3~22.04.2",
+    "kernel": "5.15.0-177-generic",
+    "swap": "total        used        free      shared  buff/cache   available\nMem:      1687068672   684138496   247832576     2727936   755097600   799830016\nSwap:              0           0           0"
+  },
+  "idle": {
+    "duration_seconds": 60.12522113700106,
+    "cpu_mean_one_core_percent": 0.11711850373735903,
+    "cpu_peak_one_core_percent": 0.15388575175254712,
+    "rss_mean_mib": 183.03925461065575,
+    "rss_peak_mib": 183.48046875,
+    "working_set_mean_mib": 147.18359375,
+    "working_set_peak_mib": 147.18359375,
+    "host_available_min_mib": 635.27734375
+  },
+  "load": {
+    "duration_seconds": 60.18312045999846,
+    "cpu_mean_one_core_percent": 50.50720006315817,
+    "cpu_peak_one_core_percent": 52.29687981349522,
+    "rss_mean_mib": 185.86469006147541,
+    "rss_peak_mib": 356.9140625,
+    "working_set_mean_mib": 148.3109631147541,
+    "working_set_peak_mib": 148.67578125,
+    "host_available_min_mib": 666.17578125,
+    "successful_requests": 4170,
+    "failures": [],
+    "latency_p50_ms": 7.473957999536651,
+    "latency_p95_ms": 9.730750000016997
+  },
+  "infrastructure_processes": "PID   RSS COMMAND\n    809 37168 containerd\n   1135 231092 dockerd"
+}

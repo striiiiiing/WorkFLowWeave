@@ -1,0 +1,818 @@
+Oct 07 15:30:33 cipack-20260515 kernel: Linux version 5.15.0-177-generic (buildd@lcy02-amd64-099) (gcc (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0, GNU ld (GNU Binutils for Ubuntu) 2.38) #187-Ubuntu SMP Sat Apr 11 22:54:33 UTC 2026 (Ubuntu 5.15.0-177.187-generic 5.15.199)
+Oct 07 15:30:33 cipack-20260515 kernel: Command line: BOOT_IMAGE=/boot/vmlinuz-5.15.0-177-generic root=UUID=2ce9365a-86f4-4327-b810-90e9fd8cc903 ro vga=792 console=tty0 console=ttyS0,115200n8 net.ifnames=0 noibrs nvme_core.io_timeout=4294967295 nvme_core.admin_timeout=4294967295 iommu=pt crashkernel=0M-1G:0M,1G-4G:256M,4G-64G:384M,64G-512G:512M,512G-:1G crash_kexec_post_notifiers=1
+Oct 07 15:30:33 cipack-20260515 kernel: KERNEL supported cpus:
+Oct 07 15:30:33 cipack-20260515 kernel:   Intel GenuineIntel
+Oct 07 15:30:33 cipack-20260515 kernel:   AMD AuthenticAMD
+Oct 07 15:30:33 cipack-20260515 kernel:   Hygon HygonGenuine
+Oct 07 15:30:33 cipack-20260515 kernel:   Centaur CentaurHauls
+Oct 07 15:30:33 cipack-20260515 kernel:   zhaoxin   Shanghai  
+Oct 07 15:30:33 cipack-20260515 kernel: BIOS-provided physical RAM map:
+Oct 07 15:30:33 cipack-20260515 kernel: BIOS-e820: [mem 0x0000000000000000-0x000000000009ffff] usable
+Oct 07 15:30:33 cipack-20260515 kernel: BIOS-e820: [mem 0x0000000000100000-0x0000000013ffffff] usable
+Oct 07 15:30:33 cipack-20260515 kernel: BIOS-e820: [mem 0x0000000014000000-0x000000001611ffff] reserved
+Oct 07 15:30:33 cipack-20260515 kernel: BIOS-e820: [mem 0x0000000016120000-0x000000007a700fff] usable
+Oct 07 15:30:33 cipack-20260515 kernel: BIOS-e820: [mem 0x000000007a701000-0x000000007a701fff] reserved
+Oct 07 15:30:33 cipack-20260515 kernel: BIOS-e820: [mem 0x000000007a702000-0x000000007aa6bfff] usable
+Oct 07 15:30:33 cipack-20260515 kernel: BIOS-e820: [mem 0x000000007aa6c000-0x000000007ab1afff] reserved
+Oct 07 15:30:33 cipack-20260515 kernel: BIOS-e820: [mem 0x000000007ab1b000-0x000000007bb9afff] usable
+Oct 07 15:30:33 cipack-20260515 kernel: BIOS-e820: [mem 0x000000007bb9b000-0x000000007bbf2fff] reserved
+Oct 07 15:30:33 cipack-20260515 kernel: BIOS-e820: [mem 0x000000007bbf3000-0x000000007bbfafff] ACPI data
+Oct 07 15:30:33 cipack-20260515 kernel: BIOS-e820: [mem 0x000000007bbfb000-0x000000007bbfefff] ACPI NVS
+Oct 07 15:30:33 cipack-20260515 kernel: BIOS-e820: [mem 0x000000007bbff000-0x000000007bf7bfff] usable
+Oct 07 15:30:33 cipack-20260515 kernel: BIOS-e820: [mem 0x000000007bf7c000-0x000000007fffffff] reserved
+Oct 07 15:30:33 cipack-20260515 kernel: BIOS-e820: [mem 0x00000000feffc000-0x00000000feffffff] reserved
+Oct 07 15:30:33 cipack-20260515 kernel: NX (Execute Disable) protection: active
+Oct 07 15:30:33 cipack-20260515 kernel: e820: update [mem 0x7a6f5018-0x7a6fe257] usable ==> usable
+Oct 07 15:30:33 cipack-20260515 kernel: e820: update [mem 0x7a6f5018-0x7a6fe257] usable ==> usable
+Oct 07 15:30:33 cipack-20260515 kernel: extended physical RAM map:
+Oct 07 15:30:33 cipack-20260515 kernel: reserve setup_data: [mem 0x0000000000000000-0x000000000009ffff] usable
+Oct 07 15:30:33 cipack-20260515 kernel: reserve setup_data: [mem 0x0000000000100000-0x0000000013ffffff] usable
+Oct 07 15:30:33 cipack-20260515 kernel: reserve setup_data: [mem 0x0000000014000000-0x000000001611ffff] reserved
+Oct 07 15:30:33 cipack-20260515 kernel: reserve setup_data: [mem 0x0000000016120000-0x000000007a6f5017] usable
+Oct 07 15:30:33 cipack-20260515 kernel: reserve setup_data: [mem 0x000000007a6f5018-0x000000007a6fe257] usable
+Oct 07 15:30:33 cipack-20260515 kernel: reserve setup_data: [mem 0x000000007a6fe258-0x000000007a700fff] usable
+Oct 07 15:30:33 cipack-20260515 kernel: reserve setup_data: [mem 0x000000007a701000-0x000000007a701fff] reserved
+Oct 07 15:30:33 cipack-20260515 kernel: reserve setup_data: [mem 0x000000007a702000-0x000000007aa6bfff] usable
+Oct 07 15:30:33 cipack-20260515 kernel: reserve setup_data: [mem 0x000000007aa6c000-0x000000007ab1afff] reserved
+Oct 07 15:30:33 cipack-20260515 kernel: reserve setup_data: [mem 0x000000007ab1b000-0x000000007bb9afff] usable
+Oct 07 15:30:33 cipack-20260515 kernel: reserve setup_data: [mem 0x000000007bb9b000-0x000000007bbf2fff] reserved
+Oct 07 15:30:33 cipack-20260515 kernel: reserve setup_data: [mem 0x000000007bbf3000-0x000000007bbfafff] ACPI data
+Oct 07 15:30:33 cipack-20260515 kernel: reserve setup_data: [mem 0x000000007bbfb000-0x000000007bbfefff] ACPI NVS
+Oct 07 15:30:33 cipack-20260515 kernel: reserve setup_data: [mem 0x000000007bbff000-0x000000007bf7bfff] usable
+Oct 07 15:30:33 cipack-20260515 kernel: reserve setup_data: [mem 0x000000007bf7c000-0x000000007fffffff] reserved
+Oct 07 15:30:33 cipack-20260515 kernel: reserve setup_data: [mem 0x00000000feffc000-0x00000000feffffff] reserved
+Oct 07 15:30:33 cipack-20260515 kernel: efi: EFI v2.70 by EDK II
+Oct 07 15:30:33 cipack-20260515 kernel: efi: SMBIOS=0x7bbcc000 ACPI=0x7bbfa000 ACPI 2.0=0x7bbfa014 MEMATTR=0x7ab49018 MOKvar=0x7a701000 
+Oct 07 15:30:33 cipack-20260515 kernel: secureboot: Secure boot disabled
+Oct 07 15:30:33 cipack-20260515 kernel: SMBIOS 2.8 present.
+Oct 07 15:30:33 cipack-20260515 kernel: DMI: Alibaba Cloud Alibaba Cloud ECS, BIOS 0.0.0 02/06/2015
+Oct 07 15:30:33 cipack-20260515 kernel: Hypervisor detected: KVM
+Oct 07 15:30:33 cipack-20260515 kernel: kvm-clock: Using msrs 4b564d01 and 4b564d00
+Oct 07 15:30:33 cipack-20260515 kernel: kvm-clock: cpu 0, msr 36601001, primary cpu clock
+Oct 07 15:30:33 cipack-20260515 kernel: kvm-clock: using sched offset of 12483847673 cycles
+Oct 07 15:30:33 cipack-20260515 kernel: clocksource: kvm-clock: mask: 0xffffffffffffffff max_cycles: 0x1cd42e4dffb, max_idle_ns: 881590591483 ns
+Oct 07 15:30:33 cipack-20260515 kernel: tsc: Detected 2499.998 MHz processor
+Oct 07 15:30:33 cipack-20260515 kernel: e820: update [mem 0x00000000-0x00000fff] usable ==> reserved
+Oct 07 15:30:33 cipack-20260515 kernel: e820: remove [mem 0x000a0000-0x000fffff] usable
+Oct 07 15:30:33 cipack-20260515 kernel: last_pfn = 0x7bf7c max_arch_pfn = 0x400000000
+Oct 07 15:30:33 cipack-20260515 kernel: x86/PAT: Configuration [0-7]: WB  WC  UC- UC  WB  WP  UC- WT  
+Oct 07 15:30:33 cipack-20260515 kernel: Using GB pages for direct mapping
+Oct 07 15:30:33 cipack-20260515 kernel: secureboot: Secure boot disabled
+Oct 07 15:30:33 cipack-20260515 kernel: RAMDISK: [mem 0x68cbe000-0x6cdfefff]
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: Early table checksum verification disabled
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: RSDP 0x000000007BBFA014 000024 (v02 BOCHS )
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: XSDT 0x000000007BBF90E8 00004C (v01 BOCHS  BXPCFACP 00000001      01000013)
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: FACP 0x000000007BBF7000 000074 (v01 BOCHS  BXPCFACP 00000001 BXPC 00000001)
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: DSDT 0x000000007BBF8000 000BBE (v01 BOCHS  BXPCDSDT 00000001 BXPC 00000001)
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: FACS 0x000000007BBFD000 000040
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: SSDT 0x000000007BBF6000 000C66 (v01 BOCHS  BXPCSSDT 00000001 BXPC 00000001)
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: APIC 0x000000007BBF5000 000080 (v01 BOCHS  BXPCAPIC 00000001 BXPC 00000001)
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: SRAT 0x000000007BBF4000 0000C8 (v01 BOCHS  BXPCSRAT 00000001 BXPC 00000001)
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: BGRT 0x000000007BBF3000 000038 (v01 INTEL  EDK2     00000002      01000013)
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: Reserving FACP table memory at [mem 0x7bbf7000-0x7bbf7073]
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: Reserving DSDT table memory at [mem 0x7bbf8000-0x7bbf8bbd]
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: Reserving FACS table memory at [mem 0x7bbfd000-0x7bbfd03f]
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: Reserving SSDT table memory at [mem 0x7bbf6000-0x7bbf6c65]
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: Reserving APIC table memory at [mem 0x7bbf5000-0x7bbf507f]
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: Reserving SRAT table memory at [mem 0x7bbf4000-0x7bbf40c7]
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: Reserving BGRT table memory at [mem 0x7bbf3000-0x7bbf3037]
+Oct 07 15:30:33 cipack-20260515 kernel: SRAT: PXM 0 -> APIC 0x00 -> Node 0
+Oct 07 15:30:33 cipack-20260515 kernel: SRAT: PXM 0 -> APIC 0x01 -> Node 0
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: SRAT: Node 0 PXM 0 [mem 0x00000000-0x0009ffff]
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: SRAT: Node 0 PXM 0 [mem 0x00100000-0x7fffffff]
+Oct 07 15:30:33 cipack-20260515 kernel: NUMA: Node 0 [mem 0x00000000-0x0009ffff] + [mem 0x00100000-0x7bf7bfff] -> [mem 0x00000000-0x7bf7bfff]
+Oct 07 15:30:33 cipack-20260515 kernel: NODE_DATA(0) allocated [mem 0x7bed0000-0x7bef9fff]
+Oct 07 15:30:33 cipack-20260515 kernel: Reserving 256MB of memory at 1408MB for crashkernel (System RAM: 1948MB)
+Oct 07 15:30:33 cipack-20260515 kernel: Zone ranges:
+Oct 07 15:30:33 cipack-20260515 kernel:   DMA      [mem 0x0000000000001000-0x0000000000ffffff]
+Oct 07 15:30:33 cipack-20260515 kernel:   DMA32    [mem 0x0000000001000000-0x000000007bf7bfff]
+Oct 07 15:30:33 cipack-20260515 kernel:   Normal   empty
+Oct 07 15:30:33 cipack-20260515 kernel:   Device   empty
+Oct 07 15:30:33 cipack-20260515 kernel: Movable zone start for each node
+Oct 07 15:30:33 cipack-20260515 kernel: Early memory node ranges
+Oct 07 15:30:33 cipack-20260515 kernel:   node   0: [mem 0x0000000000001000-0x000000000009ffff]
+Oct 07 15:30:33 cipack-20260515 kernel:   node   0: [mem 0x0000000000100000-0x0000000013ffffff]
+Oct 07 15:30:33 cipack-20260515 kernel:   node   0: [mem 0x0000000016120000-0x000000007a700fff]
+Oct 07 15:30:33 cipack-20260515 kernel:   node   0: [mem 0x000000007a702000-0x000000007aa6bfff]
+Oct 07 15:30:33 cipack-20260515 kernel:   node   0: [mem 0x000000007ab1b000-0x000000007bb9afff]
+Oct 07 15:30:33 cipack-20260515 kernel:   node   0: [mem 0x000000007bbff000-0x000000007bf7bfff]
+Oct 07 15:30:33 cipack-20260515 kernel: Initmem setup node 0 [mem 0x0000000000001000-0x000000007bf7bfff]
+Oct 07 15:30:33 cipack-20260515 kernel: On node 0, zone DMA: 1 pages in unavailable ranges
+Oct 07 15:30:33 cipack-20260515 kernel: On node 0, zone DMA: 96 pages in unavailable ranges
+Oct 07 15:30:33 cipack-20260515 kernel: On node 0, zone DMA32: 8480 pages in unavailable ranges
+Oct 07 15:30:33 cipack-20260515 kernel: On node 0, zone DMA32: 1 pages in unavailable ranges
+Oct 07 15:30:33 cipack-20260515 kernel: On node 0, zone DMA32: 175 pages in unavailable ranges
+Oct 07 15:30:33 cipack-20260515 kernel: On node 0, zone DMA32: 100 pages in unavailable ranges
+Oct 07 15:30:33 cipack-20260515 kernel: On node 0, zone DMA32: 16516 pages in unavailable ranges
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: PM-Timer IO Port: 0xb008
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: LAPIC_NMI (acpi_id[0xff] dfl dfl lint[0x1])
+Oct 07 15:30:33 cipack-20260515 kernel: IOAPIC[0]: apic_id 0, version 17, address 0xfec00000, GSI 0-23
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: INT_SRC_OVR (bus 0 bus_irq 0 global_irq 2 dfl dfl)
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: INT_SRC_OVR (bus 0 bus_irq 5 global_irq 5 high level)
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: INT_SRC_OVR (bus 0 bus_irq 9 global_irq 9 high level)
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: INT_SRC_OVR (bus 0 bus_irq 10 global_irq 10 high level)
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: INT_SRC_OVR (bus 0 bus_irq 11 global_irq 11 high level)
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: Using ACPI (MADT) for SMP configuration information
+Oct 07 15:30:33 cipack-20260515 kernel: e820: update [mem 0x7a709000-0x7a711fff] usable ==> reserved
+Oct 07 15:30:33 cipack-20260515 kernel: TSC deadline timer available
+Oct 07 15:30:33 cipack-20260515 kernel: smpboot: Allowing 2 CPUs, 0 hotplug CPUs
+Oct 07 15:30:33 cipack-20260515 kernel: PM: hibernation: Registered nosave memory: [mem 0x00000000-0x00000fff]
+Oct 07 15:30:33 cipack-20260515 kernel: PM: hibernation: Registered nosave memory: [mem 0x000a0000-0x000fffff]
+Oct 07 15:30:33 cipack-20260515 kernel: PM: hibernation: Registered nosave memory: [mem 0x14000000-0x1611ffff]
+Oct 07 15:30:33 cipack-20260515 kernel: PM: hibernation: Registered nosave memory: [mem 0x7a701000-0x7a701fff]
+Oct 07 15:30:33 cipack-20260515 kernel: PM: hibernation: Registered nosave memory: [mem 0x7a709000-0x7a711fff]
+Oct 07 15:30:33 cipack-20260515 kernel: PM: hibernation: Registered nosave memory: [mem 0x7aa6c000-0x7ab1afff]
+Oct 07 15:30:33 cipack-20260515 kernel: PM: hibernation: Registered nosave memory: [mem 0x7bb9b000-0x7bbfefff]
+Oct 07 15:30:33 cipack-20260515 kernel: [mem 0x80000000-0xfeffbfff] available for PCI devices
+Oct 07 15:30:33 cipack-20260515 kernel: Booting paravirtualized kernel on KVM
+Oct 07 15:30:33 cipack-20260515 kernel: clocksource: refined-jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645519600211568 ns
+Oct 07 15:30:33 cipack-20260515 kernel: setup_percpu: NR_CPUS:8192 nr_cpumask_bits:2 nr_cpu_ids:2 nr_node_ids:1
+Oct 07 15:30:33 cipack-20260515 kernel: percpu: Embedded 62 pages/cpu s217088 r8192 d28672 u1048576
+Oct 07 15:30:33 cipack-20260515 kernel: pcpu-alloc: s217088 r8192 d28672 u1048576 alloc=1*2097152
+Oct 07 15:30:33 cipack-20260515 kernel: pcpu-alloc: [0] 0 1 
+Oct 07 15:30:33 cipack-20260515 kernel: kvm-guest: stealtime: cpu 0, msr 78234080
+Oct 07 15:30:33 cipack-20260515 kernel: kvm-guest: PV spinlocks disabled, no host support
+Oct 07 15:30:33 cipack-20260515 kernel: Built 1 zonelists, mobility grouping on.  Total pages: 488809
+Oct 07 15:30:33 cipack-20260515 kernel: Policy zone: DMA32
+Oct 07 15:30:33 cipack-20260515 kernel: Kernel command line: BOOT_IMAGE=/boot/vmlinuz-5.15.0-177-generic root=UUID=2ce9365a-86f4-4327-b810-90e9fd8cc903 ro vga=792 console=tty0 console=ttyS0,115200n8 net.ifnames=0 noibrs nvme_core.io_timeout=4294967295 nvme_core.admin_timeout=4294967295 iommu=pt crashkernel=0M-1G:0M,1G-4G:256M,4G-64G:384M,64G-512G:512M,512G-:1G crash_kexec_post_notifiers=1
+Oct 07 15:30:33 cipack-20260515 kernel: Unknown kernel command line parameters "noibrs vga=792", will be passed to user space.
+Oct 07 15:30:33 cipack-20260515 kernel: Dentry cache hash table entries: 262144 (order: 9, 2097152 bytes, linear)
+Oct 07 15:30:33 cipack-20260515 kernel: Inode-cache hash table entries: 131072 (order: 8, 1048576 bytes, linear)
+Oct 07 15:30:33 cipack-20260515 kernel: mem auto-init: stack:off, heap alloc:on, heap free:off
+Oct 07 15:30:33 cipack-20260515 kernel: Memory: 1536732K/1995676K available (16393K kernel code, 4401K rwdata, 11000K rodata, 3292K init, 18768K bss, 458684K reserved, 0K cma-reserved)
+Oct 07 15:30:33 cipack-20260515 kernel: SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=2, Nodes=1
+Oct 07 15:30:33 cipack-20260515 kernel: Kernel/User page tables isolation: enabled
+Oct 07 15:30:33 cipack-20260515 kernel: ftrace: allocating 50901 entries in 199 pages
+Oct 07 15:30:33 cipack-20260515 kernel: ftrace: allocated 199 pages with 5 groups
+Oct 07 15:30:33 cipack-20260515 kernel: rcu: Hierarchical RCU implementation.
+Oct 07 15:30:33 cipack-20260515 kernel: rcu:         RCU restricting CPUs from NR_CPUS=8192 to nr_cpu_ids=2.
+Oct 07 15:30:33 cipack-20260515 kernel:         Rude variant of Tasks RCU enabled.
+Oct 07 15:30:33 cipack-20260515 kernel:         Tracing variant of Tasks RCU enabled.
+Oct 07 15:30:33 cipack-20260515 kernel: rcu: RCU calculated value of scheduler-enlistment delay is 25 jiffies.
+Oct 07 15:30:33 cipack-20260515 kernel: rcu: Adjusting geometry for rcu_fanout_leaf=16, nr_cpu_ids=2
+Oct 07 15:30:33 cipack-20260515 kernel: NR_IRQS: 524544, nr_irqs: 440, preallocated irqs: 16
+Oct 07 15:30:33 cipack-20260515 kernel: random: crng init done
+Oct 07 15:30:33 cipack-20260515 kernel: Console: colour dummy device 80x25
+Oct 07 15:30:33 cipack-20260515 kernel: printk: console [tty0] enabled
+Oct 07 15:30:33 cipack-20260515 kernel: printk: console [ttyS0] enabled
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: Core revision 20210730
+Oct 07 15:30:33 cipack-20260515 kernel: APIC: Switch to symmetric I/O mode setup
+Oct 07 15:30:33 cipack-20260515 kernel: x2apic enabled
+Oct 07 15:30:33 cipack-20260515 kernel: Switched APIC routing to physical x2apic.
+Oct 07 15:30:33 cipack-20260515 kernel: clocksource: tsc-early: mask: 0xffffffffffffffff max_cycles: 0x240937b9988, max_idle_ns: 440795218083 ns
+Oct 07 15:30:33 cipack-20260515 kernel: Calibrating delay loop (skipped) preset value.. 4999.99 BogoMIPS (lpj=9999992)
+Oct 07 15:30:33 cipack-20260515 kernel: Last level iTLB entries: 4KB 64, 2MB 8, 4MB 8
+Oct 07 15:30:33 cipack-20260515 kernel: Last level dTLB entries: 4KB 64, 2MB 32, 4MB 32, 1GB 4
+Oct 07 15:30:33 cipack-20260515 kernel: Spectre V1 : Mitigation: usercopy/swapgs barriers and __user pointer sanitization
+Oct 07 15:30:33 cipack-20260515 kernel: Spectre V2 : Mitigation: Retpolines
+Oct 07 15:30:33 cipack-20260515 kernel: Spectre V2 : Spectre v2 / SpectreRSB: Filling RSB on context switch and VMEXIT
+Oct 07 15:30:33 cipack-20260515 kernel: RETBleed: WARNING: Spectre v2 mitigation leaves CPU vulnerable to RETBleed attacks, data leaks possible!
+Oct 07 15:30:33 cipack-20260515 kernel: RETBleed: Vulnerable
+Oct 07 15:30:33 cipack-20260515 kernel: Speculative Store Bypass: Vulnerable
+Oct 07 15:30:33 cipack-20260515 kernel: MDS: Vulnerable: Clear CPU buffers attempted, no microcode
+Oct 07 15:30:33 cipack-20260515 kernel: MMIO Stale Data: Vulnerable: Clear CPU buffers attempted, no microcode
+Oct 07 15:30:33 cipack-20260515 kernel: GDS: Unknown: Dependent on hypervisor status
+Oct 07 15:30:33 cipack-20260515 kernel: active return thunk: its_return_thunk
+Oct 07 15:30:33 cipack-20260515 kernel: ITS: Mitigation: Aligned branch/return thunks
+Oct 07 15:30:33 cipack-20260515 kernel: x86/fpu: Supporting XSAVE feature 0x001: 'x87 floating point registers'
+Oct 07 15:30:33 cipack-20260515 kernel: x86/fpu: Supporting XSAVE feature 0x002: 'SSE registers'
+Oct 07 15:30:33 cipack-20260515 kernel: x86/fpu: Supporting XSAVE feature 0x004: 'AVX registers'
+Oct 07 15:30:33 cipack-20260515 kernel: x86/fpu: Supporting XSAVE feature 0x020: 'AVX-512 opmask'
+Oct 07 15:30:33 cipack-20260515 kernel: x86/fpu: Supporting XSAVE feature 0x040: 'AVX-512 Hi256'
+Oct 07 15:30:33 cipack-20260515 kernel: x86/fpu: Supporting XSAVE feature 0x080: 'AVX-512 ZMM_Hi256'
+Oct 07 15:30:33 cipack-20260515 kernel: x86/fpu: xstate_offset[2]:  576, xstate_sizes[2]:  256
+Oct 07 15:30:33 cipack-20260515 kernel: x86/fpu: xstate_offset[5]:  832, xstate_sizes[5]:   64
+Oct 07 15:30:33 cipack-20260515 kernel: x86/fpu: xstate_offset[6]:  896, xstate_sizes[6]:  512
+Oct 07 15:30:33 cipack-20260515 kernel: x86/fpu: xstate_offset[7]: 1408, xstate_sizes[7]: 1024
+Oct 07 15:30:33 cipack-20260515 kernel: x86/fpu: Enabled xstate features 0xe7, context size is 2432 bytes, using 'compacted' format.
+Oct 07 15:30:33 cipack-20260515 kernel: Freeing SMP alternatives memory: 44K
+Oct 07 15:30:33 cipack-20260515 kernel: pid_max: default: 32768 minimum: 301
+Oct 07 15:30:33 cipack-20260515 kernel: LSM: Security Framework initializing
+Oct 07 15:30:33 cipack-20260515 kernel: landlock: Up and running.
+Oct 07 15:30:33 cipack-20260515 kernel: Yama: becoming mindful.
+Oct 07 15:30:33 cipack-20260515 kernel: AppArmor: AppArmor initialized
+Oct 07 15:30:33 cipack-20260515 kernel: Mount-cache hash table entries: 4096 (order: 3, 32768 bytes, linear)
+Oct 07 15:30:33 cipack-20260515 kernel: Mountpoint-cache hash table entries: 4096 (order: 3, 32768 bytes, linear)
+Oct 07 15:30:33 cipack-20260515 kernel: smpboot: CPU0: Intel(R) Xeon(R) Platinum (family: 0x6, model: 0x55, stepping: 0x4)
+Oct 07 15:30:33 cipack-20260515 kernel: Performance Events: unsupported p6 CPU model 85 no PMU driver, software events only.
+Oct 07 15:30:33 cipack-20260515 kernel: signal: max sigframe size: 3632
+Oct 07 15:30:33 cipack-20260515 kernel: rcu: Hierarchical SRCU implementation.
+Oct 07 15:30:33 cipack-20260515 kernel: NMI watchdog: Perf NMI watchdog permanently disabled
+Oct 07 15:30:33 cipack-20260515 kernel: smp: Bringing up secondary CPUs ...
+Oct 07 15:30:33 cipack-20260515 kernel: x86: Booting SMP configuration:
+Oct 07 15:30:33 cipack-20260515 kernel: .... node  #0, CPUs:      #1
+Oct 07 15:30:33 cipack-20260515 kernel: kvm-clock: cpu 1, msr 36601041, secondary cpu clock
+Oct 07 15:30:33 cipack-20260515 kernel: kvm-guest: stealtime: cpu 1, msr 78334080
+Oct 07 15:30:33 cipack-20260515 kernel: MDS CPU bug present and SMT on, data leak possible. See https://www.kernel.org/doc/html/latest/admin-guide/hw-vuln/mds.html for more details.
+Oct 07 15:30:33 cipack-20260515 kernel: MMIO Stale Data CPU bug present and SMT on, data leak possible. See https://www.kernel.org/doc/html/latest/admin-guide/hw-vuln/processor_mmio_stale_data.html for more details.
+Oct 07 15:30:33 cipack-20260515 kernel: smp: Brought up 1 node, 2 CPUs
+Oct 07 15:30:33 cipack-20260515 kernel: smpboot: Max logical packages: 1
+Oct 07 15:30:33 cipack-20260515 kernel: smpboot: Total of 2 processors activated (9999.99 BogoMIPS)
+Oct 07 15:30:33 cipack-20260515 kernel: devtmpfs: initialized
+Oct 07 15:30:33 cipack-20260515 kernel: x86/mm: Memory block size: 128MB
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: PM: Registering ACPI NVS region [mem 0x7bbfb000-0x7bbfefff] (16384 bytes)
+Oct 07 15:30:33 cipack-20260515 kernel: clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+Oct 07 15:30:33 cipack-20260515 kernel: futex hash table entries: 512 (order: 3, 32768 bytes, linear)
+Oct 07 15:30:33 cipack-20260515 kernel: pinctrl core: initialized pinctrl subsystem
+Oct 07 15:30:33 cipack-20260515 kernel: PM: RTC time: 07:30:25, date: 2026-10-07
+Oct 07 15:30:33 cipack-20260515 kernel: NET: Registered PF_NETLINK/PF_ROUTE protocol family
+Oct 07 15:30:33 cipack-20260515 kernel: DMA: preallocated 256 KiB GFP_KERNEL pool for atomic allocations
+Oct 07 15:30:33 cipack-20260515 kernel: DMA: preallocated 256 KiB GFP_KERNEL|GFP_DMA pool for atomic allocations
+Oct 07 15:30:33 cipack-20260515 kernel: DMA: preallocated 256 KiB GFP_KERNEL|GFP_DMA32 pool for atomic allocations
+Oct 07 15:30:33 cipack-20260515 kernel: audit: initializing netlink subsys (disabled)
+Oct 07 15:30:33 cipack-20260515 kernel: audit: type=2000 audit(1791358226.527:1): state=initialized audit_enabled=0 res=1
+Oct 07 15:30:33 cipack-20260515 kernel: thermal_sys: Registered thermal governor 'fair_share'
+Oct 07 15:30:33 cipack-20260515 kernel: thermal_sys: Registered thermal governor 'bang_bang'
+Oct 07 15:30:33 cipack-20260515 kernel: thermal_sys: Registered thermal governor 'step_wise'
+Oct 07 15:30:33 cipack-20260515 kernel: thermal_sys: Registered thermal governor 'user_space'
+Oct 07 15:30:33 cipack-20260515 kernel: thermal_sys: Registered thermal governor 'power_allocator'
+Oct 07 15:30:33 cipack-20260515 kernel: cpuidle: using governor ladder
+Oct 07 15:30:33 cipack-20260515 kernel: cpuidle: using governor menu
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: bus type PCI registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: ACPI Hot Plug PCI Controller Driver version: 0.5
+Oct 07 15:30:33 cipack-20260515 kernel: PCI: Using configuration type 1 for base access
+Oct 07 15:30:33 cipack-20260515 kernel: kprobes: kprobe jump-optimization is enabled. All kprobes are optimized if possible.
+Oct 07 15:30:33 cipack-20260515 kernel: HugeTLB registered 1.00 GiB page size, pre-allocated 0 pages
+Oct 07 15:30:33 cipack-20260515 kernel: HugeTLB registered 2.00 MiB page size, pre-allocated 0 pages
+Oct 07 15:30:33 cipack-20260515 kernel: fbcon: Taking over console
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: Added _OSI(Module Device)
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: Added _OSI(Processor Device)
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: Added _OSI(Processor Aggregator Device)
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: Added _OSI(Linux-Dell-Video)
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: Added _OSI(Linux-Lenovo-NV-HDMI-Audio)
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: Added _OSI(Linux-HPI-Hybrid-Graphics)
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: 2 ACPI AML tables successfully acquired and loaded
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: Interpreter enabled
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: PM: (supports S0 S5)
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: Using IOAPIC for interrupt routing
+Oct 07 15:30:33 cipack-20260515 kernel: PCI: Using host bridge windows from ACPI; if necessary, use "pci=nocrs" and report a bug
+Oct 07 15:30:33 cipack-20260515 kernel: PCI: Using E820 reservations for host bridge windows
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: Enabled 16 GPEs in block 00 to 0F
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: PCI Root Bridge [PCI0] (domain 0000 [bus 00-ff])
+Oct 07 15:30:33 cipack-20260515 kernel: acpi PNP0A03:00: _OSC: OS supports [ASPM ClockPM Segments MSI EDR HPX-Type3]
+Oct 07 15:30:33 cipack-20260515 kernel: acpi PNP0A03:00: fail to add MMCONFIG information, can't access extended PCI configuration space under this bridge.
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [3] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [4] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [5] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [6] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [7] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [8] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [9] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [10] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [11] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [12] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [13] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [14] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [15] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [16] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [17] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [18] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [19] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [20] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [21] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [22] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [23] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [24] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [25] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [26] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [27] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [28] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [29] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [30] registered
+Oct 07 15:30:33 cipack-20260515 kernel: acpiphp: Slot [31] registered
+Oct 07 15:30:33 cipack-20260515 kernel: PCI host bridge to bus 0000:00
+Oct 07 15:30:33 cipack-20260515 kernel: pci_bus 0000:00: root bus resource [io  0x0000-0x0cf7 window]
+Oct 07 15:30:33 cipack-20260515 kernel: pci_bus 0000:00: root bus resource [io  0x0d00-0xadff window]
+Oct 07 15:30:33 cipack-20260515 kernel: pci_bus 0000:00: root bus resource [io  0xae0f-0xaeff window]
+Oct 07 15:30:33 cipack-20260515 kernel: pci_bus 0000:00: root bus resource [io  0xaf20-0xafdf window]
+Oct 07 15:30:33 cipack-20260515 kernel: pci_bus 0000:00: root bus resource [io  0xafe4-0xffff window]
+Oct 07 15:30:33 cipack-20260515 kernel: pci_bus 0000:00: root bus resource [mem 0x000a0000-0x000bffff window]
+Oct 07 15:30:33 cipack-20260515 kernel: pci_bus 0000:00: root bus resource [mem 0x80000000-0xfebfffff window]
+Oct 07 15:30:33 cipack-20260515 kernel: pci_bus 0000:00: root bus resource [bus 00-ff]
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:00.0: [8086:1237] type 00 class 0x060000
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:01.0: [8086:7000] type 00 class 0x060100
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:01.1: [8086:7010] type 00 class 0x010180
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:01.1: reg 0x20: [io  0xc060-0xc06f]
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:01.1: legacy IDE quirk: reg 0x10: [io  0x01f0-0x01f7]
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:01.1: legacy IDE quirk: reg 0x14: [io  0x03f6]
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:01.1: legacy IDE quirk: reg 0x18: [io  0x0170-0x0177]
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:01.1: legacy IDE quirk: reg 0x1c: [io  0x0376]
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:01.2: [8086:7020] type 00 class 0x0c0300
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:01.2: reg 0x20: [io  0xc040-0xc05f]
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:01.3: [8086:7113] type 00 class 0x068000
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:01.3: quirk: [io  0xb000-0xb03f] claimed by PIIX4 ACPI
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:01.3: quirk: [io  0xb100-0xb10f] claimed by PIIX4 SMB
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:02.0: [1013:00b8] type 00 class 0x030000
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:02.0: reg 0x10: [mem 0x80000000-0x81ffffff pref]
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:02.0: reg 0x14: [mem 0x82001000-0x82001fff]
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:02.0: reg 0x30: [mem 0xffff0000-0xffffffff pref]
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:02.0: BAR 0: assigned to efifb
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:02.0: Video device with shadowed ROM at [mem 0x000c0000-0x000dffff]
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:03.0: [1af4:1003] type 00 class 0x078000
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:03.0: reg 0x10: [io  0xc020-0xc03f]
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:03.0: reg 0x14: [mem 0x82000000-0x82000fff]
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:04.0: [1af4:1001] type 00 class 0x010000
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:04.0: reg 0x10: [mem 0x800000000-0x800000fff 64bit pref]
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:04.0: reg 0x18: [mem 0x800001000-0x800001fff 64bit pref]
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:05.0: [1af4:1000] type 00 class 0x020000
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:05.0: reg 0x10: [mem 0x800002000-0x800002fff 64bit pref]
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:05.0: reg 0x18: [mem 0x800003000-0x800003fff 64bit pref]
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:06.0: [1af4:1002] type 00 class 0x00ff00
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:06.0: reg 0x10: [io  0xc000-0xc01f]
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: PCI: Interrupt link LNKA configured for IRQ 11
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: PCI: Interrupt link LNKB configured for IRQ 11
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: PCI: Interrupt link LNKC configured for IRQ 10
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: PCI: Interrupt link LNKD configured for IRQ 10
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: PCI: Interrupt link LNKS configured for IRQ 9
+Oct 07 15:30:33 cipack-20260515 kernel: iommu: Default domain type: Passthrough (set via kernel command line)
+Oct 07 15:30:33 cipack-20260515 kernel: SCSI subsystem initialized
+Oct 07 15:30:33 cipack-20260515 kernel: libata version 3.00 loaded.
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:02.0: vgaarb: setting as boot VGA device
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:02.0: vgaarb: VGA device added: decodes=io+mem,owns=io+mem,locks=none
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:02.0: vgaarb: bridge control possible
+Oct 07 15:30:33 cipack-20260515 kernel: vgaarb: loaded
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: bus type USB registered
+Oct 07 15:30:33 cipack-20260515 kernel: usbcore: registered new interface driver usbfs
+Oct 07 15:30:33 cipack-20260515 kernel: usbcore: registered new interface driver hub
+Oct 07 15:30:33 cipack-20260515 kernel: usbcore: registered new device driver usb
+Oct 07 15:30:33 cipack-20260515 kernel: pps_core: LinuxPPS API ver. 1 registered
+Oct 07 15:30:33 cipack-20260515 kernel: pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>
+Oct 07 15:30:33 cipack-20260515 kernel: PTP clock support registered
+Oct 07 15:30:33 cipack-20260515 kernel: EDAC MC: Ver: 3.0.0
+Oct 07 15:30:33 cipack-20260515 kernel: Registered efivars operations
+Oct 07 15:30:33 cipack-20260515 kernel: NetLabel: Initializing
+Oct 07 15:30:33 cipack-20260515 kernel: NetLabel:  domain hash size = 128
+Oct 07 15:30:33 cipack-20260515 kernel: NetLabel:  protocols = UNLABELED CIPSOv4 CALIPSO
+Oct 07 15:30:33 cipack-20260515 kernel: NetLabel:  unlabeled traffic allowed by default
+Oct 07 15:30:33 cipack-20260515 kernel: PCI: Using ACPI for IRQ routing
+Oct 07 15:30:33 cipack-20260515 kernel: PCI: pci_cache_line_size set to 64 bytes
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:04.0: can't claim BAR 0 [mem 0x800000000-0x800000fff 64bit pref]: no compatible bridge window
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:04.0: can't claim BAR 2 [mem 0x800001000-0x800001fff 64bit pref]: no compatible bridge window
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:05.0: can't claim BAR 0 [mem 0x800002000-0x800002fff 64bit pref]: no compatible bridge window
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:05.0: can't claim BAR 2 [mem 0x800003000-0x800003fff 64bit pref]: no compatible bridge window
+Oct 07 15:30:33 cipack-20260515 kernel: e820: reserve RAM buffer [mem 0x7a6f5018-0x7bffffff]
+Oct 07 15:30:33 cipack-20260515 kernel: e820: reserve RAM buffer [mem 0x7a701000-0x7bffffff]
+Oct 07 15:30:33 cipack-20260515 kernel: e820: reserve RAM buffer [mem 0x7a709000-0x7bffffff]
+Oct 07 15:30:33 cipack-20260515 kernel: e820: reserve RAM buffer [mem 0x7aa6c000-0x7bffffff]
+Oct 07 15:30:33 cipack-20260515 kernel: e820: reserve RAM buffer [mem 0x7bb9b000-0x7bffffff]
+Oct 07 15:30:33 cipack-20260515 kernel: e820: reserve RAM buffer [mem 0x7bf7c000-0x7bffffff]
+Oct 07 15:30:33 cipack-20260515 kernel: clocksource: Switched to clocksource kvm-clock
+Oct 07 15:30:33 cipack-20260515 kernel: VFS: Disk quotas dquot_6.6.0
+Oct 07 15:30:33 cipack-20260515 kernel: VFS: Dquot-cache hash table entries: 512 (order 0, 4096 bytes)
+Oct 07 15:30:33 cipack-20260515 kernel: AppArmor: AppArmor Filesystem Enabled
+Oct 07 15:30:33 cipack-20260515 kernel: pnp: PnP ACPI init
+Oct 07 15:30:33 cipack-20260515 kernel: pnp 00:03: [dma 2]
+Oct 07 15:30:33 cipack-20260515 kernel: pnp: PnP ACPI: found 5 devices
+Oct 07 15:30:33 cipack-20260515 kernel: clocksource: acpi_pm: mask: 0xffffff max_cycles: 0xffffff, max_idle_ns: 2085701024 ns
+Oct 07 15:30:33 cipack-20260515 kernel: NET: Registered PF_INET protocol family
+Oct 07 15:30:33 cipack-20260515 kernel: IP idents hash table entries: 32768 (order: 6, 262144 bytes, linear)
+Oct 07 15:30:33 cipack-20260515 kernel: tcp_listen_portaddr_hash hash table entries: 1024 (order: 2, 16384 bytes, linear)
+Oct 07 15:30:33 cipack-20260515 kernel: Table-perturb hash table entries: 65536 (order: 6, 262144 bytes, linear)
+Oct 07 15:30:33 cipack-20260515 kernel: TCP established hash table entries: 16384 (order: 5, 131072 bytes, linear)
+Oct 07 15:30:33 cipack-20260515 kernel: TCP bind hash table entries: 16384 (order: 6, 262144 bytes, linear)
+Oct 07 15:30:33 cipack-20260515 kernel: TCP: Hash tables configured (established 16384 bind 16384)
+Oct 07 15:30:33 cipack-20260515 kernel: MPTCP token hash table entries: 2048 (order: 4, 49152 bytes, linear)
+Oct 07 15:30:33 cipack-20260515 kernel: UDP hash table entries: 1024 (order: 3, 32768 bytes, linear)
+Oct 07 15:30:33 cipack-20260515 kernel: UDP-Lite hash table entries: 1024 (order: 3, 32768 bytes, linear)
+Oct 07 15:30:33 cipack-20260515 kernel: NET: Registered PF_UNIX/PF_LOCAL protocol family
+Oct 07 15:30:33 cipack-20260515 kernel: NET: Registered PF_XDP protocol family
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:04.0: BAR 0: assigned [mem 0x82002000-0x82002fff 64bit pref]
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:04.0: BAR 2: assigned [mem 0x82003000-0x82003fff 64bit pref]
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:05.0: BAR 0: assigned [mem 0x82004000-0x82004fff 64bit pref]
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:05.0: BAR 2: assigned [mem 0x82005000-0x82005fff 64bit pref]
+Oct 07 15:30:33 cipack-20260515 kernel: pci_bus 0000:00: resource 4 [io  0x0000-0x0cf7 window]
+Oct 07 15:30:33 cipack-20260515 kernel: pci_bus 0000:00: resource 5 [io  0x0d00-0xadff window]
+Oct 07 15:30:33 cipack-20260515 kernel: pci_bus 0000:00: resource 6 [io  0xae0f-0xaeff window]
+Oct 07 15:30:33 cipack-20260515 kernel: pci_bus 0000:00: resource 7 [io  0xaf20-0xafdf window]
+Oct 07 15:30:33 cipack-20260515 kernel: pci_bus 0000:00: resource 8 [io  0xafe4-0xffff window]
+Oct 07 15:30:33 cipack-20260515 kernel: pci_bus 0000:00: resource 9 [mem 0x000a0000-0x000bffff window]
+Oct 07 15:30:33 cipack-20260515 kernel: pci_bus 0000:00: resource 10 [mem 0x80000000-0xfebfffff window]
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:01.0: PIIX3: Enabling Passive Release
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:00.0: Limiting direct PCI/PCI transfers
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:01.0: Activating ISA DMA hang workarounds
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: \_SB_.LNKD: Enabled at IRQ 10
+Oct 07 15:30:33 cipack-20260515 kernel: pci 0000:00:01.2: quirk_usb_early_handoff+0x0/0x160 took 40065 usecs
+Oct 07 15:30:33 cipack-20260515 kernel: PCI: CLS 0 bytes, default 64
+Oct 07 15:30:33 cipack-20260515 kernel: clocksource: tsc: mask: 0xffffffffffffffff max_cycles: 0x240937b9988, max_idle_ns: 440795218083 ns
+Oct 07 15:30:33 cipack-20260515 kernel: Trying to unpack rootfs image as initramfs...
+Oct 07 15:30:33 cipack-20260515 kernel: clocksource: Switched to clocksource tsc
+Oct 07 15:30:33 cipack-20260515 kernel: Initialise system trusted keyrings
+Oct 07 15:30:33 cipack-20260515 kernel: Key type blacklist registered
+Oct 07 15:30:33 cipack-20260515 kernel: workingset: timestamp_bits=36 max_order=19 bucket_order=0
+Oct 07 15:30:33 cipack-20260515 kernel: zbud: loaded
+Oct 07 15:30:33 cipack-20260515 kernel: squashfs: version 4.0 (2009/01/31) Phillip Lougher
+Oct 07 15:30:33 cipack-20260515 kernel: fuse: init (API version 7.34)
+Oct 07 15:30:33 cipack-20260515 kernel: integrity: Platform Keyring initialized
+Oct 07 15:30:33 cipack-20260515 kernel: Key type asymmetric registered
+Oct 07 15:30:33 cipack-20260515 kernel: Asymmetric key parser 'x509' registered
+Oct 07 15:30:33 cipack-20260515 kernel: Block layer SCSI generic (bsg) driver version 0.4 loaded (major 243)
+Oct 07 15:30:33 cipack-20260515 kernel: io scheduler mq-deadline registered
+Oct 07 15:30:33 cipack-20260515 kernel: shpchp: Standard Hot Plug PCI Controller Driver version: 0.4
+Oct 07 15:30:33 cipack-20260515 kernel: input: Power Button as /devices/LNXSYSTM:00/LNXPWRBN:00/input/input0
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: button: Power Button [PWRF]
+Oct 07 15:30:33 cipack-20260515 kernel: input: Sleep Button as /devices/LNXSYSTM:00/LNXSLPBN:00/input/input1
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: button: Sleep Button [SLPF]
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: \_SB_.LNKC: Enabled at IRQ 11
+Oct 07 15:30:33 cipack-20260515 kernel: virtio-pci 0000:00:03.0: virtio_pci: leaving for legacy driver
+Oct 07 15:30:33 cipack-20260515 kernel: virtio-pci 0000:00:04.0: virtio_pci: leaving for legacy driver
+Oct 07 15:30:33 cipack-20260515 kernel: virtio-pci 0000:00:05.0: virtio_pci: leaving for legacy driver
+Oct 07 15:30:33 cipack-20260515 kernel: ACPI: \_SB_.LNKB: Enabled at IRQ 11
+Oct 07 15:30:33 cipack-20260515 kernel: virtio-pci 0000:00:06.0: virtio_pci: leaving for legacy driver
+Oct 07 15:30:33 cipack-20260515 kernel: Serial: 8250/16550 driver, 32 ports, IRQ sharing enabled
+Oct 07 15:30:33 cipack-20260515 kernel: 00:04: ttyS0 at I/O 0x3f8 (irq = 4, base_baud = 115200) is a 16550A
+Oct 07 15:30:33 cipack-20260515 kernel: Linux agpgart interface v0.103
+Oct 07 15:30:33 cipack-20260515 kernel: loop: module loaded
+Oct 07 15:30:33 cipack-20260515 kernel: ata_piix 0000:00:01.1: version 2.13
+Oct 07 15:30:33 cipack-20260515 kernel: scsi host0: ata_piix
+Oct 07 15:30:33 cipack-20260515 kernel: scsi host1: ata_piix
+Oct 07 15:30:33 cipack-20260515 kernel: ata1: PATA max MWDMA2 cmd 0x1f0 ctl 0x3f6 bmdma 0xc060 irq 14
+Oct 07 15:30:33 cipack-20260515 kernel: ata2: PATA max MWDMA2 cmd 0x170 ctl 0x376 bmdma 0xc068 irq 15
+Oct 07 15:30:33 cipack-20260515 kernel: tun: Universal TUN/TAP device driver, 1.6
+Oct 07 15:30:33 cipack-20260515 kernel: PPP generic driver version 2.4.2
+Oct 07 15:30:33 cipack-20260515 kernel: VFIO - User Level meta-driver version: 0.3
+Oct 07 15:30:33 cipack-20260515 kernel: ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+Oct 07 15:30:33 cipack-20260515 kernel: ehci-pci: EHCI PCI platform driver
+Oct 07 15:30:33 cipack-20260515 kernel: ehci-platform: EHCI generic platform driver
+Oct 07 15:30:33 cipack-20260515 kernel: ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+Oct 07 15:30:33 cipack-20260515 kernel: ohci-pci: OHCI PCI platform driver
+Oct 07 15:30:33 cipack-20260515 kernel: ohci-platform: OHCI generic platform driver
+Oct 07 15:30:33 cipack-20260515 kernel: uhci_hcd: USB Universal Host Controller Interface driver
+Oct 07 15:30:33 cipack-20260515 kernel: uhci_hcd 0000:00:01.2: UHCI Host Controller
+Oct 07 15:30:33 cipack-20260515 kernel: uhci_hcd 0000:00:01.2: new USB bus registered, assigned bus number 1
+Oct 07 15:30:33 cipack-20260515 kernel: uhci_hcd 0000:00:01.2: detected 2 ports
+Oct 07 15:30:33 cipack-20260515 kernel: uhci_hcd 0000:00:01.2: irq 10, io base 0x0000c040
+Oct 07 15:30:33 cipack-20260515 kernel: usb usb1: New USB device found, idVendor=1d6b, idProduct=0001, bcdDevice= 5.15
+Oct 07 15:30:33 cipack-20260515 kernel: usb usb1: New USB device strings: Mfr=3, Product=2, SerialNumber=1
+Oct 07 15:30:33 cipack-20260515 kernel: usb usb1: Product: UHCI Host Controller
+Oct 07 15:30:33 cipack-20260515 kernel: usb usb1: Manufacturer: Linux 5.15.0-177-generic uhci_hcd
+Oct 07 15:30:33 cipack-20260515 kernel: usb usb1: SerialNumber: 0000:00:01.2
+Oct 07 15:30:33 cipack-20260515 kernel: hub 1-0:1.0: USB hub found
+Oct 07 15:30:33 cipack-20260515 kernel: hub 1-0:1.0: 2 ports detected
+Oct 07 15:30:33 cipack-20260515 kernel: i8042: PNP: PS/2 Controller [PNP0303:KBD,PNP0f13:MOU] at 0x60,0x64 irq 1,12
+Oct 07 15:30:33 cipack-20260515 kernel: serio: i8042 KBD port at 0x60,0x64 irq 1
+Oct 07 15:30:33 cipack-20260515 kernel: serio: i8042 AUX port at 0x60,0x64 irq 12
+Oct 07 15:30:33 cipack-20260515 kernel: mousedev: PS/2 mouse device common for all mice
+Oct 07 15:30:33 cipack-20260515 kernel: rtc_cmos 00:00: RTC can wake from S4
+Oct 07 15:30:33 cipack-20260515 kernel: input: AT Translated Set 2 keyboard as /devices/platform/i8042/serio0/input/input2
+Oct 07 15:30:33 cipack-20260515 kernel: rtc_cmos 00:00: registered as rtc0
+Oct 07 15:30:33 cipack-20260515 kernel: rtc_cmos 00:00: setting system clock to 2026-10-07T07:30:26 UTC (1791358226)
+Oct 07 15:30:33 cipack-20260515 kernel: rtc_cmos 00:00: alarms up to one day, 114 bytes nvram
+Oct 07 15:30:33 cipack-20260515 kernel: i2c_dev: i2c /dev entries driver
+Oct 07 15:30:33 cipack-20260515 kernel: device-mapper: core: CONFIG_IMA_DISABLE_HTABLE is disabled. Duplicate IMA measurements will not be recorded in the IMA log.
+Oct 07 15:30:33 cipack-20260515 kernel: device-mapper: uevent: version 1.0.3
+Oct 07 15:30:33 cipack-20260515 kernel: device-mapper: ioctl: 4.45.0-ioctl (2021-03-22) initialised: dm-devel@redhat.com
+Oct 07 15:30:33 cipack-20260515 kernel: intel_pstate: CPU model not supported
+Oct 07 15:30:33 cipack-20260515 kernel: ledtrig-cpu: registered to indicate activity on CPUs
+Oct 07 15:30:33 cipack-20260515 kernel: efifb: probing for efifb
+Oct 07 15:30:33 cipack-20260515 kernel: efifb: framebuffer at 0x80000000, using 1876k, total 1875k
+Oct 07 15:30:33 cipack-20260515 kernel: efifb: mode is 800x600x32, linelength=3200, pages=1
+Oct 07 15:30:33 cipack-20260515 kernel: efifb: scrolling: redraw
+Oct 07 15:30:33 cipack-20260515 kernel: efifb: Truecolor: size=8:8:8:8, shift=24:16:8:0
+Oct 07 15:30:33 cipack-20260515 kernel: Console: switching to colour frame buffer device 100x37
+Oct 07 15:30:33 cipack-20260515 kernel: fb0: EFI VGA frame buffer device
+Oct 07 15:30:33 cipack-20260515 kernel: EFI Variables Facility v0.08 2004-May-17
+Oct 07 15:30:33 cipack-20260515 kernel: drop_monitor: Initializing network drop monitor service
+Oct 07 15:30:33 cipack-20260515 kernel: NET: Registered PF_INET6 protocol family
+Oct 07 15:30:33 cipack-20260515 kernel: usb 1-1: new full-speed USB device number 2 using uhci_hcd
+Oct 07 15:30:33 cipack-20260515 kernel: Freeing initrd memory: 66820K
+Oct 07 15:30:33 cipack-20260515 kernel: Segment Routing with IPv6
+Oct 07 15:30:33 cipack-20260515 kernel: In-situ OAM (IOAM) with IPv6
+Oct 07 15:30:33 cipack-20260515 kernel: NET: Registered PF_PACKET protocol family
+Oct 07 15:30:33 cipack-20260515 kernel: Key type dns_resolver registered
+Oct 07 15:30:33 cipack-20260515 kernel: No MBM correction factor available
+Oct 07 15:30:33 cipack-20260515 kernel: IPI shorthand broadcast: enabled
+Oct 07 15:30:33 cipack-20260515 kernel: sched_clock: Marking stable (936204104, 88080345)->(1073754801, -49470352)
+Oct 07 15:30:33 cipack-20260515 kernel: registered taskstats version 1
+Oct 07 15:30:33 cipack-20260515 kernel: Loading compiled-in X.509 certificates
+Oct 07 15:30:33 cipack-20260515 kernel: Loaded X.509 cert 'Build time autogenerated kernel key: 8cbb27aae46726dbfbcc07b73cb15a70358e2972'
+Oct 07 15:30:33 cipack-20260515 kernel: Loaded X.509 cert 'Canonical Ltd. Live Patch Signing 2025 Kmod: d541cef61dc7e793b7eb7e899970a2eef0b5dc8c'
+Oct 07 15:30:33 cipack-20260515 kernel: Loaded X.509 cert 'Canonical Ltd. Live Patch Signing: 14df34d1a87cf37625abec039ef2bf521249b969'
+Oct 07 15:30:33 cipack-20260515 kernel: Loaded X.509 cert 'Canonical Ltd. Kernel Module Signing: 88f752e560a1e0737e31163a466ad7b70a850c19'
+Oct 07 15:30:33 cipack-20260515 kernel: blacklist: Loading compiled-in revocation X.509 certificates
+Oct 07 15:30:33 cipack-20260515 kernel: Loaded X.509 cert 'Canonical Ltd. Secure Boot Signing: 61482aa2830d0ab2ad5af10b7250da9033ddcef0'
+Oct 07 15:30:33 cipack-20260515 kernel: Loaded X.509 cert 'Canonical Ltd. Secure Boot Signing (2017): 242ade75ac4a15e50d50c84b0d45ff3eae707a03'
+Oct 07 15:30:33 cipack-20260515 kernel: Loaded X.509 cert 'Canonical Ltd. Secure Boot Signing (ESM 2018): 365188c1d374d6b07c3c8f240f8ef722433d6a8b'
+Oct 07 15:30:33 cipack-20260515 kernel: Loaded X.509 cert 'Canonical Ltd. Secure Boot Signing (2019): c0746fd6c5da3ae827864651ad66ae47fe24b3e8'
+Oct 07 15:30:33 cipack-20260515 kernel: Loaded X.509 cert 'Canonical Ltd. Secure Boot Signing (2021 v1): a8d54bbb3825cfb94fa13c9f8a594a195c107b8d'
+Oct 07 15:30:33 cipack-20260515 kernel: Loaded X.509 cert 'Canonical Ltd. Secure Boot Signing (2021 v2): 4cf046892d6fd3c9a5b03f98d845f90851dc6a8c'
+Oct 07 15:30:33 cipack-20260515 kernel: Loaded X.509 cert 'Canonical Ltd. Secure Boot Signing (2021 v3): 100437bb6de6e469b581e61cd66bce3ef4ed53af'
+Oct 07 15:30:33 cipack-20260515 kernel: Loaded X.509 cert 'Canonical Ltd. Secure Boot Signing (Ubuntu Core 2019): c1d57b8f6b743f23ee41f4f7ee292f06eecadfb9'
+Oct 07 15:30:33 cipack-20260515 kernel: zswap: loaded using pool lzo/zbud
+Oct 07 15:30:33 cipack-20260515 kernel: Key type .fscrypt registered
+Oct 07 15:30:33 cipack-20260515 kernel: Key type fscrypt-provisioning registered
+Oct 07 15:30:33 cipack-20260515 kernel: Key type encrypted registered
+Oct 07 15:30:33 cipack-20260515 kernel: AppArmor: AppArmor sha1 policy hashing enabled
+Oct 07 15:30:33 cipack-20260515 kernel: integrity: Loading X.509 certificate: UEFI:MokListRT (MOKvar table)
+Oct 07 15:30:33 cipack-20260515 kernel: integrity: Loaded X.509 cert 'Canonical Ltd. Master Certificate Authority: ad91990bc22ab1f517048c23b6655a268e345a63'
+Oct 07 15:30:33 cipack-20260515 kernel: ima: No TPM chip found, activating TPM-bypass!
+Oct 07 15:30:33 cipack-20260515 kernel: Loading compiled-in module X.509 certificates
+Oct 07 15:30:33 cipack-20260515 kernel: Loaded X.509 cert 'Build time autogenerated kernel key: 8cbb27aae46726dbfbcc07b73cb15a70358e2972'
+Oct 07 15:30:33 cipack-20260515 kernel: ima: Allocated hash algorithm: sha1
+Oct 07 15:30:33 cipack-20260515 kernel: ima: No architecture policies found
+Oct 07 15:30:33 cipack-20260515 kernel: evm: Initialising EVM extended attributes:
+Oct 07 15:30:33 cipack-20260515 kernel: evm: security.selinux
+Oct 07 15:30:33 cipack-20260515 kernel: evm: security.SMACK64
+Oct 07 15:30:33 cipack-20260515 kernel: evm: security.SMACK64EXEC
+Oct 07 15:30:33 cipack-20260515 kernel: evm: security.SMACK64TRANSMUTE
+Oct 07 15:30:33 cipack-20260515 kernel: evm: security.SMACK64MMAP
+Oct 07 15:30:33 cipack-20260515 kernel: evm: security.apparmor
+Oct 07 15:30:33 cipack-20260515 kernel: evm: security.ima
+Oct 07 15:30:33 cipack-20260515 kernel: evm: security.capability
+Oct 07 15:30:33 cipack-20260515 kernel: evm: HMAC attrs: 0x1
+Oct 07 15:30:33 cipack-20260515 kernel: PM:   Magic number: 14:767:520
+Oct 07 15:30:33 cipack-20260515 kernel: RAS: Correctable Errors collector initialized.
+Oct 07 15:30:33 cipack-20260515 kernel: clk: Disabling unused clocks
+Oct 07 15:30:33 cipack-20260515 kernel: Freeing unused decrypted memory: 2036K
+Oct 07 15:30:33 cipack-20260515 kernel: Freeing unused kernel image (initmem) memory: 3292K
+Oct 07 15:30:33 cipack-20260515 kernel: Write protecting the kernel read-only data: 30720k
+Oct 07 15:30:33 cipack-20260515 kernel: Freeing unused kernel image (text/rodata gap) memory: 2036K
+Oct 07 15:30:33 cipack-20260515 kernel: Freeing unused kernel image (rodata/data gap) memory: 1288K
+Oct 07 15:30:33 cipack-20260515 kernel: x86/mm: Checked W+X mappings: passed, no W+X pages found.
+Oct 07 15:30:33 cipack-20260515 kernel: x86/mm: Checking user space page tables
+Oct 07 15:30:33 cipack-20260515 kernel: x86/mm: Checked W+X mappings: passed, no W+X pages found.
+Oct 07 15:30:33 cipack-20260515 kernel: Run /init as init process
+Oct 07 15:30:33 cipack-20260515 kernel:   with arguments:
+Oct 07 15:30:33 cipack-20260515 kernel:     /init
+Oct 07 15:30:33 cipack-20260515 kernel:     noibrs
+Oct 07 15:30:33 cipack-20260515 kernel:   with environment:
+Oct 07 15:30:33 cipack-20260515 kernel:     HOME=/
+Oct 07 15:30:33 cipack-20260515 kernel:     TERM=linux
+Oct 07 15:30:33 cipack-20260515 kernel:     vga=792
+Oct 07 15:30:33 cipack-20260515 kernel: usb 1-1: New USB device found, idVendor=0627, idProduct=0001, bcdDevice= 0.00
+Oct 07 15:30:33 cipack-20260515 kernel: usb 1-1: New USB device strings: Mfr=1, Product=3, SerialNumber=5
+Oct 07 15:30:33 cipack-20260515 kernel: usb 1-1: Product: QEMU USB Tablet
+Oct 07 15:30:33 cipack-20260515 kernel: usb 1-1: Manufacturer: QEMU
+Oct 07 15:30:33 cipack-20260515 kernel: usb 1-1: SerialNumber: 42
+Oct 07 15:30:33 cipack-20260515 kernel: hid: raw HID events driver (C) Jiri Kosina
+Oct 07 15:30:33 cipack-20260515 kernel: piix4_smbus 0000:00:01.3: SMBus Host Controller at 0xb100, revision 0
+Oct 07 15:30:33 cipack-20260515 kernel: virtio_blk virtio1: [vda] 41943040 512-byte logical blocks (21.5 GB/20.0 GiB)
+Oct 07 15:30:33 cipack-20260515 kernel: FDC 0 is a S82078B
+Oct 07 15:30:33 cipack-20260515 kernel: input: VirtualPS/2 VMware VMMouse as /devices/platform/i8042/serio1/input/input5
+Oct 07 15:30:33 cipack-20260515 kernel: input: VirtualPS/2 VMware VMMouse as /devices/platform/i8042/serio1/input/input4
+Oct 07 15:30:33 cipack-20260515 kernel:  vda: vda1 vda2 vda3
+Oct 07 15:30:33 cipack-20260515 kernel: cryptd: max_cpu_qlen set to 1000
+Oct 07 15:30:33 cipack-20260515 kernel: AVX2 version of gcm_enc/dec engaged.
+Oct 07 15:30:33 cipack-20260515 kernel: checking generic (80000000 1d5000) vs hw (80000000 2000000)
+Oct 07 15:30:33 cipack-20260515 kernel: fb0: switching to cirrus from EFI VGA
+Oct 07 15:30:33 cipack-20260515 kernel: AES CTR mode by8 optimization enabled
+Oct 07 15:30:33 cipack-20260515 kernel: Console: switching to colour dummy device 80x25
+Oct 07 15:30:33 cipack-20260515 kernel: cirrus 0000:00:02.0: vgaarb: deactivate vga console
+Oct 07 15:30:33 cipack-20260515 kernel: [drm] Initialized cirrus 2.0.0 2019 for 0000:00:02.0 on minor 0
+Oct 07 15:30:33 cipack-20260515 kernel: fbcon: cirrusdrmfb (fb0) is primary device
+Oct 07 15:30:33 cipack-20260515 kernel: cirrus 0000:00:02.0: [drm] drm_plane_enable_fb_damage_clips() not called
+Oct 07 15:30:33 cipack-20260515 kernel: Console: switching to colour frame buffer device 128x48
+Oct 07 15:30:33 cipack-20260515 kernel: cirrus 0000:00:02.0: [drm] fb0: cirrusdrmfb frame buffer device
+Oct 07 15:30:33 cipack-20260515 kernel: usbcore: registered new interface driver usbhid
+Oct 07 15:30:33 cipack-20260515 kernel: usbhid: USB HID core driver
+Oct 07 15:30:33 cipack-20260515 kernel: input: QEMU QEMU USB Tablet as /devices/pci0000:00/0000:00:01.2/usb1/1-1/1-1:1.0/0003:0627:0001.0001/input/input6
+Oct 07 15:30:33 cipack-20260515 kernel: hid-generic 0003:0627:0001.0001: input,hidraw0: USB HID v0.01 Pointer [QEMU QEMU USB Tablet] on usb-0000:00:01.2-1/input0
+Oct 07 15:30:33 cipack-20260515 kernel: raid6: avx512x4 gen() 12955 MB/s
+Oct 07 15:30:33 cipack-20260515 kernel: raid6: avx512x4 xor()  2971 MB/s
+Oct 07 15:30:33 cipack-20260515 kernel: raid6: avx512x2 gen() 12875 MB/s
+Oct 07 15:30:33 cipack-20260515 kernel: raid6: avx512x2 xor() 26279 MB/s
+Oct 07 15:30:33 cipack-20260515 kernel: raid6: avx512x1 gen() 12880 MB/s
+Oct 07 15:30:33 cipack-20260515 kernel: raid6: avx512x1 xor() 23487 MB/s
+Oct 07 15:30:33 cipack-20260515 kernel: raid6: avx2x4   gen() 12888 MB/s
+Oct 07 15:30:33 cipack-20260515 kernel: raid6: avx2x4   xor()  2934 MB/s
+Oct 07 15:30:33 cipack-20260515 kernel: raid6: avx2x2   gen() 12907 MB/s
+Oct 07 15:30:33 cipack-20260515 kernel: raid6: avx2x2   xor() 19467 MB/s
+Oct 07 15:30:33 cipack-20260515 kernel: raid6: avx2x1   gen() 11931 MB/s
+Oct 07 15:30:33 cipack-20260515 kernel: raid6: avx2x1   xor() 17014 MB/s
+Oct 07 15:30:33 cipack-20260515 kernel: raid6: sse2x4   gen() 10273 MB/s
+Oct 07 15:30:33 cipack-20260515 kernel: raid6: sse2x4   xor()  3009 MB/s
+Oct 07 15:30:33 cipack-20260515 kernel: raid6: sse2x2   gen() 11250 MB/s
+Oct 07 15:30:33 cipack-20260515 kernel: raid6: sse2x2   xor()  6741 MB/s
+Oct 07 15:30:33 cipack-20260515 kernel: raid6: sse2x1   gen() 10120 MB/s
+Oct 07 15:30:33 cipack-20260515 kernel: raid6: sse2x1   xor()  5245 MB/s
+Oct 07 15:30:33 cipack-20260515 kernel: raid6: using algorithm avx512x4 gen() 12955 MB/s
+Oct 07 15:30:33 cipack-20260515 kernel: raid6: .... xor() 2971 MB/s, rmw enabled
+Oct 07 15:30:33 cipack-20260515 kernel: raid6: using avx512x2 recovery algorithm
+Oct 07 15:30:33 cipack-20260515 kernel: xor: automatically using best checksumming function   avx       
+Oct 07 15:30:33 cipack-20260515 kernel: async_tx: api initialized (async)
+Oct 07 15:30:33 cipack-20260515 kernel: Btrfs loaded, crc32c=crc32c-intel, zoned=yes, fsverity=yes
+Oct 07 15:30:33 cipack-20260515 kernel: EXT4-fs (vda3): mounted filesystem with ordered data mode. Opts: (null). Quota mode: none.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Inserted module 'autofs4'
+Oct 07 15:30:33 cipack-20260515 systemd[1]: systemd 249.11-0ubuntu3.20 running in system mode (+PAM +AUDIT +SELINUX +APPARMOR +IMA +SMACK +SECCOMP +GCRYPT +GNUTLS +OPENSSL +ACL +BLKID +CURL +ELFUTILS +FIDO2 +IDN2 -IDN +IPTC +KMOD +LIBCRYPTSETUP +LIBFDISK +PCRE2 -PWQUALITY -P11KIT -QRENCODE +BZIP2 +LZ4 +XZ +ZLIB +ZSTD -XKBCOMMON +UTMP +SYSVINIT default-hierarchy=unified)
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Detected virtualization kvm.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Detected architecture x86-64.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Hostname set to <cipack-20260515>.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Configuration file /run/systemd/system/netplan-ovs-cleanup.service is marked world-inaccessible. This has no effect as configuration data is accessible via APIs without restrictions. Proceeding anyway.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: /lib/systemd/system/snapd.service:23: Unknown key name 'RestartMode' in section 'Service', ignoring.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Queued start job for default target Graphical Interface.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Created slice Slice /system/modprobe.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Created slice Slice /system/serial-getty.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Created slice Slice /system/systemd-fsck.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Created slice User and Session Slice.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Started Forward Password Requests to Wall Directory Watch.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Set up automount Arbitrary Executable File Formats File System Automount Point.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Reached target Slice Units.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Reached target Mounting snaps.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Reached target Swaps.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Reached target System Time Set.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Reached target Local Verity Protected Volumes.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Listening on Device-mapper event daemon FIFOs.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Listening on LVM2 poll daemon socket.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Listening on multipathd control socket.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Listening on Syslog Socket.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Listening on fsck to fsckd communication Socket.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Listening on initctl Compatibility Named Pipe.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Listening on Journal Audit Socket.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Listening on Journal Socket (/dev/log).
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Listening on Journal Socket.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Listening on Network Service Netlink Socket.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Listening on udev Control Socket.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Listening on udev Kernel Socket.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Mounting Huge Pages File System...
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Mounting POSIX Message Queue File System...
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Mounting Kernel Debug File System...
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Mounting Kernel Trace File System...
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Starting Journal Service...
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Starting Set the console keyboard layout...
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Starting Create List of Static Device Nodes...
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Starting Monitoring of LVM2 mirrors, snapshots etc. using dmeventd or progress polling...
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Condition check resulted in LXD - agent being skipped.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Starting Load Kernel Module configfs...
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Starting Load Kernel Module drm...
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Starting Load Kernel Module fuse...
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Condition check resulted in OpenVSwitch configuration for cleanup being skipped.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Started Nameserver information manager.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Condition check resulted in File System Check on Root Device being skipped.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Starting Load Kernel Modules...
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Starting Generate network units from Kernel command line...
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Starting Remount Root and Kernel File Systems...
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Starting Coldplug All udev Devices...
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Mounted Huge Pages File System.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Mounted POSIX Message Queue File System.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Mounted Kernel Debug File System.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Mounted Kernel Trace File System.
+Oct 07 15:30:33 cipack-20260515 systemd[1]: Started Journal Service.
+Oct 07 15:30:33 cipack-20260515 kernel: EXT4-fs (vda3): re-mounted. Opts: (null). Quota mode: none.
+Oct 07 15:30:33 cipack-20260515 kernel: alua: device handler registered
+Oct 07 15:30:33 cipack-20260515 kernel: emc: device handler registered
+Oct 07 15:30:34 cipack-20260515 kernel: rdac: device handler registered
+Oct 07 15:30:34 cipack-20260515 kernel: loop0: detected capacity change from 0 to 187752
+Oct 07 15:30:34 cipack-20260515 kernel: loop1: detected capacity change from 0 to 126760
+Oct 07 15:30:34 cipack-20260515 kernel: loop2: detected capacity change from 0 to 100888
+Oct 07 15:30:34 cipack-20260515 kernel: loop3: detected capacity change from 0 to 163736
+Oct 07 15:30:34 cipack-20260515 kernel: pstore: Using crash dump compression: deflate
+Oct 07 15:30:34 cipack-20260515 kernel: pstore: Registered efi as persistent store backend
+Oct 07 15:30:35 cipack-20260515 kernel: audit: type=1400 audit(1791358235.472:2): apparmor="STATUS" operation="profile_load" profile="unconfined" name="lsb_release" pid=510 comm="apparmor_parser"
+Oct 07 15:30:35 cipack-20260515 kernel: audit: type=1400 audit(1791358235.492:3): apparmor="STATUS" operation="profile_load" profile="unconfined" name="nvidia_modprobe" pid=511 comm="apparmor_parser"
+Oct 07 15:30:35 cipack-20260515 kernel: audit: type=1400 audit(1791358235.492:4): apparmor="STATUS" operation="profile_load" profile="unconfined" name="nvidia_modprobe//kmod" pid=511 comm="apparmor_parser"
+Oct 07 15:30:35 cipack-20260515 kernel: audit: type=1400 audit(1791358235.528:5): apparmor="STATUS" operation="profile_load" profile="unconfined" name="ubuntu_pro_apt_news" pid=523 comm="apparmor_parser"
+Oct 07 15:30:35 cipack-20260515 kernel: audit: type=1400 audit(1791358235.544:6): apparmor="STATUS" operation="profile_load" profile="unconfined" name="/usr/lib/NetworkManager/nm-dhcp-client.action" pid=522 comm="apparmor_parser"
+Oct 07 15:30:35 cipack-20260515 kernel: audit: type=1400 audit(1791358235.548:7): apparmor="STATUS" operation="profile_load" profile="unconfined" name="/usr/lib/NetworkManager/nm-dhcp-helper" pid=522 comm="apparmor_parser"
+Oct 07 15:30:35 cipack-20260515 kernel: audit: type=1400 audit(1791358235.548:8): apparmor="STATUS" operation="profile_load" profile="unconfined" name="/usr/lib/connman/scripts/dhclient-script" pid=522 comm="apparmor_parser"
+Oct 07 15:30:35 cipack-20260515 kernel: audit: type=1400 audit(1791358235.548:9): apparmor="STATUS" operation="profile_load" profile="unconfined" name="/{,usr/}sbin/dhclient" pid=522 comm="apparmor_parser"
+Oct 07 15:30:35 cipack-20260515 kernel: audit: type=1400 audit(1791358235.576:10): apparmor="STATUS" operation="profile_load" profile="unconfined" name="/usr/bin/man" pid=533 comm="apparmor_parser"
+Oct 07 15:30:35 cipack-20260515 kernel: audit: type=1400 audit(1791358235.576:11): apparmor="STATUS" operation="profile_load" profile="unconfined" name="man_filter" pid=533 comm="apparmor_parser"
+Oct 07 15:30:36 cipack-20260515 kernel: RAPL PMU: API unit is 2^-32 Joules, 0 fixed counters, 10737418240 ms ovfl timer
+Oct 07 15:30:40 iZ0jlep6q1ydntzqhgxu0oZ kernel: process 'local/aegis/aegis_update/AliYunDunUpdate' started with executable stack
+Oct 07 15:30:55 iZ0jlep6q1ydntzqhgxu0oZ kernel: loop4: detected capacity change from 0 to 8
+Oct 07 15:31:42 iZ0jlep6q1ydntzqhgxu0oZ kernel: loop4: detected capacity change from 0 to 91568
+Oct 07 15:31:42 iZ0jlep6q1ydntzqhgxu0oZ kernel: kauditd_printk_skb: 31 callbacks suppressed
+Oct 07 15:31:42 iZ0jlep6q1ydntzqhgxu0oZ kernel: audit: type=1400 audit(1791358302.925:43): apparmor="STATUS" operation="profile_load" profile="unconfined" name="/snap/snapd/28254/usr/lib/snapd/snap-confine" pid=1804 comm="apparmor_parser"
+Oct 07 15:31:42 iZ0jlep6q1ydntzqhgxu0oZ kernel: audit: type=1400 audit(1791358302.945:44): apparmor="STATUS" operation="profile_replace" info="same as current profile, skipping" profile="unconfined" name="snap-update-ns.lxd" pid=1806 comm="apparmor_parser"
+Oct 07 15:31:42 iZ0jlep6q1ydntzqhgxu0oZ kernel: audit: type=1400 audit(1791358302.957:45): apparmor="STATUS" operation="profile_replace" info="same as current profile, skipping" profile="unconfined" name="snap.lxd.activate" pid=1807 comm="apparmor_parser"
+Oct 07 15:31:42 iZ0jlep6q1ydntzqhgxu0oZ kernel: audit: type=1400 audit(1791358302.965:46): apparmor="STATUS" operation="profile_replace" info="same as current profile, skipping" profile="unconfined" name="snap.lxd.benchmark" pid=1808 comm="apparmor_parser"
+Oct 07 15:31:42 iZ0jlep6q1ydntzqhgxu0oZ kernel: audit: type=1400 audit(1791358302.973:47): apparmor="STATUS" operation="profile_replace" info="same as current profile, skipping" profile="unconfined" name="snap.lxd.buginfo" pid=1809 comm="apparmor_parser"
+Oct 07 15:31:42 iZ0jlep6q1ydntzqhgxu0oZ kernel: audit: type=1400 audit(1791358302.985:48): apparmor="STATUS" operation="profile_replace" info="same as current profile, skipping" profile="unconfined" name="snap.lxd.check-kernel" pid=1810 comm="apparmor_parser"
+Oct 07 15:31:43 iZ0jlep6q1ydntzqhgxu0oZ kernel: audit: type=1400 audit(1791358302.997:49): apparmor="STATUS" operation="profile_replace" info="same as current profile, skipping" profile="unconfined" name="snap.lxd.daemon" pid=1811 comm="apparmor_parser"
+Oct 07 15:31:43 iZ0jlep6q1ydntzqhgxu0oZ kernel: audit: type=1400 audit(1791358303.009:50): apparmor="STATUS" operation="profile_replace" info="same as current profile, skipping" profile="unconfined" name="snap.lxd.hook.configure" pid=1812 comm="apparmor_parser"
+Oct 07 15:31:43 iZ0jlep6q1ydntzqhgxu0oZ kernel: audit: type=1400 audit(1791358303.017:51): apparmor="STATUS" operation="profile_replace" info="same as current profile, skipping" profile="unconfined" name="snap.lxd.hook.install" pid=1813 comm="apparmor_parser"
+Oct 07 15:31:43 iZ0jlep6q1ydntzqhgxu0oZ kernel: audit: type=1400 audit(1791358303.033:52): apparmor="STATUS" operation="profile_replace" info="same as current profile, skipping" profile="unconfined" name="snap.lxd.hook.remove" pid=1815 comm="apparmor_parser"
+Oct 07 15:31:47 iZ0jlep6q1ydntzqhgxu0oZ kernel: loop5: detected capacity change from 0 to 8
+Oct 07 15:31:48 iZ0jlep6q1ydntzqhgxu0oZ kernel: kauditd_printk_skb: 5 callbacks suppressed
+Oct 07 15:31:48 iZ0jlep6q1ydntzqhgxu0oZ kernel: audit: type=1400 audit(1791358308.014:58): apparmor="STATUS" operation="profile_replace" info="same as current profile, skipping" profile="unconfined" name="/snap/snapd/28254/usr/lib/snapd/snap-confine" pid=2006 comm="apparmor_parser"
+Oct 07 15:31:48 iZ0jlep6q1ydntzqhgxu0oZ kernel: audit: type=1400 audit(1791358308.030:59): apparmor="STATUS" operation="profile_replace" profile="unconfined" name="snap-update-ns.lxd" pid=2008 comm="apparmor_parser"
+Oct 07 15:31:48 iZ0jlep6q1ydntzqhgxu0oZ kernel: audit: type=1400 audit(1791358308.234:60): apparmor="STATUS" operation="profile_replace" profile="unconfined" name="snap.lxd.activate" pid=2009 comm="apparmor_parser"
+Oct 07 15:31:48 iZ0jlep6q1ydntzqhgxu0oZ kernel: audit: type=1400 audit(1791358308.454:61): apparmor="STATUS" operation="profile_replace" profile="unconfined" name="snap.lxd.benchmark" pid=2010 comm="apparmor_parser"
+Oct 07 15:31:48 iZ0jlep6q1ydntzqhgxu0oZ kernel: audit: type=1400 audit(1791358308.658:62): apparmor="STATUS" operation="profile_replace" profile="unconfined" name="snap.lxd.buginfo" pid=2012 comm="apparmor_parser"
+Oct 07 15:31:48 iZ0jlep6q1ydntzqhgxu0oZ kernel: audit: type=1400 audit(1791358308.866:63): apparmor="STATUS" operation="profile_replace" profile="unconfined" name="snap.lxd.check-kernel" pid=2013 comm="apparmor_parser"
+Oct 07 15:31:49 iZ0jlep6q1ydntzqhgxu0oZ kernel: audit: type=1400 audit(1791358309.150:64): apparmor="STATUS" operation="profile_replace" profile="unconfined" name="snap.lxd.daemon" pid=2014 comm="apparmor_parser"
+Oct 07 15:31:49 iZ0jlep6q1ydntzqhgxu0oZ kernel: audit: type=1400 audit(1791358309.430:65): apparmor="STATUS" operation="profile_replace" profile="unconfined" name="snap.lxd.hook.configure" pid=2015 comm="apparmor_parser"
+Oct 07 15:31:49 iZ0jlep6q1ydntzqhgxu0oZ kernel: audit: type=1400 audit(1791358309.606:66): apparmor="STATUS" operation="profile_replace" profile="unconfined" name="snap.lxd.hook.install" pid=2016 comm="apparmor_parser"
+Oct 07 15:31:49 iZ0jlep6q1ydntzqhgxu0oZ kernel: audit: type=1400 audit(1791358309.814:67): apparmor="STATUS" operation="profile_replace" profile="unconfined" name="snap.lxd.hook.remove" pid=2017 comm="apparmor_parser"
+Oct 07 15:32:04 iZ0jlep6q1ydntzqhgxu0oZ kernel: AliSecGuard: loading out-of-tree module taints kernel.
+Oct 07 15:32:04 iZ0jlep6q1ydntzqhgxu0oZ kernel: AliSecGuard: module verification failed: signature and/or required key missing - tainting kernel
+Oct 07 15:32:04 iZ0jlep6q1ydntzqhgxu0oZ kernel: AliSecGuard : ae2df679d86fcf377fb1bd6f52561d0caef7599f
+Oct 07 15:32:04 iZ0jlep6q1ydntzqhgxu0oZ kernel: AliSecGuard : ae2df679d86fcf377fb1bd6f52561d0caef7599f
+Oct 07 15:38:27 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=198.235.24.222 DST=172.22.0.142 LEN=44 TOS=0x14 PREC=0x00 TTL=242 ID=41852 PROTO=TCP SPT=51652 DPT=3389 WINDOW=1024 RES=0x00 SYN URGP=0 
+Oct 07 15:38:54 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=194.180.48.21 DST=172.22.0.142 LEN=40 TOS=0x14 PREC=0x00 TTL=237 ID=8036 PROTO=TCP SPT=58566 DPT=3389 WINDOW=1024 RES=0x00 SYN URGP=0 
+Oct 07 15:45:43 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=45.142.193.169 DST=172.22.0.142 LEN=40 TOS=0x14 PREC=0x00 TTL=239 ID=19864 PROTO=TCP SPT=54326 DPT=3389 WINDOW=1024 RES=0x00 SYN URGP=0 
+Oct 07 15:59:12 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=94.154.43.58 DST=172.22.0.142 LEN=40 TOS=0x14 PREC=0x00 TTL=241 ID=22836 PROTO=TCP SPT=59489 DPT=3389 WINDOW=1024 RES=0x00 SYN URGP=0 
+Oct 07 16:03:00 iZ0jlep6q1ydntzqhgxu0oZ kernel: kauditd_printk_skb: 20 callbacks suppressed
+Oct 07 16:03:00 iZ0jlep6q1ydntzqhgxu0oZ kernel: audit: type=1400 audit(1791360180.696:88): apparmor="DENIED" operation="open" profile="ubuntu_pro_esm_cache//apt_methods_gpgv" name="/dev/tty" pid=4343 comm="apt-key" requested_mask="wr" denied_mask="wr" fsuid=100 ouid=0
+Oct 07 16:03:00 iZ0jlep6q1ydntzqhgxu0oZ kernel: audit: type=1400 audit(1791360180.968:89): apparmor="DENIED" operation="open" profile="ubuntu_pro_esm_cache//apt_methods_gpgv" name="/dev/tty" pid=4375 comm="apt-key" requested_mask="wr" denied_mask="wr" fsuid=100 ouid=0
+Oct 07 16:04:05 iZ0jlep6q1ydntzqhgxu0oZ kernel: overlayfs: idmapped layers are currently not supported
+Oct 07 16:04:10 iZ0jlep6q1ydntzqhgxu0oZ kernel: audit: type=1400 audit(1791360250.158:90): apparmor="STATUS" operation="profile_load" profile="unconfined" name="docker-default" pid=10477 comm="apparmor_parser"
+Oct 07 16:04:10 iZ0jlep6q1ydntzqhgxu0oZ kernel: Initializing XFRM netlink socket
+Oct 07 16:04:10 iZ0jlep6q1ydntzqhgxu0oZ kernel: bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+Oct 07 16:04:45 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=47.115.218.50 DST=172.22.0.142 LEN=40 TOS=0x14 PREC=0x00 TTL=245 ID=44389 PROTO=TCP SPT=40149 DPT=3389 WINDOW=1024 RES=0x00 SYN URGP=0 
+Oct 07 16:07:16 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=212.73.148.40 DST=172.22.0.142 LEN=52 TOS=0x14 PREC=0x00 TTL=41 ID=12227 PROTO=TCP SPT=34521 DPT=3389 WINDOW=65535 RES=0x00 SYN URGP=0 
+Oct 07 16:16:09 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=113.13.186.93 DST=172.22.0.142 LEN=44 TOS=0x14 PREC=0x00 TTL=243 ID=9651 PROTO=TCP SPT=54535 DPT=3389 WINDOW=1024 RES=0x00 SYN URGP=0 
+Oct 07 16:18:54 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=47.100.194.226 DST=172.22.0.142 LEN=40 TOS=0x14 PREC=0x00 TTL=249 ID=14490 PROTO=TCP SPT=41101 DPT=3389 WINDOW=1024 RES=0x00 SYN URGP=0 
+Oct 07 16:29:41 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=204.76.203.228 DST=172.22.0.142 LEN=40 TOS=0x14 PREC=0x00 TTL=242 ID=54321 PROTO=TCP SPT=40814 DPT=3389 WINDOW=65535 RES=0x00 SYN URGP=0 
+Oct 07 16:43:20 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=115.190.212.50 DST=172.22.0.142 LEN=40 TOS=0x00 PREC=0x00 TTL=94 ID=1536 PROTO=TCP SPT=58732 DPT=22 WINDOW=0 RES=0x00 ACK RST URGP=0 
+Oct 07 16:43:50 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=115.190.212.50 DST=172.22.0.142 LEN=40 TOS=0x00 PREC=0x00 TTL=91 ID=1536 PROTO=TCP SPT=52056 DPT=22 WINDOW=0 RES=0x00 ACK RST URGP=0 
+Oct 07 16:43:50 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=115.190.212.50 DST=172.22.0.142 LEN=40 TOS=0x00 PREC=0x00 TTL=91 ID=1536 PROTO=TCP SPT=52056 DPT=22 WINDOW=0 RES=0x00 ACK RST URGP=0 
+Oct 07 16:44:08 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=115.190.212.50 DST=172.22.0.142 LEN=40 TOS=0x00 PREC=0x00 TTL=91 ID=1536 PROTO=TCP SPT=53520 DPT=22 WINDOW=0 RES=0x00 ACK RST URGP=0 
+Oct 07 16:44:26 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=115.190.212.50 DST=172.22.0.142 LEN=40 TOS=0x00 PREC=0x00 TTL=94 ID=1536 PROTO=TCP SPT=35560 DPT=22 WINDOW=0 RES=0x00 ACK RST URGP=0 
+Oct 07 16:44:44 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=115.190.212.50 DST=172.22.0.142 LEN=40 TOS=0x00 PREC=0x00 TTL=94 ID=1536 PROTO=TCP SPT=45932 DPT=22 WINDOW=0 RES=0x00 ACK RST URGP=0 
+Oct 07 16:44:54 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=115.190.212.50 DST=172.22.0.142 LEN=40 TOS=0x00 PREC=0x00 TTL=92 ID=1536 PROTO=TCP SPT=34402 DPT=22 WINDOW=0 RES=0x00 ACK RST URGP=0 
+Oct 07 16:44:54 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=115.190.212.50 DST=172.22.0.142 LEN=40 TOS=0x00 PREC=0x00 TTL=92 ID=1536 PROTO=TCP SPT=34402 DPT=22 WINDOW=0 RES=0x00 ACK RST URGP=0 
+Oct 07 16:45:02 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=115.190.212.50 DST=172.22.0.142 LEN=40 TOS=0x00 PREC=0x00 TTL=91 ID=1536 PROTO=TCP SPT=36532 DPT=22 WINDOW=0 RES=0x00 ACK RST URGP=0 
+Oct 07 16:45:06 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=115.190.212.50 DST=172.22.0.142 LEN=40 TOS=0x00 PREC=0x00 TTL=92 ID=1536 PROTO=TCP SPT=36542 DPT=22 WINDOW=0 RES=0x00 ACK RST URGP=0 
+Oct 07 16:45:06 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=115.190.212.50 DST=172.22.0.142 LEN=40 TOS=0x00 PREC=0x00 TTL=92 ID=1536 PROTO=TCP SPT=36542 DPT=22 WINDOW=0 RES=0x00 ACK RST URGP=0 
+Oct 07 16:45:10 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=115.190.212.50 DST=172.22.0.142 LEN=40 TOS=0x00 PREC=0x00 TTL=91 ID=1536 PROTO=TCP SPT=36550 DPT=22 WINDOW=0 RES=0x00 ACK RST URGP=0 
+Oct 07 16:45:10 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=115.190.212.50 DST=172.22.0.142 LEN=40 TOS=0x00 PREC=0x00 TTL=91 ID=1536 PROTO=TCP SPT=36550 DPT=22 WINDOW=0 RES=0x00 ACK RST URGP=0 
+Oct 07 16:45:14 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=115.190.212.50 DST=172.22.0.142 LEN=40 TOS=0x00 PREC=0x00 TTL=90 ID=1536 PROTO=TCP SPT=47138 DPT=22 WINDOW=0 RES=0x00 ACK RST URGP=0 
+Oct 07 16:45:14 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=115.190.212.50 DST=172.22.0.142 LEN=40 TOS=0x00 PREC=0x00 TTL=90 ID=1536 PROTO=TCP SPT=47138 DPT=22 WINDOW=0 RES=0x00 ACK RST URGP=0 
+Oct 07 16:45:32 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=115.190.212.50 DST=172.22.0.142 LEN=40 TOS=0x00 PREC=0x00 TTL=91 ID=1536 PROTO=TCP SPT=36098 DPT=22 WINDOW=0 RES=0x00 ACK RST URGP=0 
+Oct 07 16:59:40 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=194.180.48.21 DST=172.22.0.142 LEN=40 TOS=0x14 PREC=0x00 TTL=239 ID=47299 PROTO=TCP SPT=42692 DPT=3389 WINDOW=1024 RES=0x00 SYN URGP=0 
+Oct 07 17:30:26 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=18.221.179.104 DST=172.22.0.142 LEN=52 TOS=0x14 PREC=0x00 TTL=52 ID=30533 PROTO=TCP SPT=61234 DPT=3389 WINDOW=65535 RES=0x00 SYN URGP=0 
+Oct 07 17:45:46 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=222.186.19.76 DST=172.22.0.142 LEN=52 TOS=0x14 PREC=0x00 TTL=47 ID=63824 PROTO=TCP SPT=61005 DPT=3389 WINDOW=65535 RES=0x00 SYN URGP=0 
+Oct 07 18:12:54 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=207.175.107.221 DST=172.22.0.142 LEN=44 TOS=0x14 PREC=0x00 TTL=240 ID=33454 PROTO=TCP SPT=59086 DPT=3389 WINDOW=1025 RES=0x00 SYN URGP=0 
+Oct 07 18:12:56 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=207.175.107.221 DST=172.22.0.142 LEN=44 TOS=0x14 PREC=0x00 TTL=240 ID=33454 PROTO=TCP SPT=59086 DPT=3389 WINDOW=1025 RES=0x00 SYN URGP=0 
+Oct 07 18:12:57 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=207.175.107.221 DST=172.22.0.142 LEN=44 TOS=0x14 PREC=0x00 TTL=239 ID=40661 PROTO=TCP SPT=59070 DPT=3389 WINDOW=1025 RES=0x00 SYN URGP=0 
+Oct 07 18:33:23 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=79.124.62.178 DST=172.22.0.142 LEN=40 TOS=0x14 PREC=0x00 TTL=239 ID=59650 PROTO=TCP SPT=48078 DPT=3389 WINDOW=1024 RES=0x00 SYN URGP=0 
+Oct 07 18:36:10 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=50.7.252.138 DST=172.22.0.142 LEN=52 TOS=0x14 PREC=0x00 TTL=46 ID=20347 PROTO=TCP SPT=46715 DPT=3389 WINDOW=65535 RES=0x00 SYN URGP=0 
+Oct 07 18:44:16 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=193.25.217.68 DST=172.22.0.142 LEN=40 TOS=0x14 PREC=0x00 TTL=242 ID=26302 PROTO=TCP SPT=45185 DPT=3389 WINDOW=1024 RES=0x00 SYN URGP=0 
+Oct 07 18:44:39 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=106.14.83.111 DST=172.22.0.142 LEN=40 TOS=0x14 PREC=0x00 TTL=249 ID=50753 PROTO=TCP SPT=49779 DPT=3389 WINDOW=1024 RES=0x00 SYN URGP=0 
+Oct 07 18:44:41 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=106.14.83.111 DST=172.22.0.142 LEN=40 TOS=0x14 PREC=0x00 TTL=249 ID=50753 PROTO=TCP SPT=49779 DPT=3389 WINDOW=1024 RES=0x00 SYN URGP=0 
+Oct 07 18:46:22 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=5.226.140.55 DST=172.22.0.142 LEN=40 TOS=0x14 PREC=0x00 TTL=48 ID=0 PROTO=TCP SPT=46777 DPT=3389 WINDOW=65535 RES=0x00 SYN URGP=0 
+Oct 07 18:51:11 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=198.235.24.240 DST=172.22.0.142 LEN=44 TOS=0x14 PREC=0x00 TTL=242 ID=54321 PROTO=TCP SPT=55805 DPT=3389 WINDOW=65535 RES=0x00 SYN URGP=0 
+Oct 07 19:45:11 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=204.76.203.228 DST=172.22.0.142 LEN=40 TOS=0x14 PREC=0x00 TTL=239 ID=54321 PROTO=TCP SPT=54519 DPT=3389 WINDOW=65535 RES=0x00 SYN URGP=0 
+Oct 07 20:03:57 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=113.44.71.138 DST=172.22.0.142 LEN=40 TOS=0x14 PREC=0x00 TTL=240 ID=54277 PROTO=TCP SPT=52798 DPT=3389 WINDOW=1024 RES=0x00 SYN URGP=0 
+Oct 07 20:47:00 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=34.229.16.77 DST=172.22.0.142 LEN=60 TOS=0x14 PREC=0x00 TTL=113 ID=8160 DF PROTO=TCP SPT=42746 DPT=3389 WINDOW=62727 RES=0x00 SYN URGP=0 
+Oct 07 20:47:01 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=34.229.16.77 DST=172.22.0.142 LEN=60 TOS=0x14 PREC=0x00 TTL=113 ID=8161 DF PROTO=TCP SPT=42746 DPT=3389 WINDOW=62727 RES=0x00 SYN URGP=0 
+Oct 07 20:47:03 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=34.229.16.77 DST=172.22.0.142 LEN=60 TOS=0x14 PREC=0x00 TTL=113 ID=8162 DF PROTO=TCP SPT=42746 DPT=3389 WINDOW=62727 RES=0x00 SYN URGP=0 
+Oct 07 20:58:12 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=101.133.148.169 DST=172.22.0.142 LEN=40 TOS=0x14 PREC=0x00 TTL=248 ID=39251 PROTO=TCP SPT=57770 DPT=3389 WINDOW=1024 RES=0x00 SYN URGP=0 
+Oct 07 20:58:14 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=101.133.148.169 DST=172.22.0.142 LEN=40 TOS=0x14 PREC=0x00 TTL=248 ID=39251 PROTO=TCP SPT=57770 DPT=3389 WINDOW=1024 RES=0x00 SYN URGP=0 
+Oct 07 20:59:34 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=216.218.206.126 DST=172.22.0.142 LEN=40 TOS=0x14 PREC=0x00 TTL=239 ID=54321 PROTO=TCP SPT=39539 DPT=3389 WINDOW=65535 RES=0x00 SYN URGP=0 
+Oct 07 21:04:43 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=103.1.210.25 DST=172.22.0.142 LEN=40 TOS=0x14 PREC=0x00 TTL=235 ID=44215 PROTO=TCP SPT=59171 DPT=3389 WINDOW=1024 RES=0x00 SYN URGP=0 
+Oct 07 21:14:47 iZ0jlep6q1ydntzqhgxu0oZ kernel: [UFW BLOCK] IN=eth0 OUT= MAC=00:16:3e:12:65:63:ee:ff:ff:ff:ff:ff:08:00 SRC=194.180.48.21 DST=172.22.0.142 LEN=40 TOS=0x14 PREC=0x00 TTL=237 ID=64489 PROTO=TCP SPT=58154 DPT=3389 WINDOW=1024 RES=0x00 SYN URGP=0 
+Oct 07 21:18:34 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 1(vethec70250) entered blocking state
+Oct 07 21:18:34 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 1(vethec70250) entered disabled state
+Oct 07 21:18:34 iZ0jlep6q1ydntzqhgxu0oZ kernel: device vethec70250 entered promiscuous mode
+Oct 07 21:18:35 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 2(vethcf40413) entered blocking state
+Oct 07 21:18:35 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 2(vethcf40413) entered disabled state
+Oct 07 21:18:35 iZ0jlep6q1ydntzqhgxu0oZ kernel: device vethcf40413 entered promiscuous mode
+Oct 07 21:18:35 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 2(vethcf40413) entered blocking state
+Oct 07 21:18:35 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 2(vethcf40413) entered forwarding state
+Oct 07 21:18:35 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 2(vethcf40413) entered disabled state
+Oct 07 21:18:35 iZ0jlep6q1ydntzqhgxu0oZ kernel: eth0: renamed from veth6cfdced
+Oct 07 21:18:35 iZ0jlep6q1ydntzqhgxu0oZ kernel: IPv6: ADDRCONF(NETDEV_CHANGE): vethec70250: link becomes ready
+Oct 07 21:18:35 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 1(vethec70250) entered blocking state
+Oct 07 21:18:35 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 1(vethec70250) entered forwarding state
+Oct 07 21:18:35 iZ0jlep6q1ydntzqhgxu0oZ kernel: IPv6: ADDRCONF(NETDEV_CHANGE): docker0: link becomes ready
+Oct 07 21:18:35 iZ0jlep6q1ydntzqhgxu0oZ kernel: eth0: renamed from veth08b91ba
+Oct 07 21:18:35 iZ0jlep6q1ydntzqhgxu0oZ kernel: IPv6: ADDRCONF(NETDEV_CHANGE): vethcf40413: link becomes ready
+Oct 07 21:18:35 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 2(vethcf40413) entered blocking state
+Oct 07 21:18:35 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 2(vethcf40413) entered forwarding state
+Oct 07 21:23:59 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 2(vethcf40413) entered disabled state
+Oct 07 21:23:59 iZ0jlep6q1ydntzqhgxu0oZ kernel: veth08b91ba: renamed from eth0
+Oct 07 21:23:59 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 2(vethcf40413) entered disabled state
+Oct 07 21:23:59 iZ0jlep6q1ydntzqhgxu0oZ kernel: device vethcf40413 left promiscuous mode
+Oct 07 21:23:59 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 2(vethcf40413) entered disabled state
+Oct 07 21:25:21 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 2(veth23b9a15) entered blocking state
+Oct 07 21:25:21 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 2(veth23b9a15) entered disabled state
+Oct 07 21:25:21 iZ0jlep6q1ydntzqhgxu0oZ kernel: device veth23b9a15 entered promiscuous mode
+Oct 07 21:25:22 iZ0jlep6q1ydntzqhgxu0oZ kernel: eth0: renamed from vethe65dc2b
+Oct 07 21:25:22 iZ0jlep6q1ydntzqhgxu0oZ kernel: IPv6: ADDRCONF(NETDEV_CHANGE): veth23b9a15: link becomes ready
+Oct 07 21:25:22 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 2(veth23b9a15) entered blocking state
+Oct 07 21:25:22 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 2(veth23b9a15) entered forwarding state
+Oct 07 21:25:57 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 2(veth23b9a15) entered disabled state
+Oct 07 21:25:57 iZ0jlep6q1ydntzqhgxu0oZ kernel: vethe65dc2b: renamed from eth0
+Oct 07 21:25:57 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 2(veth23b9a15) entered disabled state
+Oct 07 21:25:57 iZ0jlep6q1ydntzqhgxu0oZ kernel: device veth23b9a15 left promiscuous mode
+Oct 07 21:25:57 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 2(veth23b9a15) entered disabled state
+Oct 07 21:25:58 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 2(veth456aef6) entered blocking state
+Oct 07 21:25:58 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 2(veth456aef6) entered disabled state
+Oct 07 21:25:58 iZ0jlep6q1ydntzqhgxu0oZ kernel: device veth456aef6 entered promiscuous mode
+Oct 07 21:25:58 iZ0jlep6q1ydntzqhgxu0oZ kernel: eth0: renamed from vethc1d5604
+Oct 07 21:25:58 iZ0jlep6q1ydntzqhgxu0oZ kernel: IPv6: ADDRCONF(NETDEV_CHANGE): veth456aef6: link becomes ready
+Oct 07 21:25:58 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 2(veth456aef6) entered blocking state
+Oct 07 21:25:58 iZ0jlep6q1ydntzqhgxu0oZ kernel: docker0: port 2(veth456aef6) entered forwarding state
+Oct 07 21:34:11 iZ0jlep6q1ydntzqhgxu0oZ kernel: INFO: task kcompactd0:32 blocked for more than 120 seconds.
+Oct 07 21:34:32 iZ0jlep6q1ydntzqhgxu0oZ kernel:       Tainted: G           OE     5.15.0-177-generic #187-Ubuntu
+Oct 07 21:34:56 iZ0jlep6q1ydntzqhgxu0oZ kernel: "echo 0 > /proc/sys/kernel/hung_task_timeout_secs" disables this message.
+Oct 07 21:35:20 iZ0jlep6q1ydntzqhgxu0oZ kernel: task:kcompactd0      state:D stack:    0 pid:   32 ppid:     2 flags:0x00004000
+Oct 07 21:35:42 iZ0jlep6q1ydntzqhgxu0oZ kernel: Call Trace:
+Oct 07 21:36:04 iZ0jlep6q1ydntzqhgxu0oZ kernel:  <TASK>
+Oct 07 21:36:23 iZ0jlep6q1ydntzqhgxu0oZ kernel:  __schedule+0x24e/0x590
+Oct 07 21:36:46 iZ0jlep6q1ydntzqhgxu0oZ kernel:  schedule+0x69/0x110
+Oct 07 21:37:06 iZ0jlep6q1ydntzqhgxu0oZ kernel:  io_schedule+0x46/0x80
+Oct 07 21:37:31 iZ0jlep6q1ydntzqhgxu0oZ kernel:  wait_on_page_bit_common+0x10c/0x3d0
+Oct 07 21:37:57 iZ0jlep6q1ydntzqhgxu0oZ kernel:  ? filemap_invalidate_unlock_two+0x50/0x50
+Oct 07 21:38:23 iZ0jlep6q1ydntzqhgxu0oZ kernel:  __lock_page+0x4c/0x60
+Oct 07 21:38:59 iZ0jlep6q1ydntzqhgxu0oZ kernel:  __unmap_and_move+0x228/0x340
+Oct 07 21:39:53 iZ0jlep6q1ydntzqhgxu0oZ kernel:  ? free_unref_page+0xe3/0x190
+Oct 07 21:41:04 iZ0jlep6q1ydntzqhgxu0oZ kernel:  ? move_freelist_tail+0xd0/0xd0
+Oct 07 21:42:06 iZ0jlep6q1ydntzqhgxu0oZ kernel:  ? move_freelist_tail+0xd0/0xd0
+Oct 07 21:42:46 iZ0jlep6q1ydntzqhgxu0oZ kernel:  unmap_and_move+0x6d/0x2e0
+Oct 07 21:43:29 iZ0jlep6q1ydntzqhgxu0oZ kernel:  migrate_pages+0x323/0x4f0
+Oct 07 21:44:23 iZ0jlep6q1ydntzqhgxu0oZ kernel:  ? move_freelist_tail+0xd0/0xd0
+Oct 07 21:45:08 iZ0jlep6q1ydntzqhgxu0oZ kernel:  ? isolate_freepages+0x2d0/0x2d0
+Oct 07 21:45:53 iZ0jlep6q1ydntzqhgxu0oZ kernel:  compact_zone+0x28e/0x590
+Oct 07 21:48:45 iZ0jlep6q1ydntzqhgxu0oZ kernel:  proactive_compact_node+0x8a/0xd0
