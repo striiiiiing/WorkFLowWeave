@@ -1,0 +1,8 @@
+{
+  "id": "github_readme",
+  "display_name": "GitHub：仓库 README",
+  "call": {"kind": "mcp", "server": "business_github", "tool": "get_file_contents", "arguments": {"owner": "pallets", "repo": "flask", "path": "README.md", "ref": "main"}},
+  "limits": {"item_tokens": 6000},
+  "timeout": 120,
+  "on_error": "stop"
+}

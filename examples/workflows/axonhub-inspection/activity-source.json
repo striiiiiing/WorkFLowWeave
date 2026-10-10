@@ -1,0 +1,19 @@
+{
+  "id": "axonhub_activity",
+  "display_name": "AxonHub：近期成功与失败统计（后置）",
+  "call": {
+    "kind": "mcp",
+    "server": "axonhub_inspection_mcp",
+    "tool": "axonhub_recent_activity",
+    "arguments": {
+      "hours": 24,
+      "limit": 30
+    }
+  },
+  "limits": {
+    "field_tokens": 256,
+    "item_tokens": 3500
+  },
+  "timeout": 30,
+  "on_error": "stop"
+}

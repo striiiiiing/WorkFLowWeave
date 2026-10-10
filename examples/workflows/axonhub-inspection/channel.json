@@ -1,0 +1,7 @@
+{
+  "id": "inspection_file",
+  "channel": "file",
+  "options": {
+    "path": "reports/inspection.log"
+  }
+}
