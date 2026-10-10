@@ -1,0 +1,32 @@
+[
+  {
+    "id": "qq_9f8e2c4c-860d-4aa2-afec-5f9ee25fb0ef",
+    "channel": "qq",
+    "transport": "httpx/environment_proxy",
+    "purpose": "authentication_only",
+    "http_status": 200,
+    "authenticated": false,
+    "platform_code": 100016,
+    "elapsed_seconds": 0.11
+  },
+  {
+    "id": "qq_AIBot",
+    "channel": "qq",
+    "transport": "httpx/environment_proxy",
+    "purpose": "authentication_only",
+    "http_status": 200,
+    "authenticated": true,
+    "platform_code": null,
+    "elapsed_seconds": 0.13
+  },
+  {
+    "id": "telegram_2c90d0bb-5d35-4f8e-998b-208df0d03f8a",
+    "channel": "telegram",
+    "transport": "httpx/environment_proxy",
+    "purpose": "authentication_only",
+    "http_status": 200,
+    "authenticated": true,
+    "platform_code": null,
+    "elapsed_seconds": 2.76
+  }
+]

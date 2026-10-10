@@ -1,0 +1,29 @@
+{
+  "tested_at": "2026-10-10T12:38:06+08:00",
+  "url": "http://127.0.0.1:13027/resources",
+  "online": {
+    "source_id": "browser_text_reference",
+    "save_status": 201,
+    "path": "browser/online.txt",
+    "collected_before_edit": "现场正文\n第二行",
+    "collected_after_external_edit": "外部修改后的正文\n无需重新保存来源\n"
+  },
+  "imported": {
+    "source_id": "browser_import_reference",
+    "save_status": 201,
+    "path": "browser/import.md",
+    "collected": "导入正文\r\n\r\n原样保留\r\n"
+  },
+  "conflict_status": 409,
+  "page_errors": [],
+  "layout": {
+    "desktop": {"viewport": "1440x1000", "screenshot": "desktop-form.png"},
+    "mobile": {
+      "viewport": "390x844",
+      "document_width": 390,
+      "dialog_width": 366.59375,
+      "horizontal_overflow": false,
+      "screenshot": "mobile-form.png"
+    }
+  }
+}

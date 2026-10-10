@@ -1,0 +1,6 @@
+{
+  "purpose": "QR_request_diagnostic",
+  "node_proxy_explicitly_enabled": true,
+  "authenticated": false,
+  "qr_present": true
+}

@@ -1,0 +1,11 @@
+{
+  "purpose": "real_wechat_qr_and_cancel",
+  "authenticated": false,
+  "start_http_status": 201,
+  "state": "failed",
+  "message": "微信登录失败，请检查网络、插件依赖及状态目录写权限",
+  "qr_present": false,
+  "cache_control": "no-store",
+  "cancel_http_status": 204,
+  "after_cancel_http_status": 404
+}

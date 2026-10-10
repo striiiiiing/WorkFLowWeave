@@ -1,0 +1,29 @@
+{
+  "started_at": "2026-10-08T17:56:11.627833+00:00",
+  "marker": "LOGAGENT_CHANNEL_TEST_20261008T175611Z",
+  "email_excluded": true,
+  "instances": [
+    {
+      "id": "telegram_2c90d0bb-5d35-4f8e-998b-208df0d03f8a",
+      "channel": "telegram",
+      "enabled": true,
+      "delivery": {
+        "channel_id": "telegram_2c90d0bb-5d35-4f8e-998b-208df0d03f8a",
+        "output_id": "LOGAGENT_CHANNEL_TEST_20261008T175611Z",
+        "status": "failed",
+        "attempts": 1,
+        "error": {
+          "code": "telegram_rejected",
+          "message": "Telegram API 拒绝了消息",
+          "details": {
+            "exception_type": "BadRequest",
+            "delivery_uncertain": false
+          }
+        }
+      },
+      "status": "failed"
+    }
+  ],
+  "cleanup": "success",
+  "finished_at": "2026-10-08T17:56:17.265242+00:00"
+}
