@@ -25,7 +25,6 @@ import {
 import { cloneWorkflow, createWorkflow } from '../model/create/defaults'
 import { createFanIn } from '../model/create/stages/aggregation'
 import { validateAnalysisId } from '../model/create/validation'
-import { classifyLegacyRetention } from '../model/create/backup'
 import type { AnalysisTask, BackupPolicy, FanInConfig, WorkflowDefinition } from '../model/public'
 
 export interface WorkflowEditorOptions {
@@ -218,9 +217,6 @@ export function useWorkflowEditor(options: WorkflowEditorOptions) {
   function updateBackup(changes: Partial<BackupPolicy>) {
     return apply(updateBackupPolicy(requireDraft(), changes))
   }
-  function confirmRetention() {
-    return apply({ ...requireDraft(), backup: classifyLegacyRetention(requireDraft().backup) })
-  }
   const dirty = computed(() => {
     if (!draft.value || !initialSnapshot) return false
     return JSON.stringify(draft.value) !== JSON.stringify(initialSnapshot)
@@ -257,7 +253,6 @@ export function useWorkflowEditor(options: WorkflowEditorOptions) {
     toggleChannelOverride,
     updateChannelOptions,
     updateBackup,
-    confirmRetention,
     createFanIn: () => createFanIn(requireDraft().analyses),
   }
 }

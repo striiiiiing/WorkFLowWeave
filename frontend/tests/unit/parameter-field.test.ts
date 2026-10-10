@@ -27,6 +27,19 @@ function editor(initial: JsonObject, schema?: JsonObject, excludedProperties?: s
 }
 
 describe('top-level parameter forms', () => {
+  it('masks automatically added secret names and shows the same plaintext in JSON', async () => {
+    const { wrapper, value, mode } = editor({ app_secret: 'draft-secret' })
+    const input = wrapper.get('input[aria-label="app_secret"]')
+    expect(input.attributes('type')).toBe('password')
+    await wrapper.get('.el-input__password').trigger('click')
+    expect(input.attributes('type')).toBe('text')
+    await mode().trigger('click')
+    expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toContain('draft-secret')
+    await mode().trigger('click')
+    expect(wrapper.get('input[aria-label="app_secret"]').attributes('type')).toBe('password')
+    expect(value.value.app_secret).toBe('draft-secret')
+    wrapper.unmount()
+  })
   it('renders JSON types and blocks invalid object or numeric drafts without discarding them on mode switch', async () => {
     const { value, wrapper, valid, mode } = editor({
       text: 'hello',

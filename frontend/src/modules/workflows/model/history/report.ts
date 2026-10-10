@@ -141,8 +141,6 @@ export function resultStatus(status: string, stage: WorkflowStage): string {
   const labels: Record<string, string> = {
     success: stage === 'notify' ? '已送达' : '已完成',
     empty: '没有采集到内容',
-    filtered_empty: '筛选后没有内容',
-    missing: '来源不可用',
     failed: stage === 'notify' ? '投递失败' : '失败',
     timeout: '超时',
     unknown: '结果不确定',

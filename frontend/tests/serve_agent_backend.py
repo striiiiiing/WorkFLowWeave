@@ -85,7 +85,6 @@ class SmokeLifecycle(ApplicationLifecycle):
                 host="127.0.0.1",
                 port=int(os.environ.get("WORKFLOWWEAVE_E2E_BACKEND_PORT", "14301")),
             ),
-            channel_factories={},
         )
 
     async def start(self):

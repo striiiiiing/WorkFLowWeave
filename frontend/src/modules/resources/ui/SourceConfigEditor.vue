@@ -3,7 +3,6 @@ import { computed, ref, watch } from 'vue'
 import type { FormInstance } from 'element-plus'
 import { useErrorFormatter } from '@/shared/async/errorFormatter'
 import ParameterField from '@/shared/schema/ParameterField.vue'
-import JsonField from '@/shared/schema/JsonField.vue'
 import {
   useResourceTransport,
   type MCPToolCatalog,
@@ -12,6 +11,8 @@ import {
 import type { MCPServerConfig, SourceCall, SourceConfig, SourceSaveTarget } from '../model/public'
 import type { SourceEditorController } from '../composables/useSourceEditor'
 import SourceAdvancedFields from './SourceAdvancedFields.vue'
+import SourceFileFields from './SourceFileFields.vue'
+import { referenceFilename } from '../model/source/file'
 
 const props = defineProps<{
   editor: SourceEditorController
@@ -29,6 +30,11 @@ const catalogError = ref('')
 const loading = ref(false)
 const form = ref<FormInstance>()
 const argvText = ref('')
+const fileFields = ref<InstanceType<typeof SourceFileFields>>()
+const existingFile = ref(false)
+watch(value, (source, previous) => {
+  if (!previous && source) existingFile.value = source.call.kind === 'file'
+})
 const selectedState = computed(() =>
   catalog.value?.servers.find(
     (item) => item.server === (value.value?.call?.kind === 'mcp' ? value.value.call.server : ''),
@@ -103,7 +109,12 @@ function setCall(change: Partial<SourceCall>) {
   if (!value.value) return
   props.editor.updateCall({ ...value.value.call, ...change } as SourceCall)
 }
-function switchKind(kind: 'mcp' | 'cli') {
+function switchKind(kind: SourceCall['kind']) {
+  existingFile.value = false
+  if (kind === 'file') {
+    props.editor.updateCall({ kind: 'file', file_type: 'text', path: referenceFilename() })
+    return
+  }
   props.editor.updateCall(
     kind === 'mcp'
       ? { kind: 'mcp', server: '', tool: '', arguments: {} }
@@ -127,8 +138,12 @@ async function submit() {
     const source = value.value
     if (!source) return false
     if (!(await form.value?.validate().catch(() => false))) return false
-    if (!source.call) return !!source.collector
     if (source.call.kind === 'mcp') return !!source.call.server && !!source.call.tool
+    if (source.call.kind === 'file') {
+      if (!fileFields.value) throw new Error('文件表单尚未加载')
+      props.editor.updateCall(await fileFields.value.prepare())
+      return true
+    }
     return source.call.mode === 'argv' ? !!source.call.executable : !!source.call.command
   })
   if (result.status === 'success') emit('saved', result.value)
@@ -140,6 +155,7 @@ async function submit() {
     v-if="value"
     novalidate
     :model="value"
+    :disabled="editor.save.pending.value"
     label-position="top"
     @submit.prevent="submit"
   >
@@ -170,26 +186,17 @@ async function submit() {
         @update:model-value="editor.updateBasic({ description: $event })"
       />
     </el-form-item>
-    <el-form-item v-if="!value.call" label="采集插件">
-      <el-input :model-value="value.collector ?? ''" disabled />
-    </el-form-item>
-    <el-form-item v-else label="来源方式">
+    <el-form-item label="来源方式">
       <el-radio-group
         :model-value="value.call.kind"
-        @update:model-value="switchKind($event as 'mcp' | 'cli')"
+        @update:model-value="switchKind($event as SourceCall['kind'])"
       >
         <el-radio-button value="mcp">MCP</el-radio-button>
         <el-radio-button value="cli">CLI</el-radio-button>
+        <el-radio-button value="file">文件引用</el-radio-button>
       </el-radio-group>
     </el-form-item>
-    <JsonField
-      v-if="!value.call"
-      :model-value="value.options ?? {}"
-      label="插件选项（JSON）"
-      prop="options"
-      @update:model-value="editor.updateOptions($event)"
-    />
-    <template v-else-if="value.call.kind === 'mcp'">
+    <template v-if="value.call.kind === 'mcp'">
       <div class="form-grid">
         <el-form-item label="MCP 服务">
           <el-select
@@ -250,6 +257,14 @@ async function submit() {
         工具 schema 尚未加载；已保存参数保持不变。
       </p>
     </template>
+    <SourceFileFields
+      v-else-if="value.call.kind === 'file'"
+      ref="fileFields"
+      :call="value.call"
+      :existing="existingFile"
+      :disabled="editor.save.pending.value"
+      @change="editor.updateCall"
+    />
     <template v-else>
       <el-form-item label="执行方式">
         <el-radio-group

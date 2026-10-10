@@ -40,8 +40,7 @@ const kind = computed<EditableKind>({
 const list = useResourceList(kind)
 const resourcesApi = useResourcesApi()
 const mcpStatus = useQuery(
-  (signal) =>
-    kind.value === 'mcp_servers' ? resourcesApi.mcpStatus(signal) : Promise.resolve([]),
+  (signal) => (kind.value === 'mcp_servers' ? resourcesApi.mcpStatus(signal) : Promise.resolve([])),
   [() => kind.value === 'mcp_servers'],
 )
 const formatError = useErrorFormatter()
@@ -225,10 +224,7 @@ function openWorkflow(id: string) {
           </p>
         </div>
         <div class="flex gap-2">
-          <el-button
-            :loading="mcpProbePending[server.id]"
-            @click="probeMcpServer(server)"
-          >
+          <el-button :loading="mcpProbePending[server.id]" @click="probeMcpServer(server)">
             探测健康
           </el-button>
           <el-button @click="mcpEditor = { initial: server }">编辑</el-button>
@@ -319,6 +315,7 @@ function openWorkflow(id: string) {
       v-if="channelEditor"
       :initial="channelEditor.initial"
       :capabilities="channels"
+      @persisted="() => void list.refresh()"
       @saved="
         () => {
           channelEditor = undefined

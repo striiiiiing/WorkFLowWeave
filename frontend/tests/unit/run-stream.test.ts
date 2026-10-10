@@ -58,7 +58,10 @@ describe('Workflow snapshot subscription', () => {
   it('isolates stale callbacks and GET responses after route changes and disposal', async () => {
     const first = deferred<ReturnType<typeof session>>()
     const { stream, get, id, query, scope } = setup(
-      vi.fn().mockReturnValueOnce(first.promise).mockResolvedValue(session({ session_id: 'two' })),
+      vi
+        .fn()
+        .mockReturnValueOnce(first.promise)
+        .mockResolvedValue(session({ session_id: 'two' })),
     )
     const old = stream.connections[0]
     const refreshing = query.refresh()
@@ -88,6 +91,47 @@ describe('Workflow snapshot subscription', () => {
     scope.stop()
   })
 
+  it('accepts a same-session GET when its SSE connection fails', async () => {
+    const pending = deferred<ReturnType<typeof session>>()
+    const { stream, get, query, scope } = setup(vi.fn().mockReturnValue(pending.promise))
+    const refreshing = query.refresh()
+    const connection = stream.connections[1]
+
+    connection.handlers.error(new Error('SSE failed'))
+    expect(get.mock.calls[0][1].aborted).toBe(false)
+
+    pending.resolve(session({ version: 8, status: 'running' }))
+    await refreshing
+
+    expect(query.data.value).toMatchObject({ session_id: 'one', version: 8, status: 'running' })
+    expect(query.connectionError.value).toBe('SSE failed')
+    scope.stop()
+  })
+
+  it('accepts a newer same-session GET after SSE closes on a terminal snapshot', async () => {
+    const pending = deferred<ReturnType<typeof session>>()
+    const { stream, query, scope } = setup(vi.fn().mockReturnValue(pending.promise))
+    const refreshing = query.refresh()
+    stream.connections[1].handlers.snapshot(session({ version: 8, status: 'completed' }))
+    expect(query.connection.value).toBe('closed')
+
+    pending.resolve(session({ version: 9, status: 'completed' }))
+    await refreshing
+    expect(query.data.value?.version).toBe(9)
+    scope.stop()
+  })
+
+  it('rejects an old GET in the same tick as a route switch', async () => {
+    const pending = deferred<ReturnType<typeof session>>()
+    const { id, query, scope } = setup(vi.fn().mockReturnValue(pending.promise))
+    const refreshing = query.refresh()
+    pending.resolve(session({ version: 100 }))
+    id.value = 'two'
+    await refreshing
+    expect(query.data.value).toBeUndefined()
+    scope.stop()
+  })
+
   it('reads once when EventSource is unavailable', async () => {
     const get = vi.fn().mockResolvedValue(session())
     const stream = runStream()
@@ -106,28 +150,64 @@ it('reads only available artifact content versions', async () => {
   const stream = runStream()
   const phase = vi.fn().mockResolvedValue({ availability: 'available', content: {} })
   const scope = effectScope()
-  scope.run(() => useRunDetail(ref('one'), {
-    get: vi.fn().mockResolvedValue(session()),
-    phase,
-    subscribe: stream.subscribe,
-    recovery: vi.fn().mockResolvedValue({ available: false, reason: null }),
-    cancel: vi.fn().mockResolvedValue({ session_id: 'one', cancelled: true }),
-  }))
+  scope.run(() =>
+    useRunDetail(ref('one'), {
+      get: vi.fn().mockResolvedValue(session()),
+      phase,
+      subscribe: stream.subscribe,
+      recovery: vi.fn().mockResolvedValue({ available: false, reason: null }),
+      cancel: vi.fn().mockResolvedValue({ session_id: 'one', cancelled: true }),
+    }),
+  )
   const handlers = stream.connections[0].handlers
   handlers.snapshot(session({ version: 2 }))
   await flushPromises()
   expect(phase).not.toHaveBeenCalled()
-  handlers.snapshot(session({ version: 3, artifacts: [
-    { stage: 'collect', availability: 'available', content_version: 2, size_bytes: null, error: null },
-    { stage: 'analyze', availability: 'pending', content_version: null, size_bytes: null, error: null },
-  ] }))
+  handlers.snapshot(
+    session({
+      version: 3,
+      artifacts: [
+        {
+          stage: 'collect',
+          availability: 'available',
+          content_version: 2,
+          size_bytes: null,
+          error: null,
+        },
+        {
+          stage: 'analyze',
+          availability: 'pending',
+          content_version: null,
+          size_bytes: null,
+          error: null,
+        },
+      ],
+    }),
+  )
   await flushPromises()
   expect(phase).toHaveBeenCalledOnce()
   expect(phase).toHaveBeenCalledWith('one', 'collect', 2, expect.any(AbortSignal))
-  handlers.snapshot(session({ version: 4, artifacts: [
-    { stage: 'collect', availability: 'available', content_version: 2, size_bytes: null, error: null },
-    { stage: 'aggregate', availability: 'available', content_version: 4, size_bytes: null, error: null },
-  ] }))
+  handlers.snapshot(
+    session({
+      version: 4,
+      artifacts: [
+        {
+          stage: 'collect',
+          availability: 'available',
+          content_version: 2,
+          size_bytes: null,
+          error: null,
+        },
+        {
+          stage: 'aggregate',
+          availability: 'available',
+          content_version: 4,
+          size_bytes: null,
+          error: null,
+        },
+      ],
+    }),
+  )
   await flushPromises()
   expect(phase).toHaveBeenCalledTimes(2)
   expect(phase).toHaveBeenLastCalledWith('one', 'aggregate', 4, expect.any(AbortSignal))
@@ -136,18 +216,31 @@ it('reads only available artifact content versions', async () => {
 
 it('parses named snapshot frames, retries with one owner and rejects malformed payloads', async () => {
   vi.useFakeTimers()
-  const sources: { listeners: Map<string, (event: MessageEvent<string>) => void>; close: ReturnType<typeof vi.fn>; onopen?: () => void; onerror?: () => void }[] = []
+  const sources: {
+    listeners: Map<string, (event: MessageEvent<string>) => void>
+    close: ReturnType<typeof vi.fn>
+    onopen?: () => void
+    onerror?: () => void
+  }[] = []
   const factory = vi.fn(() => {
-    const source = { listeners: new Map(), close: vi.fn(), onopen: undefined as (() => void) | undefined,
+    const source = {
+      listeners: new Map(),
+      close: vi.fn(),
+      onopen: undefined as (() => void) | undefined,
       onerror: undefined as (() => void) | undefined,
-      addEventListener(name: string, listener: (event: MessageEvent<string>) => void) { this.listeners.set(name, listener) } }
+      addEventListener(name: string, listener: (event: MessageEvent<string>) => void) {
+        this.listeners.set(name, listener)
+      },
+    }
     sources.push(source)
     return source
   })
   const handlers = { snapshot: vi.fn(), state: vi.fn(), error: vi.fn() }
   const close = createRunEventSource(factory)('run a', handlers)
   expect(factory).toHaveBeenCalledWith('/api/sessions/run%20a/events')
-  sources[0].listeners.get('snapshot')!(new MessageEvent('snapshot', { data: JSON.stringify(session({ session_id: 'run a' })) }))
+  sources[0].listeners.get('snapshot')!(
+    new MessageEvent('snapshot', { data: JSON.stringify(session({ session_id: 'run a' })) }),
+  )
   expect(handlers.snapshot).toHaveBeenCalledOnce()
   sources[0].onerror?.()
   expect(sources[0].close).toHaveBeenCalledOnce()
