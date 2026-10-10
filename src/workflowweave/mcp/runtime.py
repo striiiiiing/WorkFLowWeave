@@ -12,6 +12,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+from mcp import McpError
+from mcp.types import METHOD_NOT_FOUND, ListToolsResult
+
 from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.models import ErrorInfo, MCPHealthReport, MCPServerConfig, copy_model
 from workflowweave.schema import validate_instance
@@ -138,31 +141,34 @@ class MCPRuntime:
 
     async def _refresh(self, session, config):
         tools, cursor, seen = [], None, set()
-        while True:
+        discover = getattr(session, "discover", None)
+        fallback = not callable(discover)
+        if callable(discover):
             try:
-                page = await session.discover()
-                discovered = page.get("tools") if isinstance(page, dict) else getattr(page, "tools", None)
-                if discovered is not None:
-                    tools.extend(
-                        item.model_dump(mode="json", by_alias=True, exclude_none=True)
-                        if hasattr(item, "model_dump") else dict(item)
-                        for item in discovered
-                    )
-                    break
-            except Exception as exc:
-                if not isinstance(exc, (AttributeError, NotImplementedError)) and not any(
-                    marker in str(exc).lower() for marker in ("method", "unsupported", "unknown")
-                ):
+                page = await discover()
+            except McpError as exc:
+                if exc.error.code != METHOD_NOT_FOUND:
                     raise
-            page = await session.list_tools(cursor=cursor)
-            tools.extend(tool.model_dump(mode="json", by_alias=True, exclude_none=True)
-                         for tool in page.tools)
-            cursor = page.nextCursor
-            if cursor is None:
-                break
-            if cursor in seen:
-                raise WorkFLowWeaveError("mcp_catalog_invalid", "目录分页游标重复")
-            seen.add(cursor)
+                fallback = True
+            else:
+                result = getattr(page, "root", page)
+                page = ListToolsResult.model_validate(
+                    result if isinstance(result, dict) else result.model_dump(by_alias=True)
+                )
+                tools.extend(tool.model_dump(mode="json", by_alias=True, exclude_none=True)
+                             for tool in page.tools)
+
+        if fallback:
+            while True:
+                page = await session.list_tools(cursor=cursor)
+                tools.extend(tool.model_dump(mode="json", by_alias=True, exclude_none=True)
+                             for tool in page.tools)
+                cursor = page.nextCursor
+                if cursor is None:
+                    break
+                if cursor in seen:
+                    raise WorkFLowWeaveError("mcp_catalog_invalid", "目录分页游标重复")
+                seen.add(cursor)
         names = [tool["name"] for tool in tools]
         if len(names) != len(set(names)):
             raise WorkFLowWeaveError("mcp_catalog_invalid", "同一服务的工具名称重复")

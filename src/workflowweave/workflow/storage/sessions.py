@@ -15,6 +15,7 @@ from workflowweave.workflow.storage.reports import (
     _project_errors,
     read_phase,
 )
+from workflowweave.workflow.storage.snapshots import parse_historical_snapshot
 
 
 class SessionView:
@@ -25,14 +26,11 @@ class SessionView:
         self._store = store
 
     async def mcp_binding(self, session_id):
-        from workflowweave.models import WorkflowSnapshot
         entry = await asyncio.to_thread(self._store.entry, session_id, "snapshot")
         if not entry or entry["availability"] != "available" or not entry["body"]:
             return {"error": "Workflow 配置快照未保存或不可用；无法恢复 MCP 范围"}
         try:
-            snapshot = WorkflowSnapshot.model_validate(
-                entry["body"]["snapshot"], context={"historical_snapshot": True},
-            )
+            snapshot = parse_historical_snapshot(entry["body"]["snapshot"])
         except ValueError:
             return {"error": "原 Workflow 使用旧版来源配置，MCP 绑定不可恢复"}
         return workflow_mcp_binding(snapshot)

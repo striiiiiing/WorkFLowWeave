@@ -13,6 +13,7 @@ import pytest
 from sqlalchemy.exc import OperationalError
 from sqlmodel import select
 
+from tests.workflow.helpers import AI, Channel, Collector, archived, snapshot
 from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.models import (
     AIConfig,
@@ -27,7 +28,6 @@ from workflowweave.workflow.execution.runner import WorkflowRunner
 from workflowweave.workflow.execution.tasks import RunCoordinator
 from workflowweave.workflow.storage.facts import SessionStore
 from workflowweave.workflow.storage.models import ReportBody, SessionEntry
-from tests.workflow.helpers import AI, Channel, Collector, archived, snapshot
 
 
 def service(path, *, ai=None, store_type=SessionStore):
@@ -154,8 +154,7 @@ async def test_runtime_context_isolated_for_concurrent_snapshots(tmp_path):
             return CollectionResult(
                 source_id=config.id,
                 status="success",
-                text=f"{context.session_id}:{context.workflow_id}",
-                count=1,
+                raw={"stdout": f"{context.session_id}:{context.workflow_id}", "stderr": "", "exit_code": 0},
             )
 
     class ContextAI:
@@ -182,7 +181,7 @@ async def test_runtime_context_isolated_for_concurrent_snapshots(tmp_path):
         definition.workflow.analyses[0].ai = ai_id
         definition.workflow.analyses[0].model = model
         definition.sources = {
-            source_id: SourceConfig(id=source_id, collector="mock"),
+            source_id: SourceConfig(id=source_id, call={"kind": "cli", "mode": "argv", "executable": "printf"}),
         }
         definition.ai = {
             ai_id: AIConfig(id=ai_id, provider="mock", models={model: {}}),
@@ -273,7 +272,7 @@ async def test_business_timeouts_follow_workflow_stage_policy(
                     error=ErrorInfo(code="collection_timeout", message="timed out"),
                 )
             return CollectionResult(
-                source_id=source.id, status="success", text="available input", count=1
+                source_id=source.id, status="success", raw={"stdout": "available input", "stderr": "", "exit_code": 0}
             )
 
     class ResultAI:
@@ -300,9 +299,9 @@ async def test_business_timeouts_follow_workflow_stage_policy(
     definition.workflow.sources = ["slow", "source"]
     definition.sources = {
         "slow": SourceConfig(
-            id="slow", collector="mock", on_error=policy if timeout_stage == "collect" else "skip"
+            id="slow", call={"kind": "cli", "mode": "argv", "executable": "printf"}, on_error=policy if timeout_stage == "collect" else "skip"
         ),
-        "source": SourceConfig(id="source", collector="mock"),
+        "source": SourceConfig(id="source", call={"kind": "cli", "mode": "argv", "executable": "printf"}),
     }
     collector, ai = ResultCollector(), ResultAI()
     store = SessionStore(tmp_path / "runs.sqlite3")
@@ -774,7 +773,7 @@ async def test_collector_cannot_swallow_cancellation_and_start_analysis(tmp_path
             try:
                 await asyncio.Future()
             except asyncio.CancelledError:
-                return CollectionResult(source_id=config.id, status="success", text="late", count=1)
+                return CollectionResult(source_id=config.id, status="success", raw={"stdout": "late", "stderr": "", "exit_code": 0})
 
     w, store, _, a, n = service(tmp_path / "runs.sqlite3")
     w.collector_manager = SwallowingCollector()

@@ -44,8 +44,7 @@ async def tool_scope(context: AgentContext):
 
 
 async def stream_graph(graph: Any, messages: list[Any], *, context: AgentContext,
-                       config: RunnableConfig, log: Any, idle_timeout: float,
-                       publication: list[bool] | None = None) -> tuple[dict[str, Any], bool]:
+                       config: RunnableConfig, log: Any, idle_timeout: float) -> dict[str, Any]:
     """Consume one v2 event stream, retaining provider deltas exactly once."""
     stream = graph.astream_events(
         {"messages": messages, "turn_id": context.turn_id, "branch_id": context.branch_id},
@@ -54,7 +53,6 @@ async def stream_graph(graph: Any, messages: list[Any], *, context: AgentContext
         context=context,
     )
     final_state: dict[str, Any] | None = None
-    published = False
     awaiting_model = False
     try:
         while True:
@@ -79,9 +77,6 @@ async def stream_graph(graph: Any, messages: list[Any], *, context: AgentContext
                 data = event.get("data", {})
                 delta = message_delta(data.get("chunk")) if isinstance(data, dict) else None
                 if delta is not None:
-                    published = True
-                    if publication is not None:
-                        publication[0] = True
                     await log.append(
                         "message.delta", turn_id=context.turn_id,
                         message_id=getattr(data.get("chunk"), "id", None), **delta,
@@ -92,19 +87,13 @@ async def stream_graph(graph: Any, messages: list[Any], *, context: AgentContext
                 output = event["data"].get("output")
                 if isinstance(output, dict) and isinstance(output.get("messages"), list):
                     final_state = output
-    except BaseException as exc:
-        try:
-            exc._agent_published = published
-        except Exception:
-            pass
-        raise
     finally:
         close = getattr(stream, "aclose", None)
         if close is not None:
             await close()
     if final_state is None:
         raise WorkFLowWeaveError("invalid_response", "Agent 图没有返回最终消息状态")
-    return final_state, published
+    return final_state
 
 def message_delta(chunk: Any) -> dict[str, Any] | None:
     content = getattr(chunk, "content", None)

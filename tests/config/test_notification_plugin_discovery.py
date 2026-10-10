@@ -9,17 +9,17 @@ from pathlib import Path
 
 import pytest
 
+from tests.fixtures.plugin_helpers import install_plugin
 from workflowweave.config.registry import PluginRegistry
 from workflowweave.models import SystemConfig
-from tests.fixtures.plugin_helpers import install_plugin
 
 
-def test_channel_group_is_discovered_without_default_collectors(tmp_path):
+def test_channel_group_is_discovered(tmp_path):
     async def discover():
         registry = PluginRegistry()
         return await registry.reload_plugins(
             SystemConfig(
-                plugin_dir=str(Path(__file__).parents[2] / "plugins"),
+                plugin_dir=str(tmp_path / "user-plugins"),
                 data_dir=str(tmp_path / "data"),
             )
         )
@@ -34,28 +34,34 @@ def test_channel_group_is_discovered_without_default_collectors(tmp_path):
         "feishu": ("notification", "conversation"),
         "telegram": ("notification", "conversation"),
     }
-    assert not [item for item in report.registered if item.kind == "collector"]
     assert not report.errors
 
 
 async def test_root_and_grouped_plugins_share_one_identity_namespace(tmp_path):
-    source = Path(__file__).parents[2] / "plugins/channel/file"
+    source = Path(__file__).parents[2] / "src/workflowweave/plugins/channel/file"
     install_plugin(source, tmp_path / "file")
     install_plugin(source, tmp_path / "channel/file")
     registry = PluginRegistry()
-    report = await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path)))
+    report = await registry.discover_plugins(SystemConfig(
+        plugin_dir=str(tmp_path),
+        builtin_plugin_dir=str(tmp_path.parent / f"{tmp_path.name}-builtins"),
+    ))
     assert [item.name for item in report.registered if item.kind == "channel"] == ["file"]
     assert len(report.errors) == 1
     assert report.errors[0].details["reason"] == "plugin_id_conflict"
 
 
-@pytest.mark.parametrize("group", ["collector", "tool"])
+@pytest.mark.parametrize("group", ["tool"])
 async def test_manifest_kind_must_match_group_before_import(tmp_path, group):
     location = install_plugin(
-        Path(__file__).parents[2] / "plugins/channel/file", tmp_path / group / "file",
+        Path(__file__).parents[2] / "src/workflowweave/plugins/channel/file",
+        tmp_path / group / "file",
     )
     (location / "main.py").write_text("raise RuntimeError('must not import')", encoding="utf-8")
-    report = await PluginRegistry().discover_plugins(SystemConfig(plugin_dir=str(tmp_path)))
+    report = await PluginRegistry().discover_plugins(SystemConfig(
+        plugin_dir=str(tmp_path),
+        builtin_plugin_dir=str(tmp_path.parent / f"{tmp_path.name}-builtins"),
+    ))
     assert not [item for item in report.registered if item.kind == "channel"]
     assert len(report.errors) == 1
     assert report.errors[0].details["stage"] == "manifest"
@@ -63,7 +69,7 @@ async def test_manifest_kind_must_match_group_before_import(tmp_path, group):
 
 
 async def test_missing_optional_sdk_only_disables_its_plugin(tmp_path, monkeypatch):
-    source = Path(__file__).parents[2] / "plugins/channel"
+    source = Path(__file__).parents[2] / "src/workflowweave/plugins/channel"
     for name in ("email", "file"):
         install_plugin(source / name, tmp_path / "channel" / name)
     original_import = builtins.__import__
@@ -74,7 +80,10 @@ async def test_missing_optional_sdk_only_disables_its_plugin(tmp_path, monkeypat
         return original_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", without_smtp)
-    report = await PluginRegistry().discover_plugins(SystemConfig(plugin_dir=str(tmp_path)))
+    report = await PluginRegistry().discover_plugins(SystemConfig(
+        plugin_dir=str(tmp_path),
+        builtin_plugin_dir=str(tmp_path.parent / f"{tmp_path.name}-builtins"),
+    ))
     assert [item.name for item in report.registered if item.kind == "channel"] == ["file"]
     assert len(report.errors) == 1
     assert report.errors[0].details["plugin"] == "email"

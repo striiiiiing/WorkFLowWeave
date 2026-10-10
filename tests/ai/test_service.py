@@ -10,15 +10,15 @@ import json
 import pytest
 from pydantic import ValidationError
 
+from tests.ai.live_helpers import assert_success
 from workflowweave.ai import AIService, OpenAIChannelFactory
 from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.models import AIConfig
-from tests.ai.live_helpers import assert_success
 
 
 def config():
     """提供纯配置校验使用的固定 mock 模型配置，不发起网络请求。"""
-    return AIConfig(id="ai", provider="http", models={"mock": {}},
+    return AIConfig(id="ai", provider="openai_compatible_api", models={"mock": {}},
                     base_url="http://localhost:19026/v1")
 
 
@@ -28,7 +28,7 @@ def config():
 ])
 def test_managed_options_cannot_override_request_settings(field):
     """验证模型扩展参数不能覆盖服务管理的字段，并明确返回冲突字段名。"""
-    service = AIService(channel_factories={"http": OpenAIChannelFactory()})
+    service = AIService(channel_factories={"openai_compatible_api": OpenAIChannelFactory()})
     cfg = config()
     cfg.models["mock"] = {field: "invalid"}
     with pytest.raises(WorkFLowWeaveError) as error:
@@ -41,7 +41,7 @@ def test_managed_options_cannot_override_request_settings(field):
 def test_models_require_explicit_nonempty_json_configuration(models):
     """验证模型集合、模型名和 JSON 参数必须符合显式配置契约。"""
     with pytest.raises(ValidationError):
-        AIConfig(id="ai", provider="http", models=models)
+        AIConfig(id="ai", provider="openai_compatible_api", models=models)
 
 
 @pytest.mark.parametrize("prompt,input_text,expected", [

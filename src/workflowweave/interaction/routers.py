@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Path, Query, Response, status
+from fastapi import APIRouter, Body, Depends, Path, Query, Response, status
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
 from workflowweave.collection.invocation import CollectionArguments, CollectorInvocation
@@ -24,6 +24,7 @@ from workflowweave.models import (
     CollectionResult,
     DiscoveryReport,
     EncryptedCredential,
+    FileCall,
     HealthReport,
     JSONObject,
     MCPHealthReport,
@@ -36,6 +37,7 @@ from workflowweave.models import (
     SourceConfig,
     SourceOverride,
     StrictModel,
+    TextFileCreateRequest,
     WorkflowDefinition,
     WorkflowStage,
 )
@@ -62,6 +64,35 @@ from .schemas import (
 router = APIRouter()
 Services = Annotated[ApplicationServices, Depends(get_services)]
 Lifecycle = Annotated[LifecycleProtocol, Depends(get_lifecycle)]
+
+
+async def _create_reference(services, path, content):
+    files = services.collectors.files
+    if files is None:
+        raise WorkFLowWeaveError("not_ready", "文件引用服务尚未装配")
+    await asyncio.to_thread(files.create_text, path, content)
+    return FileCall(file_type="text", path=path)
+
+
+@router.post("/collection/files/text", response_model=FileCall, status_code=201)
+async def create_text_reference(payload: TextFileCreateRequest, response: Response, services: Services):
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        content = payload.text.encode("utf-8")
+    except UnicodeEncodeError:
+        raise WorkFLowWeaveError("invalid_argument", "文本包含无法编码为 UTF-8 的字符") from None
+    return await _create_reference(services, payload.path, content)
+
+
+@router.post("/collection/files/import", response_model=FileCall, status_code=201)
+async def import_text_reference(
+    response: Response, services: Services,
+    path: Annotated[str, Query(min_length=1)],
+    file_type: Literal["text"],
+    content: Annotated[bytes, Body(media_type="application/octet-stream")] = b"",
+):
+    response.headers["Cache-Control"] = "no-store"
+    return await _create_reference(services, path, content)
 
 
 @router.post("/workflows/cron/preview", response_model=CronPreviewResponse)
@@ -242,6 +273,35 @@ class ChannelConversation(StrictModel):
     session_id: ID | None
 
 
+@router.post("/channels/{ident}/connection", status_code=status.HTTP_202_ACCEPTED)
+async def start_channel_connection(ident: ID, services: Services, response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    config = await _get_resource(services, "channels", ident)
+    configs = await asyncio.to_thread(services.resources.list, "channels")
+    await services.channels.configure(configs)
+
+    async def persist(expected: ChannelConfig, target: JSONObject) -> ChannelConfig:
+        candidate = expected.model_copy(update={"options": {**expected.options, **target}}, deep=True)
+        return await asyncio.to_thread(services.resources.save_if_current,
+                                       "channels", expected, candidate)
+
+    return await services.channels.connections.start(config, persist)
+
+
+@router.get("/channels/{ident}/connection")
+async def channel_connection(ident: ID, services: Services, response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    await _get_resource(services, "channels", ident)
+    return services.channels.connections.snapshot(ident)
+
+
+@router.delete("/channels/{ident}/connection")
+async def cancel_channel_connection(ident: ID, services: Services, response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    await _get_resource(services, "channels", ident)
+    return await services.channels.connections.cancel(ident)
+
+
 @router.get("/channels/{ident}/conversation", response_model=ChannelConversation)
 async def channel_conversation(ident: ID, services: Services):
     config = await _get_resource(services, "channels", ident)
@@ -373,7 +433,6 @@ async def cancel_session(session_id: ID, services: Services):
 @router.get("/plugins", response_model=list[CapabilityDescription])
 async def list_plugins(services: Services):
     return [
-        *services.plugins.collectorRegister.describe(),
         *services.plugins.channelRegister.describe(),
         *services.plugins.toolRegister.describe(),
     ]

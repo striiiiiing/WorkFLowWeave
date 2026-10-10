@@ -30,7 +30,6 @@ class MemoryResources:
     def __init__(self) -> None:
         self.values: dict[str, dict[str, object]] = {
             "sources": {},
-            "setters": {},
             "mcp_servers": {},
             "ai": {},
             "channels": {},
@@ -160,11 +159,11 @@ class Lifecycle:
         self.workflow = Workflow(self.resources)
         self.session_view = Sessions()
         capability = CapabilityDescription(
-            kind="collector",
+            kind="channel",
             name="mock",
-            description="Offline mock collector",
+            description="Offline test channel",
             plugin="builtin",
-            capabilities=["collection"],
+            capabilities=["notification"],
             options_schema={
                 "type": "object",
                 "properties": {
@@ -175,9 +174,6 @@ class Lifecycle:
                 },
                 "additionalProperties": False,
             },
-            setters_schema={"type": "object", "additionalProperties": False},
-            fields=["message"],
-            count_unit="records",
         )
         self.services = SimpleNamespace(
             resources=self.resources,
@@ -185,8 +181,7 @@ class Lifecycle:
             session_view=self.session_view,
             collectors=SimpleNamespace(mcp=MCPProbe()),
             plugins=SimpleNamespace(
-                collectorRegister=Registry(capability),
-                channelRegister=Registry(),
+                channelRegister=Registry(capability),
                 toolRegister=Registry(),
             ),
         )

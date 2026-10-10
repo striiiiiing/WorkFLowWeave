@@ -92,6 +92,8 @@ class OpenAIChannel:
         """
         self._check_started()
         options = deepcopy(config.models[model])
+        options.pop("streaming", None)
+        tokenizer_model = options.pop("tiktoken_model_name", None)
         if max_output_tokens is not None:
             if type(max_output_tokens) is not int or max_output_tokens <= 0:
                 raise ValueError("max_output_tokens must be a positive integer")
@@ -108,8 +110,10 @@ class OpenAIChannel:
             model=model, base_url=self.base_url, api_key=api_key,
             http_async_client=self.client, openai_proxy=None, http_socket_options=(),
             model_kwargs={"extra_headers": {"Authorization": Omit()}} if credential is None else {},
-            timeout=None, max_retries=0, cache=False,
-            streaming=streaming, disable_streaming=not streaming, use_responses_api=False,
+            timeout=None, stream_chunk_timeout=None, max_retries=0, cache=False,
+            streaming=streaming, stream_usage=streaming,
+            tiktoken_model_name=tokenizer_model,
+            disable_streaming=not streaming, use_responses_api=False,
             extra_body=options,
         )
 

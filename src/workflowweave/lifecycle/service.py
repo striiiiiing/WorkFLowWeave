@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import math
 from collections.abc import Awaitable, Callable, Mapping
@@ -15,9 +16,9 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from workflowweave.agent.commands import CommandDispatcher
 from workflowweave.agent.service import AgentService
 from workflowweave.ai import AIService, ChannelFactory, OpenAIChannelFactory
-from workflowweave.ai.options import LEGACY_HTTP_PROVIDER, OPENAI_COMPATIBLE_PROVIDER
+from workflowweave.ai.options import OPENAI_COMPATIBLE_PROVIDER
 from workflowweave.channel import ChannelManager, WebChannelType
-from workflowweave.collection import CollectorManager
+from workflowweave.collection import CollectorManager, FileReferenceStore
 from workflowweave.config import (
     ConfigurationReader,
     CredentialManager,
@@ -186,14 +187,16 @@ class ApplicationLifecycle:
                 await checkpointer.setup()
 
                 stage = "plugins"
-                plugins = PluginRegistry(builtin_channels=[WebChannelType()])
+                plugins = PluginRegistry(
+                    builtin_channels=[WebChannelType()], include_packaged_plugins=True,
+                )
                 self._plugin_report = await plugins.discover_plugins(self.config)
                 credentials = CredentialManager(
                     self.config, resources_path=Path(self.config.data_dir) / "resources.json"
                 )
                 mcp_runtime = MCPRuntime(SDKConnector(credentials),
                                          cache_dir=Path(self.config.data_dir) / "mcp-catalog")
-                collectors = CollectorManager(mcp_runtime)
+                collectors = CollectorManager(mcp_runtime, FileReferenceStore(self.config.data_dir))
 
                 stage = "ai"
                 ai = AIService(
@@ -201,8 +204,6 @@ class ApplicationLifecycle:
                     if self._channel_factories is not None
                     else {
                         OPENAI_COMPATIBLE_PROVIDER: OpenAIChannelFactory(),
-                        # Existing resource files may still use the pre-UI key.
-                        LEGACY_HTTP_PROVIDER: OpenAIChannelFactory(),
                     },
                     credential_resolver=credentials,
                 )
@@ -218,10 +219,8 @@ class ApplicationLifecycle:
                 stage = "resources"
                 resources = LifecycleResourceStore(
                     Path(self.config.data_dir) / "resources.json",
-                    collector_register=plugins.collectorRegister,
                     channel_register=plugins.channelRegister,
                     validators=resource_validators(
-                        plugins.collectorRegister,
                         plugins.channelRegister,
                         collectors,
                         channels,
@@ -264,8 +263,6 @@ class ApplicationLifecycle:
                     mcp_runtime=mcp_runtime, mcp_binding_reader=session_view.mcp_binding,
                     resources=resources,
                     plugins=plugins,
-                    collectors=collectors,
-                    channels=channels,
                     collection_context_factory=lambda session: CollectionContext(
                         "agent", session.session_id, self.config.log_file, credentials, session_view,
                     ),
@@ -330,9 +327,10 @@ class ApplicationLifecycle:
                 }
                 if isinstance(exc, WorkFLowWeaveError):
                     details["reason"] = exc.code
+                    details["reason_details"] = exc.details
                 failure = ErrorInfo(
                     code="lifecycle_start_failed",
-                    message="应用启动失败",
+                    message=f"应用启动失败：{json.dumps(details, ensure_ascii=False)}",
                     details=details,
                 )
                 logger.error(
@@ -474,18 +472,13 @@ class ApplicationLifecycle:
             stage = "discover"
             report = await services.plugins.reload_plugins(self.config)
 
-            stage = "publish_collectors"
-            services.collectors.reload_register(services.plugins.collectorRegister)
-
             stage = "publish_channels"
             await services.channels.reload_register(services.plugins.channelRegister)
 
             stage = "publish_resources"
             services.resources.update_dependencies(
-                collector_register=services.plugins.collectorRegister,
                 channel_register=services.plugins.channelRegister,
                 validators=resource_validators(
-                    services.plugins.collectorRegister,
                     services.plugins.channelRegister,
                     services.collectors,
                     services.channels,

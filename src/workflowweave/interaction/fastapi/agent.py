@@ -27,7 +27,7 @@ from workflowweave.models import CollectionContext
 def create_agent_service(workspace: Path, runtime: Path, *, config=None,
                          model_provider=None, ai_service=None, ai_config=None, model=None,
                          checkpointer=None, resources=None, plugins=None,
-                         collectors=None, channels=None, mcp_runtime=None,
+                         mcp_runtime=None,
                          mcp_binding_reader=None, declarations=None, gateway_factory=None,
                          collection_context_factory=None, read_only_tools=False):
     runtime = Path(runtime).absolute()

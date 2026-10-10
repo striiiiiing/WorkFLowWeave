@@ -1116,8 +1116,8 @@ async def test_start_that_swallows_cancellation_cannot_send():
 async def test_readonly_registry_wrappers_do_not_recreate_unchanged_instances(tmp_path):
     from workflowweave.config import PluginRegistry
     from workflowweave.models import SystemConfig
-    from plugins.channel.file.channel import FileChannelType
-    registry = PluginRegistry([], builtin_channels=[FileChannelType()])
+    from workflowweave.plugins.channel.file.channel import FileChannelType
+    registry = PluginRegistry(builtin_channels=[FileChannelType()])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     manager = ChannelManager(registry.channelRegister)
     config = ChannelConfig(id="file", channel="file", options={"path": str(tmp_path / "out.txt")})
@@ -1276,9 +1276,9 @@ async def test_release_drain_timeout_does_not_fail_waiting_send():
 async def test_stop_waits_for_send_completion_not_caller_task_lifetime(tmp_path):
     from workflowweave.config import PluginRegistry
     from workflowweave.models import SystemConfig
-    from plugins.channel.file.channel import FileChannelType
+    from workflowweave.plugins.channel.file.channel import FileChannelType
 
-    registry = PluginRegistry([], builtin_channels=[FileChannelType()])
+    registry = PluginRegistry(builtin_channels=[FileChannelType()])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     manager = ChannelManager(registry.channelRegister)
     path = tmp_path / "notifications.txt"

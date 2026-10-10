@@ -14,7 +14,7 @@ import pytest
 
 from workflowweave.channel.errors import ChannelDeliveryError
 from workflowweave.models import ChannelConfig, Notification
-from plugins.channel.file.channel import FileChannel
+from workflowweave.plugins.channel.file.channel import FileChannel
 
 
 def _channel(path, channel_id="mock"):
@@ -320,7 +320,7 @@ async def test_missing_write_count_cannot_report_success(tmp_path, monkeypatch):
 
 async def test_cancelled_start_is_drained_before_close(tmp_path, monkeypatch):
     from workflowweave.errors import WorkFLowWeaveError
-    monkeypatch.setattr("plugins.channel.file.channel._STOP_TIMEOUT", .02)
+    monkeypatch.setattr("workflowweave.plugins.channel.file.channel._STOP_TIMEOUT", .02)
     channel = _channel(tmp_path / "late-start.txt")
     entered, release = threading.Event(), threading.Event()
     original = channel.handler.start
@@ -350,7 +350,7 @@ async def test_cancelled_start_is_drained_before_close(tmp_path, monkeypatch):
 
 async def test_stop_waits_for_cancelled_write_and_can_be_awaited_again(tmp_path, monkeypatch):
     from workflowweave.errors import WorkFLowWeaveError
-    monkeypatch.setattr("plugins.channel.file.channel._STOP_TIMEOUT", .02)
+    monkeypatch.setattr("workflowweave.plugins.channel.file.channel._STOP_TIMEOUT", .02)
     path = tmp_path / "pending.txt"
     channel = _channel(path)
     await channel.start()

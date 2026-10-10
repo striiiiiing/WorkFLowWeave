@@ -4,10 +4,19 @@ from copy import deepcopy
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from workflowweave.ai.options import OPENAI_COMPATIBLE_PROVIDER
 from workflowweave.errors import WorkFLowWeaveError
 
 RESOURCE_FORMAT_VERSION = 4
 LEGACY_SCHEDULE_FIELDS = {"interval_seconds", "cron", "cron_timezone"}
+_RETIRED_SOURCE_DEFAULTS = {
+    "collector": None,
+    "options": {},
+    "setters": {},
+    "template": None,
+    "on_missing": "notice",
+    "on_filtered_empty": "notice",
+}
 
 
 def migrate_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
@@ -179,26 +188,34 @@ def _migrate_v2_prompts(data: dict) -> dict:
 
 
 def _migrate_v3_sources(data):
-    if data.get("sources") or data.get("setters"):
-        raise WorkFLowWeaveError("collection_migration_required",
-                            "旧 Collector/Setter 资源不兼容；请备份原文件并将来源重建为 MCP/CLI")
     result = deepcopy(data)
-    result.pop("setters", None)
-    result["mcp_servers"] = {}
+    result.setdefault("mcp_servers", {})
     result["format_version"] = 4
-    for workflow in result.get("workflows", {}).values():
-        workflow.pop("include_counts", None)
     return result
 
 
 _MIGRATIONS = {1: _migrate_v1_schedule, 2: _migrate_v2_prompts, 3: _migrate_v3_sources}
 
 
+def _normalize_providers(data: dict) -> tuple[dict, bool]:
+    ai = data.get("ai")
+    if not isinstance(ai, dict) or not any(
+        isinstance(value, dict) and value.get("provider") == "http"
+        for value in ai.values()
+    ):
+        return data, False
+    result = deepcopy(data)
+    for value in result["ai"].values():
+        if isinstance(value, dict) and value.get("provider") == "http":
+            value["provider"] = OPENAI_COMPATIBLE_PROVIDER
+    return result, True
+
+
 def migrate_resources(data: Any) -> tuple[Any, bool]:
     """Upgrade only stored versions; API payloads use current strict models."""
     if not isinstance(data, dict):
         return data, False
-    changed = False
+    data, changed = _normalize_providers(data)
     version = data.get("format_version")
     while type(version) is int and version in _MIGRATIONS:
         data = _MIGRATIONS[version](data)
@@ -223,13 +240,28 @@ def migrate_legacy_snapshot(data: Any) -> Any:
     """Read old session archives without accepting legacy fields in new API requests."""
     if not isinstance(data, dict) or not isinstance(data.get("workflow"), dict):
         return data
-    if any("collector" in source for source in data.get("sources", {}).values()):
-        raise WorkFLowWeaveError("legacy_snapshot_incompatible", "旧 Collector 运行不能恢复执行；已有分析正文仍可读取")
-    migrated = deepcopy(data)
+    migrated, _ = _normalize_providers(deepcopy(data))
     for channel in migrated.get("channels", {}).values():
         if isinstance(channel, dict) and channel.get("channel") == "mock":
             channel["channel"] = "file"
     workflow = migrated["workflow"]
+    if type(workflow.get("include_counts")) is bool:
+        workflow.pop("include_counts")
+    sources = list(migrated.get("sources", {}).values())
+    for override in workflow.get("source_overrides", {}).values():
+        if isinstance(override, dict) and isinstance(override.get("source"), dict):
+            sources.append(override["source"])
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        call = source.get("call")
+        if not isinstance(call, dict) or call.get("kind") not in {"mcp", "cli"}:
+            continue
+        # Early MCP/CLI snapshots serialized unused Collector defaults. Keep
+        # non-default values so strict validation exposes unsupported semantics.
+        for field, default in _RETIRED_SOURCE_DEFAULTS.items():
+            if field in source and type(source[field]) is type(default) and source[field] == default:
+                source.pop(field)
     if LEGACY_SCHEDULE_FIELDS & workflow.keys():
         workflow = migrate_workflow(workflow)
         migrated["workflow"] = workflow
