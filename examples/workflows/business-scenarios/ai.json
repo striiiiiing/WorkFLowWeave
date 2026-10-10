@@ -1,0 +1,25 @@
+{
+  "id": "business_examples_ai",
+  "provider": "openai_compatible_api",
+  "base_url": "https://api.example.com/v1",
+  "api_key": {
+    "kind": "env",
+    "name": "WORKFLOWWEAVE_INSPECTION_API_KEY"
+  },
+  "models": {
+    "gpt-6.1-sol": {
+      "max_tokens": 4500,
+      "reasoning_effort": "medium",
+      "tiktoken_model_name": "gpt-4o",
+      "streaming": true
+    },
+    "gpt-6-luna": {
+      "max_tokens": 16384,
+      "reasoning_effort": "xhigh",
+      "tiktoken_model_name": "gpt-4o",
+      "streaming": true
+    }
+  },
+  "timeout": 900,
+  "retries": 0
+}

@@ -1,0 +1,7 @@
+{
+  "id": "briefing_file",
+  "channel": "file",
+  "options": {
+    "path": "briefing.log"
+  }
+}

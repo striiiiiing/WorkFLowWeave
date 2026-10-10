@@ -1,0 +1,30 @@
+{
+  "id": "axonhub_errors",
+  "display_name": "AxonHub：近期错误（优先）",
+  "call": {
+    "kind": "mcp",
+    "server": "axonhub_inspection_mcp",
+    "tool": "axonhub_recent_errors",
+    "arguments": {
+      "hours": 24,
+      "limit": 60,
+      "fields": [
+        "request_id",
+        "application",
+        "channel",
+        "model",
+        "error",
+        "http_status",
+        "attempt_status",
+        "final_status",
+        "at"
+      ]
+    }
+  },
+  "limits": {
+    "field_tokens": 256,
+    "item_tokens": 5000
+  },
+  "timeout": 30,
+  "on_error": "stop"
+}

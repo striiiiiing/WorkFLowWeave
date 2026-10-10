@@ -1,0 +1,7 @@
+{
+  "id": "business_yfinance",
+  "transport": "stdio",
+  "command": "uvx",
+  "args": ["--python", "3.12", "yfmcp==0.14.0"],
+  "timeout": 120
+}

@@ -1,0 +1,12 @@
+[Unit]
+Description=AxonHub read-only inspection MCP
+After=network.target
+
+[Service]
+WorkingDirectory=%h/opt/workflowweave-inspection-mcp
+ExecStart=%h/opt/workflowServer/.venv/bin/python %h/opt/workflowweave-inspection-mcp/server.py --database %h/opt/axonhub/data/axonhub.db --port 19036
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

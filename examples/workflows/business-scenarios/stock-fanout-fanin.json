@@ -1,0 +1,70 @@
+{
+  "id": "stock_fanout_fanin",
+  "name": "股票分析：固定方向 fan-out → 强模型 fan-in",
+  "sources": [
+    "stock_financials",
+    "stock_valuation",
+    "stock_risk"
+  ],
+  "system_prompt": "你分析的是 NVDA（英伟达）公开资料。所有数值必须写明日期、频率和来源；不能构成投资建议。",
+  "input_prompt": "{input}",
+  "input_processing": {
+    "format": "none",
+    "total_tokens": 15000
+  },
+  "analyses": [
+    {
+      "id": "operations_finance",
+      "ai": "business_examples_ai",
+      "model": "gpt-6-luna",
+      "agent_mode": true,
+      "agent_tools": [
+        "mcp",
+        "read"
+      ],
+      "user_prompt": "你研究NVDA。通过mcp(action=call,server=business_yfinance,tool=yfinance_search,arguments={query:NVDA,search_type:news})做一次真实搜索，然后查询yfinance_get_financials(symbol=NVDA,frequency=annual)与 yfinance_get_ticker_info(symbol=NVDA)。不知道参数先用describe。不要在mcp目录中搜索公司名、不要反复search目录。只串行调用工具。结果截断时使用read读取artifact_path并分页，不重复同一网络请求。最多3次业务查询。负责经营财务：收入、利润、现金流、增长和财报日期。 输出800字内中文研究及URL，缺数据必须说缺失，禁止捏造。"
+    },
+    {
+      "id": "valuation_market",
+      "ai": "business_examples_ai",
+      "model": "gpt-6-luna",
+      "agent_mode": true,
+      "agent_tools": [
+        "mcp",
+        "read"
+      ],
+      "user_prompt": "你研究NVDA。通过mcp(action=call,server=business_yfinance,tool=yfinance_search,arguments={query:NVDA,search_type:news})做一次真实搜索，然后查询yfinance_get_price_history(symbol=NVDA,period=1y,interval=1wk)与 yfinance_get_analyst_price_targets(symbol=NVDA)。不知道参数先用describe。不要在mcp目录中搜索公司名、不要反复search目录。只串行调用工具。结果截断时使用read读取artifact_path并分页，不重复同一网络请求。最多3次业务查询。负责估值行情：价格区间、币种、估值口径、分析师目标与日期。 输出800字内中文研究及URL，缺数据必须说缺失，禁止捏造。"
+    },
+    {
+      "id": "risk_events",
+      "ai": "business_examples_ai",
+      "model": "gpt-6-luna",
+      "agent_mode": true,
+      "agent_tools": [
+        "mcp",
+        "read"
+      ],
+      "user_prompt": "你研究NVDA。通过mcp(action=call,server=business_yfinance,tool=yfinance_search,arguments={query:NVDA,search_type:news})做一次真实搜索。不知道参数先用describe。不要在mcp目录中搜索公司名、不要反复search目录。只串行调用工具。结果截断时使用read读取artifact_path并分页，不重复同一网络请求。负责风险事件：监管、供应链、竞争与重大新闻，核对新闻和NVDA相关性。只报告搜索实际支持的事件，没找到相应证据就写缺失。输出800字内中文研究及URL，禁止捏造。"
+    }
+  ],
+  "fan_in": {
+    "ai": "business_examples_ai",
+    "model": "gpt-6.1-sol",
+    "reuse_from": null,
+    "order": [
+      "operations_finance",
+      "valuation_market",
+      "risk_events"
+    ],
+    "single_task_optimization": false,
+    "user_prompt": "汇总三个方向的研究，不重新声称调用未提供的工具。先给数据截止时间，再给经营、估值、风险的共识与分歧；指出互相冲突的数字、证据缺口和需要人工复核的项目。最后给条件式观察结论，不给买卖指令。"
+  },
+  "channels": [
+    "business_qq"
+  ],
+  "analysis_failure": "continue",
+  "send_partial": true,
+  "collection_concurrency": 1,
+  "analysis_concurrency": 1,
+  "schedule": null
+}
