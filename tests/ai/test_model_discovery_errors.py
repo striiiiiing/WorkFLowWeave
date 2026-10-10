@@ -17,11 +17,11 @@ async def test_non_json_model_catalog_keeps_diagnostic_without_retry(body):
         return httpx.Response(200, text=body)
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
-        service = AIService(channel_factories={"http": OpenAIChannelFactory(client)})
+        service = AIService(channel_factories={"openai_compatible_api": OpenAIChannelFactory(client)})
         try:
             with pytest.raises(WorkFLowWeaveError) as caught:
                 await service.list_models(AIConfig(
-                    id="provider", provider="http", base_url="http://provider.test/v1", retries=3,
+                    id="provider", provider="openai_compatible_api", base_url="http://provider.test/v1", retries=3,
                 ))
             error = caught.value.info
             assert error.code == "invalid_response"

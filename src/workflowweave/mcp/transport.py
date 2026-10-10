@@ -2,13 +2,15 @@
 from contextlib import AsyncExitStack, asynccontextmanager
 
 import httpx
-from mcp import ClientSession, StdioServerParameters
+from mcp import ClientSession, McpError, StdioServerParameters
 from mcp.client.sse import sse_client
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.types import (
-    ClientRequest,
-    JSONRPCRequest,
+    INVALID_PARAMS,
+    METHOD_NOT_FOUND,
+    ErrorData,
+    Request,
     ServerNotification,
     ServerResult,
     ToolListChangedNotification,
@@ -27,12 +29,20 @@ class CatalogSession:
         return result
 
     async def discover(self):
-        return await self.session.send_request(
-            ClientRequest(root=JSONRPCRequest(
-                method="server/discover", params={}, jsonrpc="2.0", id=1,
-            )),
-            ServerResult,
-        )
+        try:
+            return await self.session.send_request(
+                Request(method="server/discover", params={}),
+                ServerResult,
+            )
+        except McpError as exc:
+            # Python MCP's request-union parser rejects unknown methods with
+            # this exact response before dispatch, even for valid empty params.
+            # Normalize only that SDK response; parameter and auth errors fail.
+            if (exc.error.code == INVALID_PARAMS
+                    and exc.error.message == "Invalid request parameters"
+                    and exc.error.data == ""):
+                raise McpError(ErrorData(code=METHOD_NOT_FOUND, message="Method not found")) from exc
+            raise
 
     async def call_tool(self, tool, arguments):
         return await self.session.call_tool(tool, arguments)

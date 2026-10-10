@@ -15,7 +15,7 @@ def workflow_mcp_binding(snapshot) -> dict:
         "sources": [{"source": source.id, "server": source.call.server, "tool": source.call.tool,
                      "arguments": source.call.arguments}
                     for source in snapshot.sources.values()
-                    if source.call is not None and source.call.kind == "mcp"],
+                    if source.call.kind == "mcp"],
     }
 
 

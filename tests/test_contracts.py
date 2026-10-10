@@ -14,7 +14,7 @@ from pydantic import TypeAdapter, ValidationError
 from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.models import (
     CollectionContext,
-    CollectorOutput,
+    CollectionResult,
     ErrorInfo,
     JSONValue,
     SourceConfig,
@@ -26,51 +26,48 @@ from workflowweave.schema import schema_defaults, validate_instance, validate_sc
 @pytest.mark.parametrize("timeout", ["invalid", 0, -1, math.inf, math.nan])
 def test_seconds_are_positive_and_finite(timeout):
     with pytest.raises(ValidationError):
-        SourceConfig(id="source", collector="mock", timeout=timeout)
+        SourceConfig(id="source", call={"kind": "cli", "mode": "argv", "executable": "printf"}, timeout=timeout)
 
 
 @pytest.mark.parametrize("identifier", ["../source", "bad/id", "", "a" * 81, "a\n", "中文"])
 def test_identifiers_are_not_paths(identifier):
     with pytest.raises(ValidationError):
-        SourceConfig(id=identifier, collector="mock")
+        SourceConfig(id=identifier, call={"kind": "cli", "mode": "argv", "executable": "printf"})
 
 
 @pytest.mark.parametrize("value", [math.nan, math.inf, {1: "value"}, (1, 2), datetime.now(UTC)])
 def test_extension_data_is_json(value):
     with pytest.raises(ValidationError):
-        SourceConfig(id="source", collector="mock", options={"data": value})
+        SourceConfig(id="source", call={"kind": "mcp", "server": "server", "tool": "read", "arguments": {"data": value}})
 
 
 def test_top_level_fields_forbid_extras_and_copy_extension_data():
     with pytest.raises(ValidationError):
-        SourceConfig(id="source", collector="mock", unknown=True)
+        SourceConfig(id="source", call={"kind": "cli", "mode": "argv", "executable": "printf"}, unknown=True)
     with pytest.raises(ValidationError):
         SystemConfig(port=0)
-    options = {"records": [{"message": "before"}]}
-    source = SourceConfig(id="source", collector="mock", options=options)
-    options["records"][0]["message"] = "after"
-    assert source.options["records"][0]["message"] == "before"
-    assert SourceConfig(id="other", collector="mock").options == {}
+    arguments = {"records": [{"message": "before"}]}
+    source = SourceConfig(id="source", call={"kind": "mcp", "server": "server", "tool": "read", "arguments": arguments})
+    arguments["records"][0]["message"] = "after"
+    assert source.call.arguments["records"][0]["message"] == "before"
+    assert SourceConfig(id="other", call={"kind": "mcp", "server": "server", "tool": "read"}).call.arguments == {}
     assert SourceConfig.model_validate_json(source.model_dump_json()) == source
 
 
 @pytest.mark.parametrize(
     "data",
     [
-        {"status": "success", "count": 1, "text": " "},
-        {"status": "success", "count": True, "text": "text"},
-        {"status": "success", "count": 0, "text": "text"},
-        {"status": "empty", "count": 1},
-        {"status": "filtered_empty", "items": [{"a": 1}]},
+        {"status": "success"},
+        {"status": "success", "raw": {}, "error": ErrorInfo(code="error", message="error")},
         {"status": "failed"},
+        {"status": "timeout"},
         {"status": "cancelled"},
-        {"status": "missing", "count": -1},
         {"status": "empty", "error": ErrorInfo(code="error", message="error")},
     ],
 )
-def test_output_states_cannot_hide_failures_or_partial_text(data):
+def test_collection_states_cannot_hide_failures_or_missing_raw(data):
     with pytest.raises(ValidationError):
-        CollectorOutput.model_validate(data)
+        CollectionResult.model_validate({"source_id": "source", **data})
 
 
 def test_context_is_separate_from_persistent_models():

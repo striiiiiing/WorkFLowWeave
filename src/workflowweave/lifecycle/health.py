@@ -187,25 +187,29 @@ def _component_error(component: str, exc: Exception) -> ErrorInfo:
 
 
 def capability_diagnostics(services: ApplicationServices) -> list[ErrorInfo]:
-    """按能力分组报告已保存资源的缺失插件引用，并排序以稳定诊断输出。"""
+    """报告缺失能力与独立接收故障，不把可选插件故障升级为核心不可用。"""
     servers = {item.id for item in services.resources.list("mcp_servers") if item.enabled}
     channels = {item.name for item in services.channels.describe()}
     missing: dict[tuple[str, str], list[str]] = {}
     for value in services.resources.list("sources"):
         source = SourceConfig.model_validate(value)
-        if source.call is not None and source.call.kind == "mcp" and source.call.server not in servers:
+        if source.call.kind == "mcp" and source.call.server not in servers:
             missing.setdefault(("mcp_server", source.call.server), []).append(source.id)
     for value in services.resources.list("channels"):
         channel = ChannelConfig.model_validate(value)
         if channel.channel not in channels:
             missing.setdefault(("channel", channel.channel), []).append(channel.id)
-    return [
+    missing_errors = [
         ErrorInfo(
             code="capability_missing",
             message="已保存资源引用的插件能力不可用",
             details={"kind": kind, "name": name, "resources": sorted(resources)},
         )
         for (kind, name), resources in sorted(missing.items())
+    ]
+    return missing_errors + [
+        error.model_copy(deep=True)
+        for _, error in sorted(services.channels.receiver_errors.items())
     ]
 
 

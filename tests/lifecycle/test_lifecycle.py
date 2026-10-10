@@ -19,6 +19,8 @@ import pytest
 from sqlalchemy import URL
 from sqlmodel import Session, create_engine, func, select
 
+from tests.fixtures.plugin_helpers import install_channel_plugin
+from tests.workflow_ai_helpers import TestChannelFactory
 from workflowweave.channel import builtin_channels
 from workflowweave.config import PluginRegistry, ResourceStore
 from workflowweave.errors import WorkFLowWeaveError
@@ -32,29 +34,24 @@ from workflowweave.models import (
     WorkflowDefinition,
 )
 from workflowweave.workflow.storage.models import SessionEntry, SessionHeader
-from tests.fixtures.plugin_helpers import install_channel_plugin
-from tests.workflow_ai_helpers import TestChannelFactory
 
-_COLLECTOR_PLUGIN = """
-from workflowweave.models import CollectorOutput
-
-class ExternalCollector:
+_CHANNEL_PLUGIN = """
+class ExternalChannelType:
     name = "external"
-    description = "External lifecycle test collector"
-    fields = []
-    count_unit = "records"
+    description = "External lifecycle test channel"
+    capabilities = ["notification"]
     options_schema = {"type": "object", "additionalProperties": False}
-    setters_schema = {"type": "object", "additionalProperties": False}
 
-    async def collect(self, options, setters, context):
-        return CollectorOutput(status="success", text="external-data", count=1)
+    async def create(self, config, credentials):
+        raise AssertionError("This plugin tests discovery only")
 
 class Plugin:
     def register(self, api):
-        api.register_collector(ExternalCollector())
+        api.register_channel(ExternalChannelType())
 
 plugin = Plugin()
 """
+
 
 
 def _channel_plugin(prefix: str) -> str:
@@ -146,7 +143,7 @@ def _write_plugin(
     plugin_id: str,
     body: str,
     *,
-    kind: str = "collector",
+    kind: str = "channel",
 ) -> Path:
     root = Path(root)
     package = root / plugin_id
@@ -171,7 +168,7 @@ def _write_plugin(
 async def _seed_resources(
     config: SystemConfig,
     *,
-    collector: str = "mock",
+    source_text: str = "WorkFLowWeave mock record",
     channel: str | None = None,
     channel_path: Path | None = None,
     interval: float = 10.0,
@@ -180,19 +177,17 @@ async def _seed_resources(
     if channel == "file":
         install_channel_plugin("file", config.plugin_dir)
     registry = PluginRegistry(
-        [],
         builtin_channels=builtin_channels(),
     )
     await registry.discover_plugins(config)
     store = ResourceStore(
         Path(config.data_dir) / "resources.json",
-        collector_register=registry.collectorRegister,
         channel_register=registry.channelRegister,
         data_dir=config.data_dir,
     )
     store.save("sources", SourceConfig(id="source", call={
         "kind": "cli", "mode": "argv", "executable": "printf",
-        "argv": ["%s", "external-data" if collector == "external" else "WorkFLowWeave mock record"],
+        "argv": ["%s", source_text],
     }))
     if channel is not None:
         store.save(
@@ -243,7 +238,7 @@ def _has_lifecycle_handler() -> bool:
 async def test_start_failure_retains_diagnostic_and_cleans_owned_resources(tmp_path):
     class BrokenSaver:
         async def setup(self):
-            raise RuntimeError("checkpoint setup failed")
+            raise RuntimeError("checkpoint setup failed: secret-token")
 
     class CheckpointerContext:
         def __init__(self):
@@ -269,6 +264,9 @@ async def test_start_failure_retains_diagnostic_and_cleans_owned_resources(tmp_p
 
     assert caught.value.code == "lifecycle_start_failed"
     assert lifecycle.failure.details["stage"] == "checkpointer"
+    assert "checkpointer" in str(caught.value)
+    assert "RuntimeError" in str(caught.value)
+    assert "secret-token" not in str(caught.value)
     assert context.entered and context.exited
     assert lifecycle._services is None
     assert lifecycle._session_store is None
@@ -280,6 +278,35 @@ async def test_start_failure_retains_diagnostic_and_cleans_owned_resources(tmp_p
     assert health.accepting_runs is False
     with pytest.raises(WorkFLowWeaveError, match="应用启动失败"):
         await lifecycle.start()
+
+
+async def test_invalid_resources_startup_reports_field_without_input(tmp_path):
+    path = tmp_path / "data" / "resources.json"
+    ResourceStore(path)
+    data = json.loads(path.read_text())
+    data["sources"]["broken"] = {
+        "id": "broken",
+        "call": {"kind": "cli", "mode": "argv", "executable": "echo"},
+        "collector": "secret-input-value",
+    }
+    path.write_text(json.dumps(data))
+    lifecycle = ApplicationLifecycle(_config(tmp_path), channel_factories={})
+
+    with pytest.raises(WorkFLowWeaveError) as caught:
+        await lifecycle.start()
+
+    error = caught.value
+    assert error.details["stage"] == "resources"
+    assert error.details["reason"] == "invalid_config"
+    assert error.details["reason_details"] == {
+        "errors": [{"path": ["sources", "broken", "collector"], "reason": "extra_forbidden"}],
+    }
+    assert "collector" in str(error)
+    assert "secret-input-value" not in str(error)
+    assert lifecycle._session_store is None
+    assert lifecycle._checkpointer_context is None
+    assert lifecycle._log_sink is None
+    assert not _has_lifecycle_handler()
 
 
 async def test_temporary_config_full_assembly_health_and_idempotent_shutdown(tmp_path):
@@ -303,7 +330,6 @@ async def test_temporary_config_full_assembly_health_and_idempotent_shutdown(tmp
     )
 
     services = await lifecycle.start()
-    assert services.collectors.describe() == []
     assert {item.name for item in services.channels.describe()} == {"web"}
     assert services.channels._entries == {}
     health = await lifecycle.health()
@@ -468,8 +494,8 @@ async def test_shutdown_waits_for_admitted_interval_archive_before_stopping(tmp_
 
 async def test_plugin_reload_conflict_restores_admission_and_later_success_recovers(tmp_path):
     config = _config(tmp_path, max_concurrent_runs=1)
-    _write_plugin(config.plugin_dir, "external", _COLLECTOR_PLUGIN)
-    await _seed_resources(config, collector="external")
+    _write_plugin(config.plugin_dir, "external", _CHANNEL_PLUGIN)
+    await _seed_resources(config, source_text="external-data")
     provider = BlockingChannelFactory()
     lifecycle = ApplicationLifecycle(config, channel_factories={"mock": provider})
     services = await lifecycle.start()
@@ -481,7 +507,7 @@ async def test_plugin_reload_conflict_restores_admission_and_later_success_recov
     assert caught.value.code == "plugin_reload_conflict"
     assert services.workflow.coordinator.accepting is True
     assert services.intervals.paused is False
-    assert "external" in {item.name for item in services.plugins.collectorRegister.describe()}
+    assert "external" in {item.name for item in services.plugins.channelRegister.describe()}
     assert (await lifecycle.health()).status == "degraded"
 
     await services.workflow.cancel("active")
@@ -517,8 +543,8 @@ async def test_plugin_reload_conflict_includes_active_agent_turn(tmp_path):
 
 async def test_invalid_plugin_degrades_and_fixed_reload_recovers_saved_resource(tmp_path):
     config = _config(tmp_path)
-    entry = _write_plugin(config.plugin_dir, "external", _COLLECTOR_PLUGIN)
-    await _seed_resources(config, collector="external")
+    entry = _write_plugin(config.plugin_dir, "external", _CHANNEL_PLUGIN)
+    await _seed_resources(config, source_text="external-data")
     entry.write_text("raise RuntimeError('broken plugin')\n", encoding="utf-8")
 
     lifecycle = ApplicationLifecycle(config, channel_factories={"mock": TestChannelFactory()})
@@ -530,7 +556,7 @@ async def test_invalid_plugin_degrades_and_fixed_reload_recovers_saved_resource(
     assert plugin_component.status == "degraded"
     assert plugin_component.error is not None
 
-    entry.write_text(_COLLECTOR_PLUGIN, encoding="utf-8")
+    entry.write_text(_CHANNEL_PLUGIN, encoding="utf-8")
     report = await lifecycle.reload("plugins")
     assert report.errors == []
     assert (await lifecycle.health()).status == "ready"
@@ -886,8 +912,8 @@ async def test_cancelled_plugin_reload_finishes_without_partial_publish(tmp_path
 
 async def test_plugin_publish_failure_requires_explicit_successful_reload(tmp_path):
     config = _config(tmp_path)
-    _write_plugin(config.plugin_dir, "external", _COLLECTOR_PLUGIN)
-    await _seed_resources(config, collector="external")
+    _write_plugin(config.plugin_dir, "external", _CHANNEL_PLUGIN)
+    await _seed_resources(config, source_text="external-data")
     lifecycle = ApplicationLifecycle(config, channel_factories={"mock": TestChannelFactory()})
     services = await lifecycle.start()
     try:

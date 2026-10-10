@@ -1248,8 +1248,8 @@ wheels = [
 ]
 
 [[package]]
-name = "lark-oapi"
-version = "1.7.3"
+name = "lark-channel-sdk"
+version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
@@ -1258,113 +1258,9 @@ dependencies = [
     { name = "requests-toolbelt" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8f/5f/a0cc291039501fae117602074006508c17d6c9c83f1daa61b8d029004662/lark_oapi-1.7.3.tar.gz", hash = "sha256:e532e57fa295a1cc10e3432191f80638a082a190dc678cb2eddb6de301ff3573", size = 2346519, upload-time = "2026-08-19T09:27:42.208Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/79/d4/8a71bedd95cf852ae2e368851b11ebc7015810995e99907c3cc2e547979d/lark_channel_sdk-1.4.0.tar.gz", hash = "sha256:603f97ead821e22749e34fca1e52539cc86858bb9f2679c613923182a504958d", size = 454265, upload-time = "2026-08-31T12:44:48.728Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7c/65/91961331ba56308101cb932d446bd1b80e7d23234e498cefc6384ca04018/lark_oapi-1.7.3-py3-none-any.whl", hash = "sha256:c91f00087b7977dc9059ab492e8fe435e1a873863dca1d4e660d2be5b801e4cd", size = 7708570, upload-time = "2026-08-19T09:27:33.078Z" },
-]
-
-[[package]]
-name = "workflowweave"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "aiorwlock" },
-    { name = "aiosqlite" },
-    { name = "apscheduler" },
-    { name = "cron-descriptor" },
-    { name = "cryptography" },
-    { name = "fastapi" },
-    { name = "httpx" },
-    { name = "ison-py" },
-    { name = "jsonschema", extra = ["format"] },
-    { name = "langchain" },
-    { name = "langchain-core" },
-    { name = "langchain-openai" },
-    { name = "langgraph" },
-    { name = "langgraph-checkpoint-sqlite" },
-    { name = "mcp" },
-    { name = "openai" },
-    { name = "orjson" },
-    { name = "pydantic" },
-    { name = "sqlmodel" },
-    { name = "tiktoken" },
-    { name = "toon-format" },
-    { name = "typer" },
-    { name = "uvicorn" },
-    { name = "websockets" },
-    { name = "zon-format" },
-]
-
-[package.optional-dependencies]
-channels = [
-    { name = "aiosmtplib" },
-    { name = "lark-oapi" },
-    { name = "python-telegram-bot" },
-    { name = "qq-botpy" },
-]
-email = [
-    { name = "aiosmtplib" },
-]
-feishu = [
-    { name = "lark-oapi" },
-]
-qq = [
-    { name = "qq-botpy" },
-]
-telegram = [
-    { name = "python-telegram-bot" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiorwlock", specifier = ">=1.5.1,<2" },
-    { name = "aiosmtplib", marker = "extra == 'channels'", specifier = ">=3,<6" },
-    { name = "aiosmtplib", marker = "extra == 'email'", specifier = ">=3,<6" },
-    { name = "aiosqlite", specifier = ">=0.20,<0.22" },
-    { name = "apscheduler", specifier = ">=3.11,<4" },
-    { name = "cron-descriptor", specifier = ">=2,<3" },
-    { name = "cryptography", specifier = ">=44,<47" },
-    { name = "fastapi", specifier = ">=0.135.1,<1" },
-    { name = "httpx", specifier = ">=0.27,<1" },
-    { name = "ison-py", specifier = "==1.2.0" },
-    { name = "jsonschema", extras = ["format"], specifier = ">=4.23,<5" },
-    { name = "langchain", specifier = ">=1.4.2,<2" },
-    { name = "langchain-core", specifier = ">=1.6.4,<2" },
-    { name = "langchain-openai", specifier = ">=1.6.2,<2" },
-    { name = "langgraph", specifier = ">=1.2.12,<2" },
-    { name = "langgraph-checkpoint-sqlite", specifier = ">=3.1.1,<4" },
-    { name = "lark-oapi", marker = "extra == 'channels'", specifier = "==1.7.3" },
-    { name = "lark-oapi", marker = "extra == 'feishu'", specifier = "==1.7.3" },
-    { name = "mcp", specifier = ">=1.26,<2" },
-    { name = "openai", specifier = ">=3.4,<4" },
-    { name = "orjson", specifier = ">=3.12.0" },
-    { name = "pydantic", specifier = ">=2.10,<3" },
-    { name = "python-telegram-bot", marker = "extra == 'channels'", specifier = ">=22.8,<23" },
-    { name = "python-telegram-bot", marker = "extra == 'telegram'", specifier = ">=22.8,<23" },
-    { name = "qq-botpy", marker = "extra == 'channels'", specifier = "==1.2.1" },
-    { name = "qq-botpy", marker = "extra == 'qq'", specifier = "==1.2.1" },
-    { name = "sqlmodel", specifier = ">=0.0.42,<0.1" },
-    { name = "tiktoken", specifier = ">=0.12,<1" },
-    { name = "toon-format", git = "https://github.com/toon-format/toon-python.git?rev=e475c82e9da03dfaf88c0b277dee6b5d17100b13" },
-    { name = "typer", specifier = ">=0.15,<1" },
-    { name = "uvicorn", specifier = ">=0.34,<1" },
-    { name = "websockets", specifier = ">=15,<17" },
-    { name = "zon-format", specifier = ">=1.2.3" },
-]
-provides-extras = ["email", "qq", "feishu", "telegram", "channels"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=8.3,<10" },
-    { name = "pytest-asyncio", specifier = ">=0.25,<2" },
-    { name = "ruff", specifier = ">=0.11" },
+    { url = "https://files.pythonhosted.org/packages/fe/28/954d53bf93913c25bd28b6755284df135e0704ee71a7ffae236e3ea3c279/lark_channel_sdk-1.4.0-py3-none-any.whl", hash = "sha256:5466fc5e92b6405795e3cd8ea7ed570a83cab2bc095ac446f786f2a34ee58eb5", size = 633320, upload-time = "2026-08-31T12:44:46.887Z" },
 ]
 
 [[package]]
@@ -2980,6 +2876,110 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/86/eb/20b6cdf273913d0ad05a6a14aed4b9a85591c18a987a3d47f20fa13dcc47/websockets-15.0.1-cp313-cp313-win32.whl", hash = "sha256:ba9e56e8ceeeedb2e080147ba85ffcd5cd0711b89576b83784d8605a7df455fa", size = 176393, upload-time = "2025-03-05T20:02:53.814Z" },
     { url = "https://files.pythonhosted.org/packages/1b/6c/c65773d6cab416a64d191d6ee8a8b1c68a09970ea6909d16965d26bfed1e/websockets-15.0.1-cp313-cp313-win_amd64.whl", hash = "sha256:e09473f095a819042ecb2ab9465aee615bd9c2028e4ef7d933600a8401c79561", size = 176837, upload-time = "2025-03-05T20:02:55.237Z" },
     { url = "https://files.pythonhosted.org/packages/fa/a8/5b41e0da817d64113292ab1f8247140aac61cbf6cfd085d6a0fa77f4984f/websockets-15.0.1-py3-none-any.whl", hash = "sha256:f7a866fbc1e97b5c617ee4116daaa09b722101d4a3c170c787450ba409f9736f", size = 169743, upload-time = "2025-03-05T20:03:39.41Z" },
+]
+
+[[package]]
+name = "workflowweave"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "aiorwlock" },
+    { name = "aiosqlite" },
+    { name = "apscheduler" },
+    { name = "cron-descriptor" },
+    { name = "cryptography" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "ison-py" },
+    { name = "jsonschema", extra = ["format"] },
+    { name = "langchain" },
+    { name = "langchain-core" },
+    { name = "langchain-openai" },
+    { name = "langgraph" },
+    { name = "langgraph-checkpoint-sqlite" },
+    { name = "mcp" },
+    { name = "openai" },
+    { name = "orjson" },
+    { name = "pydantic" },
+    { name = "sqlmodel" },
+    { name = "tiktoken" },
+    { name = "toon-format" },
+    { name = "typer" },
+    { name = "uvicorn" },
+    { name = "websockets" },
+    { name = "zon-format" },
+]
+
+[package.optional-dependencies]
+channels = [
+    { name = "aiosmtplib" },
+    { name = "lark-channel-sdk" },
+    { name = "python-telegram-bot" },
+    { name = "qq-botpy" },
+]
+email = [
+    { name = "aiosmtplib" },
+]
+feishu = [
+    { name = "lark-channel-sdk" },
+]
+qq = [
+    { name = "qq-botpy" },
+]
+telegram = [
+    { name = "python-telegram-bot" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiorwlock", specifier = ">=1.5.1,<2" },
+    { name = "aiosmtplib", marker = "extra == 'channels'", specifier = ">=3,<6" },
+    { name = "aiosmtplib", marker = "extra == 'email'", specifier = ">=3,<6" },
+    { name = "aiosqlite", specifier = ">=0.20,<0.22" },
+    { name = "apscheduler", specifier = ">=3.11,<4" },
+    { name = "cron-descriptor", specifier = ">=2,<3" },
+    { name = "cryptography", specifier = ">=44,<47" },
+    { name = "fastapi", specifier = ">=0.135.1,<1" },
+    { name = "httpx", specifier = ">=0.27,<1" },
+    { name = "ison-py", specifier = "==1.2.0" },
+    { name = "jsonschema", extras = ["format"], specifier = ">=4.23,<5" },
+    { name = "langchain", specifier = ">=1.4.2,<2" },
+    { name = "langchain-core", specifier = ">=1.6.4,<2" },
+    { name = "langchain-openai", specifier = ">=1.6.2,<2" },
+    { name = "langgraph", specifier = ">=1.2.12,<2" },
+    { name = "langgraph-checkpoint-sqlite", specifier = ">=3.1.1,<4" },
+    { name = "lark-channel-sdk", marker = "extra == 'channels'", specifier = "==1.4.0" },
+    { name = "lark-channel-sdk", marker = "extra == 'feishu'", specifier = "==1.4.0" },
+    { name = "mcp", specifier = ">=1.26,<2" },
+    { name = "openai", specifier = ">=3.4,<4" },
+    { name = "orjson", specifier = ">=3.12.0" },
+    { name = "pydantic", specifier = ">=2.10,<3" },
+    { name = "python-telegram-bot", marker = "extra == 'channels'", specifier = ">=22.8,<23" },
+    { name = "python-telegram-bot", marker = "extra == 'telegram'", specifier = ">=22.8,<23" },
+    { name = "qq-botpy", marker = "extra == 'channels'", specifier = "==1.2.1" },
+    { name = "qq-botpy", marker = "extra == 'qq'", specifier = "==1.2.1" },
+    { name = "sqlmodel", specifier = ">=0.0.42,<0.1" },
+    { name = "tiktoken", specifier = ">=0.12,<1" },
+    { name = "toon-format", git = "https://github.com/toon-format/toon-python.git?rev=e475c82e9da03dfaf88c0b277dee6b5d17100b13" },
+    { name = "typer", specifier = ">=0.15,<1" },
+    { name = "uvicorn", specifier = ">=0.34,<1" },
+    { name = "websockets", specifier = ">=15,<17" },
+    { name = "zon-format", specifier = ">=1.2.3" },
+]
+provides-extras = ["email", "qq", "feishu", "telegram", "channels"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.3,<10" },
+    { name = "pytest-asyncio", specifier = ">=0.25,<2" },
+    { name = "ruff", specifier = ">=0.11" },
 ]
 
 [[package]]

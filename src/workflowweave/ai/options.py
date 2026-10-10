@@ -7,7 +7,6 @@ from workflowweave.models import AIConfig
 
 REASONING_EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
 OPENAI_COMPATIBLE_PROVIDER = "openai_compatible_api"
-LEGACY_HTTP_PROVIDER = "http"
 _MANAGED_OPTIONS = frozenset({
     "temperature", "top_k", "model", "messages", "api_key", "base_url", "timeout",
     "retries", "max_retries", "stream", "stream_options", "headers", "extra_headers",
@@ -32,7 +31,7 @@ def validate_config(config: AIConfig, providers, model: str | None = None) -> No
             "provider_missing", "API 格式不可用，请选择 OpenAI Compatible API",
             {"field": "provider", "available": ["OpenAI Compatible API"]},
         )
-    if config.provider in {OPENAI_COMPATIBLE_PROVIDER, LEGACY_HTTP_PROVIDER}:
+    if config.provider == OPENAI_COMPATIBLE_PROVIDER:
         parsed = urlparse(config.base_url or "")
         try:
             port = parsed.port
@@ -45,6 +44,13 @@ def validate_config(config: AIConfig, providers, model: str | None = None) -> No
     if model is not None and model not in config.models:
         raise WorkFLowWeaveError("invalid_config", "选择的 AI model 不存在", {"field": "model"})
     for options in config.models.values():
+        if "tiktoken_model_name" in options and (
+            not isinstance(options["tiktoken_model_name"], str)
+            or not options["tiktoken_model_name"].strip()
+        ):
+            raise WorkFLowWeaveError("invalid_config", "tiktoken_model_name 必须是非空字符串")
+        if "streaming" in options and type(options["streaming"]) is not bool:
+            raise WorkFLowWeaveError("invalid_config", "streaming 必须是布尔值")
         bad = sorted(_MANAGED_OPTIONS & options.keys())
         if bad:
             raise WorkFLowWeaveError("invalid_config", "模型参数覆盖管理字段", {"fields": bad})

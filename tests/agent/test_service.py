@@ -7,6 +7,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from langchain_core.outputs import ChatGenerationChunk
 from pydantic import Field
 
+from tests.agent.helpers import ScriptedModel
 from workflowweave.agent.config import AgentConfig
 from workflowweave.agent.context.budget import summarization_middleware, validate_request_budget
 from workflowweave.agent.context.compaction import summarize_once
@@ -15,7 +16,6 @@ from workflowweave.agent.storage.events import EventLog
 from workflowweave.agent.tools.declaration import ToolDeclaration
 from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.interaction.fastapi.agent import create_agent_service
-from tests.agent.helpers import ScriptedModel
 
 
 class DelayedModel(BaseChatModel):
@@ -46,6 +46,7 @@ class DelayedModel(BaseChatModel):
 
 class FailingStreamModel(BaseChatModel):
     seen: list[list[object]] = Field(default_factory=list)
+    publish: bool = True
 
     @property
     def _llm_type(self):
@@ -59,9 +60,21 @@ class FailingStreamModel(BaseChatModel):
 
     async def _astream(self, messages, stop=None, run_manager=None, **kwargs) -> AsyncIterator[ChatGenerationChunk]:
         self.seen.append(list(messages))
-        yield ChatGenerationChunk(message=AIMessageChunk(content="partial"))
+        if self.publish:
+            yield ChatGenerationChunk(message=AIMessageChunk(content="partial"))
         await asyncio.sleep(0)
         raise RuntimeError("stream failed after publication")
+
+
+class PausingStreamModel(FailingStreamModel):
+    paused: asyncio.Event = Field(default_factory=asyncio.Event)
+
+    async def _astream(self, messages, stop=None, run_manager=None, **kwargs) -> AsyncIterator[ChatGenerationChunk]:
+        self.seen.append(list(messages))
+        if self.publish:
+            yield ChatGenerationChunk(message=AIMessageChunk(content="partial"))
+        self.paused.set()
+        await asyncio.sleep(30)
 
 
 async def test_event_log_reuses_completed_tool_and_marks_restart_unknown(tmp_path):
@@ -346,8 +359,9 @@ async def test_agent_total_timeout_uses_ai_config_and_releases_model_turn(tmp_pa
     assert service.sessions[session["session_id"]].status == "failed"
 
 
-async def test_stream_failure_after_delta_is_terminal_without_retry_or_duplicate_delta(tmp_path):
-    model = FailingStreamModel()
+@pytest.mark.parametrize("publish", [False, True])
+async def test_stream_failure_is_terminal_without_retry_or_duplicate_delta(tmp_path, publish):
+    model = FailingStreamModel(publish=publish)
     service = create_agent_service(
         tmp_path / "workspace", tmp_path / "runtime",
         config=AgentConfig(idle_timeout=1), model_provider=lambda _: model,
@@ -359,10 +373,86 @@ async def test_stream_failure_after_delta_is_terminal_without_retry_or_duplicate
     events = await service.events(session["session_id"])
     deltas = [event for event in events if event["type"] == "message.delta"]
     failures = [event for event in events if event["type"] == "turn.failed"]
-    assert [event["content"] for event in deltas] == ["partial"]
+    assert [event["content"] for event in deltas] == (["partial"] if publish else [])
     assert len(model.seen) == 1
-    assert failures and failures[-1]["partial"] is True
+    assert failures and failures[-1]["partial"] is publish
     assert not any(event["type"] == "turn.completed" for event in events)
+
+
+@pytest.mark.parametrize("publish", [False, True])
+@pytest.mark.parametrize("mode", ["idle", "total", "cancel"])
+async def test_stream_partial_uses_persisted_deltas_for_timeout_and_cancel(tmp_path, publish, mode):
+    from workflowweave.models import AIConfig
+
+    model = PausingStreamModel(publish=publish)
+    service = create_agent_service(
+        tmp_path / "workspace", tmp_path / "runtime",
+        config=AgentConfig(idle_timeout=0.1 if mode == "idle" else 1),
+        ai_config=AIConfig(id="test-ai", provider="mock", models={"stream": {}},
+                           timeout=0.5 if mode == "total" else 10),
+        model_provider=lambda _: model,
+    )
+    session = await service.create_session(model="stream")
+    sid = session["session_id"]
+    accepted = await service.submit(sid, "hello", request_id="partial-1")
+    if mode == "cancel":
+        async with asyncio.timeout(5):
+            await model.paused.wait()
+            if publish:
+                log = service.repository.log(sid)
+                after = 0
+                while True:
+                    events = await log.wait_for_events(after)
+                    if any(event["type"] == "message.delta" for event in events):
+                        break
+                    after = events[-1]["id"]
+        await service.cancel(sid)
+        with pytest.raises(asyncio.CancelledError):
+            await service.wait(accepted["turn_id"])
+    else:
+        with pytest.raises(WorkFLowWeaveError) as error:
+            await service.wait(accepted["turn_id"])
+        assert error.value.code == ("model_idle_timeout" if mode == "idle" else "ai_timeout")
+    events = await service.events(sid)
+    terminal = [event for event in events if event["type"] in {"turn.failed", "turn.cancelled"}]
+    assert len(terminal) == 1 and terminal[0]["partial"] is publish
+    assert len([event for event in events if event["type"] == "message.delta"]) == int(publish)
+    assert len(model.seen) == 1
+
+
+@pytest.mark.parametrize("failure", ["append_error", "cancel_after_commit"])
+async def test_partial_tracks_the_durable_delta_when_append_fails_or_is_cancelled(tmp_path, monkeypatch, failure):
+    committed = asyncio.Event()
+    original_append = EventLog.append
+
+    async def append(log, event_type, **fields):
+        if event_type != "message.delta":
+            return await original_append(log, event_type, **fields)
+        if failure == "append_error":
+            raise OSError("delta append failed")
+        await original_append(log, event_type, **fields)
+        committed.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(EventLog, "append", append)
+    service = create_agent_service(
+        tmp_path / "workspace", tmp_path / "runtime",
+        model_provider=lambda _: PausingStreamModel(),
+    )
+    sid = (await service.create_session(model="stream"))["session_id"]
+    accepted = await service.submit(sid, "hello", request_id="append-window")
+    if failure == "append_error":
+        with pytest.raises(OSError, match="delta append failed"):
+            await service.wait(accepted["turn_id"])
+    else:
+        await asyncio.wait_for(committed.wait(), timeout=5)
+        await service.cancel(sid)
+        with pytest.raises(asyncio.CancelledError):
+            await service.wait(accepted["turn_id"])
+    events = await service.events(sid)
+    terminal = [event for event in events if event["type"] in {"turn.failed", "turn.cancelled"}]
+    assert len(terminal) == 1
+    assert terminal[0]["partial"] is (failure == "cancel_after_commit")
 
 
 async def test_summary_model_timeout_is_scoped_to_summary_call():

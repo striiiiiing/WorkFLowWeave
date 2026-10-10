@@ -12,6 +12,22 @@ from pydantic import Field
 from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.models import ID, StrictModel
 
+_SLASH_ACTIONS = {
+    "/new": "new",
+    "/resume": "resume",
+    "/stop": "stop",
+    "/append": "append",
+    "/compact": "compact",
+    "/fork": "fork",
+    "/workflow": "workflow",
+}
+
+
+def _command_priority(action: str) -> str:
+    if action == "stop":
+        return "stop"
+    return "conversation" if action == "message" else "command"
+
 
 class AgentCommand(StrictModel):
     channel: ID = "web"
@@ -29,24 +45,60 @@ class AgentCommand(StrictModel):
     message_id: ID | None = None
 
     def operation(self) -> tuple[str, str]:
-        return parse_command(self.text) if self.action is None else (self.action, self.text)
+        action, argument = parse_command(self.text) if self.action is None else (self.action, self.text)
+        self._validate_arguments(action, argument)
+        if action in {"resume", "fork", "workflow"}:
+            argument = argument.strip()
+        return action, argument
+
+    def _validate_arguments(self, action: str, argument: str) -> None:
+        if self.priority is not None and self.priority != _command_priority(action):
+            raise WorkFLowWeaveError("invalid_argument", "priority 与命令类别不一致")
+        value = argument.strip()
+        if action in {"new", "stop", "compact"} and value:
+            raise WorkFLowWeaveError(
+                "invalid_argument", f"/{action} 不接受参数，请直接输入 /{action}",
+            )
+        if action == "append" and not value:
+            raise WorkFLowWeaveError(
+                "invalid_argument", "/append 需要补充内容，用法：/append <补充内容>",
+            )
+        if action in {"resume", "workflow", "fork"} and len(value.split()) > 1:
+            usage = "/fork [turn_id]" if action == "fork" else f"/{action} <session_id>"
+            raise WorkFLowWeaveError("invalid_argument", f"用法：{usage}")
+        if action == "fork" and value and (self.turn_id is not None or self.message_id is not None):
+            raise WorkFLowWeaveError("invalid_argument", "turn_id/message_id 与 /fork 文本参数只能二选一")
+
+    @property
+    def resume_target(self) -> str | None:
+        # A slash command's bound session is routing context; only an explicit
+        # action payload uses the session field as its resume target.
+        _, argument = self.operation()
+        return argument.strip() or (self.session if self.action == "resume" else None)
+
+    @property
+    def switches_session(self) -> bool:
+        action, argument = self.operation()
+        if action in {"new", "fork"}:
+            return True
+        if action == "resume":
+            return self.resume_target is not None
+        if action == "workflow":
+            return bool(argument or self.workflow_session_id or self.workflow_id)
+        return False
 
 
 def parse_command(text: str) -> tuple[str, str]:
     """Parse a legacy slash command or classify arbitrary text as a message."""
-    head, _, argument = text.strip().partition(" ")
-    actions = {
-        "/new": "new",
-        "/resume": "resume",
-        "/stop": "stop",
-        "/append": "append",
-        "/compact": "compact",
-        "/fork": "fork",
-        "/workflow": "workflow",
-    }
-    if head.startswith("/") and head not in actions:
-        raise WorkFLowWeaveError("invalid_argument", "未知 Agent 命令")
-    return actions.get(head, "message"), argument if head in actions else text
+    stripped = text.strip()
+    parts = stripped.split(maxsplit=1)
+    head = parts[0] if parts else ""
+    argument = stripped[len(head) + 1:]
+    if head.startswith("/") and head not in _SLASH_ACTIONS:
+        raise WorkFLowWeaveError(
+            "invalid_argument", f"未知 Agent 命令 {head}；支持：{'、'.join(_SLASH_ACTIONS)}",
+        )
+    return _SLASH_ACTIONS.get(head, "message"), argument if head in _SLASH_ACTIONS else text
 
 
 class CommandDispatcher:
@@ -60,17 +112,11 @@ class CommandDispatcher:
                        valid: Callable[[], bool] | None = None) -> dict:
         action, argument = envelope.operation()
 
-        priority = "stop" if action == "stop" else (
-            "command" if action in {"new", "resume", "append", "compact", "fork", "workflow"} else "conversation"
-        )
-        if envelope.priority is not None and envelope.priority != priority:
-            raise WorkFLowWeaveError("invalid_argument", "priority 与命令类别不一致")
-
         result, kind = await self._execute(envelope, action, argument, valid=valid)
         return {
             "channel": envelope.channel,
             "session": envelope.session,
-            "priority": priority,
+            "priority": _command_priority(action),
             "kind": kind,
             "result": result,
         }
@@ -107,9 +153,9 @@ class CommandDispatcher:
             result = await self._create(envelope)
             return result, "session"
         if action == "resume":
-            session_id = argument or envelope.session or None
+            session_id = envelope.resume_target
             if session_id is None:
-                raise WorkFLowWeaveError("invalid_argument", "恢复会话需要 session")
+                return await self.service.list_sessions(), "sessions"
             return await self.service.get_session(session_id), "session"
         if action == "workflow":
             if envelope.workflow_session_id or argument:
@@ -128,7 +174,9 @@ class CommandDispatcher:
         session_id = envelope.session
         if action == "message":
             if session_id is None:
-                raise WorkFLowWeaveError("invalid_argument", "消息需要 session")
+                raise WorkFLowWeaveError(
+                    "invalid_argument", "请先使用 /new 创建会话，或使用 /resume <session_id> 选择历史会话",
+                )
             submit = getattr(self.service, "submit_after_idle", self.service.submit)
             if valid is None:
                 result = await submit(session_id, envelope.text, request_id=envelope.request_id)
@@ -138,16 +186,16 @@ class CommandDispatcher:
                 )
             return result, "turn"
         if action == "stop":
-            return await self.service.cancel(self._require_session(session_id)), "session"
+            return await self.service.cancel(self._require_session(session_id, action)), "session"
         if action == "append":
             return await self.service.append(
-                self._require_session(session_id), argument, request_id=envelope.request_id,
+                self._require_session(session_id, action), argument, request_id=envelope.request_id,
             ), "turn"
         if action == "compact":
-            return await self.service.compact(self._require_session(session_id)), "turn"
+            return await self.service.compact(self._require_session(session_id, action)), "turn"
         if action == "fork":
             return await self.service.fork(
-                self._require_session(session_id), turn_id=envelope.turn_id or argument or None,
+                self._require_session(session_id, action), turn_id=envelope.turn_id or argument or None,
                 model=envelope.model, message_id=envelope.message_id,
                 child_session_id=self._operation_session(envelope),
                 operation_id=self._operation_id(envelope),
@@ -258,7 +306,11 @@ class CommandDispatcher:
         return latest.session_id
 
     @staticmethod
-    def _require_session(session_id: str | None) -> str:
+    def _require_session(session_id: str | None, action: str) -> str:
         if session_id is None:
-            raise WorkFLowWeaveError("invalid_argument", "此命令需要 session")
+            if action == "stop":
+                message = "当前没有可停止的会话；使用 /new 创建或 /resume 查看历史"
+            else:
+                message = f"{action} 需要当前会话；使用 /new 创建或 /resume <session_id> 选择会话"
+            raise WorkFLowWeaveError("invalid_argument", message)
         return session_id

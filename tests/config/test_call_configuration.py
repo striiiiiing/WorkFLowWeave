@@ -2,7 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from workflowweave.config.calls import normalize_call_options, resolve_channel_call, resolve_source_call
+from workflowweave.config.calls import (
+    normalize_call_options,
+    resolve_channel_call,
+    resolve_source_call,
+)
 from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.models import (
     ChannelConfig,
@@ -44,7 +48,7 @@ def test_call_resolution_keeps_empty_arguments_and_shallow_overrides():
         "kind": "mcp", "server": "saved", "tool": "echo",
         "arguments": {"values": ["instance"], "nested": {"a": 1}},
     }, limits={"item_tokens": 20})
-    effective = resolve_source_call(source, {}, SourceOverride(
+    effective = resolve_source_call(source, SourceOverride(
         arguments={"values": [], "nested": {"b": 2}},
         limits={"item_tokens": 5},
     ))

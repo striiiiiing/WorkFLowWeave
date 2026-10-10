@@ -43,20 +43,19 @@ def execution(status="success", raw=None, *, phase="received", result_known=True
     return MCPExecution("server", "echo", {}, status, phase, result_known, raw)
 
 
-def test_validation_is_pure_and_descriptions_are_empty():
+def test_validation_is_pure():
     manager = CollectorManager(None)
     source = cli_source("one", "print('value')")
     manager.validate(source)
-    assert manager.describe() == []
     assert source.call.argv[-1] == "print('value')"
 
 
-async def test_missing_mcp_scope_is_a_missing_fact_without_policy_execution():
+async def test_missing_mcp_scope_is_a_failed_fact_without_policy_execution():
     runtime = Runtime(WorkFLowWeaveError("mcp_out_of_scope", "not bound"))
     source = mcp_source()
-    source.on_missing = "stop"
+    source.on_error = "stop"
     result = await CollectorManager(runtime).collect(source, CONTEXT)
-    assert result.status == "missing"
+    assert result.status == "failed"
     assert result.error.code == "mcp_out_of_scope"
     assert result.raw is None
 

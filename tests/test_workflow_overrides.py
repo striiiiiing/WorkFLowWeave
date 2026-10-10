@@ -1,7 +1,7 @@
 """配置覆盖从资源绑定到采集、通知与恢复的跨模块测试。
 
-用真实 ResourceStore、注册表和管理器验证四层配置优先级、显式空覆盖、
-模板引用完整性、账户/调用字段作用域及失败提交的原子性；再经 Workflow、
+用真实 ResourceStore、注册表和管理器验证MCP 参数覆盖、显式空值、
+绑定引用完整性、账户/调用字段作用域及失败提交的原子性；再经 Workflow、
 SQLite 和本地文件渠道验证不同绑定相互隔离，恢复仍使用原快照。
 模型使用注入的 LangChain 替身；邮件配置仅校验，不向真实收件人投递。
 """
@@ -12,6 +12,8 @@ from copy import deepcopy
 import pytest
 from pydantic import ValidationError
 
+from tests.fixtures.sources import message_call
+from tests.workflow_ai_helpers import TestChannelFactory
 from workflowweave.ai import AIService
 from workflowweave.channel import ChannelManager
 from workflowweave.collection import CollectorManager
@@ -20,29 +22,28 @@ from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.models import (
     AIConfig,
     ChannelConfig,
-    CollectionContext,
-    SetterTemplate,
+    MCPServerConfig,
     SourceConfig,
     SourceOverride,
     SystemConfig,
     WorkflowDefinition,
 )
+from workflowweave.plugins.channel.email.channel import EmailChannelType
+from workflowweave.plugins.channel.file.channel import FileChannelType
 from workflowweave.schema import resource_options_schema, validate_instance, validate_schema
 from workflowweave.workflow.execution.runner import WorkflowRunner
-from plugins.channel.email.channel import EmailChannelType
-from plugins.channel.file.channel import FileChannelType
-from tests.fixtures.collectors import AlternateMockCollector, MockCollector, QueryCollector
-from tests.workflow_ai_helpers import TestChannelFactory
 
 
 @pytest.fixture
 async def bindings(tmp_path):
-    registry = PluginRegistry([MockCollector()], builtin_channels=[EmailChannelType()])
+    registry = PluginRegistry(builtin_channels=[EmailChannelType()])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     store = ResourceStore(tmp_path / "resources.json",
-                          collector_register=registry.collectorRegister,
                           channel_register=registry.channelRegister)
-    store.save("sources", SourceConfig(id="source", collector="mock"))
+    store.save("mcp_servers", MCPServerConfig(id="server", transport="stdio", command="mcp-server"))
+    store.save("sources", SourceConfig(id="source", call={
+        "kind": "mcp", "server": "server", "tool": "read", "arguments": {"base": True},
+    }))
     store.save("ai", AIConfig(id="ai", provider="test", models={"model": {}}))
     return store, registry
 
@@ -53,28 +54,25 @@ def workflow(ident="workflow", **kwargs):
                               **kwargs)
 
 
-async def test_two_workflows_share_source_but_keep_call_options_and_old_snapshots(bindings):
-    store, registry = bindings
+async def test_two_workflows_share_mcp_arguments_and_keep_old_snapshots(bindings):
+    store, _ = bindings
     for name in ("first", "second"):
         store.save("workflows", workflow(name, source_overrides={"source": {
-            "options": {"records": [{"message": name, "level": "INFO"}]},
-            "setters": {"fields": ["message"]},
+            "arguments": {"records": [{"message": name}]},
+            "limits": {"item_tokens": 1000},
         }}))
     first, second = store.snapshot("first"), store.snapshot("second")
-    manager = CollectorManager(registry.collectorRegister)
-    for snapshot in (first, second):
-        name = snapshot.workflow.id
-        result = await manager.collect(snapshot.sources["source"], CollectionContext(name, name))
-        assert result.items == [{"message": name}]
-    assert store.get("sources", "source").setters == {}
+    assert first.sources["source"].call.arguments == {"base": True, "records": [{"message": "first"}]}
+    assert second.sources["source"].call.arguments == {"base": True, "records": [{"message": "second"}]}
+    assert store.get("sources", "source").call.arguments == {"base": True}
     changed = store.get("workflows", "first")
-    changed.source_overrides["source"].options["records"] = []
+    changed.source_overrides["source"].arguments["records"] = []
     store.save("workflows", changed)
-    assert first.sources["source"].options["records"][0]["message"] == "first"
-    assert store.snapshot("first").sources["source"].options["records"] == []
+    assert first.sources["source"].call.arguments["records"] == [{"message": "first"}]
+    assert store.snapshot("first").sources["source"].call.arguments["records"] == []
 
 
-async def test_cli_source_workflow_limits_override_skips_collector_capability_check(bindings):
+async def test_cli_source_workflow_limits_override(bindings):
     store, _ = bindings
     store.save("sources", SourceConfig(
         id="source",
@@ -89,38 +87,25 @@ async def test_cli_source_workflow_limits_override_skips_collector_capability_ch
     assert snapshot.sources["source"].limits.item_tokens == 5
 
 
-async def test_workflow_template_precedence_empty_override_and_reference_integrity(bindings):
+async def test_mcp_argument_overlay_preserves_base_and_explicit_empty_values(bindings):
     store, _ = bindings
-    for name, fields in (("base", ["id"]), ("call", ["level"])):
-        store.save("setters", SetterTemplate(id=name, collector="mock", setters={"fields": fields}))
-    store.save("sources", SourceConfig(id="source", collector="mock", template="base",
-                                       setters={"fields": ["message"]}))
-    store.save("workflows", workflow(source_overrides={"source": {"template": "call"}}))
-    assert store.snapshot("workflow").sources["source"].setters == {"fields": ["level"]}
+    store.save("workflows", workflow(source_overrides={"source": {
+        "arguments": {"records": []},
+    }}))
     saved = store.snapshot("workflow")
-    with pytest.raises(WorkFLowWeaveError) as caught:
-        store.delete("setters", "call")
-    assert caught.value.code == "reference_conflict"
+    assert saved.sources["source"].call.arguments == {"base": True, "records": []}
     changed = store.get("workflows", "workflow")
-    changed.source_overrides["source"].setters = {"fields": []}
+    changed.source_overrides["source"].arguments = {"base": False}
     store.save("workflows", changed)
-    assert store.snapshot("workflow").sources["source"].setters == {"fields": []}
-    assert saved.sources["source"].setters == {"fields": ["level"]}
+    assert store.snapshot("workflow").sources["source"].call.arguments == {"base": False}
+    assert saved.sources["source"].call.arguments == {"base": True, "records": []}
 
 
 async def test_detached_source_snapshot_stays_independent_from_shared_source(bindings):
     store, _ = bindings
-    store.save("setters", SetterTemplate(id="base", collector="mock",
-                                         setters={"fields": ["message"]}))
-    shared = SourceConfig(
-        id="source", collector="mock", template="base",
-        options={"records": [{"message": "shared"}]},
-    )
-    store.save("sources", shared)
+    shared = store.get("sources", "source")
     detached = store.resolve_source("source")
-    assert detached.template is None
-    assert detached.setters == {"fields": ["message"]}
-
+    assert detached.call.arguments == {"base": True}
     store.save("workflows", workflow("linked"))
     store.save("workflows", workflow("detached", source_overrides={
         "source": {"source": detached},
@@ -129,25 +114,12 @@ async def test_detached_source_snapshot_stays_independent_from_shared_source(bin
     store.save("sources", shared)
     with pytest.raises(WorkFLowWeaveError, match="没有可用的数据源"):
         store.snapshot("linked")
-    assert store.snapshot("detached").sources["source"].options["records"] == [
-        {"message": "shared"},
-    ]
+    assert store.snapshot("detached").sources["source"].call.arguments == {"base": True}
     shared.enabled = True
+    shared.call.arguments = {"base": False}
     store.save("sources", shared)
-    shared.options["records"] = [{"message": "updated"}]
-    store.save("sources", shared)
-    assert store.snapshot("linked").sources["source"].options["records"] == [
-        {"message": "updated"},
-    ]
-    frozen = store.snapshot("detached").sources["source"]
-    assert frozen.options["records"] == [{"message": "shared"}]
-    assert frozen.setters == {"fields": ["message"]}
-
-    changed_template = store.get("setters", "base")
-    changed_template.setters = {"fields": ["level"]}
-    store.save("setters", changed_template)
-    assert store.snapshot("detached").sources["source"].setters == {"fields": ["message"]}
-    assert store.snapshot("linked").sources["source"].setters == {"fields": ["level"]}
+    assert store.snapshot("linked").sources["source"].call.arguments == {"base": False}
+    assert store.snapshot("detached").sources["source"].call.arguments == {"base": True}
 
 
 async def test_detached_source_snapshot_requires_its_binding_id():
@@ -158,35 +130,23 @@ async def test_detached_source_snapshot_requires_its_binding_id():
             id="workflow", sources=["source"],
             analyses=[{"user_prompt": "analyze input", "id": "task", "ai": "ai", "model": "model"}],
             source_overrides={"source": {"source": {
-                "id": "another", "collector": "mock",
+                "id": "another", "call": {"kind": "cli", "mode": "argv", "executable": "printf"},
             }}},
         )
 
 
-async def test_detached_source_uses_its_own_collector_and_survives_shared_deletion(tmp_path):
-    registry = PluginRegistry([MockCollector(), AlternateMockCollector()])
-    await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
-    store = ResourceStore(
-        tmp_path / "resources.json", collector_register=registry.collectorRegister,
-    )
-    store.save("sources", SourceConfig(id="source", collector="mock"))
-    store.save("ai", AIConfig(id="ai", provider="test", models={"model": {}}))
-    detached = SourceConfig(
-        id="source", collector="alternate", options={"records": [{"message": "local"}]},
-    )
+async def test_detached_source_uses_its_own_call_and_survives_shared_deletion(bindings):
+    store, _ = bindings
+    detached = SourceConfig(id="source", call=message_call("local"))
     store.save("workflows", workflow("detached", source_overrides={
         "source": {"source": detached},
     }))
-
-    assert store.snapshot("detached").sources["source"].collector == "alternate"
+    assert store.snapshot("detached").sources["source"].call.kind == "cli"
     store.delete("sources", "source")
-    assert store.snapshot("detached").sources["source"].options["records"] == [
-        {"message": "local"},
-    ]
+    assert store.snapshot("detached").sources["source"].call.argv[-1] == '{"message":"local"}'
     original = detached.model_copy(deep=True)
     resolved = store.resolve_source("source", SourceOverride(source=detached))
-    assert resolved.collector == "alternate"
-    assert resolved.options["records"] == [{"message": "local"}]
+    assert resolved.call == detached.call
     assert detached == original
 
 
@@ -212,7 +172,7 @@ async def test_email_account_can_be_saved_before_recipient_but_binding_requires_
 
 
 @pytest.mark.parametrize("overrides", [
-    {"source_overrides": {"unknown": {"options": {}}}},
+    {"source_overrides": {"unknown": {"arguments": {}}}},
     {"channel_overrides": {"unknown": {"options": {}}}},
 ])
 def test_overrides_must_reference_selected_ids(overrides):
@@ -220,61 +180,27 @@ def test_overrides_must_reference_selected_ids(overrides):
         workflow(**overrides)
 
 
-async def test_invalid_binding_and_template_change_are_atomic(bindings):
+async def test_invalid_binding_change_is_atomic(bindings):
     store, _ = bindings
-    store.save("setters", SetterTemplate(id="call", collector="mock", setters={"fields": ["id"]}))
-    store.save("workflows", workflow(source_overrides={"source": {"template": "call"}}))
+    store.save("workflows", workflow(source_overrides={"source": {"arguments": {"saved": True}}}))
     before = store.snapshot("workflow")
     changed = store.get("workflows", "workflow")
-    changed.source_overrides["source"].options = {"records": "invalid"}
+    changed.source_overrides["source"].arguments = {"invalid": float("nan")}
     with pytest.raises(WorkFLowWeaveError):
         store.save("workflows", changed)
-    with pytest.raises(WorkFLowWeaveError):
-        store.save("setters", SetterTemplate(id="call", collector="mock", setters={"unknown": []}))
     assert store.snapshot("workflow").sources == before.sources
 
 
-async def test_missing_plugin_does_not_block_saved_override_snapshot(bindings):
+async def test_mcp_snapshot_reopens_without_plugin_registry(bindings):
     store, _ = bindings
-    store.save("workflows", workflow(source_overrides={"source": {"options": {"records": []}}}))
-    registry = PluginRegistry([])
-    empty = registry.collectorRegister
-    reopened = ResourceStore(store.location, collector_register=empty)
+    store.save("workflows", workflow(source_overrides={"source": {"arguments": {"records": []}}}))
+    reopened = ResourceStore(store.location)
     snapshot = reopened.snapshot("workflow")
-    result = await CollectorManager(empty).collect(snapshot.sources["source"],
-                                                    CollectionContext("workflow", "session"))
-    assert result.status == "missing"
+    assert snapshot.sources["source"].call.arguments == {"base": True, "records": []}
+    assert set(snapshot.mcp_servers) == {"server"}
 
 
-async def test_custom_account_requirements_call_path_and_cross_field_validation(tmp_path):
-    registry = PluginRegistry([QueryCollector()])
-    await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
-    store = ResourceStore(tmp_path / "resources.json", collector_register=registry.collectorRegister,
-                          validators={"sources": CollectorManager(registry.collectorRegister).validate})
-    with pytest.raises(WorkFLowWeaveError):
-        store.save("sources", SourceConfig(id="source", collector="query"))
-    store.save("sources", SourceConfig(id="source", collector="query", options={"host": "account"}))
-    store.save("ai", AIConfig(id="ai", provider="test", models={"model": {}}))
-    definition = workflow(source_overrides={"source": {"options": {
-        "path": "query.json", "begin": 1, "end": 2,
-    }}})
-    store.save("workflows", definition)
-    snapshot = store.snapshot("workflow")
-    assert snapshot.sources["source"].options == {
-        "host": "account", "path": str(tmp_path / "query.json"), "begin": 1, "end": 2,
-    }
-    assert definition.source_overrides["source"].options["path"] == "query.json"
-    assert store.get("workflows", "workflow").source_overrides["source"].options["path"] == str(
-        tmp_path / "query.json"
-    )
-    definition.source_overrides["source"].options["begin"] = 3
-    with pytest.raises(WorkFLowWeaveError):
-        store.save("workflows", definition)
-    definition.source_overrides["source"].options["begin"] = 1
-    definition.source_overrides["source"].options["host"] = "other-account"
-    with pytest.raises(WorkFLowWeaveError):
-        store.save("workflows", definition)
-    assert store.snapshot("workflow").sources == snapshot.sources
+
 
 
 @pytest.mark.parametrize("rule", [
@@ -310,24 +236,21 @@ def test_account_schema_keeps_conditional_credentials_required():
 
 
 async def test_real_workflows_persist_distinct_inputs_and_recover_original_binding(tmp_path):
-    registry = PluginRegistry([MockCollector()], builtin_channels=[FileChannelType()])
+    registry = PluginRegistry(builtin_channels=[FileChannelType()])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
-    store = ResourceStore(tmp_path / "resources.json",
-                          collector_register=registry.collectorRegister,
-                          channel_register=registry.channelRegister)
-    store.save("sources", SourceConfig(id="source", collector="mock"))
+    store = ResourceStore(tmp_path / "resources.json", channel_register=registry.channelRegister)
+    store.save("sources", SourceConfig(id="source", call=message_call("shared")))
     store.save("ai", AIConfig(id="ai", provider="test", models={"model": {}}))
     output = tmp_path / "notifications.txt"
     store.save("channels", ChannelConfig(id="file", channel="file", options={"path": str(output)}))
     ai = AIService(channel_factories={"test": TestChannelFactory()})
     channels = ChannelManager(registry.channelRegister)
-    service = WorkflowRunner(CollectorManager(registry.collectorRegister), ai, channels, store,
-                              database=tmp_path / "sessions.sqlite3")
+    service = WorkflowRunner(CollectorManager(None), ai, channels, store,
+                             database=tmp_path / "sessions.sqlite3")
     try:
         for name in ("first", "second"):
             store.save("workflows", workflow(name, channels=["file"], source_overrides={
-                "source": {"options": {"records": [{"message": name}]},
-                           "setters": {"fields": ["message"]}},
+                "source": {"source": SourceConfig(id="source", call=message_call(name))},
             }))
             await service.trigger(name, session_id=name)
             result = await service.wait(name)
@@ -336,11 +259,9 @@ async def test_real_workflows_persist_distinct_inputs_and_recover_original_bindi
         written = output.read_text()
         assert "first" in written and "second" in written
         saved = await asyncio.to_thread(service.session_store.entry, "first", "snapshot")
-        assert saved["body"]["snapshot"]["sources"]["source"]["options"]["records"] == [
-            {"message": "first"},
-        ]
+        assert saved["body"]["snapshot"]["sources"]["source"]["call"]["argv"][-1] == '{"message":"first"}'
         changed = store.get("workflows", "first")
-        changed.source_overrides["source"].options["records"] = [{"message": "changed"}]
+        changed.source_overrides["source"].source.call = SourceConfig(id="source", call=message_call("changed")).call
         store.save("workflows", changed)
         await service.resume("first")
         recovered = await service.wait("first")

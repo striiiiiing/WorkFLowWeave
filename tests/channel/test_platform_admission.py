@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock
 import pytest
 from langchain_core.messages import AIMessage
 
+from tests.agent.helpers import ScriptedModel
+from tests.fixtures.channels import TestChannelType
 from workflowweave.agent.commands import AgentCommand, CommandDispatcher
 from workflowweave.agent.config import AgentConfig
 from workflowweave.channel import ChannelManager
@@ -16,8 +18,6 @@ from workflowweave.config import PluginRegistry
 from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.interaction.fastapi.agent import create_agent_service
 from workflowweave.models import ChannelConfig, Notification, SystemConfig
-from tests.agent.helpers import ScriptedModel
-from tests.fixtures.channels import TestChannelType
 
 
 async def test_platform_ack_precedes_agent_processing_and_reply_uses_original_route(tmp_path):
@@ -82,9 +82,14 @@ async def test_platform_ack_precedes_agent_processing_and_reply_uses_original_ro
         await service.close()
 
 
-@pytest.mark.parametrize("platform", ["qq", "feishu", "telegram", "wechat_openclaw"])
-async def test_each_plugin_inbound_callback_enters_manager_and_replies_once(tmp_path, platform):
-    module = importlib.import_module(f"plugins.channel.{platform}.channel")
+@pytest.mark.parametrize("platform,private", [
+    ("qq", True), ("qq", False), ("feishu", True), ("feishu", False),
+    ("telegram", True), ("telegram", False), ("wechat_openclaw", True),
+])
+async def test_each_plugin_inbound_callback_enters_manager_and_replies_once(
+    tmp_path, platform, private,
+):
+    module = importlib.import_module(f"workflowweave.plugins.channel.{platform}.channel")
     class_name = {"qq": "QQ", "feishu": "Feishu", "telegram": "Telegram",
                   "wechat_openclaw": "WechatOpenClaw"}[platform]
     channel_type = getattr(module, f"{class_name}ChannelType")()
@@ -99,6 +104,8 @@ async def test_each_plugin_inbound_callback_enters_manager_and_replies_once(tmp_
 
     async def start_receiving(handler):
         channel._handler = handler
+        if platform == "feishu":
+            channel._receiving = True
 
     async def stop_receiving():
         channel._handler = None
@@ -132,19 +139,25 @@ async def test_each_plugin_inbound_callback_enters_manager_and_replies_once(tmp_
 
     async def emit():
         if platform == "qq":
-            await channel._emit_message("group", SimpleNamespace(
-                id="event", content="hello", group_openid="group", author=SimpleNamespace(id="sender"),
+            await channel._emit_message("c2c" if private else "group", SimpleNamespace(
+                id="event", content="hello", group_openid="group",
+                author=SimpleNamespace(id="numeric-id", user_openid="sender") if private
+                else SimpleNamespace(id="sender"),
             ))
         elif platform == "feishu":
-            await channel._handle_event({"event": {
-                "message": {"message_id": "event", "chat_id": "group", "message_type": "text",
-                            "content": '{"text":"hello"}'},
-                "sender": {"sender_type": "user", "sender_id": {"open_id": "sender"}},
-            }})
+            await channel._on_message(SimpleNamespace(
+                message_id="event", chat_id="group", sender_id="sender",
+                chat_type="p2p" if private else "group", body_text="hello",
+                sender_type="user", sender_is_bot=False, raw_content_type="text",
+            ), loop=asyncio.get_running_loop(), generation=channel._receiver_generation)
         elif platform == "telegram":
             await channel._on_update(SimpleNamespace(
                 effective_message=SimpleNamespace(message_id=7, text="hello"),
-                effective_chat=SimpleNamespace(id=-99), effective_user=SimpleNamespace(id=8),
+                effective_chat=SimpleNamespace(
+                    id=8 if private else -99,
+                    type="private" if private else "supergroup",
+                ),
+                effective_user=SimpleNamespace(id=8),
             ))
         else:
             await channel._handle_inbound({"message_id": "event", "text": "hello",
@@ -160,9 +173,28 @@ async def test_each_plugin_inbound_callback_enters_manager_and_replies_once(tmp_
         args, kwargs = channel.reply.await_args
         assert args[0].text == "reply"
         address = kwargs["address"]
-        assert (address.target, address.sender, address.message_id) == (
-            ("-99", "8", "7") if platform == "telegram" else ("group", "sender", "event")
+        target = (
+            "sender" if platform == "qq" and private
+            else "8" if platform == "telegram" and private
+            else "-99" if platform == "telegram"
+            else "group"
         )
+        assert (address.target, address.sender, address.message_id) == (
+            (target, "8", "7") if platform == "telegram" else (target, "sender", "event")
+        )
+        if platform in {"qq", "feishu"} and private:
+            assert "target_id" not in config.options and "target_kind" not in config.options
+            assert address.kind == ("c2c" if platform == "qq" else "chat_id")
+        if platform in {"qq", "feishu", "telegram"}:
+            assert channel_type.options_schema["x-workflowweave-first-message"] is True
+            expected_target = None
+            if private and platform == "qq":
+                expected_target = {"target_kind": "c2c", "target_id": "sender"}
+            elif private and platform == "feishu":
+                expected_target = {"target_kind": "chat_id", "target_id": "group"}
+            elif private and platform == "telegram":
+                expected_target = {"chat_id": 8}
+            assert channel_type.connection_options(address) == expected_target
         if platform == "wechat_openclaw":
             assert [call.args[0]["status"] for call in channel._write.await_args_list] == [
                 "accepted", "duplicate",

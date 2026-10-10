@@ -8,6 +8,7 @@ from workflowweave.models import (
     AIConfig,
     AnalysisTask,
     CollectionResult,
+    MCPCall,
     SourceConfig,
     WorkflowDefinition,
     WorkflowSnapshot,
@@ -59,6 +60,32 @@ def test_structured_duplicate_and_original_precedence():
 def test_type_sensitive_dedup():
     parts = extract({"structuredContent": {"x": 0}, "content": [{"type": "text", "text": '{"x":false}'}]}, "mcp")
     assert len(parts) == 2
+
+
+def test_embedded_text_resource_reaches_shared_input_with_provenance():
+    config = snapshot()
+    config.sources["first"].call = MCPCall(
+        server="github", tool="get_file_contents", arguments={})
+    raw = {"content": [
+        {"type": "text", "text": "successfully downloaded text file"},
+        {"type": "resource", "resource": {
+            "uri": "repo://pallets/flask/README.md", "mimeType": "text/plain",
+            "text": "# Flask\nFlask is a lightweight WSGI web application framework."}}]}
+    incoming = CollectionResult(source_id="first", status="success", raw=raw)
+    before = deepcopy(raw)
+    output, views = process_input(config, [incoming])
+    assert views[0].status == "success"
+    assert "Flask is a lightweight WSGI" in output
+    assert "repo://pallets/flask/README.md" in output
+    assert raw == before
+
+
+@pytest.mark.parametrize("resource", [{"uri": "repo://binary", "blob": "AA=="},
+                                      {"uri": "repo://missing"}, None, {"text": "missing URI"}])
+def test_nontext_embedded_resources_fail_explicitly(resource):
+    with pytest.raises(WorkFLowWeaveError) as exc:
+        extract({"content": [{"type": "resource", "resource": resource}]}, "mcp")
+    assert exc.value.code == "input_content_unsupported"
 
 
 def test_fields_keep_raw_and_atomic_types():

@@ -11,12 +11,13 @@ from workflowweave.models import AIConfig
 
 def config():
     return AIConfig(
-        id="ai", provider="http", base_url="http://model.test/v1",
+        id="ai", provider="openai_compatible_api", base_url="http://model.test/v1",
         models={"model": {"max_tokens": 77}}, retries=0,
     )
 
 
-async def test_lease_streams_tools_and_applies_one_actual_output_budget():
+async def test_lease_streams_tools_and_applies_one_actual_output_budget(monkeypatch):
+    monkeypatch.setenv("LANGCHAIN_OPENAI_STREAM_CHUNK_TIMEOUT_S", "0.001")
     payloads = []
 
     def respond(request):
@@ -30,10 +31,11 @@ async def test_lease_streams_tools_and_applies_one_actual_output_budget():
                               content=body + "data: [DONE]\n\n")
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
-        service = AIService(channel_factories={"http": OpenAIChannelFactory(client)})
+        service = AIService(channel_factories={"openai_compatible_api": OpenAIChannelFactory(client)})
         cfg = config()
         before = cfg.model_dump()
         async with service.lease(cfg, model="model", streaming=True, max_output_tokens=120) as chat:
+            assert chat.stream_chunk_timeout is None
             bound = chat.bind_tools([{
                 "name": "read", "description": "Read text",
                 "parameters": {"type": "object", "properties": {}},
@@ -43,6 +45,7 @@ async def test_lease_streams_tools_and_applies_one_actual_output_budget():
         assert payloads[0]["stream"] is True
         assert payloads[0]["max_completion_tokens"] == 120
         assert "max_tokens" not in payloads[0]
+        assert "stream_chunk_timeout" not in payloads[0]
         assert payloads[0]["tools"][0]["function"]["name"] == "read"
         assert cfg.model_dump() == before
         await service.close()
@@ -50,7 +53,7 @@ async def test_lease_streams_tools_and_applies_one_actual_output_budget():
 
 
 async def test_lease_does_not_mask_tool_or_storage_failures():
-    service = AIService(channel_factories={"http": OpenAIChannelFactory()})
+    service = AIService(channel_factories={"openai_compatible_api": OpenAIChannelFactory()})
     try:
         with pytest.raises(OSError, match="storage failed"):
             async with service.lease(config(), model="model"):
@@ -60,7 +63,7 @@ async def test_lease_does_not_mask_tool_or_storage_failures():
 
 
 async def test_channel_close_cancels_entire_model_lease():
-    service = AIService(channel_factories={"http": OpenAIChannelFactory()})
+    service = AIService(channel_factories={"openai_compatible_api": OpenAIChannelFactory()})
     entered = asyncio.Event()
 
     async def run():
@@ -79,7 +82,7 @@ async def test_lease_redacts_known_credentials_in_upstream_error():
         async def resolve(self, credential):
             return "test-private-token"
 
-    service = AIService(channel_factories={"http": OpenAIChannelFactory()},
+    service = AIService(channel_factories={"openai_compatible_api": OpenAIChannelFactory()},
                         credential_resolver=Credentials())
     cfg = AIConfig.model_validate({
         **config().model_dump(), "api_key": {"kind": "env", "name": "TEST_KEY"},

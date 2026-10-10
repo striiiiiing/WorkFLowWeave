@@ -60,7 +60,9 @@ def _read_system(location: Path) -> SystemConfig:
         config = SystemConfig.model_validate(read_json(location))
     except ValidationError as exc:
         raise validation_error(exc) from None
-    for field in ("data_dir", "plugin_dir", "master_key_file", "log_file"):
+    for field in (
+        "data_dir", "plugin_dir", "builtin_plugin_dir", "master_key_file", "log_file"
+    ):
         value = getattr(config, field)
         if value is None:
             continue

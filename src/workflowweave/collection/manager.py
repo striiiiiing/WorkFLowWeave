@@ -5,34 +5,37 @@ import asyncio
 import os
 import signal
 from dataclasses import asdict
+from typing import Protocol
 
 from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.models import CollectionResult, ErrorInfo, SourceConfig, copy_model
 
 
+class ReferenceFiles(Protocol):
+    def validate_path(self, relative: str): ...
+    def read_text(self, relative: str) -> str: ...
+    def create_text(self, relative: str, content: bytes) -> None: ...
+
+
 class CollectorManager:
-    def __init__(self, mcp_runtime):
-        # The merged runtime keeps the old registry argument for lifecycle
-        # wiring, but MCP/CLI sources are the only workflow execution form.
-        self.mcp = mcp_runtime if hasattr(mcp_runtime, "call") else None
-        self._legacy = mcp_runtime if self.mcp is None else None
+    def __init__(self, mcp_runtime, files: ReferenceFiles | None = None):
+        self.mcp = mcp_runtime
+        self.files = files
 
     def validate(self, source):
-        copy_model(source)
-
-    def describe(self):
-        return []
-
-    def reload_register(self, registry):
-        """Collector plugins no longer participate in collection."""
+        source = copy_model(source)
+        if source.call.kind == "file":
+            if self.files is None:
+                raise WorkFLowWeaveError("configuration_unavailable", "文件引用服务尚未装配")
+            self.files.validate_path(source.call.path)
 
     async def collect(self, source: SourceConfig, context):
         source = copy_model(source)
         try:
-            if source.call is None:
-                return await self._collect_legacy(source, context)
             if source.call.kind == "cli":
                 return await self._cli(source)
+            if source.call.kind == "file":
+                return await self._file(source)
             call = source.call
             execution = await self.mcp.call(
                 context.mcp_servers or {}, call.server, call.tool, call.arguments,
@@ -62,33 +65,33 @@ class CollectorManager:
             return CollectionResult(source_id=source.id, status=status,
                                     raw=raw, error=error, metadata=metadata)
         except WorkFLowWeaveError as exc:
-            # Keep legacy missing projection for old callers; MCP workflow
-            # policy maps this fact through on_error in arrange().
             return CollectionResult(source_id=source.id,
-                                    status="missing" if exc.code in {
-                                        "mcp_out_of_scope", "mcp_tool_missing", "mcp_disabled",
-                                    } else "failed", error=exc.info)
+                                    status="failed", error=exc.info)
 
-    async def _collect_legacy(self, source, context):
-        """Compatibility boundary for un-migrated history/test resources.
-
-        New persisted workflows must use ``call``; this narrow adapter keeps
-        the read-only History Collector and explicit legacy fixtures usable
-        while the MCP/CLI execution path remains the sole new contract.
-        """
-        register = self._legacy
-        collector = register.get(source.collector) if register is not None else None
-        if collector is None:
-            return CollectionResult(
-                source_id=source.id, status="missing",
-                error=ErrorInfo(code="collector_missing", message="来源插件不可用"),
-            )
+    async def _file(self, source):
+        metadata = {"kind": "file", "file_type": source.call.file_type, "path": source.call.path}
         try:
-            raw = await collector.collect(source.options, source.setters, context)
-            data = raw.model_dump(mode="json") if hasattr(raw, "model_dump") else raw
-            return CollectionResult(source_id=source.id, **data)
+            if self.files is None:
+                raise WorkFLowWeaveError("configuration_unavailable", "文件引用服务尚未装配")
+            async with asyncio.timeout(source.timeout):
+                text = await asyncio.to_thread(self.files.read_text, source.call.path)
+            return CollectionResult(
+                source_id=source.id,
+                status="empty" if text == "" else "success",
+                raw={"text": text},
+                metadata={**metadata, "result_known": True},
+            )
+        except TimeoutError:
+            return CollectionResult(
+                source_id=source.id, status="timeout", raw=None,
+                error=ErrorInfo(code="file_timeout", message="文件读取超时"),
+                metadata={**metadata, "result_known": False},
+            )
         except WorkFLowWeaveError as exc:
-            return CollectionResult(source_id=source.id, status="failed", error=exc.info)
+            return CollectionResult(
+                source_id=source.id, status="failed", raw=None, error=exc.info,
+                metadata={**metadata, "result_known": True},
+            )
 
     async def _cli(self, source):
         call = source.call

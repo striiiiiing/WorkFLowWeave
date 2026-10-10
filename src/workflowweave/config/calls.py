@@ -1,6 +1,5 @@
 """Invocation overlays shared by workflows and interactive agents."""
 
-from collections.abc import Mapping
 from copy import deepcopy
 from pathlib import Path
 
@@ -9,7 +8,6 @@ from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.models import (
     ChannelConfig,
     ChannelOverride,
-    SetterTemplate,
     SourceConfig,
     SourceOverride,
     copy_model,
@@ -31,30 +29,11 @@ def select_source_call(
 
 
 def resolve_source_call(
-    source: SourceConfig | None, templates: Mapping[str, SetterTemplate],
+    source: SourceConfig | None,
     override: SourceOverride | None = None,
 ) -> SourceConfig:
-    """Resolve one effective source across legacy Collector and MCP/CLI forms."""
+    """Apply MCP arguments and input limits to an independent source copy."""
     selected = copy_model(select_source_call(source, override))
-    if selected.call is None:
-        templates = templates or {}
-        layers = [(selected.template, selected.setters)]
-        if override is not None:
-            layers.append((override.template, override.setters))
-            selected.options = {**selected.options, **deepcopy(override.options)}
-        setters = {}
-        for template_id, explicit in layers:
-            if template_id is not None:
-                template = templates.get(template_id)
-                if template is None:
-                    raise WorkFLowWeaveError("invalid_reference", "来源引用的 Setter 模板不存在")
-                if template.collector != selected.collector:
-                    raise WorkFLowWeaveError("invalid_reference", "Setter 模板与来源的 Collector 不同")
-                setters.update(deepcopy(template.setters))
-            setters.update(deepcopy(explicit))
-        selected.setters = setters
-        selected.template = None
-        return selected
     if override is None:
         return selected
     if override.arguments is not None:

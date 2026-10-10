@@ -3,10 +3,10 @@ import json
 
 from langchain_core.messages import AIMessage
 
+from tests.agent.helpers import ScriptedModel
 from workflowweave.agent.config import AgentConfig
 from workflowweave.agent.tools.builtin import mcp, read
 from workflowweave.interaction.fastapi.agent import create_agent_service
-from tests.agent.helpers import ScriptedModel
 
 
 async def test_graph_uses_gateway_execution_and_persists_bounded_artifact(tmp_path):
@@ -194,7 +194,7 @@ async def test_running_compact_waits_for_tool_receipt_and_summarizes_once(tmp_pa
 async def test_settings_persist_and_disabled_tool_metadata_does_not_register(tmp_path):
     from workflowweave.config import PluginRegistry
     from workflowweave.models import SystemConfig
-    registry = PluginRegistry([])
+    registry = PluginRegistry()
     plugin_config = SystemConfig(plugin_dir=str(tmp_path / "plugins"))
     registry.update_plugin_setting(plugin_config, "tool", "agent_shell", False)
     await registry.discover_plugins(plugin_config)
@@ -238,8 +238,8 @@ async def test_empty_compact_keeps_source_and_can_accept_first_message(tmp_path)
 async def test_failed_boundary_summary_allows_explicit_next_message(tmp_path):
     import pytest
 
-    from workflowweave.errors import WorkFLowWeaveError
     from tests.agent.test_admission import GatedModel
+    from workflowweave.errors import WorkFLowWeaveError
 
     model = GatedModel(responses=[AIMessage(content="first " * 100), AIMessage(content="second " * 100),
                                   AIMessage(content=""), AIMessage(content="continued")])

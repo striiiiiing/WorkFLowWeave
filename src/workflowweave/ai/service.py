@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Protocol
 
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
 from pydantic import ValidationError
 
 from workflowweave.ai.channels import ChannelFactory
@@ -81,6 +81,25 @@ def _result(message: AIMessage, task_id: str) -> AnalysisResult:
                           usage={} if usage is None else usage)
 
 
+async def stream_message(chat, messages: list[BaseMessage], **kwargs) -> AIMessage:
+    """收集 LangChain 流式消息，保持统一的 AnalysisResult 校验入口。"""
+    combined: AIMessageChunk | None = None
+    async for chunk in chat.astream(messages, **kwargs):
+        if not isinstance(chunk, AIMessageChunk):
+            raise ModelError("invalid_response", "流式模型服务必须返回 AIMessageChunk")
+        combined = chunk if combined is None else combined + chunk
+    if combined is None:
+        raise ModelError("invalid_response", "流式模型服务返回空响应")
+    return AIMessage(
+        content=combined.content,
+        additional_kwargs=combined.additional_kwargs,
+        response_metadata=combined.response_metadata,
+        tool_calls=combined.tool_calls,
+        invalid_tool_calls=combined.invalid_tool_calls,
+        usage_metadata=combined.usage_metadata,
+    )
+
+
 class AIService:
     """组合渠道、凭据、提示词与模型调用的无会话分析服务。
 
@@ -122,7 +141,9 @@ class AIService:
     def input_counter(config, model):
         import tiktoken
         try:
-            encoding = tiktoken.encoding_for_model(model)
+            encoding = tiktoken.encoding_for_model(
+                config.models[model].get("tiktoken_model_name", model)
+            )
         except KeyError as exc:
             raise WorkFLowWeaveError("tokenizer_unavailable", "模型没有已知的精确 tokenizer",
                                 {"model": model, "ai": config.id}) from exc
@@ -284,12 +305,18 @@ class AIService:
     async def _execute(self, config, model, messages, task_id, context):
         """在同一请求预算和渠道借用期内解析凭据、构造模型并执行重试。"""
         async with asyncio.timeout(config.timeout), self._model_lease(
-            config, model=model, streaming=False, max_output_tokens=None,
+            config, model=model,
+            streaming=bool(config.models[model].get("streaming", False)),
+            max_output_tokens=None,
         ) as (chat, credential):
 
             async def invoke():
                 """用独立配置和消息副本发起一次 ainvoke，检查取消后再转换结果。"""
-                message = await chat.ainvoke([item.model_copy(deep=True) for item in messages])
+                copied = [item.model_copy(deep=True) for item in messages]
+                if config.models[model].get("streaming", False):
+                    message = await stream_message(chat, copied)
+                else:
+                    message = await chat.ainvoke(copied)
                 _check_cancelled()
                 return _result(message, task_id)
 

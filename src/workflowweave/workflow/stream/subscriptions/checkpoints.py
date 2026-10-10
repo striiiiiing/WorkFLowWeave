@@ -10,10 +10,10 @@ from langgraph.types import Overwrite
 from sqlalchemy.exc import DBAPIError
 
 from workflowweave.errors import WorkFLowWeaveError
-from workflowweave.models import WorkflowSnapshot
 from workflowweave.workflow.graph.workflow import GRAPH_REVISION
 from workflowweave.workflow.storage.checkpoints import finish_write
 from workflowweave.workflow.storage.progress import progress_layout
+from workflowweave.workflow.storage.snapshots import parse_historical_snapshot
 
 logger = logging.getLogger("workflowweave.workflow.stream.subscriptions.checkpoints")
 
@@ -39,9 +39,7 @@ class CheckpointArchive:
         ]
         if not roots:
             return
-        snapshot = WorkflowSnapshot.model_validate(
-            roots[0]["snapshot"], context={"historical_snapshot": True}
-        )
+        snapshot = parse_historical_snapshot(roots[0]["snapshot"])
         epochs = {values["execution_epoch"]: values for values in roots}
         for item in sorted(saved, key=lambda item: item.checkpoint["id"]):
             values = item.checkpoint["channel_values"]
@@ -244,10 +242,14 @@ class CheckpointArchive:
         if stage == "collect":
             body["shared_input"] = writes.get("shared_input", "")
             body["input_views"] = writes.get("input_views", [])
-            body["input_format"] = {
-                "input_separator": snapshot.workflow.input_separator,
-                "include_counts": snapshot.workflow.include_counts,
-            }
+            historical_workflow = values["snapshot"]["workflow"]
+            if "include_counts" in historical_workflow:
+                # Replay the original archive representation so immutable
+                # phase facts keep their digest across the contract cleanup.
+                body["input_format"] = {
+                    "input_separator": snapshot.workflow.input_separator,
+                    "include_counts": historical_workflow["include_counts"],
+                }
         if stage == "aggregate":
             analysis_epoch = values.get("stage_origins", {}).get("analyze", epoch)
             for oid, text in writes.get("outputs", {}).items():

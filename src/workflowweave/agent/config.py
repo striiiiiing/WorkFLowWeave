@@ -42,8 +42,15 @@ class AgentConfig(StrictModel):
     keep_tokens: PositiveInt = 40_000
     summary_max_tokens: PositiveInt = 4096
     summary_prompt: str = (
-        "请保留当前目标、明确约束、已确认事实、文件引用、已完成或结果未知的副作用、"
-        "未完成事项和下一步；不要搬运完整工具正文。"
+        "You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary "
+        "for another LLM that will resume the task.\n\n"
+        "Include:\n"
+        "- Current progress and key decisions made\n"
+        "- Important context, constraints, or user preferences\n"
+        "- What remains to be done (clear next steps)\n"
+        "- Any critical data, examples, or references needed to continue\n\n"
+        "Be concise, structured, and focused on helping the next LLM seamlessly "
+        "continue the work."
     )
     idle_timeout: Seconds = 300
     read_concurrency: PositiveInt = 4

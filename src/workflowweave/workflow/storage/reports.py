@@ -1,12 +1,10 @@
 """业务报告只从归档读取，不决定图的执行状态。"""
 
 import asyncio
-from types import SimpleNamespace
 
 from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.models import ErrorInfo, Notification, PhaseContent, WorkflowStage
 
-from .collection import collection_input
 from .models import WorkflowResult
 from .progress import active_phases
 
@@ -29,10 +27,6 @@ async def assemble_result(view, sid, snapshot, state):
                     result = WorkflowResult.model_validate(
                         {**result.model_dump(mode="json"), key: body[key]}
                     )
-    if not result.shared_input:
-        result.shared_input = collection_input(
-            snapshot.workflow, [item.model_dump(mode="json") for item in result.collection]
-        )
     if state.get("error"):
         result.errors = [ErrorInfo.model_validate(state["error"])]
     if record.error and record.error.code == "backup_failed":
@@ -87,10 +81,6 @@ async def read_phase(
             pass
         elif stage == "collect":
             content["collection"] = bodies
-            if "shared_input" not in content and "input_format" in content:
-                content["shared_input"] = collection_input(
-                    SimpleNamespace(**content.pop("input_format")), bodies
-                )
         elif stage == "analyze":
             content["analyses"] = bodies
         elif stage == "aggregate":

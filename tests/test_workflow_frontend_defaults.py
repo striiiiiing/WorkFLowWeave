@@ -6,16 +6,6 @@ from pydantic import ValidationError
 from workflowweave.models import AnalysisTask, FanInConfig, WorkflowDefinition
 
 
-def test_counts_default_on_but_explicit_saved_false_is_preserved():
-    payload = {
-        "id": "default_counts",
-        "sources": ["source"],
-        "analyses": [{"user_prompt": "analyze input", "id": "task", "ai": "ai", "model": "model"}],
-    }
-    assert WorkflowDefinition.model_validate(payload).include_counts is True
-    assert WorkflowDefinition.model_validate({**payload, "include_counts": False}).include_counts is False
-
-
 def test_new_api_rejects_legacy_prompts():
     payload = {"id": "workflow", "sources": ["source"],
                "analyses": [{"id": "task", "ai": "ai", "model": "model", "prompt": "old"}]}

@@ -18,6 +18,9 @@ from workflowweave.models import ID
 from .dependencies import get_services
 
 Services = Annotated[ApplicationServices, Depends(get_services)]
+_TERMINAL_TURN_EVENTS = frozenset({
+    "turn.completed", "turn.failed", "turn.cancelled", "turn.interrupted",
+})
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,18 +79,36 @@ async def stream_agent_events(
     stream: AgentEventStream,
 ) -> AsyncIterator[ServerSentEvent]:
     cursor = stream.cursor
-    while True:
-        batch = await stream.channel.wait_events(stream.session_id, after=cursor, wait_seconds=15.0)
-        for event in batch:
+
+    async def drain_tail() -> AsyncIterator[ServerSentEvent]:
+        nonlocal cursor
+        for event in await stream.channel.events(stream.session_id, after=cursor):
+            if event["id"] <= cursor:
+                continue
             cursor = event["id"]
             yield ServerSentEvent(data=event, id=str(cursor))
-        session = await stream.channel.get_session(stream.session_id)
-        if session["status"] in {"completed", "failed", "cancelled", "interrupted"}:
-            for event in await stream.channel.events(stream.session_id, after=cursor):
-                if event["id"] > cursor:
-                    cursor = event["id"]
-                    yield ServerSentEvent(data=event, id=str(cursor))
+
+    while True:
+        batch = await stream.channel.wait_events(stream.session_id, after=cursor, wait_seconds=15.0)
+        terminal_seen = False
+        for event in batch:
+            cursor = event["id"]
+            terminal_seen = terminal_seen or event.get("type") in _TERMINAL_TURN_EVENTS
+            yield ServerSentEvent(data=event, id=str(cursor))
+        if terminal_seen:
+            async for event in drain_tail():
+                yield event
             break
+        # A session may already be terminal when the stream starts, with no
+        # terminal event after the requested cursor.  Check that only on an
+        # empty heartbeat; normal token batches must not rebuild the complete
+        # SessionStore document on every event.
+        if not batch:
+            session = await stream.channel.get_session(stream.session_id)
+            if session["status"] in {"completed", "failed", "cancelled", "interrupted"}:
+                async for event in drain_tail():
+                    yield event
+                break
 
 
 channel_router = build_channel_router()

@@ -82,13 +82,13 @@ EnvironmentName = Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")]
 NonNegativeInt = Annotated[int, Field(strict=True, ge=0)]
 SessionVersion = Annotated[int, Field(gt=0)]
 
-ResourceKind = Literal["sources", "setters", "mcp_servers", "ai", "channels", "workflows"]
-PluginKind = Literal["collector", "channel", "tool"]
+ResourceKind = Literal["sources", "mcp_servers", "ai", "channels", "workflows"]
+PluginKind = Literal["channel", "tool"]
 SaveMode = Literal["create", "replace", "upsert"]
 SourcePolicy = Literal["stop","notice", "skip"]
 ContinuePolicy = Literal["stop", "continue"]
 WorkflowStage = Literal["collect", "analyze", "aggregate", "notify", "finish"]
-CollectionStatus = Literal["success", "empty", "filtered_empty", "missing", "failed", "timeout"]
+CollectionStatus = Literal["success", "empty", "failed", "timeout"]
 AnalysisStatus = Literal["success", "failed", "timeout", "cancelled"]
 DeliveryStatus = Literal["success", "failed", "timeout", "skipped"]
 SessionStatus = Literal[
@@ -117,6 +117,7 @@ class ErrorResponse(StrictModel):
 class SystemConfig(StrictModel):
     data_dir: str = "data"
     plugin_dir: str = "plugins"
+    builtin_plugin_dir: str | None = None
     host: str = "127.0.0.1"
     port: int = Field(default=4300, ge=1, le=65535)
     max_concurrent_runs: int = Field(default=4, ge=1)
@@ -160,45 +161,34 @@ class CLIShell(StrictModel):
     cwd: str | None = None
 
 
+class FileCall(StrictModel):
+    kind: Literal["file"] = "file"
+    file_type: Literal["text"]
+    path: str = Field(min_length=1)
+
+
+class TextFileCreateRequest(StrictModel):
+    file_type: Literal["text"]
+    path: str = Field(min_length=1)
+    text: str
+
+
 CLICall = Annotated[CLIArgv | CLIShell, Field(discriminator="mode")]
 # An outer discriminator maps "cli" to the nested mode union, which is not
 # a reference string and therefore invalid in OpenAPI discriminator.mapping.
-SourceCall = MCPCall | CLICall
+SourceCall = MCPCall | CLICall | FileCall
 
 
 class SourceConfig(StrictModel):
     id: ID
     display_name: str | None = None
     description: str = ""
-    # A source may be provided by a local Collector plugin or by the
-    # MCP/CLI call form introduced by collect-from-mcp-and-cli.  Exactly one
-    # execution form is required at runtime; keeping both here allows the
-    # merged configuration boundary to validate old and new persisted data in
-    # one place while callers still resolve one effective source.
-    collector: ID | None = None
-    call: SourceCall | None = None
+    call: SourceCall
     enabled: bool = True
-    options: JSONObject = Field(default_factory=dict)
-    setters: JSONObject = Field(default_factory=dict)
     limits: SourceLimits = Field(default_factory=SourceLimits)
-    template: ID | None = None
     timeout: Seconds = 60.0
     on_error: SourcePolicy = "notice"
-    on_missing: SourcePolicy = "notice"
     on_empty: SourcePolicy = "notice"
-    on_filtered_empty: SourcePolicy = "notice"
-
-    @model_validator(mode="after")
-    def one_execution_form(self) -> Self:
-        if (self.collector is None) == (self.call is None):
-            raise ValueError("Source must define exactly one collector or call")
-        return self
-
-
-class SetterTemplate(StrictModel):
-    id: ID
-    collector: ID
-    setters: JSONObject = Field(default_factory=dict)
 
 
 class EnvironmentCredential(StrictModel):
@@ -403,19 +393,8 @@ class FanInConfig(StrictModel):
 
 class SourceOverride(StrictModel):
     source: SourceConfig | None = None
-    options: JSONObject = Field(default_factory=dict)
-    setters: JSONObject = Field(default_factory=dict)
-    template: ID | None = None
     arguments: JSONObject | None = None
     limits: SourceLimits = Field(default_factory=SourceLimits)
-
-    @model_validator(mode="after")
-    def detached_source_has_no_template(self) -> Self:
-        if self.source is not None and (
-            self.source.template is not None or self.template is not None
-        ):
-            raise ValueError("Detached source snapshots cannot reference setter templates")
-        return self
 
 
 class ChannelOverride(StrictModel):
@@ -458,7 +437,6 @@ class WorkflowDefinition(StrictModel):
     source_overrides: dict[ID, SourceOverride] = Field(default_factory=dict)
     channel_overrides: dict[ID, ChannelOverride] = Field(default_factory=dict)
     input_separator: str = "\n\n"
-    include_counts: bool = True
     input_processing: InputProcessing = Field(default_factory=InputProcessing)
     collection_concurrency: int = Field(default=4, ge=1)
     analysis_concurrency: int = Field(default=4, ge=1)
@@ -507,7 +485,7 @@ class WorkflowSnapshot(StrictModel):
         expected_servers = {
             source.call.server
             for source in self.sources.values()
-            if source.call is not None and source.call.kind == "mcp"
+            if source.call.kind == "mcp"
         }
         if set(self.mcp_servers) != expected_servers or any(
             key != server.id for key, server in self.mcp_servers.items()
@@ -575,63 +553,25 @@ class ResultReport(StrictModel):
     sections: list[Annotated[ReportText | ReportMetrics | ReportTable, Field(discriminator="kind")]]
 
 
-class CollectorOutput(StrictModel):
-    status: CollectionStatus
-    items: list[JSONObject] = Field(default_factory=list)
-    text: str = ""
-    count: NonNegativeInt = 0
-    error: ErrorInfo | None = None
-    metadata: JSONObject = Field(default_factory=dict)
-    report: ResultReport | None = None
-
-    @model_validator(mode="after")
-    def coherent_result(self) -> Self:
-        if self.status == "success":
-            if not self.text.strip() or self.count == 0 or self.error is not None:
-                raise ValueError("Success requires consumable text, positive count and no error")
-        else:
-            if self.items or self.text or self.count:
-                raise ValueError("Non-success results cannot expose consumable or unfinished data")
-            if (self.status in ("empty", "filtered_empty")) != (self.error is None):
-                raise ValueError("Only missing, failed and timeout results require an error")
-        return self
-
-
 class CollectionResult(StrictModel):
-    """Acquisition fact shared by legacy collectors and MCP/CLI calls.
-
-    ``CollectorOutput`` is the plugin-facing normalized result.  The workflow
-    boundary additionally stores raw transport data, so it must not inherit
-    the plugin validator which requires a non-empty text/count pair.
-    """
+    """Raw MCP/CLI acquisition fact, independent of Workflow input formatting."""
 
     source_id: ID
     status: CollectionStatus
     raw: JSONObject | None = None
-    items: list[JSONObject] = Field(default_factory=list)
-    text: str = ""
-    # Legacy Collector adapters may still carry a plugin-provided count while
-    # this transitional model is validated.  Counts are not a Workflow
-    # acquisition fact and must never cross the raw-result/archive boundary.
-    count: NonNegativeInt = Field(default=0, exclude=True)
     error: ErrorInfo | None = None
     metadata: JSONObject = Field(default_factory=dict)
-    report: ResultReport | None = None
 
     @model_validator(mode="after")
     def coherent_raw_result(self) -> Self:
         """Validate transport facts without collapsing raw JSON false/empty values."""
         if self.status == "success":
-            if self.error is not None or not (self.raw is not None or self.text or self.items):
-                raise ValueError("Successful collection requires raw or consumable content")
-        elif self.status in {"empty", "filtered_empty"}:
-            # Empty is still a transport fact: callers may need the original
-            # empty payload to distinguish an observed empty result from a
-            # missing/failed invocation.  It must not expose normalized
-            # consumable fields or an error, however.
-            if self.error is not None or self.text or self.items or self.count:
-                raise ValueError("Empty collection cannot expose consumable content or an error")
-        elif self.status in {"missing", "failed", "timeout"}:
+            if self.error is not None or self.raw is None:
+                raise ValueError("Successful collection requires raw content and no error")
+        elif self.status == "empty":
+            if self.error is not None:
+                raise ValueError("Empty collection cannot expose an error")
+        elif self.status in {"failed", "timeout"}:
             if self.error is None:
                 raise ValueError("Unsuccessful collection requires an error")
         return self
@@ -785,9 +725,6 @@ class CapabilityDescription(StrictModel):
     plugin: str
     capabilities: list[str]
     options_schema: JSONSchema
-    setters_schema: JSONSchema | None = None
-    fields: list[str] = Field(default_factory=list)
-    count_unit: str | None = None
     input_schema: JSONSchema | None = None
     execution: Literal["read", "exclusive"] = "exclusive"
 

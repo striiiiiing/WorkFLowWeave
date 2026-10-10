@@ -8,6 +8,9 @@ import pytest
 from langchain_core.messages import AIMessage
 from pydantic import Field
 
+from tests.agent.helpers import ScriptedModel
+from tests.agent.test_admission import GatedModel
+from tests.fixtures.plugin_helpers import install_test_channel_plugin
 from workflowweave.agent.commands import AgentCommand
 from workflowweave.channel import builtin_channels
 from workflowweave.channel.bindings import ChannelBindings
@@ -18,21 +21,16 @@ from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.interaction.app import create_app
 from workflowweave.lifecycle import ApplicationLifecycle
 from workflowweave.models import ChannelConfig, Notification, SystemConfig
-from tests.agent.helpers import ScriptedModel
-from tests.agent.test_admission import GatedModel
-from tests.fixtures.plugin_helpers import install_test_channel_plugin
 
 
 async def _seed_channel(config, *, agent_enabled=True):
     install_test_channel_plugin(config.plugin_dir)
     registry = PluginRegistry(
-        [],
         builtin_channels=builtin_channels(),
     )
     await registry.discover_plugins(config)
     resources = ResourceStore(
         f"{config.data_dir}/resources.json",
-        collector_register=registry.collectorRegister,
         channel_register=registry.channelRegister,
         data_dir=config.data_dir,
     )
@@ -147,7 +145,10 @@ async def test_lifecycle_resources_reload_plugin_reload_and_test_channel_http(tm
 
             outbox = await client.get("/api/channels/test/test/messages")
             assert outbox.status_code == 200
-            assert outbox.json()[0]["address"] == message["address"]
+            assert outbox.json()[0]["address"] == {
+                **message["address"],
+                "conversation_type": None,
+            }
             assert outbox.json()[0]["notification"]["text"] == "HTTP channel reply"
 
             disabled_config = active_config.model_copy(update={"agent_enabled": False})
@@ -295,8 +296,11 @@ async def test_web_commands_and_sse_use_the_lifecycle_channel_manager(tmp_path):
             assert "hello from the web channel" in str(model.seen[-1])
 
 
-async def test_receiver_restart_failure_keeps_reload_admission_closed(tmp_path, monkeypatch):
-    config = SystemConfig(data_dir=str(tmp_path / "data"), plugin_dir=str(tmp_path / "plugins"))
+async def test_receiver_restart_failure_is_isolated_during_plugin_reload(tmp_path, monkeypatch):
+    config = SystemConfig(
+        data_dir=str(tmp_path / "data"), plugin_dir=str(tmp_path / "plugins"),
+        builtin_plugin_dir=str(tmp_path / "builtin"),
+    )
     await _seed_channel(config)
     lifecycle = ApplicationLifecycle(config, channel_factories={})
     services = await lifecycle.start()
@@ -307,17 +311,23 @@ async def test_receiver_restart_failure_keeps_reload_admission_closed(tmp_path, 
 
     try:
         monkeypatch.setattr(services.channels, "start_receiving", fail_receiving)
-        with pytest.raises(WorkFLowWeaveError, match="receiver restart failed"):
-            await lifecycle.reload("plugins")
-        assert services.agent.accepting is False
-        assert services.workflow.coordinator.accepting is False
+        await lifecycle.reload("plugins")
+        assert services.agent.accepting is True
+        assert services.workflow.coordinator.accepting is True
         assert services.channels.configs == {}
+        health = await lifecycle.health()
+        assert health.status == "degraded"
+        assert health.accepting_runs is True
+        assert services.channels.receiver_errors["test"].code == "channel_receiver_start_failed"
 
         monkeypatch.setattr(services.channels, "start_receiving", start_receiving)
         await lifecycle.reload("plugins")
         assert services.agent.accepting is True
         assert services.workflow.coordinator.accepting is True
         assert services.channels.receiver(services.resources.get("channels", "test")).handler is not None
+        assert services.channels.receiver_errors == {}
+        health = await lifecycle.health()
+        assert health.status == "ready", health.model_dump_json()
     finally:
         await lifecycle.shutdown()
 

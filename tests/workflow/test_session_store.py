@@ -184,15 +184,15 @@ async def test_created_session_is_immediately_queryable(store):
     assert record.snapshot_availability == "pending"
 
 
-async def test_mcp_binding_ignores_legacy_collector_sources(store):
+async def test_cli_binding_does_not_grant_mcp_scope(store):
     from workflowweave.models import AIConfig, SourceConfig, WorkflowDefinition, WorkflowSnapshot
 
     legacy = WorkflowSnapshot(
         workflow=WorkflowDefinition(
-            id="legacy-workflow", sources=["legacy"],
+            id="legacy-workflow", sources=["cli"],
             analyses=[{"user_prompt": "analyze input", "id": "analysis", "ai": "ai", "model": "model"}],
         ),
-        sources={"legacy": SourceConfig(id="legacy", collector="mock")},
+        sources={"cli": SourceConfig(id="cli", call={"kind": "cli", "mode": "argv", "executable": "printf"})},
         ai={"ai": AIConfig(id="ai", provider="mock", models={"model": {}})},
         channels={}, created_at=datetime.now(UTC),
     )

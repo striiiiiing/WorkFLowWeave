@@ -21,9 +21,9 @@ from workflowweave.models import AIConfig
 ])
 def test_invalid_thinking_options_are_rejected(options):
     """验证非法思考参数在配置阶段被拒绝，无需发送模型请求。"""
-    cfg = AIConfig(id="ai", provider="http", base_url="http://localhost:19026/v1",
+    cfg = AIConfig(id="ai", provider="openai_compatible_api", base_url="http://localhost:19026/v1",
                    models={"mock": options})
-    service = AIService(channel_factories={"http": OpenAIChannelFactory()})
+    service = AIService(channel_factories={"openai_compatible_api": OpenAIChannelFactory()})
     with pytest.raises(WorkFLowWeaveError) as error:
         service.validate(cfg)
     assert error.value.code == "invalid_config"

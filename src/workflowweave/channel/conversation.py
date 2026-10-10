@@ -15,6 +15,7 @@ class ChannelAddress(StrictModel):
     target: str = Field(min_length=1, pattern=r"\S")
     sender: str = Field(min_length=1, pattern=r"\S")
     message_id: str = Field(min_length=1, pattern=r"\S")
+    conversation_type: str | None = None
 
     @property
     def peer(self) -> tuple[str, str, str]:

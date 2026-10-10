@@ -11,14 +11,15 @@ from email import policy
 from email.parser import BytesParser
 
 import pytest
+from aiosmtplib import SMTP
 
 from workflowweave.channel import ChannelManager
 from workflowweave.channel.errors import ChannelDeliveryError
 from workflowweave.config import PluginRegistry, ResourceStore
 from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.models import ChannelConfig, Notification, SystemConfig
+from workflowweave.plugins.channel.email.channel import EmailChannel, EmailChannelType
 from workflowweave.schema import validate_instance
-from plugins.channel.email.channel import EmailChannel, EmailChannelType
 
 
 class SMTPServer:
@@ -140,8 +141,30 @@ def test_reject_invalid_options_without_network(changes):
         validate_instance(options(**changes), EmailChannelType.options_schema)
 
 
+@pytest.mark.parametrize("username", [None, "", "user@example.test"])
+def test_smtp_password_requires_username_instead_of_rejecting_password(username):
+    supplied = options(password={"kind": "env", "name": "KEY"})
+    if username is not None:
+        supplied["username"] = username
+    if username == "user@example.test":
+        validate_instance(supplied, EmailChannelType.options_schema)
+        return
+    with pytest.raises(WorkFLowWeaveError) as raised:
+        validate_instance(supplied, EmailChannelType.options_schema)
+    errors = raised.value.details["errors"]
+    assert all(error["path"] != ["password"] for error in errors)
+    assert errors
+
+
+def test_smtp_null_username_with_password_reports_username_type():
+    with pytest.raises(WorkFLowWeaveError) as raised:
+        validate_instance(options(username=None, password={"kind": "env", "name": "KEY"}),
+                          EmailChannelType.options_schema)
+    assert raised.value.details["errors"] == [{"path": ["username"], "reason": "type"}]
+
+
 async def test_plugin_registration_and_credential_normalization(tmp_path):
-    registry = PluginRegistry([], builtin_channels=[EmailChannelType()])
+    registry = PluginRegistry(builtin_channels=[EmailChannelType()])
     report = await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     assert not report.errors
     assert {item.name for item in report.registered if item.kind == "channel"} == {"email"}
@@ -185,7 +208,7 @@ async def test_same_account_concurrent_recipients_reuse_connection_and_do_not_dr
             return await super().create(config, credentials)
 
     account = AccountType()
-    registry = PluginRegistry([], builtin_channels=[account])
+    registry = PluginRegistry(builtin_channels=[account])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     manager = ChannelManager(registry.channelRegister)
     async with smtp_server() as server:
@@ -259,16 +282,22 @@ async def test_starttls_is_required_and_never_silently_downgraded():
 
 
 async def test_accepted_then_disconnected_remains_success_and_next_send_reconnects():
+    disconnected = asyncio.Event()
+
+    class ObservedSMTP(SMTP):
+        def _on_connection_lost(self, protocol):
+            super()._on_connection_lost(protocol)
+            disconnected.set()
+
     async with smtp_server("accepted_drop") as server:
-        channel = EmailChannel(config(server.port), None)
+        channel = EmailChannel(config(server.port), None, client_factory=ObservedSMTP)
         await channel.start()
         await channel.send(note(), options={"recipient": "to@example.test"})
-        for _ in range(5):
-            await asyncio.sleep(0)
+        await asyncio.wait_for(disconnected.wait(), 1)
         assert not channel._client.is_connected
+        disconnected.clear()
         await channel.send(note(output_id="second"), options={"recipient": "to@example.test"})
-        for _ in range(5):
-            await asyncio.sleep(0)
+        await asyncio.wait_for(disconnected.wait(), 1)
         assert len(server.messages) == 2 and server.connections == 2
         await channel.stop()
 

@@ -29,7 +29,7 @@ def test_save_without_models_and_check_failure_do_not_block_persistence(tmp_path
         encrypted = client.post("/api/credentials/protect", json={"plaintext": "test-only-key"})
         assert encrypted.status_code == 200
         payload = {
-            "id": "provider", "provider": "http", "base_url": "http://127.0.0.1:1/v1",
+            "id": "provider", "provider": "openai_compatible_api", "base_url": "http://127.0.0.1:1/v1",
             "api_key": encrypted.json(),
         }
         saved = client.post("/api/ai", json=payload)
@@ -56,8 +56,8 @@ def test_save_without_models_and_check_failure_do_not_block_persistence(tmp_path
 
 
 def test_provider_without_models_cannot_execute_an_unconfigured_model():
-    service = AIService(channel_factories={"http": OpenAIChannelFactory()})
-    config = AIConfig(id="provider", provider="http", base_url="http://127.0.0.1:1/v1")
+    service = AIService(channel_factories={"openai_compatible_api": OpenAIChannelFactory()})
+    config = AIConfig(id="provider", provider="openai_compatible_api", base_url="http://127.0.0.1:1/v1")
     service.validate(config)
     with pytest.raises(WorkFLowWeaveError, match="model 不存在"):
         service.validate(config, "unconfigured")
@@ -78,7 +78,7 @@ def test_discover_unsaved_provider_resolves_protected_credential_without_persist
         protected = client.post("/api/credentials/protect", json={"plaintext": "draft-secret"})
         assert protected.status_code == 200
         payload = {
-            "id": "draft", "provider": "http", "base_url": "http://127.0.0.1:1/v1",
+            "id": "draft", "provider": "openai_compatible_api", "base_url": "http://127.0.0.1:1/v1",
             "api_key": protected.json(), "timeout": 2,
         }
         response = client.post("/api/ai/discover-models", json=payload)
@@ -103,7 +103,7 @@ def test_discover_uses_current_draft_without_changing_saved_provider(tmp_path, m
     ))
     with TestClient(create_app(owner)) as client:
         saved = {
-            "id": "provider", "provider": "http", "base_url": "http://127.0.0.1:1/v1",
+            "id": "provider", "provider": "openai_compatible_api", "base_url": "http://127.0.0.1:1/v1",
             "models": {"saved-model": {}},
         }
         assert client.post("/api/ai", json=saved).status_code == 201
@@ -128,7 +128,7 @@ def test_discover_reports_upstream_failure(tmp_path, monkeypatch):
     ))
     with TestClient(create_app(owner)) as client:
         response = client.post("/api/ai/discover-models", json={
-            "id": "draft", "provider": "http", "base_url": "http://127.0.0.1:1/v1",
+            "id": "draft", "provider": "openai_compatible_api", "base_url": "http://127.0.0.1:1/v1",
             "retries": 0,
         })
         assert response.status_code == 500

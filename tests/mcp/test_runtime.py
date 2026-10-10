@@ -6,10 +6,20 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
-from mcp.types import CallToolResult, ListToolsResult, TextContent, Tool
+from mcp import McpError
+from mcp.types import (
+    INVALID_PARAMS,
+    METHOD_NOT_FOUND,
+    CallToolResult,
+    ErrorData,
+    ListToolsResult,
+    TextContent,
+    Tool,
+)
 
 from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.mcp import MCPRuntime, SDKConnector
+from workflowweave.mcp.transport import CatalogSession
 from workflowweave.models import MCPServerConfig
 
 
@@ -104,6 +114,102 @@ async def test_probe_reports_disabled_server_without_connecting():
     report = await runtime.probe({"one": config(enabled=False)}, "one")
     assert report.status == "disabled"
     assert connector.opens == 0
+
+
+async def test_discover_method_not_found_falls_back_once_for_paginated_catalog():
+    class LegacyConnector(Connector):
+        def __init__(self):
+            super().__init__()
+            self.discover_calls = 0
+            self.cursors = []
+
+        async def discover(self):
+            self.discover_calls += 1
+            raise McpError(ErrorData(code=METHOD_NOT_FOUND, message="Method not found"))
+
+        async def list_tools(self, cursor=None):
+            self.cursors.append(cursor)
+            tools = [Tool(name="first", inputSchema={"type": "object"})]
+            if cursor is None:
+                return ListToolsResult(tools=tools, nextCursor="next")
+            return ListToolsResult(tools=[Tool(name="second", inputSchema={"type": "object"})])
+
+    connector = LegacyConnector()
+    tools = await MCPRuntime(connector).load({"one": config()}, "one")
+    assert [tool["name"] for tool in tools] == ["first", "second"]
+    assert connector.discover_calls == 1
+    assert connector.cursors == [None, "next"]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        McpError(ErrorData(code=-32000, message="unknown authentication failure")),
+        McpError(ErrorData(code=INVALID_PARAMS, message="Invalid request parameters")),
+        AttributeError("bug inside discover"),
+        NotImplementedError("unsupported internal operation"),
+    ],
+)
+async def test_discover_failures_other_than_method_not_found_do_not_fall_back(error):
+    class BrokenConnector(Connector):
+        def __init__(self):
+            super().__init__()
+            self.list_calls = 0
+
+        async def discover(self):
+            raise error
+
+        async def list_tools(self, cursor=None):
+            self.list_calls += 1
+            return await super().list_tools(cursor)
+
+    connector = BrokenConnector()
+    report = await MCPRuntime(connector).probe({"one": config()}, "one")
+    assert report.status == "unhealthy"
+    assert connector.list_calls == 0
+
+
+@pytest.mark.parametrize("response", [{}, {"tools": "invalid"}, {"tools": [{}]},
+                                      {"tools": [{"name": "broken"}]}])
+async def test_malformed_discover_response_is_unhealthy_without_fallback(response):
+    class BrokenConnector(Connector):
+        async def discover(self):
+            return response
+
+        async def list_tools(self, cursor=None):
+            pytest.fail("invalid discover responses must not fall back")
+
+    report = await MCPRuntime(BrokenConnector()).probe({"one": config()}, "one")
+    assert report.status == "unhealthy"
+
+
+async def test_valid_discover_catalog_does_not_list_tools():
+    class DiscoverConnector(Connector):
+        async def discover(self):
+            return {"tools": [tool.model_dump(by_alias=True) for tool in self.tools]}
+
+        async def list_tools(self, cursor=None):
+            pytest.fail("discover already supplied the catalog")
+
+    tools = await MCPRuntime(DiscoverConnector()).load({"one": config()}, "one")
+    assert [tool["name"] for tool in tools] == ["echo"]
+
+
+@pytest.mark.parametrize("message,data,expected_code", [
+    ("Invalid request parameters", "", METHOD_NOT_FOUND),
+    ("Invalid request parameters", {"field": "params"}, INVALID_PARAMS),
+    ("Invalid request parameters", None, INVALID_PARAMS),
+    ("unsupported authentication method", "", INVALID_PARAMS),
+])
+async def test_sdk_adapter_only_normalizes_the_unknown_request_signature(message, data, expected_code):
+    class Session:
+        async def send_request(self, request, result_type):
+            assert request.method == "server/discover" and request.params == {}
+            raise McpError(ErrorData(code=INVALID_PARAMS, message=message, data=data))
+
+    with pytest.raises(McpError) as caught:
+        await CatalogSession(Session(), [False]).discover()
+    assert caught.value.error.code == expected_code
 
 
 async def test_real_stdio_mcp_roundtrip(tmp_path):

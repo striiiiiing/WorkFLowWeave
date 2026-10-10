@@ -12,40 +12,39 @@ from contextlib import asynccontextmanager
 from sqlalchemy import URL, inspect
 from sqlmodel import Session, create_engine, func, select
 
+from tests.fixtures.sources import message_call
+from tests.workflow.helpers import archived
+from tests.workflow_ai_helpers import TestChannelFactory
 from workflowweave.ai import AIService
 from workflowweave.channel import ChannelManager
 from workflowweave.collection.manager import CollectorManager
-from workflowweave.config import PluginRegistry, ResourceStore, expand_source
+from workflowweave.config import PluginRegistry, ResourceStore
 from workflowweave.models import (
     AIConfig,
     AnalysisTask,
     ChannelConfig,
     FanInConfig,
-    SetterTemplate,
     SourceConfig,
     SystemConfig,
     WorkflowDefinition,
 )
+from workflowweave.plugins.channel.file.channel import FileChannelType
 from workflowweave.workflow.execution.runner import WorkflowRunner
 from workflowweave.workflow.storage.models import SessionHeader
-from plugins.channel.file.channel import FileChannelType
-from tests.fixtures.collectors import MockCollector
-from tests.workflow.helpers import archived
-from tests.workflow_ai_helpers import TestChannelFactory
 
 
 @asynccontextmanager
 async def _application(tmp_path, *, provider=None):
-    registry = PluginRegistry([MockCollector()], builtin_channels=[FileChannelType()])
+    registry = PluginRegistry(builtin_channels=[FileChannelType()])
     report = await registry.discover_plugins(
         SystemConfig(plugin_dir=str(tmp_path / "plugins"), data_dir=str(tmp_path))
     )
     assert not report.errors
-    resources = ResourceStore(tmp_path / "resources.json", collector_register=registry.collectorRegister, channel_register=registry.channelRegister)
+    resources = ResourceStore(tmp_path / "resources.json", channel_register=registry.channelRegister)
     ai = AIService(channel_factories={"mock": provider or TestChannelFactory()})
     channels = ChannelManager(registry.channelRegister)
     service = WorkflowRunner(
-        CollectorManager(registry.collectorRegister),
+        CollectorManager(None),
         ai,
         channels,
         resources,
@@ -60,21 +59,11 @@ async def _application(tmp_path, *, provider=None):
 
 
 def _save_resources(registry, resources, output_path, version):
-    template = SetterTemplate(id="messages", collector="mock", setters={"fields": ["message"]})
-    defaults = {"records": [{"message": version, "level": "INFO"}]}
-    source = expand_source(
-        SourceConfig(id="source", collector="mock", template="messages", options=defaults),
-        collector=registry.collectorRegister.get("mock"),
-        template=template,
-    )
-    assert source.template is None and source.options["mode"] == "success"
-    # Mutating caller inputs cannot affect the expanded source saved below.
-    defaults["records"][0]["message"] = "mutated default"
-    template.setters["fields"] = []
-    assert source.options["records"][0]["message"] == version
-    assert source.setters == {"fields": ["message"]}
+    call = message_call(version)
+    source = SourceConfig(id="source", call=call)
+    call["argv"][-1] = "mutated caller input"
+    assert source.call.argv[-1] == '{"message":"' + version + '"}'
     resources.save("sources", source)
-    resources.save("setters", template)
     resources.save("ai", AIConfig(id="ai", provider="mock", models={"model": {"version": version}}))
     resources.save(
         "channels", ChannelConfig(id="file", channel="file", options={"path": str(output_path)})
@@ -116,7 +105,7 @@ async def test_real_modules_recovery_preserves_original_output(tmp_path):
         original = await service.wait("original-run")
         assert original.status == "completed"
         assert original.shared_input == '[source=source; format=none]\n{"message":"original"}'
-        assert original.collection[0].items == [{"message": "original"}]
+        assert original.collection[0].raw["stdout"] == '{"message":"original"}'
         assert "count" not in original.collection[0].model_dump()
         assert original.aggregate.text == (
             'original-summary: original-second: [source=source; format=none]\n{"message":"original"}'
@@ -141,7 +130,7 @@ async def test_real_modules_recovery_preserves_original_output(tmp_path):
             )).content
             for stage in completed
         }
-        assert completed["collect"]["collection"][0]["items"] == [{"message": "original"}]
+        assert completed["collect"]["collection"][0]["raw"]["stdout"] == '{"message":"original"}'
         assert completed["analyze"]["analyses"][0]["text"] == original.analyses[0].text
         assert completed["aggregate"]["outputs"] == original.outputs
         assert completed["notify"]["deliveries"][0]["status"] == "success"
@@ -150,7 +139,7 @@ async def test_real_modules_recovery_preserves_original_output(tmp_path):
 
     # Reopen every concrete service and SQLite connection, using current resources.
     async with _application(tmp_path) as (_, resources, service):
-        assert resources.get("sources", "source").options["records"][0]["message"] == "changed"
+        assert resources.get("sources", "source").call.argv[-1] == '{"message":"changed"}'
         await service.resume("original-run")
         recovered = await service.wait("original-run")
         assert recovered == original

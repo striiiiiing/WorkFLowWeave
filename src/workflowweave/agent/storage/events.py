@@ -77,6 +77,30 @@ class EventLog:
             self._append_index(event)
             self._next_id += 1
 
+    def _merge_index(self, events: list[dict[str, Any]]) -> None:
+        """Merge an append-only disk snapshot without rebuilding history.
+
+        Event IDs are allocated by ``append_record_unlocked`` and form the
+        durable append sequence.  A reader may observe records appended by a
+        different process, but it cannot observe an in-place rewrite.  Keep
+        the existing index and only index the new suffix; retain a full rebuild
+        as an explicit recovery path if the snapshot no longer has the known
+        prefix.
+        """
+        known = len(self._events)
+        if known and (
+            len(events) < known
+            or events[known - 1].get("id") != self._events[-1].get("id")
+        ):
+            self._replace_index(events)
+            return
+        if known == 0:
+            self._replace_index(events)
+            return
+        for event in events[known:]:
+            self._append_index(event)
+            self._next_id += 1
+
     async def wait_for_events(self, after: int, *, wait_seconds: float = 15.0) -> list[dict[str, Any]]:
         """Return events after ``after`` without a polling gap.
 
@@ -152,7 +176,7 @@ class EventLog:
             return dict(event)
 
     async def _publish(self, events):
-        self._replace_index(events)
+        self._merge_index(events)
         self._revision += 1
         async with self._changed:
             self._changed.notify_all()
@@ -171,8 +195,13 @@ class EventLog:
             if not self._loaded:
                 await asyncio.to_thread(self._load)
             events = await asyncio.to_thread(self._read_locked)
-            self._replace_index(events)
-            return [dict(event) for event in events if event["id"] > after]
+            self._merge_index(events)
+            if after >= len(self._events):
+                return []
+            # Event IDs are the append sequence, so the cursor maps directly
+            # to the in-memory suffix.  Avoid scanning the complete history on
+            # every SSE poll while a model is streaming token deltas.
+            return [dict(event) for event in self._events[after:]]
 
     def _read_locked(self) -> list[dict[str, Any]]:
         with file_lock(self.lock_path):

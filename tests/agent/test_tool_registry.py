@@ -16,7 +16,7 @@ async def test_builtin_tools_are_filtered_before_import_and_capture_read_only_vi
         return original(name, *args, **kwargs)
 
     monkeypatch.setattr(importlib, "import_module", record)
-    registry = PluginRegistry([])
+    registry = PluginRegistry()
     report = await registry.discover_plugins(config)
     assert not report.errors
     assert {item.name for item in registry.toolRegister.describe()} == {"mcp", "read", "write", "grep"}
@@ -51,7 +51,7 @@ class Plugin:
         api.register_tool(ToolDeclaration("read", "Conflict", schema({}), "read", invoke))
 plugin = Plugin()
 ''')
-    registry = PluginRegistry([])
+    registry = PluginRegistry()
     report = await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path)))
     assert registry.toolRegister.get("new_tool") is None
     assert registry.toolRegister.get("read") is not None
@@ -61,30 +61,7 @@ plugin = Plugin()
 async def test_external_plugin_cannot_override_disabled_builtin_id(tmp_path):
     (tmp_path / "config.json").write_text(json.dumps({"tool": {"agent_read": {"enabled": False}}}))
     external_plugin(tmp_path, "agent_read", 'raise RuntimeError("must not import")')
-    registry = PluginRegistry([])
+    registry = PluginRegistry()
     report = await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path)))
     assert report.errors[0].details["reason"] == "plugin_id_conflict"
     assert registry.toolRegister.get("read") is None
-
-
-async def test_collectors_default_to_exclusive_unless_declared():
-    from workflowweave.config.views import CollectorRegister, collector_registration
-    from tests.fixtures.collectors import MockCollector
-
-    class Undeclared:
-        name = "legacy"
-        description = "Unspecified side effects"
-        options_schema = {"type": "object", "properties": {}}
-        setters_schema = {"type": "object", "properties": {}}
-        count_unit = "items"
-
-        async def collect(self, options, setters, context):
-            raise AssertionError("discovery cannot collect")
-
-    view = CollectorRegister({
-        "legacy": collector_registration(Undeclared(), "legacy"),
-        "mock": collector_registration(MockCollector(), "builtin"),
-    })
-    assert {item.name: item.execution for item in view.describe()} == {
-        "legacy": "exclusive", "mock": "read",
-    }
