@@ -54,7 +54,7 @@ class CollectorInvocation:
 
     async def schema(self, ident: str) -> JSONObject:
         source = self.target(ident)
-        if source.call is None or source.call.kind != "mcp":
+        if source.call.kind != "mcp":
             return {"type": "object", "properties": {}, "additionalProperties": False}
         tool = await self._executor.mcp.describe(
             self.mcp_servers, source.call.server, source.call.tool,
@@ -73,10 +73,9 @@ class CollectorInvocation:
             values = CollectionArguments.model_validate(arguments)
         except ValidationError as exc:
             raise validation_error(exc, code="invalid_argument") from None
-        if source.call is None:
-            raise WorkFLowWeaveError("invalid_argument", "历史 Collector 来源不支持交互式 call")
-        if source.call.kind == "cli" and values.arguments:
-            raise WorkFLowWeaveError("invalid_argument", "CLI 来源不接受 MCP 参数覆盖")
+        if source.call.kind != "mcp" and values.arguments:
+            label = "CLI" if source.call.kind == "cli" else "文件"
+            raise WorkFLowWeaveError("invalid_argument", f"{label} 来源不接受 MCP 参数覆盖")
         override = SourceOverride(arguments=values.arguments) if values.arguments else None
-        resolved = resolve_source_call(source, {}, override)
+        resolved = resolve_source_call(source, override)
         return await self._executor.collect(resolved, context)

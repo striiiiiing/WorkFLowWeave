@@ -177,4 +177,4 @@ def test_session_reader_is_injected_only_as_a_runtime_dependency():
     assert context.session_reader is reader
     assert not hasattr(context, "model_dump")
     with pytest.raises(ValidationError):
-        SourceConfig(id="source", collector="history", options={"context": context})
+        SourceConfig(id="source", call={"kind": "mcp", "server": "server", "tool": "history", "arguments": {"context": context}})

@@ -1,15 +1,20 @@
 """Install repository plugins into an isolated test configuration directory."""
 
+import os
 from pathlib import Path
-from shutil import copytree, ignore_patterns
+
+from tests.fixtures.plugin_helpers import install_plugin
 
 
 def install_plugins(destination):
     destination = Path(destination)
-    source = Path(__file__).resolve().parents[1] / "plugins"
-    for manifest in sorted(source.rglob("plugin.json")):
-        package = manifest.parent
+    source = Path(__file__).resolve().parents[1] / "src/workflowweave/plugins"
+    for directory, children, files in os.walk(source):
+        children[:] = sorted(name for name in children if name not in {"node_modules", "__pycache__"})
+        if "plugin.json" not in files:
+            continue
+        package = Path(directory)
         relative = package.relative_to(source)
-        copytree(package, destination / relative,
-                 ignore=ignore_patterns("__pycache__", "*.pyc"))
+        install_plugin(package, destination / relative)
+        children.clear()
     return destination

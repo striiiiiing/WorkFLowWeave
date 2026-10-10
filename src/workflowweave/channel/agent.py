@@ -50,7 +50,9 @@ class AgentChannelProcessor:
                 if not valid():
                     raise WorkFLowWeaveError("message_interrupted", "消息因更高优先级的停止命令而取消")
                 if command.session is None and action in {"message", "append", "compact", "fork"}:
-                    raise WorkFLowWeaveError("channel_unbound", "渠道实例尚未绑定对话，请绑定或使用 /resume")
+                    raise WorkFLowWeaveError(
+                        "channel_unbound", "渠道实例尚未绑定对话；使用 /new 创建，或 /resume 查看历史后选择对话",
+                    )
                 if not valid():
                     raise WorkFLowWeaveError("message_interrupted", "消息因更高优先级的停止命令而取消")
                 response = await self._dispatch(command, valid=valid)
@@ -82,7 +84,9 @@ class AgentChannelProcessor:
             # Wait for its short admission segment, then cancel the actual turn.
             session = await asyncio.shield(pending) or session
         if session is None:
-            raise WorkFLowWeaveError("invalid_argument", "此命令需要 session")
+            raise WorkFLowWeaveError(
+                "invalid_argument", "当前没有可停止的会话；使用 /new 创建或 /resume 查看历史",
+            )
         command.session = session
         return ProcessedInput(await self._dispatch(command), binding)
 

@@ -11,19 +11,7 @@ from typing import Any
 from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.models import PluginKind
 
-SOURCE_CAPABILITY_IDS = (
-    "qwenpaw_memos",
-    "qwenpaw_flomo",
-    "qwenpaw_halo",
-    "qwenpaw_karakeep",
-    "qwenpaw_siyuan",
-    "qwenpaw_tencent_docs",
-    "qwenpaw_activity",
-    "qwenpaw_codex",
-    "qwenpaw_claude",
-    "qwenpaw_dida",
-)
-_PLUGIN_KINDS = frozenset(("collector", "channel", "tool"))
+_PLUGIN_KINDS = frozenset(("channel", "tool"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,20 +122,3 @@ def normalize_plugin_manifest(raw: Mapping[str, Any], *, directory_name: str) ->
         dependencies=_dependencies(raw.get("dependencies")),
         metadata=MappingProxyType(dict(metadata)),
     )
-
-
-def validate_source_inventory(capability_ids: Sequence[str]) -> tuple[str, ...]:
-    """Validate the exact ten-source inventory used by the QwenPaw adapter."""
-
-    actual = tuple(capability_ids)
-    if len(actual) != len(set(actual)):
-        raise WorkFLowWeaveError(
-            "plugin_inventory_invalid", "十个来源能力中存在重复 ID", {"actual": list(actual)}
-        )
-    if actual != SOURCE_CAPABILITY_IDS:
-        raise WorkFLowWeaveError(
-            "plugin_inventory_invalid",
-            "来源能力必须包含约定的十个稳定 ID",
-            {"expected": list(SOURCE_CAPABILITY_IDS), "actual": list(actual)},
-        )
-    return actual

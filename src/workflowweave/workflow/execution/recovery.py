@@ -6,8 +6,8 @@ import asyncio
 from datetime import UTC, datetime
 
 from workflowweave.errors import WorkFLowWeaveError
-from workflowweave.models import WorkflowSnapshot
 from workflowweave.workflow.graph.workflow import GRAPH_REVISION
+from workflowweave.workflow.storage.snapshots import parse_historical_snapshot
 
 STAGES = ("collect", "analyze", "aggregate", "notify")
 
@@ -53,9 +53,7 @@ async def prepare_recovery(
         raise WorkFLowWeaveError("checkpoint_missing", "缺少原 checkpoint，无法从业务存档猜测进度")
     compatible(current.checkpoint.get("channel_values", {}))
     values = current.checkpoint["channel_values"]
-    snapshot = WorkflowSnapshot.model_validate(
-        values["snapshot"], context={"historical_snapshot": True}
-    )
+    snapshot = parse_historical_snapshot(values["snapshot"])
     saved_path = values.get("log_path")
     latest = await graph.aget_state(config)
     selected = latest

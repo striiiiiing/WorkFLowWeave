@@ -24,13 +24,10 @@ from workflowweave.config.manifest import normalize_plugin_manifest
 from workflowweave.config.reader import read_json, read_plugin_configuration
 from workflowweave.config.views import (
     ChannelRegister,
-    CollectorRegister,
     ToolRegister,
     _ChannelRegistration,
-    _CollectorRegistration,
     _ToolRegistration,
     channel_registration,
-    collector_registration,
     tool_registration,
 )
 from workflowweave.errors import WorkFLowWeaveError, validation_error
@@ -43,14 +40,15 @@ from workflowweave.models import (
     SystemConfig,
     copy_model,
 )
-from workflowweave.protocols import ChannelType, Collector, Tool
+from workflowweave.protocols import ChannelType, Tool
 
-_Registration = _CollectorRegistration | _ChannelRegistration | _ToolRegistration
+_Registration = _ChannelRegistration | _ToolRegistration
 BUILTIN_TOOLS = {
     "agent_" + name: "workflowweave.agent.tools.builtin." + name
     for name in ("mcp", "read", "write", "grep", "shell")
 }
 _IDENTIFIER = re.compile(r"[A-Za-z0-9_-]{1,80}\Z")
+_DEFAULT_BUILTIN_PLUGIN_ROOT = Path(__file__).resolve().parents[1] / "plugins"
 _KNOWN_REASONS = frozenset(
     {
         "configuration_unavailable",
@@ -69,6 +67,44 @@ def _safe_name(value: Any) -> str | None:
     return value if type(value) is str and _IDENTIFIER.fullmatch(value) else None
 
 
+def _plugin_directories(root: Path) -> list[Path]:
+    try:
+        directories = []
+        for entry in sorted(root.iterdir(), key=lambda path: path.name):
+            if not entry.is_dir() or entry.name.startswith((".", "__")):
+                continue
+            if entry.name in ("channel", "tool") and not (entry / "plugin.json").exists():
+                directories.extend(sorted(
+                    (child for child in entry.iterdir() if child.is_dir()
+                     and not child.name.startswith((".", "__"))),
+                    key=lambda path: path.name,
+                ))
+            else:
+                directories.append(entry)
+        return directories
+    except FileNotFoundError:
+        return []
+    except OSError:
+        raise WorkFLowWeaveError("configuration_unavailable", "插件目录无法读取") from None
+
+
+def _plugin_roots(config: SystemConfig) -> tuple[Path, Path]:
+    try:
+        builtin_root = Path(
+            config.builtin_plugin_dir or _DEFAULT_BUILTIN_PLUGIN_ROOT
+        ).resolve()
+        user_root = Path(config.plugin_dir).resolve()
+    except (OSError, RuntimeError, ValueError):
+        raise WorkFLowWeaveError("invalid_config", "插件目录无法解析") from None
+    if builtin_root == user_root or builtin_root.is_relative_to(user_root) or user_root.is_relative_to(
+        builtin_root
+    ):
+        raise WorkFLowWeaveError(
+            "invalid_config", "内置插件目录与用户插件目录不能相同或互相包含"
+        )
+    return builtin_root, user_root
+
+
 class _RegistrationTransaction:
     def __init__(self, kind: PluginKind, owner: str, existing: Mapping[str, _Registration]):
         self.kind = kind
@@ -79,7 +115,7 @@ class _RegistrationTransaction:
         self.failed = False
         self.closed = False
 
-    def add(self, capability: Collector | ChannelType | Tool) -> None:
+    def add(self, capability: ChannelType | Tool) -> None:
         if self.closed:
             raise WorkFLowWeaveError("registration_aborted", "插件声明事务已经关闭")
         try:
@@ -87,7 +123,6 @@ class _RegistrationTransaction:
             if name and name not in self.names:
                 self.names.append(name)
             registration = {
-                "collector": collector_registration,
                 "channel": channel_registration,
                 "tool": tool_registration,
             }[self.kind](capability, self.owner)
@@ -105,22 +140,6 @@ class _RegistrationTransaction:
         if self.failed or not self.pending:
             raise WorkFLowWeaveError("registration_aborted", "插件未提交完整有效的能力声明")
         return dict(self.pending)
-
-
-class CollectorPluginApi:
-    __slots__ = ("_transaction", "_config_path")
-
-    def __init__(self, transaction: _RegistrationTransaction, config_path: Path):
-        self._transaction = transaction
-        self._config_path = config_path
-
-    @property
-    def config_path(self) -> Path:
-        """Private JSON belongs to the plugin; the registry never reads it."""
-        return self._config_path
-
-    def register_collector(self, collector: Collector) -> None:
-        self._transaction.add(collector)
 
 
 class ChannelPluginApi:
@@ -154,7 +173,7 @@ class ToolPluginApi:
 
 
 def _register(plugin, transaction, config_path):
-    api = {"collector": CollectorPluginApi, "channel": ChannelPluginApi,
+    api = {"channel": ChannelPluginApi,
            "tool": ToolPluginApi}[transaction.kind](transaction, config_path)
     register = getattr(plugin, "register", None)
     if not callable(register) or inspect.iscoroutinefunction(register):
@@ -261,21 +280,20 @@ def _failure(
 class PluginRegistry:
     def __init__(
         self,
-        builtin_collectors: Iterable[Collector] = (),
         *,
         builtin_channels: Iterable[ChannelType] = (),
+        include_packaged_plugins: bool | None = None,
     ) -> None:
-        self._builtin_collectors = tuple(builtin_collectors)
         self._builtin_channels = tuple(builtin_channels)
-        self._collector_register = CollectorRegister()
+        self._scan_packaged_plugins = (
+            not bool(self._builtin_channels)
+            if include_packaged_plugins is None
+            else include_packaged_plugins
+        )
         self._channel_register = ChannelRegister()
         self._tool_register = ToolRegister()
         self.generation = 0
         self._lock = asyncio.Lock()
-
-    @property
-    def collectorRegister(self) -> CollectorRegister:
-        return self._collector_register
 
     @property
     def channelRegister(self) -> ChannelRegister:
@@ -291,8 +309,7 @@ class PluginRegistry:
         except ValidationError as exc:
             raise validation_error(exc) from None
         async with self._lock:
-            collectors, channels, tool_view, report = await asyncio.to_thread(self._discover, config)
-            self._collector_register = collectors
+            channels, tool_view, report = await asyncio.to_thread(self._discover, config)
             self._channel_register = channels
             self._tool_register = tool_view
             self.generation += 1
@@ -308,10 +325,9 @@ class PluginRegistry:
             raise validation_error(exc) from None
         selected = None if owners is None else frozenset(owners)
         async with self._lock:
-            collectors, channels, tool_view, report = await asyncio.to_thread(
+            channels, tool_view, report = await asyncio.to_thread(
                 self._discover, config, reload_owners=selected
             )
-            self._collector_register = collectors
             self._channel_register = channels
             self._tool_register = tool_view
             self.generation += 1
@@ -358,11 +374,11 @@ class PluginRegistry:
         config: SystemConfig,
         *,
         reload_owners: frozenset[str] | None = None,
-    ) -> tuple[CollectorRegister, ChannelRegister, ToolRegister, DiscoveryReport]:
+    ) -> tuple[ChannelRegister, ToolRegister, DiscoveryReport]:
         entries: dict[PluginKind, dict[str, _Registration]] = {
-            "collector": {}, "channel": {}, "tool": {},
+            "channel": {}, "tool": {},
         }
-        for kind, capabilities in (("collector", self._builtin_collectors), ("channel", self._builtin_channels)):
+        for kind, capabilities in (("channel", self._builtin_channels),):
             if not capabilities:
                 continue
             transaction = _RegistrationTransaction(kind, "builtin", entries[kind])
@@ -381,39 +397,42 @@ class PluginRegistry:
         # is committed below as a per-owner transaction; all other published
         # registrations remain available during the rebuild.
         if reload_owners is not None:
-            for kind, view in (("collector", self._collector_register),
-                               ("channel", self._channel_register), ("tool", self._tool_register)):
+            for kind, view in (("channel", self._channel_register), ("tool", self._tool_register)):
                 for name, registration in view._registrations.items():
                     owner = registration.description.plugin
                     if owner == "builtin" or owner in reload_owners:
                         continue
                     entries[kind][name] = registration
 
-        root = Path(config.plugin_dir)
-        settings = read_plugin_configuration(root / "config.json")
+        builtin_root, user_root = _plugin_roots(config)
+        settings = read_plugin_configuration(user_root / "config.json")
         tool_plugins = {owner: {"plugin": owner, "enabled": settings.get("tool", {}).get(
             owner, PluginSettings()).enabled} for owner in BUILTIN_TOOLS}
-        try:
-            directories = []
-            for entry in sorted(root.iterdir(), key=lambda path: path.name):
-                if not entry.is_dir() or entry.name.startswith((".", "__")):
-                    continue
-                if entry.name in ("channel", "collector", "tool") and not (entry / "plugin.json").exists():
-                    directories.extend(sorted(
-                        (child for child in entry.iterdir() if child.is_dir()
-                         and not child.name.startswith((".", "__"))),
-                        key=lambda path: path.name,
-                    ))
-                else:
-                    directories.append(entry)
-        except FileNotFoundError:
-            directories = []
-        except OSError:
-            raise WorkFLowWeaveError("configuration_unavailable", "插件目录无法读取") from None
+        packaged_directories = (
+            _plugin_directories(builtin_root)
+            if self._scan_packaged_plugins or config.builtin_plugin_dir is not None
+            else []
+        )
+        directories = [
+            *((directory, "builtin") for directory in packaged_directories),
+            *((directory, "user") for directory in _plugin_directories(user_root)),
+        ]
+        builtin_ids: set[tuple[PluginKind, str]] = {
+            ("channel", _safe_name(capability.name) or "")
+            for capability in self._builtin_channels
+        }
+        for directory in packaged_directories:
+            try:
+                manifest = normalize_plugin_manifest(
+                    read_json(directory / "plugin.json"), directory_name=directory.name
+                )
+            except WorkFLowWeaveError:
+                continue
+            builtin_ids.add((manifest.kind, manifest.id))
 
         errors: list[ErrorInfo] = []
         owners: set[tuple[PluginKind, str]] = {
-            ("collector", "builtin"), ("channel", "builtin"),
+            ("channel", "builtin"),
             *(("tool", owner) for owner in BUILTIN_TOOLS),
         }
         for owner, module_name in BUILTIN_TOOLS.items():
@@ -425,13 +444,13 @@ class PluginRegistry:
             try:
                 module = importlib.import_module(module_name)
                 entries["tool"].update(_register(
-                    module.plugin, transaction, root / owner / "config.json",
+                    module.plugin, transaction, builtin_root / "tool" / owner / "config.json",
                 ))
             except Exception as exc:
                 transaction.closed = True
                 errors.append(_failure(exc, plugin=owner, kind="tool", stage="register",
                                        names=transaction.names))
-        for directory in directories:
+        for directory, origin in directories:
             kind: PluginKind | None = None
             plugin_id = _safe_name(directory.name) or "unidentified"
             transaction = None
@@ -449,7 +468,10 @@ class PluginRegistry:
                         raise WorkFLowWeaveError("plugin_entry_invalid", "插件入口无效") from None
                     raise
                 kind, plugin_id = manifest.kind, manifest.id
-                if directory.parent != root and kind != directory.parent.name:
+                if origin == "user" and (kind, plugin_id) in builtin_ids:
+                    raise WorkFLowWeaveError("plugin_id_conflict", "用户插件不能覆盖内置插件")
+                plugin_root = builtin_root if origin == "builtin" else user_root
+                if directory.parent != plugin_root and kind != directory.parent.name:
                     raise WorkFLowWeaveError("invalid_declaration", "插件种类与分组目录不一致")
                 if kind == "tool":
                     tool_plugins[plugin_id] = {"plugin": plugin_id, "enabled": settings.get(
@@ -486,10 +508,6 @@ class PluginRegistry:
                     )
                 )
 
-        collectors = CollectorRegister(
-            entries["collector"],
-            errors=(error for error in errors if error.details.get("kind") in (None, "collector")),
-        )
         channels = ChannelRegister(
             entries["channel"],
             errors=(error for error in errors if error.details.get("kind") in (None, "channel")),
@@ -500,7 +518,7 @@ class PluginRegistry:
             plugins=tool_plugins.values(),
         )
         report = DiscoveryReport(
-            registered=[*collectors.describe(), *channels.describe(), *tool_view.describe()],
+            registered=[*channels.describe(), *tool_view.describe()],
             errors=errors,
         )
-        return collectors, channels, tool_view, report
+        return channels, tool_view, report

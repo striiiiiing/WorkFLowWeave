@@ -9,8 +9,6 @@ from workflowweave.models import (
     AtSchedule,
     CapabilityDescription,
     ChannelConfig,
-    CollectionContext,
-    CollectorOutput,
     Credential,
     ErrorInfo,
     JSONObject,
@@ -28,28 +26,6 @@ from workflowweave.models import (
     WorkflowSnapshot,
     WorkflowStage,
 )
-
-
-class Collector(Protocol):
-    name: str
-    id_prefix: str | None
-    description: str
-    fields: list[str]
-    count_unit: str
-    options_schema: JSONSchema
-    setters_schema: JSONSchema
-
-    async def collect(
-        self, options: JSONObject, setters: JSONObject, context: CollectionContext
-    ) -> CollectorOutput: ...
-
-
-class CollectorRegistryView(Protocol):
-    def get(self, name: str) -> Collector | None: ...
-
-    def describe(self) -> list[CapabilityDescription]: ...
-
-    def diagnostics(self, name: str) -> list[ErrorInfo]: ...
 
 
 class CredentialResolver(Protocol):

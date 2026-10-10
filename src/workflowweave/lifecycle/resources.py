@@ -24,7 +24,7 @@ from workflowweave.models import (
     SystemConfig,
     copy_model,
 )
-from workflowweave.protocols import ChannelRegistryView, CollectorRegistryView
+from workflowweave.protocols import ChannelRegistryView
 
 
 class LifecycleResourceStore(ResourceStore):
@@ -94,12 +94,16 @@ def effective_config(config: SystemConfig) -> SystemConfig:
 
     result.data_dir = resolved(result.data_dir)
     result.plugin_dir = resolved(result.plugin_dir)
+    result.builtin_plugin_dir = (
+        resolved(result.builtin_plugin_dir)
+        if result.builtin_plugin_dir is not None
+        else None
+    )
     result.log_file = resolved(result.log_file) if result.log_file is not None else None
     return result
 
 
 def resource_validators(
-    collector_register: CollectorRegistryView,
     channel_register: ChannelRegistryView,
     collectors: CollectorManager,
     channels: ChannelManager,
@@ -107,12 +111,12 @@ def resource_validators(
 ) -> dict[str, Callable[[StrictModel], None]]:
     """将当前运行组件的语义校验接入 ResourceStore。
 
-    采集器或通道能力缺失时跳过该插件的语义校验，交由能力诊断报告缺失引用；
+    通道能力缺失时跳过该插件的语义校验，交由能力诊断报告缺失引用；
     插件重载后需重新构建这些闭包，使校验使用新注册表。
     """
 
     def source_validator(value: StrictModel) -> None:
-        """在采集器已注册时校验采集源的运行参数。"""
+        """校验 MCP/CLI 来源的运行参数。"""
         source = SourceConfig.model_validate(value)
         collectors.validate(source)
 

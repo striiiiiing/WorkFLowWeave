@@ -13,6 +13,7 @@ from workflowweave.agent.commands import AgentCommand
 from workflowweave.channel.agent import AgentChannelProcessor
 from workflowweave.channel.base import BaseConversationChannel
 from workflowweave.channel.bindings import ChannelBindings, InstanceBinding
+from workflowweave.channel.connection import ChannelConnections
 from workflowweave.channel.context import delivery_deadline
 from workflowweave.channel.conversation import ChannelAddress, InboundHandler, InboundMessage
 from workflowweave.channel.errors import ChannelDeliveryError
@@ -46,6 +47,7 @@ class _Entry:
     send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     stop_task: asyncio.Task[None] | None = None
     stopped: bool = False
+    receiver_cleanup_pending: bool = False
 
 
 @dataclass
@@ -94,6 +96,7 @@ class ChannelManager:
         self.configs: dict[str, ChannelConfig] = {}
         self._agent_configs: dict[str, ChannelConfig] = {}
         self.errors: dict[str, dict] = {}
+        self.receiver_errors: dict[str, ErrorInfo] = {}
         self._sync_lock = asyncio.Lock()
         self._sync_task: asyncio.Task[None] | None = None
         self._accepting = True
@@ -103,6 +106,7 @@ class ChannelManager:
         self._pending_requests: dict[tuple[str, str, str], tuple[str, asyncio.Future]] = {}
         self._admission_lock = asyncio.Lock()
         self._web_channel = None
+        self.connections = ChannelConnections(self)
 
     def describe(self) -> list[CapabilityDescription]:
         return [x.model_copy(deep=True) for x in self._register.describe()]
@@ -187,6 +191,7 @@ class ChannelManager:
 
     async def configure(self, configs) -> None:
         configs = list(configs)
+        await self.connections.reconcile(configs)
         self._agent_configs = {config.id: config.model_copy(deep=True) for config in configs}
         desired = {config.id: config.model_copy(deep=True) for config in configs
                    if config.enabled and config.agent_enabled}
@@ -206,15 +211,100 @@ class ChannelManager:
                 self.configs[ident] = config
                 try:
                     await self.start_receiving(
-                        config, lambda message, bound=config, version=generation: self.enqueue(
-                            bound.id, message, expected=bound, generation=version,
+                        config, lambda message, bound=config, version=generation: self._receive_inbound(
+                            bound, message, generation=version,
                         ),
                     )
-                except BaseException:
+                except BaseException as exc:
                     self._receiver_generations[ident] += 1
                     del self.configs[ident]
-                    raise
+                    if not isinstance(exc, Exception):
+                        raise
+                    self._record_receiver_error(config, exc)
+            for ident in self.receiver_errors.keys() - desired.keys():
+                if not self._pending_receiver_cleanup(ident):
+                    del self.receiver_errors[ident]
             self.errors.pop("configuration", None)
+
+    def _record_receiver_error(self, config: ChannelConfig, exc: Exception) -> None:
+        code = "channel_receiver_start_failed"
+        message = "渠道接收启动失败，已跳过此实例；其他功能继续运行"
+        if isinstance(exc, (TimeoutError, _BudgetExhausted)):
+            code = "channel_receiver_timeout"
+            message = "渠道接收启动超时，已跳过此实例；其他功能继续运行"
+        elif isinstance(exc, WorkFLowWeaveError) and exc.code in {
+            "channel_receiver_cleanup_failed", "channel_initialization_cleanup_failed",
+        }:
+            code = "channel_receiver_cleanup_failed"
+            message = "渠道接收启动失败且清理未完成，保留实例等待清理重试"
+        error = exception_error(exc, code=code, message=message, details={
+            "kind": "channel", "name": config.channel, "resources": [config.id],
+            "timeout": config.timeout,
+        })
+        self.receiver_errors[config.id] = error
+        _LOGGER.error(
+            "channel_receiver_start_failed: %s (%s/%s, %s)",
+            message, config.channel, config.id, error.details["exception_type"],
+            extra={"event": "channel_receiver_start_failed", "channel_id": config.id,
+                   "channel_type": config.channel, "error_code": code},
+        )
+
+    async def _receive_inbound(self, config: ChannelConfig, inbound: InboundMessage, *,
+                               generation: int):
+        if generation != self._receiver_generations.get(config.id):
+            raise WorkFLowWeaveError("channel_disabled", "接收配置已变更，旧消息未受理")
+        message = InboundMessage.model_validate(inbound).model_copy(deep=True)
+        admitted = self.connections.admit(config, message)
+        if admitted is not None:
+            return admitted
+        return await self.enqueue(config.id, message, expected=config, generation=generation)
+
+    async def _start_connection_receiver(self, session) -> None:
+        config = session.config
+        async with self._sync_lock:
+            self._admit()
+            if self._suspended or not self._accepting:
+                raise WorkFLowWeaveError("channel_unavailable", "渠道正在关闭或重载")
+            current = self.configs.get(config.id)
+            if current is not None and self._key(current) == self._key(config):
+                return
+            account = self._instance_config(config)
+            for other in self.configs.values():
+                if other.id != config.id and other.channel == config.channel and (
+                    self._instance_config(other).options == account.options
+                ):
+                    raise WorkFLowWeaveError("session_busy", "此机器人已有接收实例")
+            for other in self.connections._sessions.values():
+                if other is not session and other.temporary_receiver and (
+                    other.config.channel == config.channel
+                    and self._instance_config(other.config).options == account.options
+                ):
+                    raise WorkFLowWeaveError("session_busy", "此机器人已有首次连接接收实例")
+            generation = self._receiver_generations.get(config.id, 0) + 1
+            self._receiver_generations[config.id] = generation
+            session.temporary_receiver = not config.agent_enabled
+            if config.agent_enabled:
+                self.configs[config.id] = config.model_copy(deep=True)
+            try:
+                await self.start_receiving(
+                    config,
+                    lambda message: self._receive_inbound(config, message, generation=generation),
+                    temporary=session.temporary_receiver,
+                )
+            except BaseException:
+                if config.agent_enabled:
+                    self.configs.pop(config.id, None)
+                raise
+
+    async def _stop_connection_receiver(self, session) -> None:
+        if not session.temporary_receiver:
+            return
+        async with self._sync_lock:
+            self._receiver_generations[session.config.id] = (
+                self._receiver_generations.get(session.config.id, 0) + 1
+            )
+            await self.stop_receiving(session.config)
+            session.temporary_receiver = False
 
     def _conversation_config(self, channel_id: str, config=None) -> ChannelConfig:
         if self.bindings is None or self.bindings._db is None:
@@ -369,7 +459,7 @@ class ChannelManager:
         except WorkFLowWeaveError:
             operation = "invalid"
         priority = "stop" if operation == "stop" else (
-            "normal" if operation in {"message", "invalid"} else "command"
+            "normal" if operation == "message" else "command"
         )
         peer = await self._migrate_legacy_peer(config, message)
         admitted = await self._admit_request(
@@ -378,7 +468,7 @@ class ChannelManager:
             {"config": config, "message": message, "peer": peer, "operation": operation,
              "binding": self.bindings.instance(config.id)},
             self._consume_inbound,
-            switch=operation in {"new", "resume", "fork", "workflow"},
+            switch=operation != "invalid" and command.switches_session,
             stop=operation == "stop",
         )
         return {"status": "duplicate" if admitted.duplicate else "accepted"}
@@ -419,24 +509,50 @@ class ChannelManager:
         if queued_command:
             settle = self._finish_command(config, message, peer, command, response, binding)
         elif has_turn and operation in {"message", "append", "compact"}:
-            settle = self._finish_inbound(config, message, peer, response["result"], binding)
+            settle = self._finish_inbound(
+                config, message, peer, response["result"], binding, operation=operation,
+            )
         else:
             text = (f"{response['error']['code']}: {response['error']['message']}"
-                    if response["kind"] == "error" else self._command_text(response))
+                    if response["kind"] == "error" else self._command_text(response, operation=operation))
             settle = self._reply_inbound(
                 config, message, peer, binding.session_id or "channel_command", text, binding,
             )
         return QueueOutcome(response, settle)
 
     @staticmethod
-    def _command_text(response):
+    def _command_text(response, *, operation):
         result = response["result"]
         if response["kind"] == "session":
-            return f"会话 {result['session_id']}（{result.get('status', 'created')}）"
+            if operation == "stop":
+                return f"停止请求已处理，当前没有活动轮次。\n会话：{result['session_id']}"
+            label = {"new": "已创建并切换到新对话", "resume": "已切换到对话",
+                     "fork": "已创建并切换到分支对话", "workflow": "已导入 Workflow 结果并切换到新对话"}[operation]
+            return f"{label}：{result['session_id']}\n直接发送消息即可继续。"
+        if response["kind"] == "sessions":
+            if not result:
+                return "暂无历史对话。使用 /new 创建对话。"
+            lines = ["历史对话："]
+            for index, session in enumerate(result, start=1):
+                title = session["title"] or "未命名对话"
+                lines.append(f"{index}. {title}（{session['status']}）\n/resume {session['session_id']}")
+            return "\n".join(lines)
+        if response["kind"] == "workflows":
+            if not result:
+                return "暂无 Workflow 运行记录。请先运行 Workflow，完成后使用 /workflow 查看结果。"
+            lines = ["Workflow 运行记录："]
+            for index, record in enumerate(result, start=1):
+                name = record["workflow_name"] or record["workflow_id"]
+                lines.append(f"{index}. {name}（{record['status']}）\n运行 ID：{record['session_id']}")
+                if record["status"] in {"completed", "partial"}:
+                    lines.append(f"/workflow {record['session_id']}")
+                else:
+                    lines.append("尚无可继续的最终结果。")
+            return "\n".join(lines)
         return json.dumps(result, ensure_ascii=False, default=str)
 
-    async def _finish_inbound(self, config, message, peer, accepted, binding):
-        result = await self._conversation_base.finish_turn(accepted["turn_id"])
+    async def _finish_inbound(self, config, message, peer, accepted, binding, *, operation):
+        result = await self._conversation_base.finish_turn(accepted["turn_id"], operation=operation)
         await self.bindings.set_status(peer, message.request_id, result.status)
         await self._reply_inbound(config, message, peer, accepted["session_id"], result.text, binding)
 
@@ -514,20 +630,22 @@ class ChannelManager:
             if queued_command:
                 settle = self._finish_web_command(peer, envelope, agent_command, response)
             elif has_turn and operation in {"message", "append", "compact"}:
-                settle = self._finish_web_turn(peer, envelope.request_id, result["turn_id"])
+                settle = self._finish_web_turn(
+                    peer, envelope.request_id, result["turn_id"], operation=operation,
+                )
             return QueueOutcome(response, settle)
 
         payload = {"command": command.model_copy(deep=True), "operation": operation}
         admission = await self._admit_request(
             key, (peer, command.request_id), self._digest(command.model_dump(mode="json")),
-            payload, consume, switch=operation in {"new", "resume", "fork", "workflow"},
+            payload, consume, switch=command.switches_session,
             stop=operation == "stop",
         )
         result = await asyncio.shield(admission.result)
         return {**result, "deduplicated": True} if admission.duplicate else result
 
-    async def _finish_web_turn(self, peer, request_id, turn_id):
-        outcome = await self._conversation_base.finish_turn(turn_id)
+    async def _finish_web_turn(self, peer, request_id, turn_id, *, operation):
+        outcome = await self._conversation_base.finish_turn(turn_id, operation=operation)
         await self.bindings.set_status(peer, request_id, outcome.status)
 
     async def _finish_web_command(self, peer, envelope, agent_command, response):
@@ -552,6 +670,7 @@ class ChannelManager:
         return await self.bindings.outcome(peer, request_id)
 
     async def suspend(self):
+        await self.connections.close()
         await self._input_queue.suspend(
             cancel_pending=True, on_interrupt=self._interrupt_request if self.bindings else None,
         )
@@ -749,29 +868,79 @@ class ChannelManager:
         active = self._active_sends.pop(asyncio.current_task())
         active.finished.set()
 
-    async def start_receiving(self, config: ChannelConfig, handler: InboundHandler) -> None:
+    async def start_receiving(self, config: ChannelConfig, handler: InboundHandler, *,
+                              temporary: bool = False) -> None:
         """Attach an Agent receiver to the same resident instance used by send."""
-        if not config.enabled or not config.agent_enabled:
+        if not config.enabled or (not config.agent_enabled and not temporary):
             raise WorkFLowWeaveError("channel_disabled", "渠道未启用 Agent 接收")
         key = None
-        async with asyncio.timeout(config.timeout):
-            try:
+        entry = None
+        deadline = asyncio.get_running_loop().time() + config.timeout
+        try:
+            async with asyncio.timeout_at(deadline):
                 key = await self._begin_send(config)
                 self.validate(config)
+                await self._retry_receiver_cleanup(config.id)
                 entry = await self._entry(
                     key, self._register.get(config.channel), config,
-                    deadline=asyncio.get_running_loop().time() + config.timeout,
+                    deadline=deadline,
                 )
-                await entry.instance.start_receiving(handler)
-            finally:
-                if key is not None:
-                    self._end_send()
+                if temporary:
+                    await entry.instance.start_receiving(handler, temporary=True)
+                else:
+                    await entry.instance.start_receiving(handler)
+                if asyncio.get_running_loop().time() >= deadline:
+                    raise _BudgetExhausted
+            self.receiver_errors.pop(config.id, None)
+        except BaseException as startup_error:
+            if entry is not None:
+                entry.receiver_cleanup_pending = True
+                try:
+                    await self.stop_receiving(config)
+                except Exception as cleanup_error:
+                    error = WorkFLowWeaveError(
+                        "channel_receiver_cleanup_failed", "渠道接收启动失败且清理未完成",
+                        {"startup_exception_type": type(startup_error).__name__,
+                         "cleanup_exception_type": type(cleanup_error).__name__},
+                    )
+                    if isinstance(startup_error, asyncio.CancelledError):
+                        self._record_receiver_error(config, error)
+                        raise startup_error from cleanup_error
+                    raise error from startup_error
+            raise
+        finally:
+            if key is not None:
+                self._end_send()
 
     async def stop_receiving(self, config: ChannelConfig) -> None:
         entry = self._entries.get(self._key(config))
         if entry is not None:
-            async with asyncio.timeout(self._stop_timeout):
-                await entry.instance.stop_receiving()
+            await self._stop_receiver(entry)
+
+    async def _stop_receiver(self, entry: _Entry) -> None:
+        async with asyncio.timeout(self._stop_timeout):
+            await entry.instance.stop_receiving()
+        entry.receiver_cleanup_pending = False
+
+    def _pending_receiver_cleanup(self, ident: str) -> list[_Entry]:
+        # Ownership outlives failed admission, including account/config changes.
+        return [entry for entry in self._entries.values()
+                if entry.key[0] == ident and entry.receiver_cleanup_pending] + [
+            entry for entry in self._retired if entry.key[0] == ident
+        ]
+
+    async def _retry_receiver_cleanup(self, ident: str) -> None:
+        for entry in self._pending_receiver_cleanup(ident):
+            try:
+                if entry in self._retired:
+                    await self._stop_entry(entry)
+                else:
+                    await self._stop_receiver(entry)
+            except Exception as exc:
+                raise WorkFLowWeaveError(
+                    "channel_receiver_cleanup_failed", "上次渠道启动的资源尚未清理完成",
+                    {"cleanup_exception_type": type(exc).__name__},
+                ) from exc
 
     def receiver(self, config: ChannelConfig):
         """Return a running receiver for transport-specific local diagnostics."""
@@ -884,6 +1053,10 @@ class ChannelManager:
             await asyncio.wait_for(asyncio.shield(entry.stop_task), self._stop_timeout)
         except TimeoutError as exc:
             raise WorkFLowWeaveError("channel_stop_timeout", "渠道关闭尚未完成") from exc
+        except Exception:
+            # Failed cleanup can be retried; a still-running stop keeps its task.
+            entry.stop_task = None
+            raise
         entry.stopped = True
         async with self._lock:
             self._retired.discard(entry)
@@ -1006,6 +1179,7 @@ class ChannelManager:
         await self.replace_register(channel_register)
 
     async def stop(self) -> None:
+        await self.connections.close()
         if self.bindings is not None and self.bindings._db is not None:
             await self.suspend()
         await self._input_queue.close()

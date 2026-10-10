@@ -1,6 +1,6 @@
 """JSON 资源存储的原子发布、引用和快照测试。
 
-真实临时资源文件配合注册表验证保存/重开、旧采集资源拒绝、创建/替换、引用约束
+真实临时资源文件配合注册表验证保存/重开、创建/替换、引用约束
 及不可变快照；并发提交和写入故障检查磁盘与已发布视图一致。
 验证失败保留旧有效资源，不将损坏文件作为空存储。
 """
@@ -24,17 +24,15 @@ from workflowweave.models import (
     SystemConfig,
     WorkflowDefinition,
 )
-from plugins.channel.file.channel import FileChannelType
-from tests.fixtures.collectors import MockCollector
+from workflowweave.plugins.channel.file.channel import FileChannelType
 
 
 @pytest.fixture
 async def resources(tmp_path):
-    registry = PluginRegistry([MockCollector()], builtin_channels=[FileChannelType()])
+    registry = PluginRegistry(builtin_channels=[FileChannelType()])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     store = ResourceStore(
-        tmp_path / "resources.json", collector_register=registry.collectorRegister,
-        channel_register=registry.channelRegister,
+        tmp_path / "resources.json", channel_register=registry.channelRegister,
     )
     return store, registry
 
@@ -73,32 +71,12 @@ async def test_save_reopen_copies_and_original_snapshot(resources):
     assert store.get("workflows", "workflow") == definition
     store.save("ai", AIConfig(id="ai", provider="mock", models={"model": {"reasoning_effort": "high"}}))
     assert original.ai["ai"].models == {"model": {}}
-    reopened = ResourceStore(store.location, collector_register=registry.collectorRegister,
-                             channel_register=registry.channelRegister)
+    reopened = ResourceStore(store.location, channel_register=registry.channelRegister)
     assert reopened.snapshot("workflow").ai["ai"].models == {"model": {"reasoning_effort": "high"}}
     assert set(read(store)) == {"format_version", "sources", "mcp_servers", "ai", "channels", "workflows"}
 
 
-@pytest.mark.parametrize("version", [1, 2, 3])
-async def test_legacy_collection_resources_require_explicit_rebuild(resources, version):
-    store, _ = resources
-    original = seed(store)
-    data = read(store)
-    data["format_version"] = version
-    data["sources"]["source"] = {"id": "source", "collector": "mock"}
-    if version < 3:
-        data["setters"] = {"legacy": {"id": "legacy", "collector": "mock"}}
-        data.pop("mcp_servers")
-    edit(store, data)
-    before = await asyncio.to_thread(Path(store.location).read_bytes)
-    with pytest.raises(WorkFLowWeaveError) as error:
-        store.reload_resources()
-    assert error.value.code == "collection_migration_required"
-    with pytest.raises(WorkFLowWeaveError) as error:
-        ResourceStore(store.location)
-    assert error.value.code == "collection_migration_required"
-    assert await asyncio.to_thread(Path(store.location).read_bytes) == before
-    assert store.snapshot("workflow").workflow == original
+
 
 
 async def test_save_many_updates_model_and_workflow_atomically(resources):
@@ -120,8 +98,7 @@ async def test_save_many_updates_model_and_workflow_atomically(resources):
 
     store.save_many({"ai": [upgraded], "workflows": [definition]})
     reopened = ResourceStore(
-        store.location, collector_register=registry.collectorRegister,
-        channel_register=registry.channelRegister,
+        store.location, channel_register=registry.channelRegister,
     )
     assert reopened.snapshot("workflow").workflow.analyses[0].model == "next"
     assert reopened.snapshot("workflow").ai["ai"].models == {"next": {}}
@@ -132,7 +109,6 @@ async def test_lifecycle_batch_refreshes_once_after_success(resources, tmp_path)
     refreshed = []
     store = LifecycleResourceStore(
         tmp_path / "batch-resources.json",
-        collector_register=registry.collectorRegister,
         channel_register=registry.channelRegister,
         on_change=lambda: refreshed.append(True),
     )
@@ -203,7 +179,7 @@ async def test_resolve_unsaved_definition_and_source_do_not_publish(resources):
         }))
 
 
-async def test_cli_snapshots_do_not_require_collector_registry(resources):
+async def test_cli_snapshots_do_not_require_plugin_registry(resources):
     store, _ = resources
     seed(store)
     reopened = ResourceStore(store.location)
@@ -254,8 +230,7 @@ async def test_reload_candidate_failure_then_success_and_relative_path(resources
     # Opening a manually edited valid document also fixes its effective paths.
     data["channels"]["channel"]["options"]["path"] = "manual.txt"
     edit(store, data)
-    reopened = ResourceStore(store.location, collector_register=registry.collectorRegister,
-                             channel_register=registry.channelRegister)
+    reopened = ResourceStore(store.location, channel_register=registry.channelRegister)
     assert reopened.snapshot("workflow").channels["channel"].options["path"] == str(Path(store.location).parent / "manual.txt")
 
 
@@ -301,8 +276,7 @@ async def test_injected_validation_sees_final_options_once(resources):
     def validate(channel):
         seen.append(deepcopy(channel.options))
         channel.options["path"] = "mutated-by-validator"
-    store.update_dependencies(collector_register=registry.collectorRegister,
-                              channel_register=registry.channelRegister,
+    store.update_dependencies(channel_register=registry.channelRegister,
                               validators={"channels": validate})
     result = store.save("channels", ChannelConfig(id="channel", channel="file", options={"path": "relative.txt"}))
     assert len(seen) == 1

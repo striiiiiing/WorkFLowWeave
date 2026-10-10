@@ -51,6 +51,12 @@ def _last_text(result: dict[str, Any]) -> str:
     raise WorkFLowWeaveError("invalid_response", "Agent 没有返回文本消息")
 
 
+async def _has_published_delta(log, turn_id: str) -> bool:
+    # Replay includes writes completed while cancellation was being propagated.
+    return any(event["type"] == "message.delta" and event.get("turn_id") == turn_id
+               for event in await log.replay())
+
+
 class TurnRunner:
     def __init__(self, *, repository, turns, checkpoints, resource_provider,
                  model_provider, workspace, scheduler, artifacts,
@@ -74,8 +80,6 @@ class TurnRunner:
         log = self.repository.log(session.session_id)
         previous = any(event["type"].startswith("turn.") for event in log.events)
         context = None
-        published = False
-        publication = [False]
         resources = None
         try:
             resources = self.resource_provider.capture(session)
@@ -189,9 +193,9 @@ class TurnRunner:
                                              turn_id=turn_id, compacted=update is not None)
                             result = {"messages": []}
                         else:
-                            result, published = await stream_graph(
+                            result = await stream_graph(
                                 graph, messages, context=context, config=graph_config, log=log,
-                                publication=publication, idle_timeout=config.idle_timeout,
+                                idle_timeout=config.idle_timeout,
                             )
                         state = await graph.aget_state(graph_config)
                         checkpoint_id = state.config.get("configurable", {}).get("checkpoint_id")
@@ -221,28 +225,27 @@ class TurnRunner:
             session.status = "completed"
             return {"turn_id": turn_id, "status": "completed", "text": answer}
         except asyncio.CancelledError:
-            published = published or publication[0]
             await self.turns._cancel_pending_commands(session)
-            await log.append("turn.cancelled", turn_id=turn_id, partial=published)
+            await log.append("turn.cancelled", turn_id=turn_id,
+                             partial=await _has_published_delta(log, turn_id))
             session.status = "cancelled"
             raise
         except TimeoutError as exc:
-            published = bool(getattr(exc, "_agent_published", published or publication[0]))
             await self.turns._cancel_pending_commands(session)
             await log.append("turn.failed", turn_id=turn_id,
                              error={"code": "ai_timeout", "message": "模型调用总时限已耗尽"},
-                             partial=published)
+                             partial=await _has_published_delta(log, turn_id))
             session.status = "failed"
             raise WorkFLowWeaveError("ai_timeout", "模型调用总时限已耗尽",
                                 {"timeout": getattr(resources.ai_config, "timeout", None)}) from exc
         except Exception as exc:
-            published = bool(getattr(exc, "_agent_published", published or publication[0]))
             await self.turns._cancel_pending_commands(session)
             error = (exc.info.model_dump(mode="json") if isinstance(exc, WorkFLowWeaveError)
                      else (exc.report or error_info(exc)).model_dump(mode="json")
                      if isinstance(exc, ModelError)
                      else {"type": type(exc).__name__, "message": str(exc)})
-            await log.append("turn.failed", turn_id=turn_id, error=error, partial=published)
+            await log.append("turn.failed", turn_id=turn_id, error=error,
+                             partial=await _has_published_delta(log, turn_id))
             session.status = "failed"
             raise
         finally:

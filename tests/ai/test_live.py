@@ -11,8 +11,8 @@ import json
 import httpx
 import pytest
 
-from workflowweave.ai import AIService, OpenAIChannelFactory
 from tests.ai.live_helpers import assert_success, call
+from workflowweave.ai import AIService, OpenAIChannelFactory
 
 
 async def test_model_discovery(channel_service, channel_config):
@@ -67,7 +67,7 @@ async def test_cancellation_notifies_and_closes_request(channel_config):
             entered.set()
 
     async with httpx.AsyncClient(timeout=None, event_hooks={"request": [request_started]}) as client:
-        service = AIService(channel_factories={"http": OpenAIChannelFactory(client)},
+        service = AIService(channel_factories={"openai_compatible_api": OpenAIChannelFactory(client)},
                             credential_resolver=credentials)
         task = asyncio.create_task(call(service, config, {}, on_cancel=notices.append))
         try:

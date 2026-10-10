@@ -117,18 +117,4 @@ class GraphBuilder:
         )
 
 
-def create_graph(*, model, declarations: Iterable[ToolDeclarationPort], context: AgentContext,
-                 system_prompt: str, checkpointer=None, use_summarization: bool = True,
-                 summary_model=None, summary_timeout: float | None = None):
-    """Compatibility entry point for callers outside the application root."""
-    context.scope.model = model
-    context.scope.system_prompt = system_prompt
-    context.scope.summary_model = summary_model or model
-    context.scope.summary_timeout = summary_timeout
-    return GraphBuilder().build(
-        model=model, declarations=declarations, context=context,
-        checkpointer=checkpointer, use_summarization=use_summarization,
-    )
-
-
-__all__ = ["GraphBuilder", "create_graph"]
+__all__ = ["GraphBuilder"]

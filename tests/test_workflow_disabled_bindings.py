@@ -4,28 +4,33 @@ from pathlib import Path
 
 import pytest
 
+from tests.fixtures.sources import message_call
+from tests.workflow_ai_helpers import TestChannelFactory
 from workflowweave.ai import AIService
 from workflowweave.channel import ChannelManager
 from workflowweave.collection import CollectorManager
 from workflowweave.config import PluginRegistry, ResourceStore
 from workflowweave.errors import WorkFLowWeaveError
-from workflowweave.models import AIConfig, ChannelConfig, SourceConfig, SystemConfig, WorkflowDefinition
+from workflowweave.models import (
+    AIConfig,
+    ChannelConfig,
+    SourceConfig,
+    SystemConfig,
+    WorkflowDefinition,
+)
+from workflowweave.plugins.channel.file.channel import FileChannelType
 from workflowweave.workflow.execution.runner import WorkflowRunner
-from plugins.channel.file.channel import FileChannelType
-from tests.fixtures.collectors import MockCollector
-from tests.workflow_ai_helpers import TestChannelFactory
 
 
 @pytest.mark.asyncio
 async def test_disabled_bindings_are_preserved_and_reenabled_in_snapshot(tmp_path: Path):
-    registry = PluginRegistry([MockCollector()], builtin_channels=[FileChannelType()])
+    registry = PluginRegistry(builtin_channels=[FileChannelType()])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     store = ResourceStore(
         tmp_path / "resources.json",
-        collector_register=registry.collectorRegister,
         channel_register=registry.channelRegister,
     )
-    source = SourceConfig(id="source", collector="mock", enabled=True)
+    source = SourceConfig(id="source", call=message_call("kept"), enabled=True)
     channel = ChannelConfig(
         id="channel", channel="file", options={"path": str(tmp_path / "out.txt")}, enabled=True
     )
@@ -37,7 +42,7 @@ async def test_disabled_bindings_are_preserved_and_reenabled_in_snapshot(tmp_pat
         sources=["source"],
         analyses=[{"user_prompt": "analyze input", "id": "task", "ai": "ai", "model": "model"}],
         channels=["channel"],
-        source_overrides={"source": {"options": {"records": [{"message": "kept"}]}}},
+        source_overrides={"source": {"limits": {"item_tokens": 1000}}},
         channel_overrides={"channel": {"options": {}}},
     )
     store.save("workflows", workflow)
@@ -50,7 +55,7 @@ async def test_disabled_bindings_are_preserved_and_reenabled_in_snapshot(tmp_pat
     with pytest.raises(WorkFLowWeaveError, match="没有可用的数据源"):
         store.snapshot("workflow")
     saved = store.get("workflows", "workflow")
-    assert saved.source_overrides["source"].options["records"] == [{"message": "kept"}]
+    assert saved.source_overrides["source"].limits.item_tokens == 1000
     assert saved.channel_overrides["channel"].options == {}
 
     source.enabled = True
@@ -59,26 +64,22 @@ async def test_disabled_bindings_are_preserved_and_reenabled_in_snapshot(tmp_pat
     store.save("channels", channel)
     restored = store.snapshot("workflow")
     assert restored.workflow.sources == ["source"]
-    assert restored.workflow.source_overrides["source"].options["records"] == [
-        {"message": "kept"}
-    ]
-    assert restored.sources["source"].options["records"] == [{"message": "kept"}]
+    assert restored.workflow.source_overrides["source"].limits.item_tokens == 1000
+    assert restored.sources["source"].call.argv[-1] == '{"message":"kept"}'
     assert restored.channels["channel"].options["path"].endswith("out.txt")
 
 
 @pytest.mark.asyncio
 async def test_disabled_bindings_change_real_execution_scope_and_restore(tmp_path: Path):
-    registry = PluginRegistry([MockCollector()], builtin_channels=[FileChannelType()])
+    registry = PluginRegistry(builtin_channels=[FileChannelType()])
     await registry.discover_plugins(SystemConfig(plugin_dir=str(tmp_path / "plugins")))
     store = ResourceStore(
         tmp_path / "resources.json",
-        collector_register=registry.collectorRegister,
         channel_register=registry.channelRegister,
     )
     source = SourceConfig(
         id="source",
-        collector="mock",
-        options={"records": [{"message": "kept"}]},
+        call=message_call("kept"),
         enabled=True,
     )
     channel = ChannelConfig(
@@ -94,12 +95,12 @@ async def test_disabled_bindings_change_real_execution_scope_and_restore(tmp_pat
             sources=["source"],
             analyses=[{"user_prompt": "analyze input", "id": "task", "ai": "ai", "model": "model"}],
             channels=["channel"],
-            source_overrides={"source": {"options": {"records": [{"message": "kept"}]}}},
+            source_overrides={"source": {}},
             channel_overrides={"channel": {"options": {}}},
         ),
     )
     service = WorkflowRunner(
-        CollectorManager(registry.collectorRegister),
+        CollectorManager(None),
         AIService(channel_factories={"test": TestChannelFactory()}),
         ChannelManager(registry.channelRegister),
         store,

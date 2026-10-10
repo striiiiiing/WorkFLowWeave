@@ -8,6 +8,7 @@ from langchain_core.messages.utils import count_tokens_approximately
 from langgraph.graph.message import add_messages
 from pydantic import ValidationError
 
+from tests.agent.helpers import ScriptedModel
 from workflowweave.agent.config import AgentConfig
 from workflowweave.agent.context.budget import estimate_request
 from workflowweave.agent.context.compaction import ContextMiddleware, summarize_once
@@ -16,7 +17,6 @@ from workflowweave.ai import AIService, OpenAIChannelFactory
 from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.interaction.fastapi.agent import create_agent_service
 from workflowweave.models import AIConfig
-from tests.agent.helpers import ScriptedModel
 
 
 class TokenizedModel(ScriptedModel):
@@ -45,6 +45,8 @@ def test_config_exposes_fixed_token_defaults_without_obsolete_ratios():
     assert (config.context_window, config.trigger_tokens, config.keep_tokens) == (
         200_000, 180_000, 40_000,
     )
+    assert "CONTEXT CHECKPOINT COMPACTION" in config.summary_prompt
+    assert "What remains to be done (clear next steps)" in config.summary_prompt
     for name in ("trigger_ratio", "keep_ratio", "summary_ratio", "safety_ratio"):
         with pytest.raises(ValidationError):
             AgentConfig(**{name: 0.2})
@@ -132,7 +134,8 @@ async def test_reported_usage_does_not_trigger_compaction_of_a_small_request():
 
 async def test_complete_long_summary_input_preserves_early_and_late_facts_and_tool_pairs():
     model = ScriptedModel(responses=[AIMessage(content="summary")])
-    config = small_config(context_window=60_000, trigger_tokens=10_000, keep_tokens=100)
+    config = small_config(context_window=60_000, summary_context_window=60_000,
+                          trigger_tokens=10_000, keep_tokens=100)
     messages = [HumanMessage(content="EARLY_FACT " + "history " * 14_000 + " LAST_OLD_FACT"),
                 AIMessage(content="", tool_calls=[{"id": "call", "name": "read", "args": {}}]),
                 ToolMessage(content="result", tool_call_id="call"),
@@ -165,7 +168,7 @@ async def test_independent_summary_model_cannot_inherit_main_capacity():
     model = TokenizedModel(responses=[])
     messages = [HumanMessage(content="old " * 400), HumanMessage(content="recent")]
     with pytest.raises(WorkFLowWeaveError) as error:
-        await context(model, small_config(summary_ai="summary")).prepare(messages)
+        await context(model, small_config(summary_ai="summary", summary_context_window=None)).prepare(messages)
     assert error.value.code == "context_budget_unavailable"
     assert not model.seen
 
@@ -181,7 +184,8 @@ async def test_invalid_summary_never_retries_or_publishes_new_context(response):
         published.append(data)
 
     with pytest.raises(WorkFLowWeaveError) as error:
-        await context(model, on_compacted=publish).prepare(messages)
+        await context(model, small_config(summary_context_window=4000),
+                      on_compacted=publish).prepare(messages)
     assert error.value.code == ("context_compaction_failed" if not response.strip()
                                 else "context_budget_exceeded")
     assert len(model.seen) == 1
@@ -199,7 +203,7 @@ async def test_summary_failure_preserves_original_message_ids_and_content():
     messages = [HumanMessage(content="old " * 400), HumanMessage(content="recent")]
     original = deepcopy(messages)
     with pytest.raises(RuntimeError, match="summary provider failed"):
-        await context(model).prepare(messages)
+        await context(model, small_config(summary_context_window=4000)).prepare(messages)
     assert len(model.seen) == 1
     assert messages == original
     assert all(message.id is None for message in messages)
@@ -314,10 +318,10 @@ async def test_real_provider_payload_matches_main_and_summary_reservations(tmp_p
                               content=content + "data: [DONE]\n\n")
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
-        ai = AIService(channel_factories={"http": OpenAIChannelFactory(client)})
+        ai = AIService(channel_factories={"openai_compatible_api": OpenAIChannelFactory(client)})
         service = create_agent_service(
             tmp_path / "workspace", tmp_path / "runtime", ai_service=ai,
-            ai_config=AIConfig(id="ai", provider="http", base_url="http://model.test/v1",
+            ai_config=AIConfig(id="ai", provider="openai_compatible_api", base_url="http://model.test/v1",
                                models={"model": {"max_tokens": 9999}}, retries=0),
             config=AgentConfig(output_tokens=120, summary_max_tokens=60),
         )

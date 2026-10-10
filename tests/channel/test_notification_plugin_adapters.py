@@ -4,6 +4,7 @@ import asyncio
 import importlib.util
 import logging
 import sys
+import threading
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,7 +15,7 @@ from workflowweave.channel.conversation import ChannelAddress, InboundMessage
 from workflowweave.channel.errors import ChannelDeliveryError
 from workflowweave.models import ChannelConfig, Notification
 
-_CHANNEL_PLUGIN_ROOT = Path(__file__).parents[2] / "plugins" / "channel"
+_CHANNEL_PLUGIN_ROOT = Path(__file__).parents[2] / "src" / "workflowweave" / "plugins" / "channel"
 
 
 def _load_channel(module_name: str, plugin: str):
@@ -116,6 +117,8 @@ def fake_botpy(monkeypatch):
         api=SimpleNamespace(BotAPI=_QQTestBotAPI),
     )
     monkeypatch.setitem(sys.modules, "botpy", module)
+    monkeypatch.setitem(sys.modules, "botpy.http", module.http)
+    monkeypatch.setitem(sys.modules, "botpy.gateway", SimpleNamespace(BotWebSocket=object))
     _QQClient.instances.clear()
     return module
 
@@ -151,7 +154,8 @@ async def test_qq_sdk_login_send_reply_and_inbound_route(fake_botpy):
         request_id="message-1",
         text="hello Agent",
         address=ChannelAddress(
-            kind="c2c", target="user-1", sender="user-1", message_id="message-1"
+            kind="c2c", target="user-1", sender="user-1", message_id="message-1",
+            conversation_type="private",
         ),
     )]
 
@@ -188,6 +192,37 @@ async def test_qq_sdk_login_send_reply_and_inbound_route(fake_botpy):
     assert len(_QQClient.instances) == 2
     await asyncio.sleep(0)
     assert restarted_client.gateway_calls == 1
+    await channel.stop()
+
+
+@pytest.mark.asyncio
+async def test_qq_sdk_import_does_not_block_event_loop(fake_botpy, monkeypatch):
+    QQChannel = _load_channel("qq_import_thread_plugin_test", "qq").QQChannel
+    module = sys.modules["qq_import_thread_plugin_test"]
+    real_import = module.importlib.import_module
+    entered = threading.Event()
+    release = threading.Event()
+
+    def import_module(name):
+        if name == "botpy":
+            entered.set()
+            if not release.wait(timeout=2):
+                raise TimeoutError("import was not released")
+            return sys.modules["botpy"]
+        return real_import(name)
+
+    async def initialize(_self):
+        return None
+
+    monkeypatch.setattr(module.importlib, "import_module", import_module)
+    monkeypatch.setattr(QQChannel, "_initialize_client", initialize)
+    channel = QQChannel(_qq_config(), _Credentials())
+    starting = asyncio.create_task(channel.start())
+    assert await asyncio.to_thread(entered.wait, 1)
+    await asyncio.wait_for(asyncio.sleep(0.02), timeout=0.2)
+    assert not starting.done()
+    release.set()
+    await starting
     await channel.stop()
 
 
@@ -234,6 +269,24 @@ async def test_qq_send_workflow_target_does_not_start_gateway(fake_botpy):
     assert channel._gateway_coro is None
 
 
+@pytest.mark.asyncio
+async def test_qq_receiver_start_rejection_is_observable(fake_botpy):
+    del fake_botpy
+    QQChannel = _load_channel("qq_receiver_failure_plugin_test", "qq").QQChannel
+    channel = QQChannel(_qq_config(), _Credentials())
+    await channel.start()
+    gateway = channel._gateway_coro
+    channel._gateway_coro = None
+    gateway.close()
+
+    with pytest.raises(ChannelDeliveryError) as error:
+        await channel.start_receiving(lambda _message: asyncio.sleep(0))
+
+    assert error.value.code == "qq_sdk_invalid"
+    assert channel.receiver_status() == {"state": "failed", "error": "qq_sdk_invalid"}
+    await channel.stop()
+
+
 class _TelegramBot:
     def __init__(self):
         self.calls = []
@@ -253,10 +306,11 @@ class _Updater:
         self.start_calls = 0
         self.stop_calls = 0
 
-    async def start_polling(self):
+    async def start_polling(self, *, error_callback=None):
         if self.running:
             raise RuntimeError("already running")
         self.running = True
+        self.error_callback = error_callback
         self.start_calls += 1
         return None
 
@@ -339,6 +393,189 @@ async def test_telegram_single_direction_send_and_reply_use_sdk_application():
     assert application.updater.stop_calls == 0
 
 
+@pytest.mark.asyncio
+async def test_telegram_application_uses_channel_timeout_for_both_request_pools(monkeypatch):
+    telegram_ext = pytest.importorskip("telegram.ext")
+    TelegramChannel = _load_channel(
+        "telegram_timeout_plugin_test", "telegram"
+    ).TelegramChannel
+    application = _TelegramApplication()
+    calls = []
+
+    class Builder:
+        def token(self, value):
+            calls.append(("token", value))
+            return self
+
+        def build(self):
+            return application
+
+    builder = Builder()
+    timeout_methods = (
+        "connect_timeout",
+        "read_timeout",
+        "write_timeout",
+        "pool_timeout",
+        "get_updates_connect_timeout",
+        "get_updates_read_timeout",
+        "get_updates_write_timeout",
+        "get_updates_pool_timeout",
+    )
+    for method_name in timeout_methods:
+        setattr(
+            builder,
+            method_name,
+            lambda value, method_name=method_name: calls.append((method_name, value)) or builder,
+        )
+    monkeypatch.setattr(
+        telegram_ext.Application,
+        "builder",
+        classmethod(lambda cls: builder),
+    )
+    channel = TelegramChannel(
+        ChannelConfig(
+            id="telegram-timeouts",
+            channel="telegram",
+            timeout=17.0,
+            options={"token": {"kind": "env", "name": "TELEGRAM_TOKEN"}},
+        ),
+        _Credentials(),
+    )
+
+    await channel.start()
+
+    assert calls == [
+        ("token", "secret-value"),
+        *[(name, 17.0) for name in timeout_methods],
+    ]
+    await channel.stop()
+
+
+@pytest.mark.asyncio
+async def test_telegram_http_client_construction_does_not_block_event_loop(monkeypatch):
+    telegram_ext = pytest.importorskip("telegram.ext")
+    TelegramChannel = _load_channel(
+        "telegram_request_build_thread_test", "telegram"
+    ).TelegramChannel
+    entered = asyncio.Event()
+    release = threading.Event()
+    loop = asyncio.get_running_loop()
+
+    class Request:
+        def __init__(self, get_updates):
+            self.get_updates = get_updates
+            self.closed = False
+
+        async def shutdown(self):
+            self.closed = True
+
+    class Builder:
+        def token(self, value):
+            del value
+            return self
+
+        def connect_timeout(self, value):
+            del value
+            return self
+
+        def read_timeout(self, value):
+            del value
+            return self
+
+        def write_timeout(self, value):
+            del value
+            return self
+
+        def pool_timeout(self, value):
+            del value
+            return self
+
+        def get_updates_connect_timeout(self, value):
+            del value
+            return self
+
+        def get_updates_read_timeout(self, value):
+            del value
+            return self
+
+        def get_updates_write_timeout(self, value):
+            del value
+            return self
+
+        def get_updates_pool_timeout(self, value):
+            del value
+            return self
+
+        def _build_request(self, get_updates):
+            loop.call_soon_threadsafe(entered.set)
+            if not release.wait(timeout=2):
+                raise TimeoutError("request build was not released")
+            return Request(get_updates)
+
+        def request(self, request):
+            self.request_instance = request
+            return self
+
+        def get_updates_request(self, request):
+            self.get_updates_request_instance = request
+            return self
+
+        def build(self):
+            return _TelegramApplication()
+
+    monkeypatch.setattr(telegram_ext.Application, "builder", classmethod(lambda cls: Builder()))
+    channel = TelegramChannel(
+        ChannelConfig(
+            id="telegram-threaded-build",
+            channel="telegram",
+            timeout=17.0,
+            options={"token": {"kind": "env", "name": "TELEGRAM_TOKEN"}},
+        ),
+        _Credentials(),
+    )
+    starting = asyncio.create_task(channel.start())
+    await asyncio.wait_for(entered.wait(), timeout=1)
+    await asyncio.wait_for(asyncio.sleep(0.02), timeout=0.2)
+    assert not starting.done()
+    release.set()
+    await starting
+    await channel.stop()
+
+
+@pytest.mark.asyncio
+async def test_telegram_cancelled_request_build_closes_worker_clients():
+    TelegramChannel = _load_channel(
+        "telegram_request_build_cancel_test", "telegram"
+    ).TelegramChannel
+    entered = threading.Event()
+    release = threading.Event()
+    built = []
+
+    class Request:
+        def __init__(self):
+            self.closed = False
+
+        async def shutdown(self):
+            self.closed = True
+
+    def build_request(_get_updates):
+        entered.set()
+        if not release.wait(timeout=2):
+            raise TimeoutError("request build was not released")
+        request = Request()
+        built.append(request)
+        return request
+
+    channel = TelegramChannel.__new__(TelegramChannel)
+    task = asyncio.create_task(channel._build_requests_off_loop(object(), build_request))
+    await asyncio.to_thread(entered.wait, 1)
+    task.cancel()
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert built and all(request.closed for request in built)
+
+
 def _telegram_update(*, chat_id, user_id, message_id, text="hello Agent"):
     from datetime import UTC, datetime
 
@@ -384,6 +621,8 @@ async def test_telegram_inbound_deduplicates_by_chat_and_requires_real_user():
     await channel.start_receiving(enqueue)
     assert application.events == ["initialize", "start"]
     assert len(application.handlers) == 1
+    assert channel.receiver_status() == {"state": "running", "error": None}
+    assert callable(application.updater.error_callback)
 
     message_handler = application.handlers[0]
     updates = [
@@ -401,6 +640,9 @@ async def test_telegram_inbound_deduplicates_by_chat_and_requires_real_user():
     await channel.stop_receiving()
     assert application.updater.stop_calls == 1
     assert application.events == ["initialize", "start"]
+    assert channel.receiver_status() == {"state": "stopped", "error": None}
+    application.updater.error_callback(RuntimeError("polling rejected"))
+    assert channel.receiver_status() == {"state": "failed", "error": "RuntimeError"}
     await channel.start_receiving(enqueue)
     assert application.events == ["initialize", "start"]
     assert application.updater.start_calls == 2

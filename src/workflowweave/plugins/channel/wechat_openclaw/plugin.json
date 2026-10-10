@@ -1,0 +1,7 @@
+{
+  "id": "wechat_openclaw",
+  "version": "0.3.0",
+  "kind": "channel",
+  "api_version": 1,
+  "entry": {"backend": "main.py"}
+}

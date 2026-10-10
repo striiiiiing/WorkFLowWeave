@@ -11,9 +11,9 @@ from pathlib import Path
 import httpx
 import pytest
 
+from tests.ai.live_helpers import Credentials, read_settings
 from workflowweave.ai import AIService, OpenAIChannelFactory
 from workflowweave.models import AIConfig
-from tests.ai.live_helpers import Credentials, read_settings
 
 MOCK_BASE_URL = "http://localhost:19026/v1"
 
@@ -34,7 +34,7 @@ def channel_config(request):
     settings = read_settings(Path(os.environ.get("WORKFLOWWEAVE_AI_ENV", ".env")))
     model = request.param
     config = AIConfig(
-        id="acceptance", provider="http",
+        id="acceptance", provider="openai_compatible_api",
         base_url=MOCK_BASE_URL if model == "mock" else settings["AI_BASE_URL"],
         api_key={"kind": "env", "name": "AI_API_KEY"} if settings.get("AI_API_KEY") else None,
         system_prompt="Follow the user's instruction. Reply with exactly WORKFLOWWEAVE_OK.",
@@ -47,7 +47,7 @@ def channel_config(request):
 async def channel_service(channel_config):
     """启动独立 AIService 供单个用例使用，并在用例退出时关闭渠道。"""
     config, credentials = channel_config
-    service = AIService(channel_factories={"http": OpenAIChannelFactory()},
+    service = AIService(channel_factories={"openai_compatible_api": OpenAIChannelFactory()},
                         credential_resolver=credentials)
     try:
         await service.start_channel(config)
@@ -71,7 +71,7 @@ async def observed_channel(channel_config):
 
     _, credentials = channel_config
     async with httpx.AsyncClient(timeout=None, event_hooks={"request": [record]}) as client:
-        service = AIService(channel_factories={"http": OpenAIChannelFactory(client)},
+        service = AIService(channel_factories={"openai_compatible_api": OpenAIChannelFactory(client)},
                             credential_resolver=credentials)
         try:
             yield service, requests, client
