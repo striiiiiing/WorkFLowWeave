@@ -32,7 +32,6 @@ function inspect(plugin: CapabilityDescription) {
 <template>
   <el-radio-group v-model="filter" class="mb-6">
     <el-radio-button value="all">全部</el-radio-button>
-    <el-radio-button value="collector">采集器</el-radio-button>
     <el-radio-button value="channel">通知渠道</el-radio-button>
     <el-radio-button value="tool">Agent 工具</el-radio-button>
   </el-radio-group>
@@ -81,17 +80,6 @@ function inspect(plugin: CapabilityDescription) {
       <pre class="text-xs p-4 bg-slate-100 dark:bg-slate-900 rounded">{{
         JSON.stringify(selected.input_schema ?? selected.options_schema, null, 2)
       }}</pre>
-      <template v-if="selected.setters_schema">
-        <h3 class="font-semibold my-3">处理规则 Schema</h3>
-        <pre class="text-xs p-4 bg-slate-100 dark:bg-slate-900 rounded">{{
-          JSON.stringify(selected.setters_schema, null, 2)
-        }}</pre>
-      </template>
-      <p class="muted mt-4">
-        字段：{{ selected.fields.join('、') || '无' }} · 计数单位：{{
-          selected.count_unit ?? '未声明'
-        }}
-      </p>
     </template>
   </el-dialog>
 </template>

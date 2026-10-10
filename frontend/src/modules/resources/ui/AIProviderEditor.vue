@@ -65,7 +65,7 @@ async function submit() {
         :model-value="draft.provider"
         @update:model-value="updateConnection({ provider: String($event) })"
       >
-        <el-radio :value="draft.provider === 'http' ? 'http' : 'openai_compatible_api'">
+        <el-radio value="openai_compatible_api">
           OpenAI Compatible API
         </el-radio>
       </el-radio-group>

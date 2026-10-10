@@ -10,7 +10,6 @@ export function createSource(): SourceConfig {
     limits: { item_tokens: null, field_tokens: null },
     timeout: 60,
     on_error: 'notice',
-    on_missing: 'notice',
     on_empty: 'notice',
   }
 }

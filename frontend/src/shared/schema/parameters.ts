@@ -83,7 +83,8 @@ export class ParameterInput {
     return emptyValues[this.types[0]]
   }
   label(name: string): string {
-    return this.types.length === 1 ? `${name}（${typeNames[this.types[0]]}）` : name
+    const title = typeof this.schema.title === 'string' ? this.schema.title : name
+    return this.types.length === 1 ? `${title}（${typeNames[this.types[0]]}）` : title
   }
   private child(...path: string[]): ParameterInput {
     const key = JSON.stringify(path)

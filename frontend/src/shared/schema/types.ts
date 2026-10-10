@@ -7,7 +7,4 @@ export interface SchemaCapability {
   readonly id_prefix?: string | null
   readonly capabilities: readonly string[]
   readonly options_schema: JsonObject
-  readonly setters_schema: JsonObject | null
-  readonly fields: readonly string[]
-  readonly count_unit: string | null
 }

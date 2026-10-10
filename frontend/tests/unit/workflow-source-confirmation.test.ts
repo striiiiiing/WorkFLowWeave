@@ -7,8 +7,12 @@ import { createResource } from '@/modules/resources/model/public'
 import { createWorkflow, useWorkflowEditor } from '@/modules/workflows/public'
 import type { SourceConfigEditorGateway } from '@/modules/resources/public'
 
-const source = { ...createResource('sources'), id: 'logs', collector: 'mock', enabled: true }
-const override = { source, options: {}, setters: {}, template: null }
+const source = { ...createResource('sources'), id: 'logs', enabled: true }
+const override = {
+  source,
+  arguments: null,
+  limits: { item_tokens: null, field_tokens: null },
+}
 
 function setup(sources = [source]) {
   const scope = effectScope()

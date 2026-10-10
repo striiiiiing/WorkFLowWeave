@@ -24,7 +24,7 @@ vi.mock('@/app/services', () => ({
 
 const provider = {
   id: 'provider',
-  provider: 'http',
+  provider: 'openai_compatible_api',
   base_url: 'https://example.test/v1',
   api_key: null,
   system_prompt: '',
@@ -91,7 +91,7 @@ describe('resource category actions', () => {
 })
 
 it('replaces the resource editor session identity and rejects the previous delayed resolve', async () => {
-  const first = { ...createResource('sources'), id: 'first', collector: 'mock' } as SourceConfig
+  const first = { ...createResource('sources'), id: 'first' } as SourceConfig
   const second = { ...first, id: 'second', display_name: '第二个来源' }
   vi.mocked(resourcesApi.list).mockResolvedValue([first, second])
   let finishFirst!: (value: SourceConfig) => void

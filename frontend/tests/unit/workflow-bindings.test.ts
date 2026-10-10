@@ -14,7 +14,7 @@ const plugins = vi.hoisted(() => ({ list: vi.fn() }))
 vi.mock('@/app/services', () => ({ systemApi: { plugins: plugins.list } }))
 
 const global = { plugins: [ElementPlus] }
-const capability = (kind: 'collector' | 'channel', name: string): CapabilityDescription => ({
+const capability = (kind: 'channel' | 'tool', name: string): CapabilityDescription => ({
   kind,
   name,
   plugin: 'test',
@@ -29,9 +29,6 @@ const capability = (kind: 'collector' | 'channel', name: string): CapabilityDesc
           },
         }
       : { type: 'object', properties: {} },
-  setters_schema: null,
-  fields: [],
-  count_unit: null,
 })
 
 afterEach(() => vi.clearAllMocks())
@@ -127,7 +124,6 @@ describe('workflow bindings', () => {
 
   it('shows workflow-scoped channel options and disabled resource placeholders', async () => {
     plugins.list.mockResolvedValue([
-      capability('collector', 'mock'),
       capability('channel', 'email'),
     ])
     const initial = {
