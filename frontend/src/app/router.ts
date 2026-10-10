@@ -34,7 +34,6 @@ export const router = createRouter({
       name: 'resources',
       component: () => import('@/pages/resources/ResourcesPage.vue'),
     },
-    { path: '/collector-demo', redirect: '/workflows' },
     {
       path: '/plugins',
       name: 'plugins',

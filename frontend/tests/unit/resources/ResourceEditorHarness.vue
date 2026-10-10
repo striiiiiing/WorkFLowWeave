@@ -22,7 +22,7 @@ const catalog = useQuery((signal) => systemApi.plugins(signal))
 const capabilities = computed(
   () =>
     catalog.data.value?.filter(
-      (item) => item.kind === (props.kind === 'channels' ? 'channel' : 'collector'),
+      (item) => props.kind === 'channels' && item.kind === 'channel',
     ) ?? [],
 )
 const target = { kind: 'shared-resource' as const, resourceId: props.initial?.id ?? '' }
@@ -45,8 +45,6 @@ const editor =
     :editor="editor"
     :initial="!!initial"
     :target="target"
-    :capabilities="capabilities"
-    :protect="resourcesApi.protectCredential"
     @saved="emit('saved', $event)"
     @cancel="emit('cancel')"
   />

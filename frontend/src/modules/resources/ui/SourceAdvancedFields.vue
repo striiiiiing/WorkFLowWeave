@@ -5,7 +5,6 @@ defineProps<{ value: Readonly<SourceConfig> }>()
 const emit = defineEmits<{ change: [value: Partial<SourceConfig>] }>()
 const policyFields = [
   { key: 'on_error', label: '采集失败' },
-  { key: 'on_missing', label: '来源缺失' },
   { key: 'on_empty', label: '采集为空' },
 ] as const
 </script>

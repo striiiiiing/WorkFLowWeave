@@ -19,7 +19,7 @@ vi.mock('vue-router', () => ({
   useRouter: () => router,
 }))
 
-const source = { ...createResource('sources'), id: 'logs', collector: 'mock', enabled: true }
+const source = { ...createResource('sources'), id: 'logs', enabled: true }
 const SourceStepStub = defineComponent({
   props: { gateway: { type: Object, required: true }, editor: { type: Object, required: true } },
   setup(props) {

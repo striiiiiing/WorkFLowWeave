@@ -2,13 +2,11 @@ import { errorMessage as describeError } from '@/shared/api/errors'
 export const validationFieldLabels: Record<string, string> = {
   id: '编号',
   name: '名称',
-  collector: '采集器',
   channel: '渠道',
   workflow_id: '工作流',
   sources: '数据来源',
   channels: '通知渠道',
   options: '选项',
-  setters: '处理规则',
   timeout: '超时时间',
   retries: '重试次数',
   analyses: '分析任务',

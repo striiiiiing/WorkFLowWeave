@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createFieldRule } from '@/shared/schema/schemaValidation'
+import { credentialDraftSchema } from '@/modules/resources/model/credential'
 import { ParameterInput } from '@/shared/schema/parameters'
 import type { JsonObject } from '@/shared/types'
 
@@ -130,5 +131,34 @@ describe('JSON Schema validation used by parameter controls', () => {
       expect(field.read({ ...draft, text }).ok, text).toBe(false)
     }
     expect(field.read({ ...draft, text: '-2.5e2' })).toEqual({ ok: true, value: -250 })
+  })
+
+  it('accepts draft secrets without dropping reference constraints or unrelated allOf rules', () => {
+    const schema = {
+      type: 'object',
+      $defs: {
+        credential: { type: 'object', required: ['kind'], properties: { kind: { const: 'env' } } },
+      },
+      properties: {
+        app_secret: { $ref: '#/$defs/credential', 'x-workflowweave-credential': true },
+        target: { type: 'string' },
+      },
+      required: ['app_secret'],
+      allOf: [{ properties: { target: { minLength: 3 } } }],
+      additionalProperties: false,
+    }
+    const rule = createFieldRule(credentialDraftSchema(schema))
+    expect(rule.validate({ app_secret: 'plaintext', target: 'valid' })).toBe('')
+    expect(rule.validate({ app_secret: '' })).not.toBe('')
+    expect(rule.validate({ app_secret: { kind: 'env' } })).toBe('')
+    expect(rule.validate({ app_secret: {} })).not.toBe('')
+    expect(rule.validate({ app_secret: 'plaintext', target: 'x' })).not.toBe('')
+    expect(rule.validate({ app_secret: 'plaintext', unexpected: true })).not.toBe('')
+    expect(
+      createFieldRule(credentialDraftSchema({ ...schema, allOf: [false] })).validate({
+        app_secret: 'plaintext',
+      }),
+    ).not.toBe('')
+    expect(createFieldRule(schema).validate({ app_secret: 'plaintext' })).not.toBe('')
   })
 })

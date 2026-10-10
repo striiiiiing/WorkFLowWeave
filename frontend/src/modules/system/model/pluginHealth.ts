@@ -90,7 +90,7 @@ function addDiscoveryError(rows: Map<string, PluginHealth>, details: JsonObject,
 function addCapabilityError(rows: Map<string, PluginHealth>, details: JsonObject, message: string) {
   if (typeof details.kind !== 'string' || typeof details.name !== 'string')
     throw new Error('插件健康诊断缺少能力标识')
-  const kind = details.kind === 'source' ? 'collector' : details.kind
+  const kind = details.kind
   const resources = details.resources ?? []
   if (!Array.isArray(resources) || resources.some((resource) => typeof resource !== 'string'))
     throw new Error('插件健康诊断的资源列表格式无效')

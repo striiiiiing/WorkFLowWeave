@@ -20,16 +20,13 @@ vi.mock('@/app/services', () => ({
   workflowsApi: { list: vi.fn().mockResolvedValue([]) },
   runsApi: { list: vi.fn().mockResolvedValue([]) },
 }))
-const capability = (kind: 'collector' | 'channel', name: string): CapabilityDescription => ({
+const capability = (kind: 'tool' | 'channel', name: string): CapabilityDescription => ({
   kind,
   name,
   plugin: 'example',
   description: '',
   capabilities: [],
   options_schema: {},
-  setters_schema: null,
-  fields: [],
-  count_unit: null,
 })
 const report = (): HealthReport => ({
   status: 'ready',
@@ -57,33 +54,29 @@ it('groups plugin capabilities and reports failed discovery without claiming con
         {
           code: 'plugin_discovery_failed',
           message: '注册失败',
-          details: { plugin: 'broken', kind: 'collector' },
+          details: { plugin: 'broken', kind: 'tool' },
         },
       ],
     },
   }
   const rows = pluginHealthRows(
-    [
-      capability('collector', 'one'),
-      capability('collector', 'two'),
-      capability('channel', 'notify'),
-    ],
+    [capability('tool', 'one'), capability('tool', 'two'), capability('channel', 'notify')],
     value,
   )
   expect(rows).toHaveLength(3)
   expect(rows[0]).toMatchObject({ capabilities: ['one', 'two'], status: '待确认' })
   expect(rows[1]).toMatchObject({ kind: 'channel', capabilities: ['notify'] })
   expect(rows[2]).toMatchObject({ plugin: 'broken', status: '不可用', errors: ['注册失败'] })
-  expect(pluginHealthRows([capability('collector', 'one')], report())[0].status).toBe('已注册')
+  expect(pluginHealthRows([capability('tool', 'one')], report())[0].status).toBe('已注册')
   expect(
-    pluginHealthRows([capability('collector', 'one')], { ...report(), components: [] })[0].status,
+    pluginHealthRows([capability('tool', 'one')], { ...report(), components: [] })[0].status,
   ).toBe('待确认')
 })
 it('keeps the dashboard focused on system health and recent runs', async () => {
   vi.mocked(workflowsApi.list).mockResolvedValue([])
   vi.mocked(runsApi.list).mockResolvedValue([])
   health.mockResolvedValue(report())
-  plugins.mockResolvedValue([capability('collector', 'one')])
+  plugins.mockResolvedValue([capability('tool', 'one')])
   const wrapper = mount(DashboardView, {
     global: {
       provide: {
