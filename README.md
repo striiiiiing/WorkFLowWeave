@@ -18,7 +18,7 @@
 
 ## 截图展示
 
-<img src="C:\Users\Admin\AppData\Roaming\Typora\typora-user-images\image-20261010143704836.png" alt="image-20261010143704836" style="zoom:50%;" />
+<img src="https://img.cdn1.vip/i/6acc9cb5c0a9c_1791794357.webp" style="zoom:50%;" />
 
 ## 功能特性
 
