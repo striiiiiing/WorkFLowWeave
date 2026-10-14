@@ -58,6 +58,6 @@
 
 Kaggle 矩阵的方法和命令见 [evals](../evals/README.md)，本地请求与账单位于 `evals/results/`。早期业务/judge 调用出现上游 403/500，不能拿部分成功结果宣称准确率或成本优势。
 
-LongMemEval 的 holdout、三路线、双 judge、人工一致率和完整费用要求继续维护在 [评测任务](../openspec/changes/evaluate-business-context-compression/tasks.md)。单题或单 judge smoke 不代替完整实验及人工标注。
+LongMemEval 的 holdout、三路线、单 judge、人工一致率和完整费用要求见 [业务评测规范](../openspec/specs/business-context-evaluation/spec.md)。归档前的未闭环条目和“异家族双 judge”旧方案保存在本地忽略稿 [openspec-pending-decisions.md](../artifacts/local/openspec-pending-decisions.md)；单题或单 judge smoke 不代替完整实验及人工标注。
 
 部署资源和业务压测的摘要、口径、版本及原始样本分别见 [部署测量](../artifacts/benchmarks/deployment/README.md)与 [业务压测](../artifacts/benchmarks/business-pressure/README.md)。短时压测不证明长期无泄漏，也不能与不同机器、负载或资源限制的实验混算。
