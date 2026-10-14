@@ -48,7 +48,7 @@
 - 本次用户要求：围绕原生事件流简化 Workflow；fan-out 尽可能保持原方案；ToolNode 是草图选型错误；通知保留 intent/receipt 并改为并行。
 - 本轮确认：精简 Workflow 与前端实时业务进度是两个核心目标；推送粒度为 fan-out 单项、fan-in 完成、aggregate 成功和逐渠道发送结果，本轮进一步改为内容 state、checkpoint 执行权威与 stream 长期归档；后续用户取消代码行数必须下降的要求，保留消除重复职责的目标。
 - 后续澄清：Agent 继续按 sessionID 主动读取；从阶段重跑按照LangGraph语义执行至 finish；子图采用 per-invocation 应对进程中断，已不需要的内部 checkpoint 异步删除。
-- [旧 Workflow 设计](../archive/configurable-collection-analysis-workflow/modules/workflow/design.md)。
-- [分层提示词设计](../layer-workflow-prompts/design.md)、[统一调度设计](../unify-workflow-scheduling/design.md)。
+- 旧 Workflow 设计。
+- 分层提示词设计、[统一调度设计](../archive/unify-workflow-scheduling/design.md)。
 - 当前 `workflow/fan.py`、`notification.py`、`graph.py`、`service.py` 的实际边界，详见本变更任务依据。
 - 本轮最终确认：使用 `astream_events`、图内 tags、`config.metadata.sessionID`；storage 按 MVC 提供追加/查询/过期删除与报告组装，BackupPolicy 默认 checkpoint 7 天/采集 30 天；子图各自拥有 nodes，共用节点放 subgraph/nodes，scheduler 归 execution。

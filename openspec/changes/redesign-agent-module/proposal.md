@@ -23,7 +23,7 @@
 
 ### Modified Capabilities
 
-无业务规范变更。保留 `agent-runtime`、`agent-interface`、`channel`、`workflow-agent-handoff` 等已有约束，来源与测试对应见 [references.md](references.md)。
+无业务规范变更。保留 `agent-runtime`、`agent-interface`、`channel`、`workflow-agent-handoff` 等已有约束，来源与测试对应见 references.md。
 
 按照 [OpenSpec 存放约定](../../README.md)，本 change 使用 `skip_specs: true`，不为纯重构制造 ADDED/MODIFIED 业务条款，也不将历史变更增量复制为主规范。若实施需要改变行为、持久化格式或现有设计约束，须先调整设计范围并补充对应能力增量。
 

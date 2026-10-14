@@ -32,5 +32,9 @@
 `plugin_dir` 只用于用户导入的插件；同 ID 用户插件不能覆盖内置插件。包内插件根可通过
 `builtin_plugin_dir` 指向另一目录，默认值为包内 `workflowweave/plugins`。Docker 部署可将
 `plugin_dir` 单独挂载，内置插件保持在镜像或由 `builtin_plugin_dir` 指向独立挂载。
+
+源码运行时，默认用户扩展目录为仓库根的 `plugins/`。仓库用 `.gitkeep` 保留该空目录；
+将自定义插件按类别放入其中，每个插件目录包含 `plugin.json` 和注册入口。
+个人插件及 `plugins/config.json` 默认被 Git 忽略；需要公开发布插件时应在自己的插件仓库维护。
 详细 SDK、凭据与微信登录说明见 [渠道说明](channel/README.md)，容器启动见
 [Docker 文档](../../../docs/docker.md)。

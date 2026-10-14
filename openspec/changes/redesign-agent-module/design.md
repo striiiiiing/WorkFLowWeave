@@ -1,6 +1,6 @@
 # Agent 模块重设计
 
-状态：2026-10-06 设计交付，尚未 apply。用户授权“基于隔壁 qwenpaw 重新设计 agent 模块，交付 OpenSpec 流程，特别是目录结构”；本稿在独立 change 内给出方案，不回写历史设计。需求边界见 [proposal.md](proposal.md)，证据见 [references.md](references.md)，实施入口见 [tasks.md](tasks.md)。
+状态：2026-10-06 设计交付，尚未 apply。用户授权“基于隔壁 qwenpaw 重新设计 agent 模块，交付 OpenSpec 流程，特别是目录结构”；本稿在独立 change 内给出方案，不回写历史设计。需求边界见 [proposal.md](proposal.md)，证据见 references.md，实施入口见 [tasks.md](tasks.md)。
 
 ## 1. 结论与根因
 
@@ -18,7 +18,7 @@
 
 ### 1.1 基线冲突的处理
 
-用户选中的 [交互与存储分析](../../../docs/open-spec-interaction-and-storage.md) 提供阅读入口，但其中 Collector/`plugin` 的表述须结合后续 `redesign-mcp-schema-first` 阅读。本方案使用 `mcp`、`read`、`write`、`grep`、`shell` 五个稳定入口；不恢复 CollectorManager、Setter 或 Collector 网关。Workflow 交接的是调用描述，不是模型可见的完整 MCP 配置。
+用户选中的 [交互与存储分析](../../../docs/architecture.md) 提供阅读入口，但其中 Collector/`plugin` 的表述须结合后续 `redesign-mcp-schema-first` 阅读。本方案使用 `mcp`、`read`、`write`、`grep`、`shell` 五个稳定入口；不恢复 CollectorManager、Setter 或 Collector 网关。Workflow 交接的是调用描述，不是模型可见的完整 MCP 配置。
 
 `centralize-fastapi-lifecycle-sse` 已规划 `interaction/fastapi/` 组合根。当前代码仍有 `lifecycle/`，不能因它存在就把新 Agent 装配永久放回其中。实施顺序和交接点见第 8 节。
 
@@ -387,6 +387,6 @@ tests/agent/
 
 最小方案是把 service.py 按方法复制成多个 mixin，或搬到 runtime/service.py。它保留同一个巨型对象和隐式状态，无法表达任务、存储、依赖所有权，故不采用。完整照搬 QwenPaw 则会引入 AgentScope、多 workspace 和 hooks 等未要求的产品范围。选择 LangGraph 原生边界重构：StateGraph/Runtime/Command/checkpoint 是主轴，workspace 仅提供文件和进程能力，多个小职责组件经显式构造注入，以真实会话和恢复场景验收。
 
-本次不调参：继续沿用 AgentConfig 的模型空闲 300 秒、shell 60 秒、4 个读槽及现有上下文/输出预算。300 秒是等待模型活动的预算，不是整轮最长时间，也不由 SSE ping 重置；数值来源与所有默认值理由见[详细任务](tasks/2026-10-06-agent-module/task.md#2-默认值与保持理由)。共享 AI 配置已有 timeout 的语义也不在目录重构中重定义。
+本次不调参：继续沿用 AgentConfig 的模型空闲 300 秒、shell 60 秒、4 个读槽及现有上下文/输出预算。300 秒是等待模型活动的预算，不是整轮最长时间，也不由 SSE ping 重置；数值来源与所有默认值理由见详细任务。共享 AI 配置已有 timeout 的语义也不在目录重构中重定义。
 
 主要风险是任务所有权切换导致取消竞态、图节点变化破坏旧 checkpoint、两个组合根并存，以及数据文件被误当缓存删除。分别用双来源准入/stop、真实 saver 旧数据恢复、静态导入检查和逐类数据保留验证约束。当前代码与旧规范的不一致单独记录，尤其是 MCP 执行类别、未完成工具结果核对和事件尾部损坏处置，不能将其静默改成新产品规则。

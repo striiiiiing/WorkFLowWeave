@@ -1,2 +1,0 @@
-16015360	/var/lib/docker
-939364352	/var/lib/containerd

@@ -4,6 +4,11 @@
 .agents
 .codex
 .mindfs
+**/.idea
+.aws
+plugins
+artifacts
+docs
 **/__pycache__
 **/node_modules
 **/.pytest_cache

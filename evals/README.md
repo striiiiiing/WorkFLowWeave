@@ -84,6 +84,6 @@ uv run python -m evals.costs evals/results/实际运行目录
 uv run python -m evals.report evals/results/实际运行目录
 ```
 
-脚本默认数据库对应本次 myserver 部署；迁移环境时用 `--database` 指定只读 SQLite URI。汇总保留业务费、judge 费、成功/失败覆盖、配对冲突和分组质量，真实结果见 [成本与效果记录](../docs/production-demo.md)。
+脚本默认数据库对应本次 myserver 部署；迁移环境时用 `--database` 指定只读 SQLite URI。汇总保留业务费、judge 费、成功/失败覆盖、配对冲突和分组质量，真实结果见 [成本与效果记录](../docs/evaluation.md)。
 
 引用：Jieming Zhu, Shilin He, Pinjia He, Jinyang Liu, Michael R. Lyu. *Loghub: A Large Collection of System Log Datasets for AI-driven Log Analytics*. ISSRE, 2023；[LogHub](https://github.com/logpai/loghub)。
