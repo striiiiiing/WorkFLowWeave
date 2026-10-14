@@ -12,7 +12,7 @@
 | `lifecycle/` | `test_lifecycle` 验证装配、健康、reload 与关闭；`test_lifecycle_logging` 验证日志组件所有权、轮转与脱敏。 |
 | `workflow/` | `test_session_store` 验证业务存档；`test_workflow_interval` 验证定时触发；`test_workflow_lifecycle` 验证准入/关闭竞争；`test_workflow_recovery` 与 `test_workflow_process_recovery` 验证协程中断及进程强退恢复。 |
 | 根目录 | `test_contracts`、`test_schema_annotations`、`test_shared_session_models` 是共享契约；`test_starter_resources`、`test_workflow_integration`、`test_workflow_overrides` 验证跨模块调用链。 |
-| [前端测试](../frontend/tests/) | 前端独立包沿用 `unit/`（API 客户端、JSON 字段、查询参数）和 `e2e/`（界面流程与真实模型验收），由 Vitest/Playwright 发现，不由 pytest 执行。 |
+| [前端测试](../frontend/tests) | 前端独立包沿用 `unit/`（API 客户端、JSON 字段、查询参数）和 `e2e/`（界面流程与真实模型验收），由 Vitest/Playwright 发现，不由 pytest 执行。 |
 
 ## 辅助模块
 

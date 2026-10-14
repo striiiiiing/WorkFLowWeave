@@ -1,0 +1,9 @@
+Oct 08 12:50:51 DESKTOP-OBHCFRT systemd[331]: Started workflowweave-business-pressure.service - /mnt/d/code/LogAgent/.venv/bin/python -m workflowweave.interaction.cli start --config /tmp/workflowweave-business-pressure-sxfak1tu/config.json.
+Oct 08 12:52:46 DESKTOP-OBHCFRT systemd[331]: Stopping workflowweave-business-pressure.service - /mnt/d/code/LogAgent/.venv/bin/python -m workflowweave.interaction.cli start --config /tmp/workflowweave-business-pressure-sxfak1tu/config.json...
+Oct 08 12:52:50 DESKTOP-OBHCFRT systemd[331]: Stopped workflowweave-business-pressure.service - /mnt/d/code/LogAgent/.venv/bin/python -m workflowweave.interaction.cli start --config /tmp/workflowweave-business-pressure-sxfak1tu/config.json.
+Oct 08 12:52:50 DESKTOP-OBHCFRT systemd[331]: workflowweave-business-pressure.service: Consumed 25.597s CPU time, 2.7M memory peak, 0B memory swap peak.
+Oct 08 12:53:58 DESKTOP-OBHCFRT systemd[331]: Started workflowweave-business-pressure.service - /mnt/d/code/LogAgent/.venv/bin/python -m workflowweave.interaction.cli start --config /tmp/workflowweave-business-pressure-10v6gbry/config.json.
+Oct 08 12:57:03 DESKTOP-OBHCFRT systemd[331]: workflowweave-business-pressure.service: A process of this unit has been killed by the OOM killer.
+Oct 08 12:57:03 DESKTOP-OBHCFRT systemd[331]: workflowweave-business-pressure.service: Main process exited, code=killed, status=9/KILL
+Oct 08 12:57:03 DESKTOP-OBHCFRT systemd[331]: workflowweave-business-pressure.service: Failed with result 'oom-kill'.
+Oct 08 12:57:03 DESKTOP-OBHCFRT systemd[331]: workflowweave-business-pressure.service: Consumed 1min 5.014s CPU time, 3.4M memory peak, 0B memory swap peak.

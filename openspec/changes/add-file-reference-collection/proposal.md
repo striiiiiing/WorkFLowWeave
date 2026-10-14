@@ -26,7 +26,7 @@
 
 ### Modified Capabilities
 
-无已同步主规范需要修改。与活动 [MCP/CLI 采集变更](../collect-from-mcp-and-cli/proposal.md) 和 [Docker 变更](../add-docker-deployment/proposal.md) 组合使用，保留其既有行为。
+无已同步主规范需要修改。与活动 [MCP/CLI 采集变更](../archive/collect-from-mcp-and-cli/proposal.md) 和 [Docker 变更](../archive/add-docker-deployment/proposal.md) 组合使用，保留其既有行为。
 
 ## Impact
 
