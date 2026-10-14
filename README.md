@@ -30,7 +30,7 @@
 
 | 工作流编排配置（来源、Token 预算、多分支模型与通知） | 运行记录与巡检报告预览 |
 | :---: | :---: |
-| ![工作流编排配置](artifacts/production-inspection-config.png) | ![运行记录与巡检报告](artifacts/production-inspection-result.png) |
+| ![工作流编排配置](artifacts/screenshots/production-inspection-config.png) | ![运行记录与巡检报告](artifacts/screenshots/production-inspection-result.png) |
 
 ## 快速开始
 
@@ -184,7 +184,7 @@ flowchart LR
 
 ## 三种典型工作流编排模式
 
-工作流不一定要走完固定套路。仓库的 [`examples/workflows/business-scenarios/`](examples/workflows/business-scenarios/README.md) 提供了三套可直接导入的业务模板（运行验证记录见 [`docs/business-scenarios-validation-20261007.md`](docs/business-scenarios-validation-20261007.md)）：
+工作流不一定要走完固定套路。仓库的 [`examples/workflows/business-scenarios/`](examples/workflows/business-scenarios/README.md) 提供了三套可直接导入的业务模板（运行验证记录见 [`docs/evaluation.md`](docs/evaluation.md)）：
 
 ### 1. 把轻量模型当“有损压缩器”：海量新闻 / 日志初筛
 
@@ -212,7 +212,7 @@ WorkFLowWeave 专为个人开发者与轻量自托管环境设计（实测日期
 - **512 MiB 硬限额可跑**：在 `512 MiB`、无 swap 的隔离 cgroup 内存预算下，100 条记录的业务编排压测可稳定跑完 **56 次完整工作流与 72 次文件通知**。
 - **小体积镜像**：Docker 前后端镜像解压层合计约 **721.2 MB**（压缩传输体积约 **214.7 MB**），远小于动辄 3~5 GB 的重型 Agent 容器。
 
-> 以上数据来自短时基准压测，实际内存与成本仍取决于并发度、单次采集体积及所选外部模型。完整采样脚本与数据见 [部署测量](artifacts/deployment-20261008/README.md#latest-four-mode-measurements) · [业务压测](artifacts/backend-business-pressure-20261008/README.md) · [只读 API 压测](artifacts/backend-pressure-20261008.json)。
+> 以上数据来自短时基准压测，实际内存与成本仍取决于并发度、单次采集体积及所选外部模型。完整采样脚本与数据见 部署测量 · [业务压测](artifacts/benchmarks/business-pressure/README.md) · [只读 API 压测](artifacts/benchmarks/deployment/api-pressure-20261008.json)。
 
 ---
 
@@ -288,7 +288,8 @@ openspec/                   各阶段的提案、架构设计与任务验收记�
 | [Docker 启动说明](docs/docker.md) | 容器部署、命名卷备份、升级、微信扫码登录与本地镜像构建 |
 | [通知插件与聊天指令说明](src/workflowweave/plugins/channel/README.md) | 六大渠道的配置参数、邮箱授权码教程、微信限制与 Agent 斜杠指令表 |
 | [业务工作流模板](examples/workflows/business-scenarios/README.md) | 新闻压缩研判、股票多路调查、GitHub Issue 分工三套完整 JSON 与导入步骤 |
-| [项目近况与架构](docs/project-status-and-architecture.md) | 模块职责边界、双 SSE 协议设计、存储模型与演进脉络 |
+| [架构与数据边界](docs/architecture.md) | 模块职责、双 SSE 协议、存储与插件目录 |
+| [成本与验证边界](docs/evaluation.md) | 各轮成本结果、质量限制与测量证据 |
 | [前端开发说明](frontend/README.md) | 前端模块划分、代理配置、构建与 E2E 测试说明 |
 | [测试导航](tests/README.md) | 后端分模块测试命令、真实兼容服务测试说明与 60 秒超时约定 |
 | [OpenSpec 导航](openspec/README.md) | 历次功能演进的产品提案、设计契约与实施状态 |

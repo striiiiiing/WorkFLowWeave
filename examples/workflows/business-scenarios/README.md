@@ -62,7 +62,7 @@ CLI run 返回 session ID，不等待执行完成。用 `uv run workflowweave se
 
 新闻 prompt 在 Codex 交接摘要基础上加入跨境数字订阅业务目标、信息保留优先级及省略范围。实际输出可能沿用“下一步”结构，而非严格的事实卡样式；本例验证业务筛选和交接，没有通用 prompt 对照。RSS 是标题及摘要，不是全文。
 
-三个例子已在隔离实例通过真实模型调用和 QQ 通知；成功与失败轮的 session、费用、输出限制及备份说明见 [实测记录](../../../docs/business-scenarios-validation-20261007.md)。GitHub MCP 返回的嵌入文本资源必须进入共享输入，不能只看到下载状态就认定 README 已提供。
+三个例子已在隔离实例通过真实模型调用和 QQ 通知；成功与失败轮的 session、费用、输出限制及备份说明见 [实测记录](../../../docs/evaluation.md)。GitHub MCP 返回的嵌入文本资源必须进入共享输入，不能只看到下载状态就认定 README 已提供。
 
 ## 版本与限制
 

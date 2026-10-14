@@ -158,7 +158,7 @@ BACKEND_IMAGE=striiiiiing/workflowweave-backend:latest
 FRONTEND_IMAGE=striiiiiing/workflowweave-frontend:latest
 ```
 
-本次固定版本为 `20261007T190805Z`；公共基础环境为 `striiiiiing/workflowweave-backend:runtime` 或 `runtime-20261007T190805Z`。三个镜像均已匿名验证，发布证据见 [本轮记录](../artifacts/deployment-20261008/dockerhub-verification.json)。云服务器还需在云安全组和主机防火墙中放行实际发布端口；容器内部健康并不能证明公网可访问。
+本次固定版本为 `20261007T190805Z`；公共基础环境为 `striiiiiing/workflowweave-backend:runtime` 或 `runtime-20261007T190805Z`。三个镜像均已匿名验证，发布证据见 [本轮记录](../artifacts/benchmarks/deployment/dockerhub-verification.json)。云服务器还需在云安全组和主机防火墙中放行实际发布端口；容器内部健康并不能证明公网可访问。
 
 镜像由仓库的 GitHub Actions 发布；当前两个 GHCR 包已经设为 `Public`，用户无需登录即可执行 `docker compose pull`。如重新创建包或更换镜像仓库，请在对应的 Package 设置页确认可见性：
 

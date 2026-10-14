@@ -2,7 +2,7 @@
 
 ## 边界与依据
 
-问题和暂缓项见 [原清单](../redesign-agent-channel-manager/前端问题修改.md)。既有 `POST /ai/{id}/check-connection` 只读取已保存资源，因此新建或修改连接时无法按当前输入发现模型。`AIService.list_models` 已负责配置校验、凭据解析、超时和上游错误归类，新的 HTTP 入口直接复用它。
+问题和暂缓项见 原清单。既有 `POST /ai/{id}/check-connection` 只读取已保存资源，因此新建或修改连接时无法按当前输入发现模型。`AIService.list_models` 已负责配置校验、凭据解析、超时和上游错误归类，新的 HTTP 入口直接复用它。
 
 ## 后端
 

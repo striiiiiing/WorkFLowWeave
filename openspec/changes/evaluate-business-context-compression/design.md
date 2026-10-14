@@ -2,7 +2,7 @@
 
 ## 依据与范围
 
-本设计依据用户 2026-10-07 两轮要求与本变更 proposal；该指令授权建立新的评测 spec。外部依据见 [references.md](references.md)。这是评测契约的结构性调整，不能在旧 Kaggle 六条件矩阵上仅替换模型名和数据集。
+本设计依据用户 2026-10-07 两轮要求与本变更 proposal；该指令授权建立新的评测 spec。外部依据见 references.md。这是评测契约的结构性调整，不能在旧 Kaggle 六条件矩阵上仅替换模型名和数据集。
 
 ## 不变量与三条路线
 
@@ -50,6 +50,6 @@ A/B/C 使用同一数据适配层，结构化输入默认 compact JSON（避免�
 
 ## 实施顺序
 
-用户后续授权提示词修订：通用 B 改为用户提供的英文 CONTEXT CHECKPOINT COMPACTION 原文，直接复用项目 `AgentConfig.summary_prompt` 的默认值（`agent/context/compaction.py` 调用链的来源）；C 基于相同文本增加历史问答业务的事实/偏好、时间更新、跨会话实体、数字比较及来源优先级，并明确直接整理历史而不索要具体下游问题。仍为盲压，不输入具体问题/参考答案；token 预算仅走参数。新版固定为 `checkpoint-memory-v1`，先以第 101 题独立试跑对照旧版，再以新版累计 1→2→5→10 验证，旧 B/C 不混入新版统计。分级入口按单题的 ordinal 和提示词 hash 验证复用，避免旧 102 被误用或新 101 被重复运行。原文、C 后缀与实施任务见 [checkpoint 提示词任务](tasks/2026-10-07-checkpoint-prompts/task.md)。
+用户后续授权提示词修订：通用 B 改为用户提供的英文 CONTEXT CHECKPOINT COMPACTION 原文，直接复用项目 `AgentConfig.summary_prompt` 的默认值（`agent/context/compaction.py` 调用链的来源）；C 基于相同文本增加历史问答业务的事实/偏好、时间更新、跨会话实体、数字比较及来源优先级，并明确直接整理历史而不索要具体下游问题。仍为盲压，不输入具体问题/参考答案；token 预算仅走参数。新版固定为 `checkpoint-memory-v1`，先以第 101 题独立试跑对照旧版，再以新版累计 1→2→5→10 验证，旧 B/C 不混入新版统计。分级入口按单题的 ordinal 和提示词 hash 验证复用，避免旧 102 被误用或新 101 被重复运行。原文、C 后缀与实施任务见 checkpoint 提示词任务。
 
 先同步 spec 和集成测试；使用真实 WorkflowRunner 与受控传输验证盲压、来源脱敏、原文隔离、失败停止与落盘。测试通过后在第 101 题执行付费 smoke，再在开发区 10 题观察。最终 100 题保持保留。
