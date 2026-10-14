@@ -15,14 +15,17 @@ htmlcov/
 .aws/
 /.worktree/
 
-# User plugins and generated evidence stay local; keep the extension directory.
+# User plugins and generated evidence stay local; keep extension and reference
+# directory placeholders in the repository without committing user content.
 /plugins/*
 !/plugins/.gitkeep
+/data/*
+!/data/references/
+!/data/references/.gitkeep
 /artifacts/local/
 
 Typora_Hook_Log.txt
 /config.json
-/data/
 /frontend/node_modules
 /node_modules/
 /data-*/

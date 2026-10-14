@@ -1,6 +1,6 @@
 # 真实渠道验证：2026-10-09
 
-本目录保留当次平台结果，不代表后续 SDK 变更已通过真实账号验收。欠账只维护在 [渠道连接任务](../../../openspec/changes/connect-channels-and-separate-builtin-plugins/tasks.md)。
+本目录保留当次平台结果，不代表后续 SDK 变更已通过真实账号验收。归档前的账号验收边界维护在本地忽略稿 [openspec-pending-decisions.md](../../../artifacts/local/openspec-pending-decisions.md)。
 
 | 渠道 | 当次结果 | 证据 |
 | --- | --- | --- |

@@ -1,21 +1,54 @@
 name: workflowweave
+x-proxy-environment: &proxy-environment
+  HTTP_PROXY: ${WORKFLOWWEAVE_PROXY_URL-http://172.28.0.1:7890}
+  HTTPS_PROXY: ${WORKFLOWWEAVE_PROXY_URL-http://172.28.0.1:7890}
+  ALL_PROXY: ${WORKFLOWWEAVE_PROXY_URL-http://172.28.0.1:7890}
+  http_proxy: ${WORKFLOWWEAVE_PROXY_URL-http://172.28.0.1:7890}
+  https_proxy: ${WORKFLOWWEAVE_PROXY_URL-http://172.28.0.1:7890}
+  all_proxy: ${WORKFLOWWEAVE_PROXY_URL-http://172.28.0.1:7890}
+  NO_PROXY: ${WORKFLOWWEAVE_NO_PROXY:-localhost,127.0.0.1,::1,.internal,*.internal,host.docker.internal,localaddress,backend,10.0.0.0/8,10.66.66.0/24,172.16.0.0/12,192.168.0.0/16}
+  no_proxy: ${WORKFLOWWEAVE_NO_PROXY:-localhost,127.0.0.1,::1,.internal,*.internal,host.docker.internal,localaddress,backend,10.0.0.0/8,10.66.66.0/24,172.16.0.0/12,192.168.0.0/16}
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 services:
   backend:
     image: ${BACKEND_IMAGE:-ghcr.io/striiiiiing/workflowweave-backend:latest}
     volumes:
       - state:/var/lib/workflowweave
       - user_plugins:/var/lib/workflowweave/user-plugins
-      - ./data/references:/var/lib/workflowweave/data/references
+      - type: bind
+        source: ${REFERENCES_PATH:-./data/references}
+        target: /var/lib/workflowweave/data/references
+        bind:
+          create_host_path: false
+    environment: *proxy-environment
+    networks:
+      default:
+      proxy_net:
+        aliases: [workflowweave-backend.internal]
+    logging: *logging
     restart: unless-stopped
     stop_grace_period: 180s
   frontend:
     image: ${FRONTEND_IMAGE:-ghcr.io/striiiiiing/workflowweave-frontend:latest}
     ports:
-      - "${FRONTEND_PORT:-3000}:80"
+      - "0.0.0.0:${FRONTEND_PORT:-3000}:80"
     depends_on:
       backend:
         condition: service_healthy
+    networks:
+      default:
+      proxy_net:
+        aliases: [workflowweave-frontend.internal]
+    logging: *logging
     restart: unless-stopped
 volumes:
   state:
   user_plugins:
+networks:
+  proxy_net:
+    external: true
+    name: proxy_net
