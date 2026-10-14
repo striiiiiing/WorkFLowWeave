@@ -27,10 +27,11 @@
 - **小机器也能常驻运行**：纯异步 Python 后端 + Vue 3 前端，不绑重型中间件。在 2 vCPU / 1.6 GiB 内存（无 swap）的云主机上，完整前后端峰值工作集不到 190 MiB。
 
 ## 界面预览
+<img src="https://img.cdn1.vip/i/6acc9cb5c0a9c_1791794357.webp" style="zoom:50%;" />
 
 | 工作流编排配置（来源、Token 预算、多分支模型与通知） | 运行记录与巡检报告预览 |
 | :---: | :---: |
-| ![工作流编排配置](artifacts/screenshots/production-inspection-config.png) | ![运行记录与巡检报告](artifacts/screenshots/production-inspection-result.png) |
+| ![工作流编排配置](https://raw.githubusercontent.com/striiiiiing/WorkFLowWeave/main/artifacts/screenshots/production-inspection-config.png) | ![运行记录与巡检报告](https://raw.githubusercontent.com/striiiiiing/WorkFLowWeave/main/artifacts/screenshots/production-inspection-result.png) |
 
 ## 快速开始
 
