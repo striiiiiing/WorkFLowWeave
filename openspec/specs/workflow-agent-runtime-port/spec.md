@@ -2,7 +2,7 @@
 
 ## Purpose
 
-说明任务级 Agent 在当前 WorkflowRunner、AgentService、MCP 和前端架构中的接线与首轮身份，不引入源端已淘汰的运行时。未完成的实现与验收仍由所属活动变更管理，历史验证不能替代当前版本回归。
+说明任务级 Agent 在当前 WorkflowRunner、AgentService、MCP 和前端架构中的接线与首轮身份，不引入源端已淘汰的运行时。实现与验收证据见 Git 历史和本地分析稿；历史验证不能替代当前版本回归。
 
 ## Requirements
 

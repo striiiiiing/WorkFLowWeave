@@ -47,6 +47,19 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
+          target: backend-tools
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-backend:tools
+            ${{ env.IMAGE_PREFIX }}-backend:tools-${{ github.sha }}
+          cache-from: |
+            type=gha,scope=workflowweave-runtime
+            type=gha,scope=workflowweave-backend
+            type=gha,scope=workflowweave-tools
+          cache-to: type=gha,mode=max,scope=workflowweave-tools
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
           target: frontend
           push: true
           tags: ${{ env.IMAGE_PREFIX }}-frontend:latest

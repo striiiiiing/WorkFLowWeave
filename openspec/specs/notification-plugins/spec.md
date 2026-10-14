@@ -2,7 +2,7 @@
 
 ## Purpose
 
-说明各通知渠道的插件归属、能力矩阵、SDK 接入、SMTP 与文件投递，以及独立插件发现和空资源初始化的规则。未完成的实现与验收仍由所属活动变更管理，历史验证不能替代当前版本回归。
+说明各通知渠道的插件归属、能力矩阵、SDK 接入、SMTP 与文件投递，以及独立插件发现和空资源初始化的规则。实现与验收证据见 Git 历史和本地分析稿；历史验证不能替代当前版本回归。
 
 ## Requirements
 
@@ -40,13 +40,13 @@
 
 ### Requirement: 官方 SDK 优先
 
-QQ SHALL 使用腾讯 `qq-botpy`；飞书 SHALL 使用 `lark-oapi`；Telegram SHALL 使用 `python-telegram-bot`；Email SHALL 使用 `aiosmtplib`。插件 SHALL NOT 在核心层重复实现对应平台的鉴权、事件或消息协议。
+QQ SHALL 使用腾讯 qq-botpy；飞书 SHALL 使用用户确认的官方 lark-channel-sdk；Telegram SHALL 使用 python-telegram-bot；Email SHALL 使用 aiosmtplib。平台 SDK 回调 SHALL 归一化输入并交给唯一 ChannelManager，不直接执行 Agent 或 Workflow。飞书鉴权与 SDK 阻塞 I/O SHALL 不阻塞应用事件循环。
 
 #### Scenario: SDK 回调进入统一队列
 
-- **WHEN** 官方 SDK 调用 QQ、飞书或 Telegram 的入站回调
-- **THEN** 回调只负责归一化消息并等待 Manager 的实际入队结果
-- **AND** 插件不在回调中直接执行 Agent 或 Workflow
+- **WHEN** 平台 SDK 接收一条消息
+- **THEN** 消息归一化后等待 Manager 实际受理
+- **AND** SDK 回调不创建第二个 Manager 或模型循环
 
 ### Requirement: Email SMTP 单向投递
 

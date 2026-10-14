@@ -31,7 +31,7 @@
 
 | 工作流编排配置（来源、Token 预算、多分支模型与通知） | 运行记录与巡检报告预览 |
 | :---: | :---: |
-| ![工作流编排配置](https://raw.githubusercontent.com/striiiiiing/WorkFLowWeave/main/artifacts/screenshots/production-inspection-config.png) | ![运行记录与巡检报告](https://raw.githubusercontent.com/striiiiiing/WorkFLowWeave/main/artifacts/screenshots/production-inspection-result.png) |
+| ![工作流编排配置](https://img.scdn.io/i/6acfb5eb72edf_1791997419.webp) | ![运行记录与巡检报告](https://cloudflareimg.cdn.sn/i/6acfb5e66c8ce_1791997414.webp) |
 
 ## 快速开始
 
@@ -44,7 +44,7 @@ docker compose pull
 docker compose up -d
 ```
 
-启动后浏览器打开 **http://localhost:3000**。运行数据默认持久化在 Docker 命名卷中；关于停止、升级、数据备份、微信扫码登录和本地构建镜像的细节，见 [Docker 启动说明](docs/docker.md)。
+启动后浏览器打开 **http://localhost:3000**。运行数据默认持久化在 Docker 命名卷中；关于停止、升级、数据备份、微信扫码登录和本地构建镜像的细节，见 [Docker 部署说明](docs/docker.md)。仓库与本地运行时的边界见 [项目目录结构](docs/project-structure.md)。
 
 ### 方式二：从源码启动
 
