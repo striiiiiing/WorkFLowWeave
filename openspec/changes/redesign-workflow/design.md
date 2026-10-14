@@ -4,7 +4,7 @@
 
 本轮取代此前“checkpoint 只保存引用、节点同步存入 SessionStore”的方案。该实现从基线 `8ab64a1` 到 `f175e03`，原六个执行模块 1,399→1,358 行，整个 Workflow 目录 1,988→2,387 行，前端 runs 模块 1,018→1,735 行。这些数字保留为历史观察。用户本轮明确取消代码行数必须下降的要求：本变更包含新增能力，允许合理增长，验收关注功能、职责与重复实现。
 
-本轮用户授权按 storage、graph、execution、stream 四部分重新组织 Workflow，并明确使用 `astream_events`，图内 tags 分类、`config.metadata.sessionID` 注入运行身份。旧日期任务保留历史；本轮依据与未实施任务见 [原生事件流与模块拆分任务](tasks/2026-09-28-native-events-layout/task.md)。本轮只修改 OpenSpec，不将目录设计或旧任务的通过记录视为新实现已验收。
+本轮用户授权按 storage、graph、execution、stream 四部分重新组织 Workflow，并明确使用 `astream_events`，图内 tags 分类、`config.metadata.sessionID` 注入运行身份。旧日期任务保留历史；本轮依据与未实施任务见 原生事件流与模块拆分任务。本轮只修改 OpenSpec，不将目录设计或旧任务的通过记录视为新实现已验收。
 
 四部分设计提出时，worktree 已有五阶段图、逐项子图、并行 intent/receipt、恢复及清理，并有未提交的内容 state、分类归档和 snapshot 实现；当时 archive.py 仍只消费 updates 后扫描历史，service.py 仍组装归档报告，尚未按四部分及原生事件接口拆分。这是重构起点记录，不作为最新实现状态。用户随后确认直接沿用现有外部 snapshot，首帧、版本、心跳和连接生命周期按第 4 节执行。
 
@@ -177,7 +177,7 @@ storage 统一按稳定事实键 `(session, epoch, stage, kind, item/output/chan
 
 #### 4.2 沿用现有 Snapshot 协议
 
-用户确认直接采用原先的 snapshot，以减少兼容问题。本节取代此前待讨论决定；依据与源码位置见 [沿用 Snapshot 任务](tasks/2026-09-28-reuse-snapshot/task.md)。保留现有 `/api/sessions/{session_id}/events`、命名 `snapshot` 事件和完整 `SessionRecord` JSON，不增加增量协议或持久化传输日志。snapshot 包含运行状态、轮次、业务版本、逐项进度和正文可用性，正文继续按固定业务版本独立查询。
+用户确认直接采用原先的 snapshot，以减少兼容问题。本节取代此前待讨论决定；依据与源码位置见 沿用 Snapshot 任务。保留现有 `/api/sessions/{session_id}/events`、命名 `snapshot` 事件和完整 `SessionRecord` JSON，不增加增量协议或持久化传输日志。snapshot 包含运行状态、轮次、业务版本、逐项进度和正文可用性，正文继续按固定业务版本独立查询。
 
 服务端先注册 session 观察者，再查询同一 storage 投影并发送首帧；期间的更新由观察者队列接收，随后只发送比已发送版本更高的完整 snapshot。前端按 session 校验身份并仅接受更高的业务 version，重复或较旧 snapshot 不覆盖当前视图；execution_epoch 标识业务轮次，不另分配传输版本。Workflow 不使用 SSE id/Last-Event-ID 重放，重连重新取得最新完整首帧，允许跳过中间版本，不重新执行业务或重发 trigger/resume。
 
@@ -343,4 +343,4 @@ Collector、AI、Channel、插件及凭据协议保持，通过运行参数/cont
 
 保留现有中断/阶段重跑、通知不确定性、固定版本和归档交接验证。补测 checkpoint 默认 7 天、采集 30 天、分析/报告默认不过期、期限顺序任意、关闭正文备份不关闭 checkpoint、迟到归档不延期/复活，以及长期在线时过期删除可被触发。共用提示词不绕过正文保留策略，清理不误删活动恢复或其他轮次。
 
-对外 snapshot、重连、心跳和离页生命周期按第 4 节及 [沿用 Snapshot 任务](tasks/2026-09-28-reuse-snapshot/task.md)回归；已有测试记录不替代新内部执行链路的真实 SSE 与浏览器验收。每条后端测试命令硬超时 60 秒；最终交付统一代码审查。本轮仅执行 OpenSpec 严格校验、相对链接/围栏/空白检查及文档差异审查。
+对外 snapshot、重连、心跳和离页生命周期按第 4 节及 沿用 Snapshot 任务回归；已有测试记录不替代新内部执行链路的真实 SSE 与浏览器验收。每条后端测试命令硬超时 60 秒；最终交付统一代码审查。本轮仅执行 OpenSpec 严格校验、相对链接/围栏/空白检查及文档差异审查。

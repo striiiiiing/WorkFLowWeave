@@ -11,6 +11,14 @@ htmlcov/
 .mindfs/
 .agents/
 .codex/
+.idea/
+.aws/
+/.worktree/
+
+# User plugins and generated evidence stay local; keep the extension directory.
+/plugins/*
+!/plugins/.gitkeep
+/artifacts/local/
 
 Typora_Hook_Log.txt
 /config.json
@@ -27,6 +35,3 @@ Typora_Hook_Log.txt
 .env
 master.key
 master.key.initialized
-
-# Local handoff notes are intentionally kept outside version control.
-/notification-channel-plugins-handoff.md

@@ -61,7 +61,7 @@ npm run test:e2e
 
 实际环境需另外运行 `npm run test:live`：此检查不启动测试服务器，直接访问当前运行的 `http://127.0.0.1:3000`（可用 `WORKFLOWWEAVE_FRONTEND_URL` 指定）。验证健康报告、资源/运行/插件列表、页面接收和资源保存；只创建带唯一 ID 的临时采集源，结束时删除，不触发工作流。后端未启动或代理不通会直接失败。隔离测试通过不能替代这项检查。
 
-过渡代码清理的依据与验证记录见 [OpenSpec 清理任务](../openspec/changes/archive/refactor-frontend-architecture/tasks/2026-10-05-transition-cleanup/task.md)；既有 `proposal.md` 与 `design.md` 未改动。
+过渡代码清理的依据与验证记录见 OpenSpec 清理任务；既有 `proposal.md` 与 `design.md` 未改动。
 
 资源文件使用 v4 格式。旧 Collector/Setter 来源不会自动迁移；需要显式创建 MCP 服务及其工具来源，或 CLI 来源。工作流选择资源实例，并单独配置输入格式与 token 限额；AI 配置需要真实模型服务。
 
