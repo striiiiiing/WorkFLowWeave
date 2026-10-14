@@ -212,7 +212,7 @@ WorkFLowWeave 专为个人开发者与轻量自托管环境设计（实测日期
 - **512 MiB 硬限额可跑**：在 `512 MiB`、无 swap 的隔离 cgroup 内存预算下，100 条记录的业务编排压测可稳定跑完 **56 次完整工作流与 72 次文件通知**。
 - **小体积镜像**：Docker 前后端镜像解压层合计约 **721.2 MB**（压缩传输体积约 **214.7 MB**），远小于动辄 3~5 GB 的重型 Agent 容器。
 
-> 以上数据来自短时基准压测，实际内存与成本仍取决于并发度、单次采集体积及所选外部模型。完整采样脚本与数据见 部署测量 · [业务压测](artifacts/benchmarks/business-pressure/README.md) · [只读 API 压测](artifacts/benchmarks/deployment/api-pressure-20261008.json)。
+> 以上数据来自短时基准压测，实际内存与成本仍取决于并发度、单次采集体积及所选外部模型。完整采样脚本与数据见 [部署测量](artifacts/benchmarks/deployment/README.md#latest-four-mode-measurements) · [业务压测](artifacts/benchmarks/business-pressure/README.md) · [只读 API 压测](artifacts/benchmarks/deployment/api-pressure-20261008.json)。
 
 ---
 
