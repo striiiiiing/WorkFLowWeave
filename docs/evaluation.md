@@ -1,40 +1,6 @@
 # 成本、质量与验证边界
 
-不同实验的模型、数据、缓存和计费口径不同，结果分开记录。评测方法、数据许可、运行与评分命令统一维护在 [evals](../evals/README.md)；业务配置和使用步骤维护在 [工作流示例](../examples/workflows/business-scenarios/README.md)。本页保留结论和必要限制，逐次执行流水通过 Git 历史查阅。
-
-## 2026-10-06：BGL 小样本对照
-
-数据为两个固定的 LogHub BGL 400 行窗口及两个确定性合成请求样例。BGL 异常标签只供 judge；合成样例与公开基准分开解释。数据来源和许可见 [LogHub notice](../evals/LOGHUB-LICENSE.txt)。每条件手动执行一次，没有独立人工评分或随机重复实验。
-
-裁剪预算为字段 96、来源 1,200、总输入 2,000 tokens；完整 JSON 不裁剪。弱摘要配置为 `gpt-5.6-luna / low`，强分析配置为 `gpt-5.6-sol / medium`，强分析的实际计费模型为 `gpt-6.1-sol`。两段流程的强模型只接收摘要。
-
-下表为四样例合计。费用来自远端 AxonHub `usage_logs.total_cost`；prompt/completion 采用服务商计量，采集正文采用本地 tokenizer，不包含模型提示词。
-
-| 条件 | 成功样例 | 业务调用 | 平均正文 tokens | prompt tokens | completion tokens | 费用 USD |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 完整 JSON → 强分析 | 4/4 | 4 | 17,012.5 | 68,674 | 2,649 | 0.163838 |
-| 裁剪 JSON → 强分析 | 4/4 | 4 | 1,800.75 | 7,827 | 2,277 | 0.038424 |
-| 裁剪 ISON → 强分析 | 4/4 | 4 | 773.25 | 3,717 | 2,611 | 0.033544 |
-| 裁剪 ZON → 强分析 | 4/4 | 4 | 1,721 | 7,508 | 3,040 | 0.045416 |
-| 裁剪 ISON → 弱摘要 → 强分析 | 4/4 | 8 | 773.25 | 20,512 | 3,954 | 0.03003266 |
-| 裁剪 ZON → 弱摘要 → 强分析 | 4/4 | 8 | 1,721 | 24,312 | 4,268 | 0.02827820 |
-
-32 次业务调用账单匹配，合计 **$0.33953286**。两个摘要条件分别包含 17,173 / 20,370 cached prompt tokens，直接分析条件为零。费用差异同时受到路由、缓存和输出长度影响，不能全部归因于格式或摘要；效果未完成评分，不能以最低账面费用宣布最佳方案。
-
-记录数和字段内容会受 token 预算裁剪，完整字段集合的记录数也不能直接视作语义完整率。这组结果不能与后续 Kaggle 或 LongMemEval 实验合并。
-
-## 2026-10-06：AxonHub 巡检演示
-
-[巡检示例](../examples/workflows/axonhub-inspection/README.md)验证了 MCP 采集、两段模型和文件通知。手动一次成功运行的计费如下：
-
-| 阶段 | 配置模型 | 实际上游模型 | prompt tokens | completion tokens | 账单费用 USD |
-| --- | --- | --- | ---: | ---: | ---: |
-| 压缩 | `gpt-5.6-luna` | `gpt-5.6-luna` | 11,128 | 728 | 0.00121208 |
-| 强分析 | `gpt-5.6-sol` | `gpt-6.1-sol` | 854 | 3,257 | 0.034278 |
-
-成功轮只包含两个 AI 阶段；首次强模型调用因上游 EOF 失败，其账单未包含在表中。错误明细为有限窗口、有限样本，输入限额会裁剪后置来源，报告需保留覆盖说明。
-
-同期 GitHub 示例已实际采集 30 条提交、0 条 release，但分析因 `credential_missing` 失败，不计为成功简报。截图和使用说明见示例目录；历史失败不作为当前环境仍然故障的证明。
+根 README 引用的压测采样口径、脚本和结果分别见 [部署测量](../artifacts/benchmarks/deployment/README.md)、[业务压测](../artifacts/benchmarks/business-pressure/README.md) 和 [只读 API 压测结果](../artifacts/benchmarks/deployment/api-pressure-20261008.json)。业务工作流模板见 [工作流示例](../examples/workflows/business-scenarios/README.md)。本页只记录这些模板的运行验证结果与适用限制。
 
 ## 2026-10-07：三个真实业务场景
 
@@ -54,10 +20,6 @@
 
 该轮验证流程和输出边界，缺少直读基线与质量标注，不能宣称已证明净节费、提质或定制优于通用。新服务器上的业务验证仍属于未完成任务。
 
-## 当前评测与资源测量
+## 压测适用范围
 
-Kaggle 矩阵的方法和命令见 [evals](../evals/README.md)，本地请求与账单位于 `evals/results/`。早期业务/judge 调用出现上游 403/500，不能拿部分成功结果宣称准确率或成本优势。
-
-LongMemEval 的 holdout、三路线、单 judge、人工一致率和完整费用要求见 [业务评测规范](../openspec/specs/business-context-evaluation/spec.md)。归档前的未闭环条目和“异家族双 judge”旧方案保存在本地忽略稿 [openspec-pending-decisions.md](../artifacts/local/openspec-pending-decisions.md)；单题或单 judge smoke 不代替完整实验及人工标注。
-
-部署资源和业务压测的摘要、口径、版本及原始样本分别见 [部署测量](../artifacts/benchmarks/deployment/README.md)与 [业务压测](../artifacts/benchmarks/business-pressure/README.md)。短时压测不证明长期无泄漏，也不能与不同机器、负载或资源限制的实验混算。
+资源占用、并发压力、512 MiB cgroup 限额与只读 API 结果来自短时基准测试，用于复核 README 中披露的运行表现。它们不证明长期无泄漏，也不能与不同机器、负载或资源限制的实验混算。

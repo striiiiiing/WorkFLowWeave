@@ -15,8 +15,7 @@ WorkFLowWeave/
 │   └── screenshots/
 ├── data/references/.gitkeep     # 文件引用目录占位；实际内容不入 Git
 ├── deploy/docker/               # Docker 入口与 Nginx 配置，随代码发布
-├── docs/                        # 当前部署、架构、评测和目录说明
-├── evals/                       # 可复现评测脚本与小样本数据
+├── docs/                        # 当前部署、架构、业务验证和目录说明
 ├── examples/workflows/          # 可导入的工作流示例
 ├── frontend/                    # Vue 前端源码、测试和构建配置
 ├── openspec/
