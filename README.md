@@ -27,11 +27,11 @@
 - **小机器也能常驻运行**：纯异步 Python 后端 + Vue 3 前端，不绑重型中间件。在 2 vCPU / 1.6 GiB 内存（无 swap）的云主机上，完整前后端峰值工作集不到 190 MiB。
 
 ## 界面预览
-<img src="https://img.cdn1.vip/i/6acc9cb5c0a9c_1791794357.webp" style="zoom:50%;" />
+![AxonHub 巡检运行记录与最终报告](artifacts/screenshots/readme-axonhub-inspection.webp)
 
 | 工作流编排配置（来源、Token 预算、多分支模型与通知） | 运行记录与巡检报告预览 |
 | :---: | :---: |
-| ![工作流编排配置](https://img.scdn.io/i/6acfb5eb72edf_1791997419.webp) | ![运行记录与巡检报告](https://cloudflareimg.cdn.sn/i/6acfb5e66c8ce_1791997414.webp) |
+| ![工作流编排配置](artifacts/screenshots/readme-workflow-editor.webp) | ![运行记录与巡检报告](artifacts/screenshots/readme-inspection-report.webp) |
 
 ## 快速开始
 
@@ -44,7 +44,7 @@ docker compose pull
 docker compose up -d
 ```
 
-启动后浏览器打开 **http://localhost:3000**。运行数据默认持久化在 Docker 命名卷中；关于停止、升级、数据备份、微信扫码登录和本地构建镜像的细节，见 [Docker 部署说明](docs/docker.md)。仓库与本地运行时的边界见 [项目目录结构](docs/project-structure.md)。
+启动后浏览器打开 **http://localhost:3000**。也可以用 [合一镜像](docs/docker.md#单容器合一部署) 让后端和前端运行在一个容器中。运行数据默认持久化在 Docker 命名卷中；关于停止、升级、数据备份、微信扫码登录和本地构建镜像的细节，见 [Docker 部署说明](docs/docker.md)。仓库与本地运行时的边界见 [项目目录结构](docs/project-structure.md)。
 
 ### 方式二：从源码启动
 
