@@ -35,16 +35,38 @@
 
 ## 快速开始
 
-你可以直接用 Docker Compose 一键拉起前后端，也可以从源码分别启动 Python 后端和前端开发服务。
+可以直接拉取 Docker 镜像部署，也可以从源码分别启动后端和前端。
 
 ### 方式一：Docker 部署（推荐）
 
+**前后端合一（推荐）**
+
 ```bash
-docker compose pull
-docker compose up -d
+docker pull ghcr.io/striiiiiing/workflowweave-backend:full
+docker run -d --name workflowweave --restart unless-stopped \
+  -p 3000:80 \
+  -v workflowweave_state:/var/lib/workflowweave \
+  ghcr.io/striiiiiing/workflowweave-backend:full
 ```
 
-启动后浏览器打开 **http://localhost:3000**。也可以用 [合一镜像](docs/docker.md#单容器合一部署) 让后端和前端运行在一个容器中。运行数据默认持久化在 Docker 命名卷中；关于停止、升级、数据备份、微信扫码登录和本地构建镜像的细节，见 [Docker 部署说明](docs/docker.md)。仓库与本地运行时的边界见 [项目目录结构](docs/project-structure.md)。
+**前后端分开部署**
+
+```bash
+docker pull ghcr.io/striiiiiing/workflowweave-backend:latest
+docker pull ghcr.io/striiiiiing/workflowweave-frontend:latest
+docker network create workflowweave
+docker run -d --name workflowweave-backend --restart unless-stopped \
+  --network workflowweave --network-alias backend \
+  -v workflowweave_state:/var/lib/workflowweave \
+  ghcr.io/striiiiiing/workflowweave-backend:latest
+docker run -d --name workflowweave-frontend --restart unless-stopped \
+  --network workflowweave -p 3000:80 \
+  ghcr.io/striiiiiing/workflowweave-frontend:latest
+```
+
+启动后访问 [http://localhost:3000](http://localhost:3000)。
+
+运行数据保存在 `workflowweave_state` 命名卷中。
 
 ### 方式二：从源码启动
 
@@ -280,13 +302,12 @@ src/workflowweave/plugins/  内置通知与双向对话渠道插件（Email / Fi
 frontend/                   Vue 3 Web 管理界面与前端测试
 examples/                   独立脚本与三大业务场景工作流模板
 tests/                      后端单元与集成测试
-docs/                       Docker 部署、架构现状与业务验证报告
+docs/                       项目目录结构、架构现状与业务验证报告
 openspec/                   各阶段的提案、架构设计与任务验收记录
 ```
 
 | 文档 | 内容概要 |
 | :--- | :--- |
-| [Docker 启动说明](docs/docker.md) | 容器部署、命名卷备份、升级、微信扫码登录与本地镜像构建 |
 | [通知插件与聊天指令说明](src/workflowweave/plugins/channel/README.md) | 六大渠道的配置参数、邮箱授权码教程、微信限制与 Agent 斜杠指令表 |
 | [业务工作流模板](examples/workflows/business-scenarios/README.md) | 新闻压缩研判、股票多路调查、GitHub Issue 分工三套完整 JSON 与导入步骤 |
 | [架构与数据边界](docs/architecture.md) | 模块职责、双 SSE 协议、存储与插件目录 |

@@ -37,4 +37,4 @@
 将自定义插件按类别放入其中，每个插件目录包含 `plugin.json` 和注册入口。
 个人插件及 `plugins/config.json` 默认被 Git 忽略；需要公开发布插件时应在自己的插件仓库维护。
 详细 SDK、凭据与微信登录说明见 [渠道说明](channel/README.md)，容器启动见
-[Docker 文档](../../../docs/docker.md)。
+[README 快速开始](../../../README.md#快速开始)。

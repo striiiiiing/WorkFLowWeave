@@ -32,6 +32,6 @@ Ubuntu 22.04、2 vCPU、1,608 MiB 内存、无 swap。后端镜像为 `ghcr.io/s
 
 在本目录执行 `python summarize.py` 可从四个模式 JSON 重算摘要。汇总算法已从两轮目录的动态导入收敛为一份实现，未改写原始 JSON/JSONL；[benchmark.py](benchmark.py)保留第二轮对 npm 磁盘的补计。
 
-`prepare-native.sh`、`run-benchmarks.sh`、`benchmark.py` 和 `native-nginx.conf` 是当次冻结发布环境的工具，包含 `/opt/logagent`、systemd 与 Docker 路径，需在隔离测试机准备同版源码、依赖及镜像。源码与镜像传输归档由记录的发布版本重新准备。这些环境准备脚本不作为当前版本的通用部署入口，当前安装见 [Docker 指南](../../../docs/docker.md)。
+`prepare-native.sh`、`run-benchmarks.sh`、`benchmark.py` 和 `native-nginx.conf` 是当次冻结发布环境的工具，包含 `/opt/logagent`、systemd 与 Docker 路径，需在隔离测试机准备同版源码、依赖及镜像。源码与镜像传输归档由记录的发布版本重新准备。这些环境准备脚本不作为当前版本的通用部署入口，当前安装见 [README 快速开始](../../../README.md#快速开始)。
 
 当次公网浏览器交互及比较产品目标主机运行未完成；记录结束时 SSH 不可用，无法证明最终服务恢复。这里保留测量事实，不将历史健康检查当作当前服务器状态。

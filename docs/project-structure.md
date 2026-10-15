@@ -70,7 +70,6 @@ WorkFLowWeave/
 ├── compose*.yaml
 ├── Dockerfile                   # 仅源码构建时使用
 ├── deploy/docker/
-├── docs/docker.md
 ├── data/references/             # REFERENCES_PATH 指向的宿主目录
 └── plugins/                     # 可选的用户插件来源目录
 ```
