@@ -26,9 +26,9 @@ htmlcov/
 
 Typora_Hook_Log.txt
 /config.json
-/frontend/node_modules
-/node_modules/
+**/node_modules/
 /data-*/
+/evals/results/
 /.remote-workflow-patch/
 /frontend/1.json
 /botpy.log
