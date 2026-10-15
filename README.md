@@ -44,7 +44,7 @@ docker compose pull
 docker compose up -d
 ```
 
-启动后浏览器打开 **http://localhost:3000**。运行数据默认持久化在 Docker 命名卷中；关于停止、升级、数据备份、微信扫码登录和本地构建镜像的细节，见 [Docker 部署说明](docs/docker.md)。仓库与本地运行时的边界见 [项目目录结构](docs/project-structure.md)。
+启动后浏览器打开 **http://localhost:3000**。也可以用 [合一镜像](docs/docker.md#单容器合一部署) 让后端和前端运行在一个容器中。运行数据默认持久化在 Docker 命名卷中；关于停止、升级、数据备份、微信扫码登录和本地构建镜像的细节，见 [Docker 部署说明](docs/docker.md)。仓库与本地运行时的边界见 [项目目录结构](docs/project-structure.md)。
 
 ### 方式二：从源码启动
 

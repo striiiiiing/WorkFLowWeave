@@ -1,29 +1,29 @@
 # Docker 部署
 
-Docker Engine / Compose v2 或 Docker Desktop（Linux 容器）。默认部署仍为后端和独立 Nginx 前端两个容器，后端仅在容器网络开放 4300，宿主发布前端 3000。新方案在源码构建后生效；已发布的历史镜像和标签不会因修改仓库文件而改变。仓库、开发机和服务器的目录边界见 [项目目录结构](project-structure.md)。
+Docker Engine / Compose v2 或 Docker Desktop（Linux 容器）。默认部署使用后端和独立 Nginx 前端两个容器；需要单容器时使用合一镜像，它同时运行 API 和 Nginx。新方案在源码构建后生效；已发布的历史镜像和标签不会因修改仓库文件而改变。仓库、开发机和服务器的目录边界见 [项目目录结构](project-structure.md)。
 
 ## 镜像与数据的边界
 
 | 内容 | 位置 | 更新方式 |
 | --- | --- | --- |
 | Python 程序、内置插件和渠道 SDK | 镜像 `/opt/workflowweave/venv` | 构建或拉取新版镜像 |
-| Vue 静态文件、Nginx 配置 | 前端镜像 | 构建或拉取新版镜像 |
+| Vue 静态文件、Nginx 配置 | 前端镜像或合一镜像 | 构建或拉取新版镜像 |
 | 配置、SQLite、主密钥、日志、登录状态和 HOME | `workflowweave_state` → `/var/lib/workflowweave` | Web、CLI 或卷备份恢复 |
 | 用户插件与启用设置 | `workflowweave_user_plugins` → `/var/lib/workflowweave/user-plugins` | 导入插件或维护此卷 |
 | 文件引用 | 宿主 `REFERENCES_PATH` → `/var/lib/workflowweave/data/references` | 直接编辑宿主文件 |
 
 数据卷不挂载到程序、Python 虚拟环境或内置插件目录；首次启动只创建配置，重启保留已有配置。默认 HOME 也在状态卷中，微信 SDK 的 `~/.wechatbot` 和工具缓存随卷保存。宿主依赖、密钥、数据库、状态、测试、文档和历史构建记录均不进入构建上下文。不要通过绑定宿主源码或 site-packages 修补容器；修改程序用扩展镜像，修改配置用卷或环境变量。
 
-Python 3.12/Debian slim、运行所需 Node 24.15.0 和 CA 证书构成 `runtime`；`backend` 只增加非 editable 的 Python 安装产物、轻量微信 Node SDK 和入口。Git 和 uv 只用于构建；构建源码、开发依赖、下载缓存、npm 和编译工具不复制到默认运行镜像。前端仍在 Node 24.15.0/Debian slim 中构建，由 Nginx/Alpine 提供静态文件。
+Python 3.12/Debian slim、运行所需 Node 24.15.0 和 CA 证书构成 `runtime`；`backend` 增加非 editable 的 Python 安装产物、轻量微信 Node SDK 和入口。`all-in-one` 在 backend 基础上加入 Nginx 和编译好的 Vue 静态文件；独立 `frontend` 仍由 Nginx/Alpine 提供静态文件。Git、uv、npm 和编译工具只用于构建，不复制到运行镜像。
 
 ```text
 Python/Debian slim + Node + CA (runtime)
   └─ Python/微信安装产物 + 入口 (backend / latest)
-       └─ Git + npm/npx + uv/uvx (backend-tools / tools，可选)
-Nginx/Alpine + Vue 静态产物 (frontend)
+       └─ Nginx + Vue 静态产物 (backend / full，可选合一部署)
+Nginx/Alpine + Vue 静态产物 (frontend，可选拆分部署)
 ```
 
-所有现有通知渠道仍包含在默认镜像中。CLI 和 stdio MCP 在容器内执行；使用 `npx`、`uvx` 或 Git 的来源/MCP 需选择 tools 镜像。它与默认后端共享应用层、使用相同数据卷，不需要改应用配置或复制数据库。额外的系统依赖应在继承该镜像的 Dockerfile 中安装。
+所有现有通知渠道仍包含在默认镜像中。合一镜像的 API 监听容器内 4300，Nginx 对外提供 80；拆分部署则由独立前端容器代理到 backend 服务。
 
 ## 启动与部署设置
 
@@ -60,6 +60,25 @@ BACKEND_IMAGE=workflowweave-backend:local FRONTEND_IMAGE=workflowweave-frontend:
 
 前端在后端真实 `/api/health` 健康后启动。打开 `http://localhost:3000`，API 文档在 `/docs`。Web 首次启动没有来源、模型或渠道资源，请配置自己的资源。
 
+### 单容器合一部署
+
+合一镜像使用 `ghcr.io/striiiiiing/workflowweave-backend:full`，包含后端、前端静态文件和 Nginx。它与拆分部署共用相同的状态卷、用户插件卷和文件引用挂载：
+
+```bash
+docker compose -f compose.all-in-one.yaml pull
+docker compose -f compose.all-in-one.yaml up -d
+docker compose -f compose.all-in-one.yaml logs -f app
+```
+
+从源码构建合一镜像：
+
+```bash
+ALL_IN_ONE_IMAGE=workflowweave:full-local \
+  docker compose -f compose.all-in-one.yaml -f compose.all-in-one.build.yaml up -d --build
+```
+
+合一部署仍通过 `FRONTEND_PORT` 对外发布，默认地址为 `http://localhost:3000`。
+
 ### 在台式机上构建并交付到服务器
 
 在台式机仓库根目录设置本地镜像标签；只构建镜像时不需要 `proxy_net`、数据目录或服务器代理配置：
@@ -67,6 +86,7 @@ BACKEND_IMAGE=workflowweave-backend:local FRONTEND_IMAGE=workflowweave-frontend:
 ```dotenv
 BACKEND_IMAGE=workflowweave-backend:local
 FRONTEND_IMAGE=workflowweave-frontend:local
+ALL_IN_ONE_IMAGE=workflowweave:full-local
 ```
 
 构建并导出镜像：
@@ -74,6 +94,13 @@ FRONTEND_IMAGE=workflowweave-frontend:local
 ```bash
 docker compose -f compose.yaml -f compose.build.yaml build
 docker image save workflowweave-backend:local workflowweave-frontend:local -o workflowweave-images.tar
+```
+
+需要交付合一镜像时单独构建并导出：
+
+```bash
+docker compose -f compose.all-in-one.yaml -f compose.all-in-one.build.yaml build
+docker image save workflowweave:full-local -o workflowweave-full-image.tar
 ```
 
 将归档传到服务器后导入：
@@ -84,19 +111,7 @@ docker image load -i workflowweave-images.tar
 
 服务器 `.env` 使用相同的本地标签，保留服务器自己的 `WORKFLOWWEAVE_PROXY_URL`、`REFERENCES_PATH` 和 `FRONTEND_PORT`，然后执行 `docker compose up -d`。不要把台式机的代理地址复制到服务器。也可以将本地标签改成自己的镜像仓库地址，推送后让服务器拉取。
 
-使用 Git/npm/npx/uv/uvx 扩展：
-
-```bash
-# 已发布 tools 镜像时
-docker compose -f compose.yaml -f compose.tools.yaml pull backend
-docker compose -f compose.yaml -f compose.tools.yaml up -d
-
-# 从源码构建 tools（本地构建无需先发布）
-BACKEND_TOOLS_IMAGE=workflowweave-backend:tools-local FRONTEND_IMAGE=workflowweave-frontend:local \
-  docker compose -f compose.yaml -f compose.build.yaml -f compose.tools.yaml up -d --build
-```
-
-只测试后端时叠加 `compose.backend.yaml`，仅在 `127.0.0.1:4300` 发布后端。默认完整栈无需开放后端端口。日志采用 json-file，单文件 10 MB、最多 3 个文件；应用自身日志仍在状态卷中。
+只测试后端时叠加 `compose.backend.yaml`，仅在 `127.0.0.1:4300` 发布后端。默认完整栈无需开放后端端口；合一栈只发布 Nginx 的 80。日志采用 json-file，单文件 10 MB、最多 3 个文件；应用自身日志仍在状态卷中。
 
 ## 持久化、升级与备份
 
@@ -137,19 +152,18 @@ docker run --rm --user 0 -v workflowweave_state:/state:ro \
 
 采用 [Docker 多阶段构建](https://docs.docker.com/build/building/multi-stage/) 和 [uv 非 editable 安装](https://docs.astral.sh/uv/guides/integration/docker/#non-editable-installs)，从构建阶段只复制安装产物。数据持久化遵循 [Docker 卷语义](https://docs.docker.com/engine/storage/volumes/)；将依赖放入卷会掩盖镜像更新，因此不采用。
 
-服务器上的 Memos、grok2api、Argus 使用独立数据/配置挂载；QwenPaw 有多处源码与 site-packages 覆盖挂载，升级时更容易与镜像不一致。历史固定版本 OpenClaw、Hermes、QwenPaw 的镜像包含更广的工具、浏览器或桌面能力，不能当成功能等价的体积基准，详见 [既有对比](../artifacts/deployment-20261008/README.md)。本方案保留本项目完整渠道能力，将额外工具作为可选镜像。实测发现锁定的 sqlite-vec 0.1.9 缺少 musllinux wheel 和源码包，Alpine 后端无法安装，因此选择 Debian slim；不添加 libc 兼容层、不替换锁定依赖。
+服务器上的 Memos、grok2api、Argus 使用独立数据/配置挂载；QwenPaw 有多处源码与 site-packages 覆盖挂载，升级时更容易与镜像不一致。历史固定版本 OpenClaw、Hermes、QwenPaw 的镜像包含更广的工具、浏览器或桌面能力，不能当成功能等价的体积基准，详见 [既有对比](../artifacts/deployment-20261008/README.md)。本方案保留本项目完整渠道能力。实测发现锁定的 sqlite-vec 0.1.9 缺少 musllinux wheel 和源码包，Alpine 后端无法安装，因此选择 Debian slim；不添加 libc 兼容层、不替换锁定依赖。
 
 2026-10-14 在 linux/amd64、Docker 29.4.2 上实际构建并流式测量镜像，单位为十进制 MB：
 
 | 镜像 | 压缩层内容 | 解压层 tar |
 | --- | ---: | ---: |
 | 默认后端 | 128.4 MB | 403.4 MB |
-| 工具后端（可选） | 184.4 MB | 557.7 MB |
 | 前端 | 26.5 MB | 65.4 MB |
 | 默认前后端合计 | 154.9 MB | 468.7 MB |
 
-旧 `20261007T190805Z` 后端实测解压层 652.7 MB、默认前后端合计 721.2 MB；当前分别减少约 38.2% 和 35.0%。这是与历史发布镜像的对照，两次构建的应用和锁文件快照可能不同，不能视为只改变 Dockerfile 的严格实验。tools 完整包含默认后端层，同时拉取时共享这些层。台式机可用 `docker image save` 或 `docker buildx du` 重新测量实际镜像层。
+旧 `20261007T190805Z` 后端实测解压层 652.7 MB、默认前后端合计 721.2 MB；当前分别减少约 38.2% 和 35.0%。这是与历史发布镜像的对照，两次构建的应用和锁文件快照可能不同，不能视为只改变 Dockerfile 的严格实验。合一镜像会复用后端和前端构建层。台式机可用 `docker image save` 或 `docker buildx du` 重新测量实际镜像层。
 
 统计需分开列出压缩下载大小、解压镜像层、容器写入和业务卷；未压缩 tar 字节数不等于文件系统分配空间。不能把 runtime 和继承它的 backend 相加，也不能用 registry 压缩大小代表解压后体积。
 
-GitHub Actions 构建并发布 `backend:latest`、`backend:runtime`、`backend:tools` 和 `frontend:latest`；tools 和 runtime 另有 Git SHA 标签。默认公开 GHCR 地址可在 `.env` 覆盖，已有 Docker Hub 历史镜像在 `striiiiiing/workflowweave-backend` / `striiiiiing/workflowweave-frontend`，本轮新方案未自动上传 Docker Hub。
+GitHub Actions 构建并发布 `backend:latest`、`backend:runtime`、`backend:full` 和 `frontend:latest`；runtime 和 full 另有 Git SHA 标签。默认公开 GHCR 地址可在 `.env` 覆盖，已有 Docker Hub 历史镜像在 `striiiiiing/workflowweave-backend` / `striiiiiing/workflowweave-frontend`，本轮新方案未自动上传 Docker Hub。

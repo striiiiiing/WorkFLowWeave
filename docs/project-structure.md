@@ -30,7 +30,8 @@ WorkFLowWeave/
 ├── compose.yaml
 ├── compose.backend.yaml
 ├── compose.build.yaml
-├── compose.tools.yaml
+├── compose.all-in-one.yaml
+├── compose.all-in-one.build.yaml
 ├── LICENSE
 ├── README.md
 ├── pyproject.toml
@@ -38,7 +39,7 @@ WorkFLowWeave/
 └── package-lock.json
 ```
 
-`deploy/docker/` 必须在 GitHub 中，因为 `Dockerfile` 会直接复制其中的 bootstrap 和 Nginx 配置。根目录 `plugins/` 只保留 `.gitkeep`，用户新增插件时把内容放入本地目录或 Docker 的 `user_plugins` 卷。
+`deploy/docker/` 必须在 GitHub 中，因为 `Dockerfile` 会直接复制其中的 bootstrap、合一容器入口和 Nginx 配置。根目录 `plugins/` 只保留 `.gitkeep`，用户新增插件时把内容放入本地目录或 Docker 的 `user_plugins` 卷。
 
 ## 本地开发版本
 

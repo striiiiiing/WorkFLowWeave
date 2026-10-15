@@ -37,7 +37,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY --from=wechat-deps /wechat/node_modules/ /opt/workflowweave/venv/lib/python3.12/site-packages/workflowweave/plugins/channel/wechat_openclaw/node_modules/
 
 FROM python-base AS runtime
-# Node is required by WeChat; package managers and Git belong to backend-tools.
+# Node is required by the bundled WeChat channel.
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates libstdc++6 libatomic1 \
@@ -64,16 +64,18 @@ HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4300/api/health', timeout=4).read()"
 ENTRYPOINT ["python", "/opt/workflowweave/bootstrap.py"]
 
-FROM backend AS backend-tools
+FROM backend AS all-in-one
 USER root
-COPY --from=node /usr/local/lib/node_modules/npm/ /usr/local/lib/node_modules/npm/
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git \
-    && rm -rf /var/lib/apt/lists/* \
-    && ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
-    && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
-COPY --from=uv /uv /uvx /usr/local/bin/
-USER workflowweave
+    && apt-get install -y --no-install-recommends nginx \
+    && rm -rf /var/lib/apt/lists/* /etc/nginx/sites-enabled/default
+COPY --from=frontend-build /frontend/dist/ /usr/share/nginx/html/
+COPY deploy/docker/nginx.all-in-one.conf /etc/nginx/conf.d/default.conf
+COPY deploy/docker/all-in-one.py /opt/workflowweave/all-in-one.py
+EXPOSE 80
+HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1/api/health', timeout=4).read()"
+ENTRYPOINT ["python", "/opt/workflowweave/all-in-one.py"]
 
 FROM nginx:1.28-alpine AS frontend
 COPY deploy/docker/nginx.conf /etc/nginx/conf.d/default.conf
