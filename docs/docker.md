@@ -152,7 +152,7 @@ docker run --rm --user 0 -v workflowweave_state:/state:ro \
 
 采用 [Docker 多阶段构建](https://docs.docker.com/build/building/multi-stage/) 和 [uv 非 editable 安装](https://docs.astral.sh/uv/guides/integration/docker/#non-editable-installs)，从构建阶段只复制安装产物。数据持久化遵循 [Docker 卷语义](https://docs.docker.com/engine/storage/volumes/)；将依赖放入卷会掩盖镜像更新，因此不采用。
 
-服务器上的 Memos、grok2api、Argus 使用独立数据/配置挂载；QwenPaw 有多处源码与 site-packages 覆盖挂载，升级时更容易与镜像不一致。历史固定版本 OpenClaw、Hermes、QwenPaw 的镜像包含更广的工具、浏览器或桌面能力，不能当成功能等价的体积基准，详见 [既有对比](../artifacts/deployment-20261008/README.md)。本方案保留本项目完整渠道能力。实测发现锁定的 sqlite-vec 0.1.9 缺少 musllinux wheel 和源码包，Alpine 后端无法安装，因此选择 Debian slim；不添加 libc 兼容层、不替换锁定依赖。
+本方案保留完整渠道能力。实测发现锁定的 sqlite-vec 0.1.9 缺少 musllinux wheel 和源码包，Alpine 后端无法安装，因此选择 Debian slim；不添加 libc 兼容层、不替换锁定依赖。
 
 2026-10-14 在 linux/amd64、Docker 29.4.2 上实际构建并流式测量镜像，单位为十进制 MB：
 
