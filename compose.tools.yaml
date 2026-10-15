@@ -1,6 +1,0 @@
-services:
-  backend:
-    image: ${BACKEND_TOOLS_IMAGE:-ghcr.io/striiiiiing/workflowweave-backend:tools}
-    build:
-      context: .
-      target: backend-tools
