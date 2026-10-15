@@ -1,0 +1,9 @@
+{
+  "purpose": "real_plugin_QR_with_explicit_node_proxy",
+  "authenticated": false,
+  "state": "waiting",
+  "qr_present": true,
+  "message": "用微信扫码并确认登录",
+  "process_reaped": true,
+  "credentials_created": false
+}
