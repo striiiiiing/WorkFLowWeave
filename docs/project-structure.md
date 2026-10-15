@@ -9,7 +9,9 @@
 ```text
 WorkFLowWeave/
 ├── .github/workflows/           # CI 与 GHCR 镜像发布
-├── artifacts/benchmarks/        # 根 README 引用的部署与业务压测证据
+├── artifacts/
+│   ├── benchmarks/              # 根 README 引用的部署与业务压测证据
+│   └── screenshots/             # README 图片与保留的产品原始截图
 ├── data/references/.gitkeep     # 文件引用目录占位；实际内容不入 Git
 ├── deploy/docker/               # Docker 入口与 Nginx 配置，随代码发布
 ├── docs/                        # 当前部署、架构、业务验证和目录说明
@@ -37,6 +39,8 @@ WorkFLowWeave/
 ```
 
 `deploy/docker/` 必须在 GitHub 中，因为 `Dockerfile` 会直接复制其中的 bootstrap、合一容器入口和 Nginx 配置。根目录 `plugins/` 只保留 `.gitkeep`，用户新增插件时把内容放入本地目录或 Docker 的 `user_plugins` 卷。
+
+根 README 的图片使用 `artifacts/screenshots/` 内的仓库相对路径，避免展示依赖外部图床；目录同时保留产品截图原文件。临时截图、日志和本地验证结果放在 `artifacts/local/`，不提交到 Git。
 
 ## 本地开发版本
 
