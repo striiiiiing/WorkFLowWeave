@@ -123,9 +123,7 @@ describe('workflow bindings', () => {
   })
 
   it('shows workflow-scoped channel options and disabled resource placeholders', async () => {
-    plugins.list.mockResolvedValue([
-      capability('channel', 'email'),
-    ])
+    plugins.list.mockResolvedValue([capability('channel', 'email')])
     const initial = {
       ...createWorkflow(),
       sources: ['disabled-source'],

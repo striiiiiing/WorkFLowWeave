@@ -3,11 +3,7 @@ import { mount } from '@vue/test-utils'
 import ElementPlus, { ElInputNumber } from 'element-plus'
 import { expect, it } from 'vitest'
 import BackupMatrix from '@/modules/workflows/ui/BackupMatrix.vue'
-import {
-  createWorkflow,
-  useWorkflowEditor,
-  validateBackupPolicy,
-} from '@/modules/workflows/public'
+import { createWorkflow, useWorkflowEditor, validateBackupPolicy } from '@/modules/workflows/public'
 
 it('keeps the four retention limits independent', () => {
   const policy = {

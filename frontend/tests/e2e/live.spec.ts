@@ -15,7 +15,15 @@ test('existing frontend receives real API data and saves a resource', async ({ p
   await page.goto('/')
   await expect(page.getByText('系统状态', { exact: true })).toBeVisible()
   await expect(page.locator('.el-alert--error')).toHaveCount(0)
-  for (const kind of ['sources', 'mcp_servers', 'ai', 'channels', 'workflows', 'sessions', 'plugins']) {
+  for (const kind of [
+    'sources',
+    'mcp_servers',
+    'ai',
+    'channels',
+    'workflows',
+    'sessions',
+    'plugins',
+  ]) {
     const response = await request.get(`/api/${kind}`)
     expect(response.status(), `${kind}: ${await response.text()}`).toBe(200)
     expect(Array.isArray(await response.json())).toBe(true)
@@ -27,7 +35,10 @@ test('existing frontend receives real API data and saves a resource', async ({ p
     await page.getByRole('button', { name: '添加数据源' }).click()
     await page.getByLabel('资源编号', { exact: true }).fill(id)
     await page.locator('.el-radio-button__inner').filter({ hasText: /^CLI$/ }).click()
-    await page.locator('.el-radio-button__inner').filter({ hasText: /^Shell 命令$/ }).click()
+    await page
+      .locator('.el-radio-button__inner')
+      .filter({ hasText: /^Shell 命令$/ })
+      .click()
     await page.getByLabel('命令', { exact: true }).fill('true')
     await page.getByRole('button', { name: '保存资源' }).click()
     await expect(page.getByRole('dialog')).toBeHidden()

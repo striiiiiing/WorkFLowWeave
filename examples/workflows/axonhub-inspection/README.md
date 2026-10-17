@@ -66,7 +66,7 @@ gh auth status
 从仓库根目录启动后端，CLI 来源的相对脚本路径按后端工作目录解释。其他启动目录请把来源 `argv` 中的脚本路径改为绝对路径。按依赖顺序导入：
 
 ```bash
-export WORKFLOWWEAVE_API_URL=http://127.0.0.1:4300
+export WORKFLOWWEAVE_API_URL=http://127.0.0.1:4333
 uv run workflowweave resource save mcp_servers examples/workflows/axonhub-inspection/mcp-server.json --create
 uv run workflowweave resource save sources examples/workflows/axonhub-inspection/errors-source.json --create
 uv run workflowweave resource save sources examples/workflows/axonhub-inspection/activity-source.json --create

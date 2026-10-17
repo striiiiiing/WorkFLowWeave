@@ -50,7 +50,7 @@ ENV PATH="/opt/workflowweave/venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     HOME=/var/lib/workflowweave \
-    WORKFLOWWEAVE_API_URL=http://127.0.0.1:4300
+    WORKFLOWWEAVE_API_URL=http://127.0.0.1:4333
 
 FROM runtime AS backend
 # Only installed artifacts cross the build boundary; source and caches stay behind.
@@ -59,9 +59,9 @@ COPY deploy/docker/bootstrap.py /opt/workflowweave/bootstrap.py
 USER workflowweave
 WORKDIR /var/lib/workflowweave
 VOLUME ["/var/lib/workflowweave"]
-EXPOSE 4300
+EXPOSE 4333
 HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4300/api/health', timeout=4).read()"
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4333/api/health', timeout=4).read()"
 ENTRYPOINT ["python", "/opt/workflowweave/bootstrap.py"]
 
 FROM backend AS all-in-one

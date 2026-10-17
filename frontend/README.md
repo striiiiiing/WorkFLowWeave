@@ -12,7 +12,7 @@ uv run workflowweave config-example --output config.json
 uv run workflowweave start --config config.json
 ```
 
-默认后端地址为 `http://127.0.0.1:4300`；配置、数据库与密钥保留在本地，不纳入 Git。另开终端启动前端：
+默认后端地址为 `http://127.0.0.1:4333`；配置、数据库与密钥保留在本地，不纳入 Git。另开终端启动前端：
 
 ```sh
 cd frontend
@@ -20,9 +20,9 @@ npm ci
 npm run dev
 ```
 
-开发地址默认 `http://localhost:3000`。`/api` 默认代理到 `http://127.0.0.1:4300`，与后端 `SystemConfig.port` 一致。使用自定义后端端口时，通过 `API_TARGET=http://127.0.0.1:8000 npm run dev` 显式指定目标；修改环境变量后重启 Vite。`npm run dev` 只启动前端，不会自动启动 Python 服务。
+开发和构建预览地址默认都是 `http://localhost:3332`。`/api` 默认代理到 `http://127.0.0.1:4333`，与后端 `SystemConfig.port` 一致。使用自定义后端端口时，通过 `API_TARGET=http://127.0.0.1:4333 npm run dev` 显式指定目标；修改环境变量后重启 Vite。`npm run dev` 只启动前端，不会自动启动 Python 服务。
 
-启动后用 `curl -i http://127.0.0.1:3000/api/health` 检查完整代理链路，应返回 JSON 健康报告。若返回空的 HTTP 500，检查 Vite 终端的代理错误和目标后端端口；不要将这个响应当作后端 JSON 格式错误。健康报告也可能以 HTTP 503 返回 `unavailable`，应按组件诊断排查。
+启动后用 `curl -i http://127.0.0.1:3332/api/health` 检查完整代理链路，应返回 JSON 健康报告。若返回空的 HTTP 500，检查 Vite 终端的代理错误和目标后端端口；不要将这个响应当作后端 JSON 格式错误。健康报告也可能以 HTTP 503 返回 `unavailable`，应按组件诊断排查。
 
 若在 WSL 的 Windows 挂载目录中修改文件后没有热更新，可用 `CHOKIDAR_USEPOLLING=1 npm run dev` 启用文件轮询；浏览器验收使用生产预览，避免开发依赖重新预构建引起页面重载。
 
@@ -59,7 +59,7 @@ npm run test:e2e
 
 浏览器测试需要根目录已有 `.venv` 及后端依赖，会使用临时目录启动真实 FastAPI（14300）和生产预览（13000），不会修改项目运行数据。通过内置离线采集器验证运行与阶段读取，不调用外部 AI 服务。单元测试覆盖 HTTP 契约、请求竞态、作用域清理、轮询和 JSON 表单校验。
 
-实际环境需另外运行 `npm run test:live`：此检查不启动测试服务器，直接访问当前运行的 `http://127.0.0.1:3000`（可用 `WORKFLOWWEAVE_FRONTEND_URL` 指定）。验证健康报告、资源/运行/插件列表、页面接收和资源保存；只创建带唯一 ID 的临时采集源，结束时删除，不触发工作流。后端未启动或代理不通会直接失败。隔离测试通过不能替代这项检查。
+实际环境需另外运行 `npm run test:live`：此检查不启动测试服务器，直接访问当前运行的 `http://127.0.0.1:3332`（可用 `WORKFLOWWEAVE_FRONTEND_URL` 指定）。验证健康报告、资源/运行/插件列表、页面接收和资源保存；只创建带唯一 ID 的临时采集源，结束时删除，不触发工作流。后端未启动或代理不通会直接失败。隔离测试通过不能替代这项检查。
 
 过渡代码清理的依据与验证记录见 OpenSpec 清理任务；既有 `proposal.md` 与 `design.md` 未改动。
 

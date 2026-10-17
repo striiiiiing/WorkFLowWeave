@@ -5,11 +5,11 @@ import asyncio
 import pytest
 from sqlmodel import select
 
+from tests.workflow.helpers import AI, archived, snapshot
+from tests.workflow.test_workflow_recovery import close, run, service
 from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.models import FanInConfig
 from workflowweave.workflow.storage.models import SessionEntry
-from tests.workflow.helpers import AI, archived, snapshot
-from tests.workflow.test_workflow_recovery import close, run, service
 
 
 async def test_analyze_and_notify_rerun_to_finish_without_recollecting(tmp_path):

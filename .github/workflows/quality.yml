@@ -1,0 +1,94 @@
+name: Quality checks
+
+on:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.15.0"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.2"
+          enable-cache: true
+          python-version: ${{ matrix.python }}
+      - run: uv sync --frozen --group dev --extra channels
+      - name: Install Agent tool dependencies
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap ripgrep
+      - name: Download tokenizer data before tests
+        run: uv run python -c "import tiktoken; [tiktoken.get_encoding(name) for name in ('cl100k_base', 'o200k_base')]"
+      - name: Backend tests (60 seconds per group)
+        run: |
+          timeout 60s uv run pytest tests/ai tests/mcp tests/storage_primitives -q
+          timeout 60s uv run pytest tests/config tests/collection tests/deploy tests/examples -q
+          timeout 60s uv run pytest tests/channel -q
+          timeout 60s uv run pytest tests/interaction tests/lifecycle -q
+          timeout 60s uv run pytest tests/agent -q
+          for test_file in tests/workflow/test_*.py; do
+            if [ "$test_file" = tests/workflow/test_workflow_process_recovery.py ]; then
+              continue
+            fi
+            timeout 60s uv run pytest "$test_file" -q
+          done
+          for scenario in during_analysis after_send after_checkpoint_fact_commit in_new_execution_epoch; do
+            timeout 60s uv run pytest tests/workflow/test_workflow_process_recovery.py -k "$scenario" -q
+          done
+          timeout 60s uv run pytest tests/test_*.py -q
+      - run: uv run ruff check src tests
+      - run: uv build
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.15.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run architecture:check
+      - run: npm run format:check
+      - run: npm run build
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: all-in-one
+          load: true
+          tags: workflowweave-smoke:local
+          cache-from: type=gha,scope=workflowweave-smoke
+          cache-to: type=gha,mode=max,scope=workflowweave-smoke
+      - name: Start the image and request its health API
+        run: |
+          docker run -d --name workflowweave-smoke -p 127.0.0.1:3332:80 workflowweave-smoke:local
+          timeout 90s bash -c 'until curl --fail --silent --show-error http://127.0.0.1:3332/api/health; do sleep 2; done'
+      - name: Container logs
+        if: always()
+        run: docker logs workflowweave-smoke

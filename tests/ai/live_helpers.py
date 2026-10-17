@@ -67,7 +67,6 @@ async def call(service, config, options, *, task_id="live", on_cancel=None):
 
 
 def assert_success(result, config):
-    """要求分析成功且正文含模型对应标记：mock 为“测试”，Qwen 为 WORKFLOWWEAVE_OK。"""
+    """要求分析成功且正文包含固定验收标记。"""
     assert result.status == "success", result.model_dump_json()
-    expected = "测试" if next(iter(config.models)) == "mock" else "WORKFLOWWEAVE_OK"
-    assert expected in result.text, result.model_dump_json()
+    assert "WORKFLOWWEAVE_OK" in result.text, result.model_dump_json()

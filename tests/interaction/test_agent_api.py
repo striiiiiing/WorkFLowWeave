@@ -8,14 +8,14 @@ import httpx
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
 
+from tests.agent.helpers import ScriptedModel
+from tests.agent.test_admission import GatedModel
 from workflowweave.agent.commands import CommandDispatcher
 from workflowweave.channel.web import WebChannel
 from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.interaction.app import create_app
 from workflowweave.interaction.errors import status_for_code
 from workflowweave.interaction.fastapi.agent import create_agent_service
-from tests.agent.helpers import ScriptedModel
-from tests.agent.test_admission import GatedModel
 
 
 class FakeAgent:
@@ -58,7 +58,8 @@ class FakeAgent:
         return self.items[session_id]
 
     async def events(self, session_id, *, after=0):
-        return [{"id": 1, "type": "session.created", "created_at": "now"}]
+        events = [{"id": 1, "type": "session.created", "created_at": "now"}]
+        return [event for event in events if event["id"] > after]
 
     async def wait_events(self, session_id, *, after=0, wait_seconds=0.5):
         return await self.events(session_id, after=after)
@@ -117,7 +118,12 @@ def test_agent_session_message_and_replay_endpoints():
         assert accepted.status_code == 202
         replay = client.get(f"/api/agents/sessions/{session_id}/events", params={"after": 0})
         assert replay.status_code == 200
-        assert "session.created" in replay.text
+        assert replay.text.count("session.created") == 1
+        after_replay = client.get(
+            f"/api/agents/sessions/{session_id}/events", params={"after": 1},
+        )
+        assert after_replay.status_code == 200
+        assert after_replay.text == ""
 
 
 def test_missing_sse_session_returns_structured_error_before_streaming():

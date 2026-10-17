@@ -119,7 +119,7 @@ class SystemConfig(StrictModel):
     plugin_dir: str = "plugins"
     builtin_plugin_dir: str | None = None
     host: str = "127.0.0.1"
-    port: int = Field(default=4300, ge=1, le=65535)
+    port: int = Field(default=4333, ge=1, le=65535)
     max_concurrent_runs: int = Field(default=4, ge=1)
     log_file: str | None = None
     master_key_env: EnvironmentName = "WORKFLOWWEAVE_MASTER_KEY"

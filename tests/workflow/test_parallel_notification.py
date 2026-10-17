@@ -2,9 +2,9 @@
 
 import asyncio
 
-from workflowweave.models import DeliveryResult, ErrorInfo
 from tests.workflow.helpers import archived, snapshot
 from tests.workflow.test_workflow_recovery import close, service
+from workflowweave.models import DeliveryResult, ErrorInfo
 
 
 async def test_independent_channels_overlap_and_failures_are_isolated(tmp_path):

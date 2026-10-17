@@ -9,9 +9,9 @@ import asyncio
 
 import pytest
 
+from tests.workflow.helpers import AI, Channel, Collector, snapshot
 from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.workflow.execution.runner import WorkflowRunner
-from tests.workflow.helpers import AI, Channel, Collector, snapshot
 
 
 async def test_pause_waits_for_admitted_trigger_snapshot(tmp_path):

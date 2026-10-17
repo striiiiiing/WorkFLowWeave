@@ -11,7 +11,11 @@ env:
   IMAGE_PREFIX: ghcr.io/striiiiiing/workflowweave
 
 jobs:
+  quality:
+    uses: ./.github/workflows/quality.yml
+
   publish:
+    needs: quality
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -24,6 +28,31 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/setup-buildx-action@v3
+      - uses: docker/metadata-action@v5
+        id: backend-meta
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-backend
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-
+            type=semver,pattern={{version}}
+      - uses: docker/metadata-action@v5
+        id: full-meta
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-backend
+          flavor: latest=false
+          tags: |
+            type=raw,value=full
+            type=sha,prefix=full-
+            type=semver,pattern=full-{{version}}
+      - uses: docker/metadata-action@v5
+        id: frontend-meta
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-frontend
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-
+            type=semver,pattern={{version}}
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -39,7 +68,7 @@ jobs:
           context: .
           target: backend
           push: true
-          tags: ${{ env.IMAGE_PREFIX }}-backend:latest
+          tags: ${{ steps.backend-meta.outputs.tags }}
           cache-from: |
             type=gha,scope=workflowweave-runtime
             type=gha,scope=workflowweave-backend
@@ -49,9 +78,7 @@ jobs:
           context: .
           target: all-in-one
           push: true
-          tags: |
-            ${{ env.IMAGE_PREFIX }}-backend:full
-            ${{ env.IMAGE_PREFIX }}-backend:full-${{ github.sha }}
+          tags: ${{ steps.full-meta.outputs.tags }}
           cache-from: |
             type=gha,scope=workflowweave-runtime
             type=gha,scope=workflowweave-backend
@@ -63,6 +90,6 @@ jobs:
           context: .
           target: frontend
           push: true
-          tags: ${{ env.IMAGE_PREFIX }}-frontend:latest
+          tags: ${{ steps.frontend-meta.outputs.tags }}
           cache-from: type=gha,scope=workflowweave-frontend
           cache-to: type=gha,mode=max,scope=workflowweave-frontend

@@ -72,8 +72,9 @@ export function useChannelEditor(
     requiredCredentialPropertyNames(capability.value?.options_schema),
   )
   const requiresFirstMessage = computed(
-    () => capability.value?.options_schema['x-workflowweave-first-message'] === true
-      && !draft.value.agent_enabled,
+    () =>
+      capability.value?.options_schema['x-workflowweave-first-message'] === true &&
+      !draft.value.agent_enabled,
   )
   let connectionGeneration = 0
   let connectionId: string | undefined
@@ -241,11 +242,7 @@ export function useChannelEditor(
     }
   }
 
-  if (
-    props.initial &&
-    requiresFirstMessage.value &&
-    props.initial.enabled
-  ) {
+  if (props.initial && requiresFirstMessage.value && props.initial.enabled) {
     const initialId = props.initial.id
     const generation = ++connectionGeneration
     connectionId = initialId

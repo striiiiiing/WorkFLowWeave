@@ -19,6 +19,8 @@ app = typer.Typer(no_args_is_help=True, help="WorkFLowWeave service and API clie
 resource_app = typer.Typer(no_args_is_help=True, help="Manage saved resources.")
 app.add_typer(resource_app, name="resource")
 
+DEFAULT_API_URL = f"http://127.0.0.1:{SystemConfig.model_fields['port'].default}"
+
 ApiUrl = Annotated[
     str,
     typer.Option("--api-url", envvar="WORKFLOWWEAVE_API_URL", help="WorkFLowWeave API base URL."),
@@ -119,7 +121,7 @@ def config_example(
 @resource_app.command("list")
 def resource_list(
     kind: str,
-    api_url: ApiUrl = "http://127.0.0.1:8000",
+    api_url: ApiUrl = DEFAULT_API_URL,
 ) -> None:
     _print_json(_request("GET", f"/api/{kind}", api_url=api_url))
 
@@ -128,7 +130,7 @@ def resource_list(
 def resource_show(
     kind: str,
     ident: str,
-    api_url: ApiUrl = "http://127.0.0.1:8000",
+    api_url: ApiUrl = DEFAULT_API_URL,
 ) -> None:
     _print_json(_request("GET", f"/api/{kind}/{ident}", api_url=api_url))
 
@@ -139,7 +141,7 @@ def resource_save(
     source: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
     create: Annotated[bool, typer.Option("--create")] = False,
     replace: Annotated[bool, typer.Option("--replace")] = False,
-    api_url: ApiUrl = "http://127.0.0.1:8000",
+    api_url: ApiUrl = DEFAULT_API_URL,
 ) -> None:
     if create and replace:
         raise typer.BadParameter("--create and --replace are mutually exclusive")
@@ -175,7 +177,7 @@ def resource_save(
 def resource_delete(
     kind: str,
     ident: str,
-    api_url: ApiUrl = "http://127.0.0.1:8000",
+    api_url: ApiUrl = DEFAULT_API_URL,
 ) -> None:
     _request("DELETE", f"/api/{kind}/{ident}", api_url=api_url)
     _print_json({"deleted": ident, "kind": kind})
@@ -189,7 +191,7 @@ def collect(
         typer.Option("--arguments", "-a", exists=True, dir_okay=False, readable=True,
                      help="UTF-8 JSON file containing MCP arguments overrides."),
     ] = None,
-    api_url: ApiUrl = "http://127.0.0.1:8000",
+    api_url: ApiUrl = DEFAULT_API_URL,
 ) -> None:
     """Collect once using a saved source; never retry an unknown outcome."""
     path = _source_path(source_id)
@@ -214,7 +216,7 @@ def collect(
 
 
 @app.command("collect-schema")
-def collect_schema(source_id: str, api_url: ApiUrl = "http://127.0.0.1:8000") -> None:
+def collect_schema(source_id: str, api_url: ApiUrl = DEFAULT_API_URL) -> None:
     """Show the saved source's callable MCP arguments schema."""
     _print_json(_request("GET", _source_path(source_id) + "/call-schema", api_url=api_url))
 
@@ -232,7 +234,7 @@ def _source_path(source_id: str) -> str:
 @app.command()
 def run(
     workflow_id: str,
-    api_url: ApiUrl = "http://127.0.0.1:8000",
+    api_url: ApiUrl = DEFAULT_API_URL,
 ) -> None:
     _print_json(
         _request(
@@ -251,7 +253,7 @@ def sessions(
     offset: int = 0,
     after: str | None = None,
     before: str | None = None,
-    api_url: ApiUrl = "http://127.0.0.1:8000",
+    api_url: ApiUrl = DEFAULT_API_URL,
 ) -> None:
     params = {
         "workflow_id": workflow_id,
@@ -274,7 +276,7 @@ def sessions(
 def session(
     session_id: str,
     version: int | None = None,
-    api_url: ApiUrl = "http://127.0.0.1:8000",
+    api_url: ApiUrl = DEFAULT_API_URL,
 ) -> None:
     params = {"version": version} if version is not None else None
     _print_json(
@@ -292,7 +294,7 @@ def phase(
     session_id: str,
     stage: str,
     version: int,
-    api_url: ApiUrl = "http://127.0.0.1:8000",
+    api_url: ApiUrl = DEFAULT_API_URL,
 ) -> None:
     _print_json(
         _request(
@@ -307,7 +309,7 @@ def phase(
 @app.command()
 def recover(
     session_id: str,
-    api_url: ApiUrl = "http://127.0.0.1:8000",
+    api_url: ApiUrl = DEFAULT_API_URL,
 ) -> None:
     _print_json(
         _request("POST", f"/api/sessions/{session_id}/recover", api_url=api_url)
@@ -317,25 +319,25 @@ def recover(
 @app.command()
 def cancel(
     session_id: str,
-    api_url: ApiUrl = "http://127.0.0.1:8000",
+    api_url: ApiUrl = DEFAULT_API_URL,
 ) -> None:
     _print_json(_request("POST", f"/api/sessions/{session_id}/cancel", api_url=api_url))
 
 
 @app.command()
-def plugins(api_url: ApiUrl = "http://127.0.0.1:8000") -> None:
+def plugins(api_url: ApiUrl = DEFAULT_API_URL) -> None:
     _print_json(_request("GET", "/api/plugins", api_url=api_url))
 
 
 @app.command()
-def health(api_url: ApiUrl = "http://127.0.0.1:8000") -> None:
+def health(api_url: ApiUrl = DEFAULT_API_URL) -> None:
     _print_json(_request("GET", "/api/health", api_url=api_url))
 
 
 @app.command()
 def reload(
     scope: str = "resources",
-    api_url: ApiUrl = "http://127.0.0.1:8000",
+    api_url: ApiUrl = DEFAULT_API_URL,
 ) -> None:
     _print_json(
         _request(

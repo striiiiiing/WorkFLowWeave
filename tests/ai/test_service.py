@@ -1,8 +1,8 @@
-"""AI 服务配置边界和真实请求契约测试。
+"""AI 服务配置边界和 HTTP 请求契约测试。
 
-纯配置用例参数化检查托管字段冲突、模型名与 JSON 参数；真实调用用例通过
+纯配置用例参数化检查托管字段冲突、模型名与 JSON 参数；HTTP 用例通过
 HTTP 观察钩子核对角色、提示词替换、凭据、usage 和客户端所有权。
-真实调用依赖 conftest 的本地 mock 服务，Qwen 参数由显式环境开关启用。
+HTTP 用例使用 conftest 的固定内存传输，不依赖外部模型服务。
 """
 
 import json
@@ -51,7 +51,7 @@ def test_models_require_explicit_nonempty_json_configuration(models):
 async def test_request_roles_prompt_credentials_and_usage(
     observed_channel, channel_config, prompt, input_text, expected,
 ):
-    """验证真实调用中的字面提示词、角色、认证、usage 和外部客户端所有权。"""
+    """验证生产 SDK 构造的字面提示词、角色、认证、usage 和客户端所有权。"""
     service, requests, client = observed_channel
     cfg, credentials = channel_config
     cfg = cfg.model_copy(deep=True)

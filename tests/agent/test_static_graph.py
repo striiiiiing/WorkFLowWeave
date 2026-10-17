@@ -2,9 +2,9 @@
 
 from langchain_core.messages import AIMessage
 
+from tests.agent.helpers import ScriptedModel
 from workflowweave.agent.config import AgentConfig
 from workflowweave.interaction.fastapi.agent import create_agent_service
-from tests.agent.helpers import ScriptedModel
 
 
 async def test_two_turns_reuse_the_composition_root_graph(tmp_path):

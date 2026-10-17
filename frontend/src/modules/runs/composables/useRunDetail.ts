@@ -39,9 +39,10 @@ export function useRunDetail(
       usePhaseReport(
         computed(() => {
           const record = session.data.value
-          const artifact = record?.session_id === id.value
-            ? record.artifacts.find((item) => item.stage === stage.key)
-            : undefined
+          const artifact =
+            record?.session_id === id.value
+              ? record.artifacts.find((item) => item.stage === stage.key)
+              : undefined
           return artifact?.availability === 'available' && artifact.content_version !== null
             ? { id: id.value, version: artifact.content_version, stage: stage.key }
             : undefined

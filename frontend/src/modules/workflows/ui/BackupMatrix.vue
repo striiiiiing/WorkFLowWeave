@@ -20,7 +20,9 @@ const draft = () => props.editor.draft.value!.backup
         @update:model-value="editor.updateBackup({ enabled: Boolean($event) })"
       />
     </template>
-    <p class="muted text-sm mb-4">正文开关仅控制长期归档；执行 checkpoint 仍可能包含内容，并按独立期限保留。</p>
+    <p class="muted text-sm mb-4">
+      正文开关仅控制长期归档；执行 checkpoint 仍可能包含内容，并按独立期限保留。
+    </p>
     <div class="form-grid">
       <el-form-item v-for="field in fields" :key="field.key" :label="field.label">
         <el-switch
@@ -29,7 +31,11 @@ const draft = () => props.editor.draft.value!.backup
           @update:model-value="editor.updateBackup({ [field.key]: Boolean($event) })"
         />
       </el-form-item>
-      <el-form-item v-for="field in retentionFields" :key="field.key" :label="field.label + '（留空不过期）'">
+      <el-form-item
+        v-for="field in retentionFields"
+        :key="field.key"
+        :label="field.label + '（留空不过期）'"
+      >
         <el-input-number
           :model-value="draft()[field.key] ?? undefined"
           :min="1"

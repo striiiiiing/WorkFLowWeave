@@ -143,11 +143,7 @@ async function save() {
       <el-input-number v-model="draft.timeout" :min="0.001" :step="0.001" />
     </el-form-item>
     <el-form-item label="自动探测">
-      <el-switch
-        v-model="draft.health_check_enabled"
-        active-text="开启"
-        inactive-text="关闭"
-      />
+      <el-switch v-model="draft.health_check_enabled" active-text="开启" inactive-text="关闭" />
     </el-form-item>
     <el-form-item v-if="draft.health_check_enabled" label="探测间隔 / 分钟">
       <el-input-number

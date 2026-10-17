@@ -19,7 +19,7 @@ export function sdkRuntime(stateDir) {
   const logger = createLogger({level: "info"});
   const storage = new FileStorage(stateDir);
   const http = new transport.HttpClient({logger, retryPolicy: {maxRetries: 0}});
-  const api = new protocol.ILinkApi(http, "WorkFLowWeave/0.1.0");
+  const api = new protocol.ILinkApi(http, "WorkFLowWeave/0.1.1");
   return {logger, storage, api, auth: new auth.Authenticator(api, storage, logger),
     parser: new parser.MessageParser(), contexts: new context.ContextStore(storage, logger)};
 }
@@ -49,7 +49,7 @@ export async function sendText(runtime, account, to, text, timeoutMs) {
     }
   }
   const http = new SendHttp({logger: runtime.logger, retryPolicy: {maxRetries: 0}});
-  const api = new SendApi(http, "WorkFLowWeave/0.1.0");
+  const api = new SendApi(http, "WorkFLowWeave/0.1.1");
   const service = new sender.MessageSender(api, runtime.contexts, runtime.logger);
   try {
     await service.sendText(account.baseUrl, account.token, to, text);

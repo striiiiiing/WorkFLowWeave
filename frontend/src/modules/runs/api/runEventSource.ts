@@ -11,36 +11,63 @@ export type RunEventTransport = ((sessionId: string, handlers: RunEventHandlers)
   available?: boolean
 }
 
-const statuses = new Set(['created', 'running', 'completed', 'partial', 'failed', 'cancelled', 'interrupted'])
+const statuses = new Set([
+  'created',
+  'running',
+  'completed',
+  'partial',
+  'failed',
+  'cancelled',
+  'interrupted',
+])
 const stages = new Set(['collect', 'analyze', 'aggregate', 'notify', 'finish'])
-const availability = new Set(['available', 'pending', 'not_saved', 'expired', 'missing', 'corrupt', 'write_failed'])
+const availability = new Set([
+  'available',
+  'pending',
+  'not_saved',
+  'expired',
+  'missing',
+  'corrupt',
+  'write_failed',
+])
 
 export function parseRunSnapshot(value: unknown): SessionRecord {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new Error('Workflow 快照格式无效')
   const record = value as Record<string, unknown>
   if (
-    typeof record.session_id !== 'string' || !record.session_id ||
+    typeof record.session_id !== 'string' ||
+    !record.session_id ||
     typeof record.workflow_id !== 'string' ||
-    !Number.isSafeInteger(record.version) || Number(record.version) < 0 ||
+    !Number.isSafeInteger(record.version) ||
+    Number(record.version) < 0 ||
     !statuses.has(String(record.status)) ||
     (record.stage !== null && !stages.has(String(record.stage))) ||
     (record.execution_epoch !== null && typeof record.execution_epoch !== 'string') ||
-    !Array.isArray(record.artifacts) || !Array.isArray(record.progress)
-  ) throw new Error('Workflow 快照字段不符合接口契约')
+    !Array.isArray(record.artifacts) ||
+    !Array.isArray(record.progress)
+  )
+    throw new Error('Workflow 快照字段不符合接口契约')
   for (const artifact of record.artifacts) {
-    if (!artifact || typeof artifact !== 'object' ||
+    if (
+      !artifact ||
+      typeof artifact !== 'object' ||
       !stages.has(String(artifact.stage)) ||
       !availability.has(String(artifact.availability)) ||
       (artifact.content_version !== null &&
-        (!Number.isSafeInteger(artifact.content_version) || artifact.content_version < 0)))
+        (!Number.isSafeInteger(artifact.content_version) || artifact.content_version < 0))
+    )
       throw new Error('Workflow 正文元数据无效')
   }
   for (const item of record.progress) {
-    if (!item || typeof item !== 'object' ||
+    if (
+      !item ||
+      typeof item !== 'object' ||
       typeof item.session_id !== 'string' ||
-      !Number.isSafeInteger(item.order) || item.order < 0 ||
-      !['item', 'aggregate', 'delivery', 'lifecycle'].includes(item.event))
+      !Number.isSafeInteger(item.order) ||
+      item.order < 0 ||
+      !['item', 'aggregate', 'delivery', 'lifecycle'].includes(item.event)
+    )
       throw new Error('Workflow 逐项进度无效')
   }
   return value as SessionRecord

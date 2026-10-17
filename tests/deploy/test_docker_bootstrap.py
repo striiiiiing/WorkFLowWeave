@@ -17,14 +17,18 @@ def test_restart_preserves_configuration_and_plugin_settings(tmp_path):
     location = initialize(state)
     config = SystemConfig.model_validate_json(location.read_text())
     assert config.host == "0.0.0.0"
+    assert config.port == 4333
     assert config.data_dir == str(state / "data")
     assert config.master_key_file == str(state / "master.key")
     config.max_concurrent_runs = 2
+    config.port = 5433
     location.write_text(config.model_dump_json())
     settings = state / "user-plugins/config.json"
     settings.write_text('{"channel":{"email":{"enabled":false}}}')
     assert initialize(state) == location
-    assert SystemConfig.model_validate_json(location.read_text()).max_concurrent_runs == 2
+    restored = SystemConfig.model_validate_json(location.read_text())
+    assert restored.max_concurrent_runs == 2
+    assert restored.port == 5433
     assert settings.read_text() == '{"channel":{"email":{"enabled":false}}}'
     assert not (state / "user-plugins/channel").exists()
 

@@ -256,7 +256,10 @@ test('web/email/file schemas, invalid settings, and file channel CRUD', async ({
     await page.getByRole('option', { name: 'email', exact: true }).click()
     const emailOptions = dialog.getByRole('region', { name: '插件参数 (options)' })
     for (const name of ['host', 'port', 'sender', 'recipient']) {
-      await emailOptions.getByRole('switch', { name: `设置 ${name}` }).locator('..').click()
+      await emailOptions
+        .getByRole('switch', { name: `设置 ${name}` })
+        .locator('..')
+        .click()
       await expect(emailOptions.getByRole('textbox', { name, exact: true })).toBeVisible()
     }
     await emailOptions.getByRole('switch', { name: '设置 tls' }).locator('..').click()
@@ -333,7 +336,7 @@ test('web/email/file schemas, invalid settings, and file channel CRUD', async ({
       options: { path: '' },
     })
     expect(invalidFile.status()).toBe(422)
-      expect((await invalidFile.json()).error.code).toBe('invalid_config')
+    expect((await invalidFile.json()).error.code).toBe('invalid_config')
 
     const validExternalOptions: Record<string, Record<string, unknown>> = {
       qq: { app_id: 'qa-placeholder', client_secret: testSecretReference },

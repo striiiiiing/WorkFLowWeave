@@ -4,6 +4,8 @@ from types import SimpleNamespace
 import pytest
 from langchain_core.messages import AIMessage
 
+from tests.agent.helpers import ScriptedModel
+from tests.mcp.test_runtime import Connector
 from workflowweave.agent.config import AgentConfig
 from workflowweave.agent.integrations.mcp import MCPGateway
 from workflowweave.agent.tools.builtin.mcp import plugin
@@ -12,8 +14,6 @@ from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.interaction.fastapi.agent import create_agent_service
 from workflowweave.mcp import MCPRuntime
 from workflowweave.models import MCPServerConfig
-from tests.agent.helpers import ScriptedModel
-from tests.mcp.test_runtime import Connector
 
 
 async def test_session_restores_original_scope_and_fork_preserves_it(tmp_path):

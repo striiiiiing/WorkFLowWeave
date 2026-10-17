@@ -121,7 +121,9 @@ function publish(id: string) {
         />
       </el-select>
     </el-form-item>
-    <p class="muted text-sm">JSON 内容可转换为下列格式；默认保留原始表示。格式转换不等同于 LLM 摘要。</p>
+    <p class="muted text-sm">
+      JSON 内容可转换为下列格式；默认保留原始表示。格式转换不等同于 LLM 摘要。
+    </p>
     <div v-if="advanced" class="form-grid">
       <el-form-item label="采集并发数">
         <el-input-number

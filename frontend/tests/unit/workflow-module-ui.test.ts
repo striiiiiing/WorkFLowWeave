@@ -21,7 +21,9 @@ function setup() {
 describe('workflow module UI', () => {
   it('shows format choices without advanced mode and keeps budgets while editing', async () => {
     const { editor, scope } = setup()
-    editor.update({ input_processing: { format: 'none', total_tokens: 5000, item_tokens: 500, field_tokens: 100 } })
+    editor.update({
+      input_processing: { format: 'none', total_tokens: 5000, item_tokens: 500, field_tokens: 100 },
+    })
     const wrapper = mount(SourceStepCard, {
       props: { editor, sources: [], advanced: false, gateway: {} as SourceConfigEditorGateway },
       global: { plugins: [ElementPlus] },
@@ -29,12 +31,20 @@ describe('workflow module UI', () => {
     const selector = wrapper.getComponent(ElSelect)
     expect(wrapper.find('[aria-label="输入格式"]').exists()).toBe(true)
     expect(selector.findAllComponents(ElOption).map((option) => option.props('value'))).toEqual([
-      'none', 'ison', 'toon', 'zon', 'md', 'csv',
+      'none',
+      'ison',
+      'toon',
+      'zon',
+      'md',
+      'csv',
     ])
     expect(wrapper.text()).not.toContain('采集并发数')
     await selector.vm.$emit('update:modelValue', 'ison')
     expect(editor.draft.value?.input_processing).toEqual({
-      format: 'ison', total_tokens: 5000, item_tokens: 500, field_tokens: 100,
+      format: 'ison',
+      total_tokens: 5000,
+      item_tokens: 500,
+      field_tokens: 100,
     })
     await wrapper.setProps({ advanced: true })
     expect(wrapper.text()).toContain('采集并发数')

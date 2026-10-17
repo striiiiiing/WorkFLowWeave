@@ -5,12 +5,12 @@ import pytest
 from langchain_core.messages import AIMessage
 from pydantic import Field
 
+from tests.agent.helpers import ScriptedModel
 from workflowweave.agent.config import AgentConfig
 from workflowweave.agent.tools.declaration import ToolDeclaration
 from workflowweave.agent.tools.scheduling import ToolScheduler
 from workflowweave.interaction.fastapi.agent import create_agent_service
 from workflowweave.models import AIConfig
-from tests.agent.helpers import ScriptedModel
 
 
 class TurnModel(ScriptedModel):

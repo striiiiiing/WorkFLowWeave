@@ -51,7 +51,7 @@ it('saves layered prompts and reopens the same workflow without legacy prompt fi
         model: 'model',
         system_prompt: null,
         input_prompt: null,
-        user_prompt: '',
+        user_prompt: 'second task',
       },
     ],
     fan_in: { ...createFanIn(), reuse_from: '$first' },
@@ -112,7 +112,7 @@ it('saves layered prompts and reopens the same workflow without legacy prompt fi
   const fanPrompts = fanIn.getComponent(PromptOverrides)
   await fanPrompts.findAllComponents(ElRadioGroup)[1].vm.$emit('update:modelValue', 'override')
   await flushPromises()
-  await fanPrompts.findAllComponents(ElInput)[0].vm.$emit('update:modelValue', '')
+  await fanPrompts.findAllComponents(ElInput)[0].vm.$emit('update:modelValue', 'summary input')
   await fanIn.get('[aria-label="上移 second"]').trigger('click')
   await wrapper
     .findAll('button')
@@ -127,11 +127,11 @@ it('saves layered prompts and reopens the same workflow without legacy prompt fi
     input_prompt: 'shared {input}',
     analyses: [
       { system_prompt: '', input_prompt: null, user_prompt: 'literal {input}' },
-      { system_prompt: null, input_prompt: null, user_prompt: '' },
+      { system_prompt: null, input_prompt: null, user_prompt: 'second task' },
     ],
     fan_in: {
       single_task_optimization: false,
-      input_prompt: '',
+      input_prompt: 'summary input',
       user_prompt: 'summary instruction',
       reuse_from: '$first',
       order: ['$input', 'second', 'first'],

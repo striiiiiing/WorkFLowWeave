@@ -102,11 +102,7 @@ async function restart() {
     >
       <el-button size="small" :loading="pending" @click="refreshAll">重新同步</el-button>
     </el-alert>
-    <p
-      v-else-if="query.connection.value === 'connecting'"
-      class="muted text-sm"
-      role="status"
-    >
+    <p v-else-if="query.connection.value === 'connecting'" class="muted text-sm" role="status">
       正在连接进度订阅…
     </p>
     <el-skeleton v-if="pending && !session" :rows="6" />

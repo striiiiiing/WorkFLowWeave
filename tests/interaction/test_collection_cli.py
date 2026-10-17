@@ -11,6 +11,27 @@ from typer.testing import CliRunner
 from workflowweave.interaction import cli
 
 
+def test_cli_health_uses_default_server_port(monkeypatch):
+    from workflowweave.models import SystemConfig
+
+    monkeypatch.delenv("WORKFLOWWEAVE_API_URL", raising=False)
+    requests = []
+    client_class = httpx.Client
+
+    def respond(request):
+        requests.append(request)
+        return httpx.Response(200, json={"status": "ok"})
+
+    monkeypatch.setattr(cli.httpx, "Client", lambda **kwargs: client_class(
+        **kwargs, transport=httpx.MockTransport(respond),
+    ))
+    result = CliRunner().invoke(cli.app, ["health"])
+
+    assert result.exit_code == 0, result.output
+    assert requests[0].url == f"http://127.0.0.1:{SystemConfig().port}/api/health"
+    assert requests[0].url.port == 4333
+
+
 def test_cli_import_does_not_load_lifecycle_runtime() -> None:
     result = subprocess.run(
         [

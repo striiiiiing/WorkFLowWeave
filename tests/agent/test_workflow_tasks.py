@@ -7,12 +7,12 @@ import orjson
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
+from tests.agent.helpers import ScriptedModel
 from workflowweave.ai.errors import ModelError, error_info
 from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.interaction.fastapi.agent import create_agent_service
 from workflowweave.models import AIConfig
 from workflowweave.workflow.agent_tasks import LEGACY_TASK_MESSAGE, execute_agent_task
-from tests.agent.helpers import ScriptedModel
 
 
 async def complete(service, session_id, *, text="execute", request_id="first"):

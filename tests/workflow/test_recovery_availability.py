@@ -1,10 +1,10 @@
 """The read-only recovery query must agree with the actual material check."""
 import pytest
 
-from workflowweave.errors import WorkFLowWeaveError
-from workflowweave.models import BackupPolicy
 from tests.workflow.helpers import AI, snapshot
 from tests.workflow.test_workflow_recovery import close, run, service
+from workflowweave.errors import WorkFLowWeaveError
+from workflowweave.models import BackupPolicy
 
 
 async def test_query_and_recover_agree_on_missing_checkpoint_without_changing_history(tmp_path):

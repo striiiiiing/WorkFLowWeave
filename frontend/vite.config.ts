@@ -19,12 +19,15 @@ export default defineConfig(({ mode }) => ({
     },
   },
   server: {
-    port: 3000,
+    port: 3332,
     proxy: {
       '/api': {
-        target: loadEnv(mode, process.cwd(), '').API_TARGET || 'http://127.0.0.1:4300',
+        target: loadEnv(mode, process.cwd(), '').API_TARGET || 'http://127.0.0.1:4333',
         changeOrigin: true,
       },
     },
+  },
+  preview: {
+    port: 3332,
   },
 }))

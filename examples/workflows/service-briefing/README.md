@@ -7,7 +7,7 @@
 先启动后端，并确保 `plugins/channel/file` 可用。然后在仓库根目录执行：
 
 ```bash
-export WORKFLOWWEAVE_API_URL=http://127.0.0.1:4300
+export WORKFLOWWEAVE_API_URL=http://127.0.0.1:4333
 export WORKFLOWWEAVE_API_KEY=local-development-key
 uv run logagent resource save sources examples/workflows/service-briefing/source.json --create
 uv run logagent resource save ai examples/workflows/service-briefing/ai.json --create

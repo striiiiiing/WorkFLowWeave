@@ -9,10 +9,10 @@ import httpx
 import uvicorn
 from fastapi import FastAPI
 
-from workflowweave.interaction.dependencies import get_services
-from workflowweave.interaction.routers import router
 from tests.workflow.helpers import AI, snapshot
 from tests.workflow.test_workflow_recovery import close, service
+from workflowweave.interaction.dependencies import get_services
+from workflowweave.interaction.routers import router
 
 
 async def event(lines):

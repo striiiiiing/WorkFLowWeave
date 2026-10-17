@@ -4,8 +4,10 @@ import type { ChannelLoginStatus, ResourcesApi } from '../api/resourcesApi'
 import type { JsonObject } from '@/shared/types'
 
 const POLL_INTERVAL = 1000
-type LoginApi = Pick<ResourcesApi,
-  'startChannelLogin' | 'channelLoginStatus' | 'verifyChannelLogin' | 'cancelChannelLogin'>
+type LoginApi = Pick<
+  ResourcesApi,
+  'startChannelLogin' | 'channelLoginStatus' | 'verifyChannelLogin' | 'cancelChannelLogin'
+>
 
 export function useWechatLogin(
   options: () => JsonObject,
@@ -21,8 +23,10 @@ export function useWechatLogin(
   let timer: ReturnType<typeof setTimeout> | undefined
   let sessionId: string | undefined
   const current = (version: number) => alive && version === generation
-  const loginOptions = computed(() => ({ command: options().command ?? 'node',
-    state_dir: options().state_dir ?? null }))
+  const loginOptions = computed(() => ({
+    command: options().command ?? 'node',
+    state_dir: options().state_dir ?? null,
+  }))
   const report = (cause: unknown) => {
     if (alive) error.value = cause instanceof Error ? cause.message : String(cause)
   }
@@ -67,7 +71,11 @@ export function useWechatLogin(
     busy.value = false
     status.value = undefined
     code.value = ''
-    try { await release() } catch (cause) { report(cause) }
+    try {
+      await release()
+    } catch (cause) {
+      report(cause)
+    }
   }
 
   async function start() {

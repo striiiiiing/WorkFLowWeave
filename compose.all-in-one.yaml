@@ -17,7 +17,7 @@ services:
   app:
     image: ${ALL_IN_ONE_IMAGE:-ghcr.io/striiiiiing/workflowweave-backend:full}
     ports:
-      - "0.0.0.0:${FRONTEND_PORT:-3000}:80"
+      - "0.0.0.0:${FRONTEND_PORT:-3332}:80"
     volumes:
       - state:/var/lib/workflowweave
       - user_plugins:/var/lib/workflowweave/user-plugins

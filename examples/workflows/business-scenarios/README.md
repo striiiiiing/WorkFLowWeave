@@ -40,7 +40,7 @@ export GITHUB_PERSONAL_ACCESS_TOKEN='只在当前 shell 设置，不写进 JSON'
 以下命令在仓库根目录执行；重复导入将 `--create` 改为 `--replace`。先把修改后的资源放到私人配置目录，并用下面的 EXAMPLES 指向它。
 
 ```bash
-export WORKFLOWWEAVE_API_URL=http://127.0.0.1:4300
+export WORKFLOWWEAVE_API_URL=http://127.0.0.1:4333
 EXAMPLES=examples/workflows/business-scenarios
 uv run workflowweave resource save mcp_servers "$EXAMPLES/news-mcp-server.json" --create
 uv run workflowweave resource save mcp_servers "$EXAMPLES/yfinance-mcp-server.json" --create

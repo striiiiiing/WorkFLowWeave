@@ -7,7 +7,12 @@ from sqlmodel import select
 
 from workflowweave.models import BackupPolicy
 from workflowweave.workflow.storage.facts import SessionStore
-from workflowweave.workflow.storage.models import AnalysisBody, CollectionBody, PromptVersion, ReportBody
+from workflowweave.workflow.storage.models import (
+    AnalysisBody,
+    CollectionBody,
+    PromptVersion,
+    ReportBody,
+)
 from workflowweave.workflow.storage.sessions import SessionView
 from workflowweave.workflow.stream.subscriptions.checkpoints import CheckpointArchive
 

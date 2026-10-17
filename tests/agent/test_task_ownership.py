@@ -6,11 +6,11 @@ from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-from workflowweave.agent.tools.declaration import ToolDeclaration, schema
-from workflowweave.interaction.fastapi.agent import create_agent_service
 from tests.agent.helpers import ScriptedModel
 from tests.agent.test_admission import GatedModel
 from tests.agent.test_admission import services as services
+from workflowweave.agent.tools.declaration import ToolDeclaration, schema
+from workflowweave.interaction.fastapi.agent import create_agent_service
 
 
 async def test_disconnected_admission_and_waiter_do_not_cancel_the_owned_turn(services, monkeypatch):

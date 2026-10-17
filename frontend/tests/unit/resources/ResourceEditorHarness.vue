@@ -21,9 +21,8 @@ provide(resourcesApiKey, resourcesApi)
 const catalog = useQuery((signal) => systemApi.plugins(signal))
 const capabilities = computed(
   () =>
-    catalog.data.value?.filter(
-      (item) => props.kind === 'channels' && item.kind === 'channel',
-    ) ?? [],
+    catalog.data.value?.filter((item) => props.kind === 'channels' && item.kind === 'channel') ??
+    [],
 )
 const target = { kind: 'shared-resource' as const, resourceId: props.initial?.id ?? '' }
 const gateway: SourceConfigEditorGateway = {

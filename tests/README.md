@@ -27,26 +27,32 @@
 以下命令从仓库根目录执行，先用 `uv sync --extra channels` 安装 Python 开发依赖与通知 SDK。后端每条命令使用 60 秒硬超时；完整套件应分组运行，避免进程恢复耗时挤占其他组预算。
 
 ```bash
-rtk proxy timeout 60s uv run pytest tests --collect-only -q
-rtk proxy timeout 60s uv run pytest tests/config tests/collection -q
-rtk proxy timeout 60s uv run pytest tests/channel -q
-rtk proxy timeout 60s uv run pytest tests/interaction tests/lifecycle -q
-rtk proxy timeout 60s uv run pytest tests/workflow --ignore=tests/workflow/test_workflow_process_recovery.py -q
-rtk proxy timeout 60s uv run pytest tests/workflow/test_workflow_process_recovery.py -q
-rtk proxy timeout 60s uv run pytest tests/test_*.py -q
-rtk proxy timeout 60s uv run pytest tests/ai/test_env.py -q
+timeout 60s uv run pytest tests --collect-only -q
+timeout 60s uv run pytest tests/ai tests/mcp tests/storage_primitives -q
+timeout 60s uv run pytest tests/config tests/collection tests/deploy tests/examples -q
+timeout 60s uv run pytest tests/channel -q
+timeout 60s uv run pytest tests/interaction tests/lifecycle -q
+timeout 60s uv run pytest tests/agent -q
+for test_file in tests/workflow/test_*.py; do
+  if [ "$test_file" = tests/workflow/test_workflow_process_recovery.py ]; then
+    continue
+  fi
+  timeout 60s uv run pytest "$test_file" -q
+done
+for scenario in during_analysis after_send after_checkpoint_fact_commit in_new_execution_epoch; do
+  timeout 60s uv run pytest tests/workflow/test_workflow_process_recovery.py -k "$scenario" -q
+done
+timeout 60s uv run pytest tests/test_*.py -q
 ```
 
-单独运行模块或文件时直接指定当前路径，例如 `rtk proxy timeout 60s uv run pytest tests/channel/test_file_channel.py -q`。根目录新增包标记是为了稳定导入，不添加 sys.path 修改或全局夹具。
+单独运行模块或文件时直接指定当前路径，例如 `timeout 60s uv run pytest tests/channel/test_file_channel.py -q`。根目录新增包标记是为了稳定导入，不添加 sys.path 修改或全局夹具。
 
-`tests/ai/test_service.py`、`tests/ai/test_channels.py` 和 `tests/ai/test_live.py` 默认会向 `http://localhost:19026/v1` 发送真实 HTTP 请求，需要预先启动兼容服务；不是内存 MockTransport。`WORKFLOWWEAVE_AI_LIVE=1` 会额外启用 Qwen 用例，环境文件由 `WORKFLOWWEAVE_AI_ENV` 指定，默认 `.env`。端点不可用应表现为真实失败，不修改跳过规则掩盖环境问题。
+AI 的普通测试默认使用固定的内存 HTTP 响应，不需要启动模型服务或准备 `.env`。首次运行前需下载真实分词词表：`uv run python -c "import tiktoken; [tiktoken.get_encoding(name) for name in ('cl100k_base', 'o200k_base')]"`，下载后复用本机缓存。`tests/ai/test_live.py` 是单独的真实服务验收，只有设置 `WORKFLOWWEAVE_AI_LIVE=1` 才会运行；真实服务地址和凭据来自 `WORKFLOWWEAVE_AI_ENV` 指定的文件（默认 `.env`）。
 
-网络验收分别执行，确保每条命令仍受 60 秒硬超时约束：
+需要测试真实模型时单独执行，命令仍受 60 秒硬超时约束：
 
 ```bash
-rtk proxy timeout 60s uv run pytest tests/ai/test_service.py -q
-rtk proxy timeout 60s uv run pytest tests/ai/test_channels.py -q
-rtk proxy timeout 60s uv run pytest tests/ai/test_live.py -q
+env WORKFLOWWEAVE_AI_LIVE=1 timeout 60s uv run pytest tests/ai/test_live.py -q
 ```
 
 前端在 `frontend/` 执行 `npm test`、`npm run typecheck`；普通浏览器测试先 `npm run build` 再 `npm run test:e2e`（需要 Playwright Chromium）。`npm run test:live` 操作现有前后端服务并创建/清理测试资源，连接要求见对应测试文件顶部与配置。保持测试名和断言语义稳定，目录整理不等于产品行为变更。

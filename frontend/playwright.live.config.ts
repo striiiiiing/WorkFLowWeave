@@ -8,7 +8,7 @@ export default defineConfig({
   timeout: 60_000,
   use: {
     ...devices['Desktop Chrome'],
-    baseURL: process.env.WORKFLOWWEAVE_FRONTEND_URL || 'http://127.0.0.1:3000',
+    baseURL: process.env.WORKFLOWWEAVE_FRONTEND_URL || 'http://127.0.0.1:3332',
     trace: 'retain-on-failure',
   },
 })

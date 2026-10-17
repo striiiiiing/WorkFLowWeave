@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "workflowweave"
-version = "0.1.0"
+version = "0.1.1"
 description = "Configurable asynchronous collection for WorkFLowWeave workflows"
 readme = "README.md"
 license = "MIT"
@@ -65,6 +65,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 addopts = "-ra"
+markers = ["live: 需要显式配置并启用的真实模型服务验收"]
 
 [tool.ruff]
 target-version = "py311"

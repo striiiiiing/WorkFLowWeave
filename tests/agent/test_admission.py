@@ -4,9 +4,9 @@ import pytest
 from langchain_core.messages import AIMessage
 from pydantic import Field
 
+from tests.agent.helpers import ScriptedModel
 from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.interaction.fastapi.agent import create_agent_service
-from tests.agent.helpers import ScriptedModel
 
 
 class GatedModel(ScriptedModel):

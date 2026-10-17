@@ -595,8 +595,8 @@ async def test_string_config_values_normalize_through_readers_and_store(tmp_path
     from workflowweave.plugins.channel.file.channel import FileChannelType
 
     system = tmp_path / "system.json"
-    system.write_text('{"port": "4300"}')
-    assert (await ConfigurationReader().load_system(system)).port == 4300
+    system.write_text('{"port": "4333"}')
+    assert (await ConfigurationReader().load_system(system)).port == 4333
     plugins = tmp_path / "plugins.json"
     plugins.write_text('{"channel": {"demo": {"enabled": "false"}}}')
     config = await ConfigurationReader().load_plugin_config(plugins)

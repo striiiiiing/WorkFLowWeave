@@ -1,5 +1,5 @@
-from workflowweave.models import ErrorInfo, RecoveryAvailability
 from tests.interaction.test_interaction import Lifecycle, _client
+from workflowweave.models import ErrorInfo, RecoveryAvailability
 
 
 def test_recovery_query_is_read_only_and_returns_material_reason():

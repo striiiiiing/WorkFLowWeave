@@ -44,7 +44,7 @@
 ```bash
 docker pull ghcr.io/striiiiiing/workflowweave-backend:full
 docker run -d --name workflowweave --restart unless-stopped \
-  -p 3000:80 \
+  -p 3332:80 \
   -v workflowweave_state:/var/lib/workflowweave \
   ghcr.io/striiiiiing/workflowweave-backend:full
 ```
@@ -60,13 +60,17 @@ docker run -d --name workflowweave-backend --restart unless-stopped \
   -v workflowweave_state:/var/lib/workflowweave \
   ghcr.io/striiiiiing/workflowweave-backend:latest
 docker run -d --name workflowweave-frontend --restart unless-stopped \
-  --network workflowweave -p 3000:80 \
+  --network workflowweave -p 3332:80 \
   ghcr.io/striiiiiing/workflowweave-frontend:latest
 ```
 
-启动后访问 [http://localhost:3000](http://localhost:3000)。
+启动后访问 [http://localhost:3332](http://localhost:3332)。
 
 运行数据保存在 `workflowweave_state` 命名卷中。
+
+目前面向个人单用户使用，尚无登录鉴权。请在本机或可信网络内访问；需要公网访问时，先在反向代理或 VPN 侧限制访问。
+
+**旧版本升级注意**：已有 `config.json` 中的 `port` 请手动改为 `4333`；已有 `.env` 中的 `FRONTEND_PORT` 改为 `3332`，然后重新创建容器或重启服务。已有配置不会被自动覆盖。
 
 ### 方式二：从源码启动
 
@@ -89,7 +93,7 @@ uv run workflowweave config-example --output config.json
 uv run workflowweave start --config config.json
 ```
 
-后端默认监听 `http://127.0.0.1:4300`。保持该终端运行，另开一个终端启动前端。
+后端默认监听 `http://127.0.0.1:4333`。保持该终端运行，另开一个终端启动前端。
 
 **3. 启动前端（需 Node.js 22.22.2+ 或 24.15.0+）**
 
@@ -99,13 +103,13 @@ npm ci
 npm run dev
 ```
 
-如果修改了后端端口，启动前端时可通过 `API_TARGET` 指定后端地址，例如 `API_TARGET=http://127.0.0.1:8000 npm run dev`。
+前端默认使用 `3332` 端口，并将 API 请求转发到后端 `4333` 端口。需要自定义后端地址时，在启动前端前设置 `API_TARGET`。
 
 **4. 检查服务状态**
 
 ```bash
-curl -i http://127.0.0.1:4300/api/health
-curl -i http://localhost:3000/api/health
+curl -i http://127.0.0.1:4333/api/health
+curl -i http://localhost:3332/api/health
 ```
 
 两个接口都返回 HTTP `200` 与 JSON 健康报告即表示就绪；若返回 `503`，可按响应中的组件诊断信息排查。
@@ -144,10 +148,10 @@ curl -i http://localhost:3000/api/health
 }
 ```
 
-在仓库根目录导入并触发运行（Docker 部署请把端口改为 `http://localhost:3000`）：
+在仓库根目录导入并触发运行（Docker 部署请把端口改为 `http://localhost:3332`）：
 
 ```bash
-export WORKFLOWWEAVE_API_URL=http://127.0.0.1:4300
+export WORKFLOWWEAVE_API_URL=http://127.0.0.1:4333
 uv run workflowweave resource save workflows workflow.json --create
 uv run workflowweave run daily_briefing
 ```
@@ -241,7 +245,7 @@ WorkFLowWeave 专为个人开发者与轻量自托管环境设计（实测日期
 
 ## 常用 CLI 命令与配置目录
 
-`workflowweave` CLI 是对后端 HTTP API 的轻量封装（默认请求 `http://127.0.0.1:8000`，建议通过环境变量 `export WORKFLOWWEAVE_API_URL=http://127.0.0.1:4300` 或 `--api-url` 指定实际后端地址）：
+`workflowweave` CLI 用于在终端操作后端，默认连接 `http://127.0.0.1:4333`。Docker 部署时设置 `WORKFLOWWEAVE_API_URL=http://localhost:3332`；其他地址可通过 `--api-url` 指定。
 
 ```bash
 # 服务启动与健康检查
@@ -296,6 +300,8 @@ uv run workflowweave cancel <session_id>                   # 取消正在执行�
 
 ## 目录结构与文档导航
 
+下面的链接都是中文说明，点击即可阅读，不需要编辑这些文件。
+
 ```text
 src/workflowweave/          后端核心：采集、工作流图与存储、AI、Agent、渠道管理、配置与 FastAPI 路由
 src/workflowweave/plugins/  内置通知与双向对话渠道插件（Email / File / QQ / 微信 / 飞书 / Telegram）
@@ -308,6 +314,9 @@ openspec/                   各阶段的提案、架构设计与任务验收记�
 
 | 文档 | 内容概要 |
 | :--- | :--- |
+| [版本变化与升级提醒](CHANGELOG.md) | 每个版本改了什么，升级时需要做什么 |
+| [如何反馈问题和参与开发](CONTRIBUTING.md) | 怎么提问题、提交代码和检查修改 |
+| [安全说明](SECURITY.md) | 当前单用户使用范围、凭据备份和私密报告问题的方法 |
 | [通知插件与聊天指令说明](src/workflowweave/plugins/channel/README.md) | 六大渠道的配置参数、邮箱授权码教程、微信限制与 Agent 斜杠指令表 |
 | [业务工作流模板](examples/workflows/business-scenarios/README.md) | 新闻压缩研判、股票多路调查、GitHub Issue 分工三套完整 JSON 与导入步骤 |
 | [架构与数据边界](docs/architecture.md) | 模块职责、双 SSE 协议、存储与插件目录 |

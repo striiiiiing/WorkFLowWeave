@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
+from workflowweave import __version__
 from workflowweave.channel.login import ChannelLoginManager
 from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.lifecycle import ApplicationLifecycle
@@ -47,7 +48,7 @@ def create_app(lifecycle: Lifecycle | None = None) -> FastAPI:
 
     application = FastAPI(
         title="WorkFLowWeave API",
-        version="0.1.0",
+        version=__version__,
         lifespan=lifespan,
     )
     application.add_exception_handler(WorkFLowWeaveError, workflowweave_error_handler)

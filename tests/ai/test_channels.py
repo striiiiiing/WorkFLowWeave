@@ -2,13 +2,14 @@
 
 参数化非法 thinking 选项检查调用前拒绝；通过真实 HTTP 渠道发现模型，
 断言凭据传递、原配置保持不变，幂等关闭后请求被拒绝。
-网络用例使用本地 mock 服务，显式启用时也验证 Qwen，不使用内存响应替身。
+使用内存 HTTP 传输验证生产 SDK 请求，不读取用户配置或连接外部服务。
 """
 
 import asyncio
 
 import pytest
 
+from tests.ai.live_helpers import assert_success, call
 from workflowweave.ai import AIService, OpenAIChannelFactory
 from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.models import AIConfig
@@ -57,3 +58,22 @@ async def test_close_is_idempotent_and_blocks_requests(observed_channel, channel
     result = await service.execute(cfg, "", "body", model=next(iter(cfg.models)))
     assert result.error.code == "ai_closed"
     assert requests == []
+
+
+@pytest.mark.parametrize("options", [
+    {"enable_thinking": False},
+    *({"enable_thinking": True, "reasoning_effort": effort}
+      for effort in ("low", "medium", "high", "xhigh", "max")),
+])
+async def test_thinking_options_reach_http_body(observed_channel, channel_config, options):
+    """支持的配置选项原样进入请求，不要求特定供应商支持所有推理级别。"""
+    import json
+
+    service, requests, _ = observed_channel
+    config, _ = channel_config
+    before = config.model_dump()
+    assert_success(await call(service, config, options), config)
+    assert config.model_dump() == before
+    assert len(requests) == 1
+    payload = json.loads(requests[0].content)
+    assert {key: payload[key] for key in options} == options

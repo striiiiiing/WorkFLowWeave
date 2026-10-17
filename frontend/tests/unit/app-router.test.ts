@@ -23,5 +23,4 @@ it('keeps the established route paths, names and query state', async () => {
   await router.push('/runs/run-1?tab=notify')
   expect(router.currentRoute.value.name).toBe('run-detail')
   expect(router.currentRoute.value.query).toEqual({ tab: 'notify' })
-
 })

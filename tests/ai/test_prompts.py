@@ -4,10 +4,10 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
+from tests.workflow_ai_helpers import TestChannelFactory, TestChatModel
 from workflowweave.ai import AIService
 from workflowweave.ai.prompts import build_messages
 from workflowweave.models import AIConfig
-from tests.workflow_ai_helpers import TestChannelFactory, TestChatModel
 
 
 @pytest.mark.parametrize("template,expected", [

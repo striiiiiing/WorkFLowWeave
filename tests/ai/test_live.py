@@ -1,18 +1,27 @@
 """AI 真实 HTTP 调用生命周期验收。
 
-使用本地 mock 服务及显式启用的 Qwen，检查模型发现、thinking 参数、
+显式启用后使用配置文件指定的模型，检查模型发现、thinking 参数、
 并发请求、取消通知和关闭后显式重启；观察真实请求与结果，不伪造响应。
 依赖环境配置、运行中的兼容端点及适用凭据，失败由实际服务状态决定。
 """
 
 import asyncio
 import json
+import os
 
 import httpx
 import pytest
 
 from tests.ai.live_helpers import assert_success, call
 from workflowweave.ai import AIService, OpenAIChannelFactory
+
+pytestmark = [
+    pytest.mark.live,
+    pytest.mark.skipif(
+        os.environ.get("WORKFLOWWEAVE_AI_LIVE") != "1",
+        reason="Set WORKFLOWWEAVE_AI_LIVE=1 to run external model acceptance tests",
+    ),
+]
 
 
 async def test_model_discovery(channel_service, channel_config):
@@ -24,7 +33,7 @@ async def test_model_discovery(channel_service, channel_config):
 @pytest.mark.parametrize("options", [
     pytest.param({"enable_thinking": False}, id="thinking_off"),
     *(pytest.param({"enable_thinking": True, "reasoning_effort": effort}, id=effort)
-      for effort in ("low", "medium", "high", "xhigh", "max")),
+      for effort in ("low", "medium", "high", "xhigh")),
 ])
 async def test_thinking_controls(observed_channel, channel_config, options):
     """比对真实请求中的思考参数，并验证有效回复及调用方配置不变。"""

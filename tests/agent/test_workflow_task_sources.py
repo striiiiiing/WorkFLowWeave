@@ -3,12 +3,12 @@
 import httpx
 import pytest
 
+from tests.interaction.test_agent_api import Lifecycle
+from tests.workflow.helpers import AI, Channel, Collector, snapshot
 from workflowweave.interaction.app import create_app
 from workflowweave.interaction.fastapi.agent import create_agent_service
 from workflowweave.models import FanInConfig
 from workflowweave.workflow.execution.runner import WorkflowRunner
-from tests.interaction.test_agent_api import Lifecycle
-from tests.workflow.helpers import AI, Channel, Collector, snapshot
 
 
 @pytest.mark.parametrize("task_id", ["first", "final", None])

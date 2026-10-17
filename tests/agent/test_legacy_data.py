@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 from langchain_core.messages import AIMessage
 
-from workflowweave.interaction.fastapi.agent import create_agent_service
 from tests.agent.helpers import ScriptedModel
+from workflowweave.interaction.fastapi.agent import create_agent_service
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "agent_pre_redesign"
 
