@@ -10,7 +10,8 @@ permissions:
 
 jobs:
   backend:
-    runs-on: ubuntu-latest
+    # Ubuntu 22.04 permits the user namespaces needed by the real bwrap tests.
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -29,6 +30,8 @@ jobs:
       - run: uv sync --frozen --group dev --extra channels
       - name: Install Agent tool dependencies
         run: sudo apt-get update && sudo apt-get install -y bubblewrap ripgrep
+      - name: Verify actual sandbox support
+        run: bwrap --unshare-user --unshare-pid --unshare-net --ro-bind / / --proc /proc /bin/true
       - name: Download tokenizer data before tests
         run: uv run python -c "import tiktoken; [tiktoken.get_encoding(name) for name in ('cl100k_base', 'o200k_base')]"
       - name: Backend tests (60 seconds per group)

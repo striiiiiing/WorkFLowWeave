@@ -244,13 +244,18 @@ async def test_direct_email_call_requires_explicit_recipient_even_with_saved_def
 async def test_rejections_disconnects_and_timeouts_never_retry(mode, uncertain, submissions):
     async with smtp_server(mode) as server:
         manager = ChannelManager(Register())
-        result = await manager.send(config(server.port, timeout=.1), note())
-        assert result.status in ("failed", "timeout") and result.attempts == 1
-        assert result.error.details["delivery_uncertain"] is uncertain
-        assert "test-private" not in result.model_dump_json()
-        assert len(server.messages) == submissions
-        assert server.connections == 1
-        await manager.stop()
+        # Only the timeout scenario tests a deadline; other cases must reach
+        # their SMTP response even when the runner takes longer to schedule I/O.
+        timeout = 1 if mode == "timeout" else 5
+        try:
+            result = await manager.send(config(server.port, timeout=timeout), note())
+            assert result.status in ("failed", "timeout") and result.attempts == 1
+            assert result.error.details["delivery_uncertain"] is uncertain
+            assert "test-private" not in result.model_dump_json()
+            assert len(server.messages) == submissions
+            assert server.connections == 1
+        finally:
+            await manager.stop()
 
 
 async def test_authentication_rejection_is_definite_and_redacted():
@@ -380,13 +385,13 @@ async def test_cancelling_queued_send_does_not_close_active_smtp_transaction():
 async def test_reused_connection_obeys_current_snapshot_timeout():
     async with smtp_server() as server:
         manager = ChannelManager(Register())
-        first = await manager.send(config(server.port, timeout=.1), note())
+        first = await manager.send(config(server.port, timeout=1), note())
         assert first.status == "success"
         server.mode = "hold"
         server.data_received.clear()
-        sending = asyncio.create_task(manager.send(config(server.port, timeout=1), note(output_id="second")))
+        sending = asyncio.create_task(manager.send(config(server.port, timeout=3), note(output_id="second")))
         await server.data_received.wait()
-        await asyncio.sleep(.15)
+        await asyncio.sleep(1.1)
         assert not sending.done()
         server.release.set()
         assert (await sending).status == "success"
