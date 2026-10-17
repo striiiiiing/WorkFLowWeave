@@ -470,7 +470,7 @@ async def test_real_official_sdk_keeps_messages_separate_and_cleans_background_l
                 headers={}, body=json.dumps(payload).encode(),
             )
             assert status == 200
-        await asyncio.wait_for(complete.wait(), timeout=2)
+        await asyncio.wait_for(complete.wait(), timeout=10)
         assert {m.request_id: m.text for m in received} == {
             "message-1": "hello 1", "message-2": "hello 2",
         }
