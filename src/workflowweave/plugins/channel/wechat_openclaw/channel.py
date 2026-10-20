@@ -19,6 +19,8 @@ from workflowweave.schema import (
     validate_workflow_options,
 )
 
+from .node import resolve_node
+
 _LOGGER = logging.getLogger(__name__)
 _STOP_TIMEOUT = 5.0
 _BRIDGE = str(Path(__file__).with_name("bridge.mjs"))
@@ -74,7 +76,7 @@ class WechatOpenClawChannel:
             self._ready = asyncio.get_running_loop().create_future()
             try:
                 self._process = await self._process_factory(
-                    options.get("command", "node"), *args,
+                    resolve_node(options.get("command", "node")), *args,
                     stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )

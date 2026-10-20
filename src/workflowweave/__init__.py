@@ -1,3 +1,3 @@
 """WorkFLowWeave's independently usable collection and supporting contracts."""
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"

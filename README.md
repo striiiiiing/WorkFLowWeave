@@ -35,7 +35,35 @@
 
 ## 快速开始
 
-可以直接拉取 Docker 镜像部署，也可以从源码分别启动后端和前端。
+可以安装 Python wheel 单命令启动，也可以拉取 Docker 镜像或从源码分别启动后端和前端。
+
+### Python 包安装
+
+需要 Python 3.11+。安装发布 wheel 后无需 Node.js 或源码仓库：
+
+```bash
+pip install workflowweave
+workflowweave serve
+```
+
+访问 `http://127.0.0.1:4333`，同一服务提供 Web 界面与 API。首次启动自动在平台用户数据目录创建 `config.json`，并将数据库、资源、插件设置及密钥保存在该目录；Linux 默认为 `~/.local/share/workflowweave`，遵循 `XDG_DATA_HOME`。已有配置不会被覆盖。
+
+```bash
+workflowweave serve --host 127.0.0.1 --port 4333 --data-dir /path/to/state
+```
+
+对应环境变量为 `WORKFLOWWEAVE_HOST`、`WORKFLOWWEAVE_PORT`、`WORKFLOWWEAVE_DATA_DIR`。优先级为命令参数、环境变量、已有配置、默认值；监听覆盖只对本次进程生效。原有 `workflowweave start --config config.json` 保持兼容。
+
+微信渠道及其 JavaScript SDK 随 wheel 分发，启用渠道或扫码登录时才启动 bridge。常规 `pip install workflowweave` 会在 Node wheel 支持的 x86_64 平台一并安装 Node.js（Linux glibc 2.28+/musl 1.2+、macOS 13+、Windows）；ARM64 不随包安装 Node，启用微信时需在系统安装 Node.js 22+。优先使用随包 Node，其次系统 `node`；微信渠道的 `command` 可指定可执行文件。缺少 Node 时主服务只记录 warning，启用微信时明确报错。
+
+从源码构建发布包需要 **Python 3.11+、Node.js 22+ 和 npm**。构建会根据前端与微信 bridge 的锁文件安装依赖，并将前端生产资源及 SDK 放入 wheel：
+
+```bash
+uv build --python 3.12
+uvx twine check dist/*
+```
+
+源码 editable 安装跳过 Web 构建，继续使用下方 Vite 开发模式。PyPI 通过 GitHub Release 和 Trusted Publishing 自动发布；通过本地构建与安装验收并不代表已经发布。
 
 ### 方式一：Docker 部署（推荐）
 

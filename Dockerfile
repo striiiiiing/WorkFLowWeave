@@ -13,11 +13,6 @@ RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
 RUN npm run build
 
-FROM node AS wechat-deps
-WORKDIR /wechat
-COPY src/workflowweave/plugins/channel/wechat_openclaw/package*.json ./
-RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
-
 FROM python-base AS backend-build
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git ca-certificates \
@@ -32,9 +27,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --extra channels --no-install-project
 COPY README.md LICENSE ./
 COPY src/ ./src/
+COPY hatch_build.py ./
+COPY frontend/ ./frontend/
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/lib/node_modules/ /usr/local/lib/node_modules/
+RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --extra channels --no-editable
-COPY --from=wechat-deps /wechat/node_modules/ /opt/workflowweave/venv/lib/python3.12/site-packages/workflowweave/plugins/channel/wechat_openclaw/node_modules/
 
 FROM python-base AS runtime
 # Node is required by the bundled WeChat channel.
