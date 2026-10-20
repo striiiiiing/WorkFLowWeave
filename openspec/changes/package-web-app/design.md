@@ -10,7 +10,7 @@
 
 ## Decisions
 
-1. **使用项目内 Hatch 自定义构建钩子。** 发布 wheel 由构建环境提供 Node >=22 和 npm，钩子显式检查版本后在前端目录执行锁文件驱动的 `npm ci` 与生产构建，并通过 Hatch `force_include` 放入 `workflowweave/web_app`。同一钩子安装并打包微信 SDK 的生产依赖。editable 安装跳过 Web 构建；sdist 包含完整前端输入与锁文件，但排除 dist、node_modules 和缓存。运行期安装 wheel 不需要 Node/npm 构建工具。
+1. **使用项目内 Hatch 自定义构建钩子。** 发布 wheel 使用 Python >=3.12，构建环境提供 Node >=22 和 npm；钩子显式检查 Node 版本后在前端目录执行锁文件驱动的 `npm ci` 与生产构建，并通过 Hatch `force_include` 放入 `workflowweave/web_app`。同一钩子安装并打包微信 SDK 的生产依赖。editable 安装跳过 Web 构建；sdist 包含完整前端输入与锁文件，但排除 dist、node_modules 和缓存。运行期安装 wheel 不需要 Node/npm 构建工具。
 2. **应用工厂装配 SPA 静态分发。** 静态资源挂载应在 API 路由之后，并明确区分 API 前缀、已存在静态文件、前端页面请求和未知资源；history 回退仅为页面导航返回入口，不把缺失 JS/CSS 或 API 请求变成 200 HTML。相较中间件级 catch-all，该路由方式保留 FastAPI 对 API 的错误语义和文档端点。
 3. **将 `serve` 做成现有 `start` 的配置适配入口。** 解析命令参数和环境变量，准备用户数据目录及默认配置，再委托已有生命周期启动路径；保留 `start --config` 作为显式高级用法。监听默认值使用 loopback；路径由平台用户数据目录确定，避免把包安装位置或工作区当作可变状态目录。
 4. **Node 解析集中在微信插件共享边界。** `nodejs-wheel-binaries` 在支持的 x86_64 平台作为主依赖自动安装，免去用户额外指定安装项；ARM64 运行微信 bridge 需要系统 Node。优先已安装的包内 Node，其次系统 node；显式 command 保持优先。登录和 bridge 复用同一解析函数，缺少 Node 时明确报渠道错误。主服务只做可用性诊断并记录 warning，不启动 bridge，不影响其他能力。

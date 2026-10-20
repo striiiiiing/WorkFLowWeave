@@ -5,6 +5,7 @@
 - 增加可从 Python wheel 安装并通过 `workflowweave serve` 启动的 Web 应用。
 - 增加通过 GitHub Actions OIDC Trusted Publishing 发布到 PyPI 的流程。
 - 微信 Node bridge 运行时随 wheel 分发，x86_64 平台自动安装 Node；ARM64 使用系统 Node。
+- 最低 Python 版本提升至 3.12，与正式构建环境和 CI 测试矩阵保持一致。
 
 ## 0.1.1
 

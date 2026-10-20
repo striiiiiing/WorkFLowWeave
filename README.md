@@ -2,7 +2,7 @@
   <h1>WorkFLowWeave</h1>
   <p><strong>把日常重复的数据采集、AI 分析与推送固化为可复用的工作流；需要深挖时，再拉起 Agent 接着聊。</strong></p>
   <p>
-    <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white" alt="Python 3.11+"></a>
+    <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white" alt="Python 3.12+"></a>
     <a href="https://vuejs.org/"><img src="https://img.shields.io/badge/Vue-3-4FC08D?logo=vuedotjs&logoColor=white" alt="Vue 3"></a>
     <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-0.135%2B-009688?logo=fastapi&logoColor=white" alt="FastAPI"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License"></a>
@@ -39,7 +39,7 @@
 
 ### Python 包安装
 
-需要 Python 3.11+。安装发布 wheel 后无需 Node.js 或源码仓库：
+需要 Python 3.12+。安装发布 wheel 后无需 Node.js 或源码仓库：
 
 ```bash
 pip install workflowweave
@@ -56,7 +56,7 @@ workflowweave serve --host 127.0.0.1 --port 4333 --data-dir /path/to/state
 
 微信渠道及其 JavaScript SDK 随 wheel 分发，启用渠道或扫码登录时才启动 bridge。常规 `pip install workflowweave` 会在 Node wheel 支持的 x86_64 平台一并安装 Node.js（Linux glibc 2.28+/musl 1.2+、macOS 13+、Windows）；ARM64 不随包安装 Node，启用微信时需在系统安装 Node.js 22+。优先使用随包 Node，其次系统 `node`；微信渠道的 `command` 可指定可执行文件。缺少 Node 时主服务只记录 warning，启用微信时明确报错。
 
-从源码构建发布包需要 **Python 3.11+、Node.js 22+ 和 npm**。构建会根据前端与微信 bridge 的锁文件安装依赖，并将前端生产资源及 SDK 放入 wheel：
+从源码构建发布包需要 **Python 3.12+、Node.js 22+ 和 npm**。构建会根据前端与微信 bridge 的锁文件安装依赖，并将前端生产资源及 SDK 放入 wheel：
 
 ```bash
 uv build --python 3.12
@@ -102,7 +102,7 @@ docker run -d --name workflowweave-frontend --restart unless-stopped \
 
 ### 方式二：从源码启动
 
-**1. 准备后端环境（需 Python 3.11+ 与 [uv](https://docs.astral.sh/uv/getting-started/installation/)）**
+**1. 准备后端环境（需 Python 3.12+ 与 [uv](https://docs.astral.sh/uv/getting-started/installation/)）**
 
 ```bash
 git clone https://github.com/striiiiiing/WorkFLowWeave.git
@@ -316,12 +316,12 @@ uv run workflowweave cancel <session_id>                   # 取消正在执行�
 
 | 依赖项 | 要求说明 |
 | :--- | :--- |
-| **Python** | **3.11+**，推荐使用 `uv` 管理虚拟环境与依赖 |
+| **Python** | **3.12+**，推荐使用 `uv` 管理虚拟环境与依赖 |
 | **Node.js / npm** | **Node.js 22.22.2+（22.x）或 24.15.0+（24.x）**，使用 `npm ci` 按锁文件安装前端依赖 |
 | **模型服务** | 任意兼容 OpenAI 接口的模型服务（OpenAI / DeepSeek / 硅基流动 / 本地 vLLM / Ollama 等）；Agent 模式需模型支持 Tool Calling |
 | **Shell 沙箱（可选）** | Agent 的 `shell` 工具默认开启 Linux `bubblewrap`（`bwrap`）与用户命名空间隔离；若宿主机不支持，可在 Agent 设置里显式关闭 |
 
-- **后端技术栈**：Python 3.11+、asyncio、FastAPI、Uvicorn、Typer、LangGraph、LangChain、Pydantic、SQLModel / SQLite、MCP 官方 SDK。
+- **后端技术栈**：Python 3.12+、asyncio、FastAPI、Uvicorn、Typer、LangGraph、LangChain、Pydantic、SQLModel / SQLite、MCP 官方 SDK。
 - **前端技术栈**：Vue 3、TypeScript、Vue Router、Element Plus、Tailwind CSS、Vite。
 
 ---
