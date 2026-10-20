@@ -35,9 +35,9 @@
 
 ## 快速开始
 
-可以安装 Python wheel 单命令启动，也可以拉取 Docker 镜像或从源码分别启动后端和前端。
+**推荐先用 pip 安装**：一条命令启动后端和 Web 界面，不需要 Docker、Node.js 或源码仓库。需要容器化部署时，再使用下方 Docker 方式。
 
-### Python 包安装
+### pip 安装（PyPI）
 
 需要 Python 3.12+。安装发布 wheel 后无需 Node.js 或源码仓库：
 
