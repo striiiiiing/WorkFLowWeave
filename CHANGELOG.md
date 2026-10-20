@@ -1,5 +1,11 @@
 # 版本变化
 
+## 0.1.2
+
+- 增加可从 Python wheel 安装并通过 `workflowweave serve` 启动的 Web 应用。
+- 增加通过 GitHub Actions OIDC Trusted Publishing 发布到 PyPI 的流程。
+- 微信 Node bridge 运行时随 wheel 分发，x86_64 平台自动安装 Node；ARM64 使用系统 Node。
+
 ## 0.1.1
 
 - 后端和 CLI 默认端口统一为 `4333`，前端默认访问端口改为 `3332`；Docker、代理、检查脚本和文档同步更新。

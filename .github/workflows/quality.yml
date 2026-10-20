@@ -52,7 +52,8 @@ jobs:
           done
           timeout 60s uv run pytest tests/test_*.py -q
       - run: uv run ruff check src tests
-      - run: uv build
+      - if: matrix.python == '3.12'
+        run: uv build
 
   frontend:
     runs-on: ubuntu-latest

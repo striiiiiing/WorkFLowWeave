@@ -13,6 +13,8 @@ from workflowweave.channel.login import TERMINAL_STATES
 from workflowweave.errors import WorkFLowWeaveError
 from workflowweave.schema import validate_instance
 
+from .node import resolve_node
+
 _LOGIN_TIMEOUT = 300.0
 _QR_TIMEOUT = 30.0
 _STOP_TIMEOUT = 5.0
@@ -50,7 +52,7 @@ class WechatLoginSession:
         try:
             async with asyncio.timeout(_LOGIN_TIMEOUT):
                 self._process = await self._factory(
-                    self._options["command"], _LOGIN, "--state-dir", self.scope,
+                    resolve_node(self._options["command"]), _LOGIN, "--state-dir", self.scope,
                     stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.DEVNULL,
                 )

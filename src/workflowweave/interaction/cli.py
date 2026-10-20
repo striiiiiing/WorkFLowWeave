@@ -10,6 +10,7 @@ from typing import Annotated, Any
 
 import httpx
 import typer
+from platformdirs import user_data_path
 from pydantic import TypeAdapter, ValidationError
 
 from workflowweave.errors import validation_error
@@ -64,7 +65,7 @@ def _request(
     return response.json()
 
 
-async def _serve(config_path: Path) -> None:
+async def _serve(config_path: Path | SystemConfig) -> None:
     print("[后端启动] 正在加载运行时模块...", file=sys.stderr, flush=True)
     import uvicorn
 
@@ -73,7 +74,8 @@ async def _serve(config_path: Path) -> None:
     from .app import create_app
 
     print("[后端启动] 运行时模块加载完成，正在读取配置并装配后端...", file=sys.stderr, flush=True)
-    lifecycle = await ApplicationLifecycle.from_file(config_path)
+    lifecycle = (ApplicationLifecycle(config_path) if isinstance(config_path, SystemConfig)
+                 else await ApplicationLifecycle.from_file(config_path))
     config = uvicorn.Config(
         create_app(lifecycle),
         host=lifecycle.config.host,
@@ -93,6 +95,34 @@ def start(
 ) -> None:
     """Start the API service with one process and one lifecycle owner."""
     asyncio.run(_serve(config))
+
+
+@app.command()
+def serve(
+    host: Annotated[str | None, typer.Option(envvar="WORKFLOWWEAVE_HOST")] = None,
+    port: Annotated[
+        int | None, typer.Option(envvar="WORKFLOWWEAVE_PORT", min=1, max=65535),
+    ] = None,
+    data_dir: Annotated[
+        Path | None, typer.Option(envvar="WORKFLOWWEAVE_DATA_DIR", file_okay=False),
+    ] = None,
+) -> None:
+    """Start the packaged web application; configuration is created on first use."""
+    root = (data_dir or user_data_path("workflowweave", appauthor=False)).expanduser().resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    config_path = root / "config.json"
+    if config_path.exists():
+        config = SystemConfig.model_validate_json(config_path.read_text(encoding="utf-8"))
+    else:
+        config = SystemConfig(
+            data_dir=str(root), plugin_dir=str(root / "plugins"),
+            master_key_file=str(root / "master.key"),
+        )
+        config_path.write_text(config.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    overrides = {key: value for key, value in {"host": host, "port": port}.items()
+                 if value is not None}
+    effective = SystemConfig.model_validate({**config.model_dump(), **overrides})
+    asyncio.run(_serve(effective))
 
 
 @app.command("config-example")

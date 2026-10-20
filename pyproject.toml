@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "workflowweave"
-version = "0.1.1"
+version = "0.1.2"
 description = "Configurable asynchronous collection for WorkFLowWeave workflows"
 readme = "README.md"
 license = "MIT"
@@ -36,6 +36,8 @@ dependencies = [
   "zon-format>=1.2.3",
   "tiktoken>=0.12,<1",
   "toon-format",
+  "platformdirs>=4,<5",
+  "nodejs-wheel-binaries>=22,<25; (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'darwin' and platform_machine == 'x86_64') or (sys_platform == 'win32' and platform_machine == 'AMD64')",
 ]
 
 [project.scripts]
@@ -59,6 +61,13 @@ toon-format = { git = "https://github.com/toon-format/toon-python.git", rev = "e
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/workflowweave"]
+
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "hatch_build.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/frontend", "/hatch_build.py", "/README.md", "/LICENSE"]
+exclude = ["**/node_modules", "**/dist", "**/__pycache__"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
