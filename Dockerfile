@@ -24,7 +24,7 @@ ENV UV_LINK_MODE=copy \
     UV_PROJECT_ENVIRONMENT=/opt/workflowweave/venv
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --extra channels --no-install-project
+    uv sync --frozen --no-dev --no-install-project
 COPY README.md LICENSE ./
 COPY src/ ./src/
 COPY hatch_build.py ./
@@ -33,7 +33,7 @@ COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /usr/local/lib/node_modules/ /usr/local/lib/node_modules/
 RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --extra channels --no-editable
+    uv sync --frozen --no-dev --no-editable
 
 FROM python-base AS runtime
 # Node is required by the bundled WeChat channel.

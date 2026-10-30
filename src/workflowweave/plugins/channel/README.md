@@ -2,7 +2,7 @@
 
 `email`、`file`、`qq`、`wechat_openclaw`、`feishu` 和 `telegram` 都是独立插件，核心包只提供通用 `ChannelManager` 和协议。
 
-安装平台 SDK 时按需选择 `uv sync --extra email`、`--extra qq`、`--extra feishu`、`--extra telegram` 或 `--extra channels`。Email 使用 `aiosmtplib` 仅发送 SMTP 通知；file 使用标准库 `logging.FileHandler` 追加 UTF-8 日志。QQ 使用腾讯官方 SDK，飞书使用飞书官方 SDK，Telegram 使用成熟的社区 SDK `python-telegram-bot`。微信插件使用轻量 Node SDK [corespeed-io/wechatbot](https://github.com/corespeed-io/wechatbot)，不安装完整 OpenClaw。
+运行 `pip install workflowweave` 或源码环境的 `uv sync` 时，默认安装 Email、QQ、飞书和 Telegram 的 SDK，无需指定 extras。微信 Node SDK 及其依赖随 PyPI wheel 打包；源码环境的安装方式见下文。Email 使用 `aiosmtplib` 仅发送 SMTP 通知；file 使用标准库 `logging.FileHandler` 追加 UTF-8 日志。QQ 使用腾讯官方 SDK，飞书使用飞书官方 SDK，Telegram 使用成熟的社区 SDK `python-telegram-bot`。微信插件使用轻量 Node SDK [corespeed-io/wechatbot](https://github.com/corespeed-io/wechatbot)，不安装完整 OpenClaw。
 
 启用插件后，在资源配置中使用插件声明的能力名。Email、file 只有 `notification`；微信、QQ、飞书、Telegram 还声明 `conversation`，双向输入统一交给核心 `ChannelManager`。
 

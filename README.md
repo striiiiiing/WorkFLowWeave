@@ -110,7 +110,7 @@ cd WorkFLowWeave
 uv sync --group dev
 ```
 
-如需启用邮件、QQ、飞书或 Telegram 渠道 SDK，可按需加上 `--extra channels`（或单独加 `--extra email` / `qq` / `feishu` / `telegram`）。
+邮件、QQ、飞书和 Telegram 渠道 SDK 默认随项目安装，无需额外指定 extras。PyPI wheel 同时包含微信 Node SDK 及其依赖；渠道账号仍需在使用前配置。
 
 **2. 生成配置并启动后端**
 

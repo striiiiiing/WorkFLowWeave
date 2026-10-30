@@ -24,7 +24,7 @@
 
 ## 运行
 
-以下命令从仓库根目录执行，先用 `uv sync --extra channels` 安装 Python 开发依赖与通知 SDK。后端每条命令使用 60 秒硬超时；完整套件应分组运行，避免进程恢复耗时挤占其他组预算。
+以下命令从仓库根目录执行，先用 `uv sync --group dev` 安装 Python 开发依赖与通知 SDK。后端每条命令使用 60 秒硬超时；完整套件应分组运行，避免进程恢复耗时挤占其他组预算。
 
 ```bash
 timeout 60s uv run pytest tests --collect-only -q

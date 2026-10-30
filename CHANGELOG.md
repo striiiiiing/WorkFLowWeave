@@ -1,5 +1,9 @@
 # 版本变化
 
+## 0.1.3
+
+- Email、QQ、飞书和 Telegram SDK 改为默认依赖，普通 `pip install workflowweave` 即可安装全部渠道依赖，无需 extras；微信 Node SDK 继续随 wheel 分发。
+
 ## 0.1.2
 
 - 增加可从 Python wheel 安装并通过 `workflowweave serve` 启动的 Web 应用。
